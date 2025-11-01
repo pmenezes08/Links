@@ -535,7 +535,21 @@ export default function PostDetail(){
       console.log('[Carousel] PostDetail condition NOT met, clearing carousel items')
       setCarouselItems([])
     }
-  }, [post?.id, post?.image_path, post?.video_path, post?.replies?.length, imagine.jobs])
+  }, [post?.id, post?.image_path, post?.video_path, post?.replies?.length])
+
+  // Refetch carousel only when AI jobs complete (not during generation)
+  useEffect(() => {
+    const completedJobs = Object.values(imagine.jobs).filter(job =>
+      job.status === 'completed' && job.targetType === 'post' && job.targetId === post?.id
+    )
+
+    if (completedJobs.length > 0) {
+      console.log('[Carousel] AI jobs completed, triggering carousel refresh')
+      // Force a re-render by toggling loading state briefly
+      setCarouselLoading(true)
+      setTimeout(() => setCarouselLoading(false), 100)
+    }
+  }, [imagine.jobs, post?.id])
 
   async function toggleReaction(reaction: string){
     if (!post) return
@@ -802,7 +816,7 @@ export default function PostDetail(){
             {postImagineJob && postImagineJob.status !== 'completed' && postImagineJob.status !== 'error' ? (
               <div className="mt-1 text-[11px] text-[#7fe7df] flex items-center gap-1">
                 <i className="fa-solid fa-sparkles" />
-                <span>{postImagineJob.status === 'awaiting_owner' ? 'AI video ready?choose how to use it' : 'AI video is generating?'}</span>
+                <span>{postImagineJob.status === 'awaiting_owner' ? 'AI video ready?choose how to use it' : 'AI video is generating'}</span>
               </div>
             ) : null}
           </div>
@@ -1176,7 +1190,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           {imagineJob && imagineJob.status !== 'completed' && imagineJob.status !== 'error' ? (
             <div className="mt-1 text-[10px] text-[#7fe7df] flex items-center gap-1">
               <i className="fa-solid fa-sparkles" />
-              <span>{imagineJob.status === 'awaiting_owner' ? 'AI video ready?open the prompt to finish' : 'Animating?'}</span>
+              <span>{imagineJob.status === 'awaiting_owner' ? 'AI video ready?open the prompt to finish' : 'Animating'}</span>
             </div>
           ) : null}
           {showComposer ? (

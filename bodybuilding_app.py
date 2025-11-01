@@ -3515,14 +3515,12 @@ def process_imagine_job(job_id: int):
                     update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=f'Failed writing video: {write_err}')
                     return
                 rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{filename}"
+                # AI videos only appear in carousel, never as replies
                 if job.get('is_owner'):
                     update_imagine_job(job_id, status=IMAGINE_STATUS_AWAITING_OWNER, result_path=rel_path)
                 else:
-                    reply_id = create_imagine_reply(job, rel_path, style)
-                    if reply_id:
-                        update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, result_path=rel_path, auto_reply_id=reply_id, action='auto_reply')
-                    else:
-                        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, result_path=rel_path, error='Failed to create reply for generated video')
+                    # For non-owners, mark as completed but don't create reply
+                    update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, result_path=rel_path, action='carousel_only')
                 logger.info(f"[Imagine] Job {job_id} completed")
                 return
             if status in ('failed', 'error', 'cancelled'):
@@ -12244,9 +12242,11 @@ def api_imagine_resolve():
 
     try:
         with get_db_connection() as conn:
+            # AI videos only appear in carousel, never modify post/reply media
+            # No database modifications needed - carousel gets data from imagine_jobs table
+            """
             c = conn.cursor()
             ph = get_sql_placeholder()
-            if target_type == 'post':
                 if normalized_action == 'replace':
                     c.execute(f"UPDATE posts SET image_path=NULL, video_path={ph} WHERE id={ph}", (result_path, target_id))
                 else:
