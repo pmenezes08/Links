@@ -12268,7 +12268,7 @@ def api_imagine_resolve():
 
     update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, action=normalized_action, result_path=result_path)
 
-            return jsonify({'success': True, 'result_path': result_path, 'result_url': get_public_upload_url(result_path)})
+    return jsonify({'success': True, 'result_path': result_path, 'result_url': get_public_upload_url(result_path)})
 
 @app.route('/api/carousel_items')
 @login_required
