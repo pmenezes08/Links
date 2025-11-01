@@ -866,35 +866,29 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       try {
         const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
         const json = await resp.json().catch(() => null)
+        console.log('[Carousel] Fetch response for post', post.id, ':', json)
         if (resp.ok && json?.success && json.videos) {
           // Only set carousel items if there are AI videos (more than just original image)
           // If there's at least one AI video, show carousel with original + videos
           const hasAiVideos = json.videos.some((v: any) => v.type === 'ai_video')
+          console.log('[Carousel] Has AI videos:', hasAiVideos, 'Videos:', json.videos)
           if (hasAiVideos) {
             // Carousel should show: original image + AI videos
+            console.log('[Carousel] Setting carousel items:', json.videos)
             setCarouselItems(json.videos)
           } else {
             // No AI videos - don't show carousel, show regular image instead
+            console.log('[Carousel] No AI videos, setting empty carousel items')
             setCarouselItems([])
           }
         } else {
           // API error: don't show carousel
+          console.log('[Carousel] API error or no videos:', resp.ok, json)
           setCarouselItems([])
         }
       } catch (err) {
-        console.error('Failed to fetch carousel items:', err)
-        // Fallback to original image if available
-        if (post.image_path) {
-          const normalized = normalizeMediaPath(post.image_path)
-          setCarouselItems([{
-            type: 'original',
-            image_path: post.image_path,
-            image_url: normalized,
-            created_by: null
-          }])
-        } else {
-          setCarouselItems([])
-        }
+        console.error('[Carousel] Failed to fetch carousel items:', err)
+        setCarouselItems([])
       } finally {
         setCarouselLoading(false)
       }
@@ -1058,19 +1052,21 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           </div>
         )}
         {/* Show carousel ONLY if AI videos exist, otherwise show regular image */}
-        {carouselLoading ? (
-          <div className="px-3 flex items-center justify-center py-8">
-            <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
-          </div>
-        ) : carouselItems.length > 0 ? (
-          // Show carousel if there are AI videos
-          <div className="px-3" onClick={(e)=> e.stopPropagation()}>
-            <VideoCarousel
-              items={carouselItems}
-              onPreviewImage={onPreviewImage}
-            />
-          </div>
-        ) : post.image_path ? (
+        {(() => {
+          console.log('[Carousel] Render check - loading:', carouselLoading, 'items:', carouselItems.length, 'post.image_path:', post.image_path)
+          return carouselLoading ? (
+            <div className="px-3 flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
+            </div>
+          ) : carouselItems.length > 0 ? (
+            // Show carousel if there are AI videos
+            <div className="px-3" onClick={(e)=> e.stopPropagation()}>
+              <VideoCarousel
+                items={carouselItems}
+                onPreviewImage={onPreviewImage}
+              />
+            </div>
+          ) : post.image_path ? (
           // No AI videos - show regular image (not carousel)
           <div className="px-3">
             {(() => {
