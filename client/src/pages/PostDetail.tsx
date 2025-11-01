@@ -270,6 +270,8 @@ export default function PostDetail(){
       } else if (!job.isOwner && job.status === 'completed') {
         imagine.removeJob(job.id)
         refreshPost()
+        // Trigger carousel refresh when new AI video is completed
+        // The carousel useEffect will detect the new video from the updated post/replies
       }
     })
   }, [imagine.jobs, imagine.removeJob, refreshPost])
@@ -283,21 +285,19 @@ export default function PostDetail(){
       try {
         const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
         const json = await resp.json().catch(() => null)
-        if (resp.ok && json?.success && json.videos && json.videos.length > 0) {
-          setCarouselItems(json.videos)
-        } else {
-          // Fallback: if no videos but post has image, show just the image
-          if (post.image_path) {
-            const normalized = normalizePath(post.image_path)
-            setCarouselItems([{
-              type: 'original',
-              image_path: post.image_path,
-              image_url: normalized,
-              created_by: null
-            }])
+        if (resp.ok && json?.success && json.videos) {
+          // Only set carousel items if there are AI videos (more than just original image)
+          const hasAiVideos = json.videos.some((v: any) => v.type === 'ai_video')
+          if (hasAiVideos) {
+            // Carousel should show: original image + AI videos
+            setCarouselItems(json.videos)
           } else {
+            // No AI videos - don't show carousel
             setCarouselItems([])
           }
+        } else {
+          // API error: don't show carousel
+          setCarouselItems([])
         }
       } catch (err) {
         console.error('Failed to fetch carousel items:', err)
@@ -372,7 +372,9 @@ export default function PostDetail(){
       await imagine.resolveImagine(ownerJobId, action)
       imagine.removeJob(ownerJobId)
       setOwnerJobId(null)
-      refreshPost()
+      await refreshPost()
+      // Force carousel refresh after owner decision (video is now available)
+      // The carousel useEffect will pick up the change from post.image_path/post.video_path
     } catch (err: any) {
       alert(err?.message || 'Failed to apply change')
     } finally {
@@ -666,17 +668,38 @@ export default function PostDetail(){
                 </>
               )
             })()}
-          {/* Show carousel if post has image or videos */}
-          {carouselItems.length > 0 && !carouselLoading ? (
+          {/* Show carousel ONLY if AI videos exist, otherwise show regular image/video */}
+          {carouselLoading ? (
+            <div className="px-3 flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
+            </div>
+          ) : carouselItems.length > 0 ? (
+            // Show carousel if there are AI videos
             <div className="px-0" onClick={(e)=> e.stopPropagation()}>
               <VideoCarousel
                 items={carouselItems}
                 onPreviewImage={(src) => setPreviewSrc(src)}
               />
             </div>
-          ) : carouselLoading ? (
-            <div className="px-3 flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
+          ) : post.image_path ? (
+            // No AI videos - show regular image (not carousel)
+            <div className="px-0">
+              <ImageLoader
+                src={normalizePath(post.image_path as string)}
+                alt="Post image"
+                className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
+                onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}
+              />
+            </div>
+          ) : post.video_path ? (
+            // Regular video (not AI generated) - show directly
+            <div className="px-3">
+              <video
+                className="w-full max-h-[420px] rounded border border-white/10 bg-black"
+                src={normalizePath(post.video_path)}
+                controls
+                playsInline
+              />
             </div>
           ) : null}
           {post.audio_path ? (
