@@ -635,7 +635,7 @@ export default function PostDetail(){
     }catch{}
   }
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading?</div>
+  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
 
   return (

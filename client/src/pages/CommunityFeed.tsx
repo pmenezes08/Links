@@ -396,7 +396,7 @@ export default function CommunityFeed() {
 
   const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading?</div>
+  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
   if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>
   if (!data) return <div className="p-4 text-[#9fb0b5]">No posts yet.</div>
 
@@ -788,7 +788,7 @@ export default function CommunityFeed() {
               <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setReactorsPostId(null)}>?</button>
             </div>
             {reactorsLoading ? (
-              <div className="text-[#9fb0b5] text-sm">Loading?</div>
+              <div className="text-[#9fb0b5] text-sm">Loading</div>
             ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
                 {reactorGroups.length === 0 ? (
