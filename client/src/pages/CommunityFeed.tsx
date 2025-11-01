@@ -1091,7 +1091,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               playsInline
             />
           </div>
-        ) : null}
+        ) : null
+        })()}
         {post.audio_path ? (
           <div className="px-3 space-y-2" onClick={(e)=> { e.stopPropagation(); }}>
             {post.audio_summary && onSummaryUpdate && (
