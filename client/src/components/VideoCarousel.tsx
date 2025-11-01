@@ -175,17 +175,19 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                   )}
                   <video
                     src={item.video_url || (item.video_path ? normalizePath(item.video_path) : '')}
-                    className="w-full h-auto max-h-[520px]"
+                    className="w-full h-auto max-h-[520px] rounded-xl"
                     controls
                     playsInline
                     loop
-                    preload="auto"
+                    preload="metadata"
+                    crossOrigin="anonymous"
                     style={{ 
                       width: '100%',
                       height: 'auto',
                       maxHeight: '520px',
                       display: 'block',
-                      objectFit: 'contain'
+                      objectFit: 'contain',
+                      backgroundColor: '#000'
                     }}
                     onError={(e) => {
                       const videoSrc = item.video_url || (item.video_path ? normalizePath(item.video_path) : '')
@@ -207,10 +209,12 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     onLoadedMetadata={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
                       console.log('[Carousel] Video metadata loaded, dimensions:', video.videoWidth, 'x', video.videoHeight)
-                      // Try to play the video to see if it works
-                      video.play().catch((err) => {
-                        console.warn('[Carousel] Auto-play failed:', err)
-                      })
+                      // Seek to first frame to ensure video displays
+                      try {
+                        video.currentTime = 0.1
+                      } catch (err) {
+                        console.warn('[Carousel] Failed to seek to first frame:', err)
+                      }
                     }}
                   />
                 </div>
