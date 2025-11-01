@@ -130,7 +130,7 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
       {/* Carousel Container */}
       <div
         ref={carouselRef}
-        className="relative overflow-hidden rounded-xl border border-white/10 bg-black"
+        className="relative overflow-hidden rounded-xl border border-white/10"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
