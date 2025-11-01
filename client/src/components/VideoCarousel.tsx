@@ -203,15 +203,18 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     onCanPlay={() => {
                       console.log('[Carousel] Video can play')
                     }}
-                    onLoadedData={() => {
-                      console.log('[Carousel] Video loaded')
-                    }}
                     onLoadedMetadata={(e) => {
                       const video = e.currentTarget as HTMLVideoElement
                       console.log('[Carousel] Video metadata loaded, dimensions:', video.videoWidth, 'x', video.videoHeight)
-                      // Seek to first frame to ensure video displays
+                    }}
+                    onLoadedData={(e) => {
+                      // Seek to first frame once video data is loaded to ensure first frame displays
+                      const video = e.currentTarget as HTMLVideoElement
                       try {
-                        video.currentTime = 0.1
+                        if (video.readyState >= 2) { // HAVE_CURRENT_DATA
+                          video.currentTime = 0.1
+                          console.log('[Carousel] Video first frame loaded')
+                        }
                       } catch (err) {
                         console.warn('[Carousel] Failed to seek to first frame:', err)
                       }
