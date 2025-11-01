@@ -12247,6 +12247,32 @@ def api_imagine_resolve():
 
     return jsonify({'success': True, 'result_path': result_path, 'result_url': get_public_upload_url(result_path)})
 
+@app.route('/api/imagine/reject', methods=['POST'])
+@login_required
+def api_imagine_reject():
+    """Reject/cancel an AI video generation job"""
+    payload = request.get_json(silent=True) or {}
+    try:
+        job_id = int(payload.get('job_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'job_id is required'}), 400
+
+    job = fetch_imagine_job(job_id)
+    if not job:
+        return jsonify({'success': False, 'error': 'Job not found'}), 404
+
+    username = session['username']
+    if job.get('created_by') != username and username != 'admin':
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+    if job.get('status') != IMAGINE_STATUS_AWAITING_OWNER:
+        return jsonify({'success': False, 'error': 'Job is not awaiting owner action'}), 400
+
+    # Mark job as rejected (error status with a specific message)
+    update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='Rejected by user')
+
+    return jsonify({'success': True})
+
 @app.route('/api/carousel_items')
 @login_required
 def api_carousel_items():

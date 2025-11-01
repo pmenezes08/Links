@@ -384,6 +384,30 @@ export default function PostDetail(){
     }
   }, [imagine, ownerJobId, refreshPost])
 
+  const handleCancelVideo = useCallback(async () => {
+    if (!ownerJobId) return
+    setResolvingJobId(ownerJobId)
+    try {
+      // Reject/cancel the video by deleting the job
+      const resp = await fetch('/api/imagine/reject', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: ownerJobId })
+      })
+      const json = await resp.json().catch(() => null)
+      if (!resp.ok || !json?.success) {
+        throw new Error(json?.error || 'Failed to reject video')
+      }
+      imagine.removeJob(ownerJobId)
+      setOwnerJobId(null)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to reject video')
+    } finally {
+      setResolvingJobId(null)
+    }
+  }, [imagine, ownerJobId])
+
   const nsfwAllowedForModal = useMemo(() => {
     const val = (post as any)?.allow_nsfw_imagine
     if (typeof val === 'boolean') return val
@@ -856,8 +880,8 @@ export default function PostDetail(){
         isOpen={!!ownerJob}
         onClose={() => { if (resolvingJobId) return; setOwnerJobId(null) }}
         videoUrl={ownerVideoUrl}
-        onReplace={() => handleOwnerDecision('replace')}
-        onAddAlongside={() => handleOwnerDecision('add_alongside')}
+        onAddToPost={() => handleOwnerDecision('add_alongside')}
+        onCancel={handleCancelVideo}
         isProcessing={!!resolvingJobId}
         error={ownerJob?.error || null}
       />
