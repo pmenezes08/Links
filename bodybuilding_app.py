@@ -3209,8 +3209,10 @@ def runway_create_image_to_video_job(image_bytes: bytes, style_prompt: str) -> s
                 if not mime_type and img.format:
                     mime_type = f"image/{img.format.lower()}"
                 
-                # Runway API has size limits - resize to max 1280px on longest side
-                max_dimension = 1280
+                # Runway API base64 limit is 2048 chars total for the data URI
+                # We need to keep the base64 payload small - resize to max 800px on longest side
+                # and use lower quality to ensure base64 string stays under 1800 chars (leaving room for data URI prefix)
+                max_dimension = 800
                 if original_width > max_dimension or original_height > max_dimension:
                     if original_width > original_height:
                         new_width = max_dimension
@@ -3233,10 +3235,22 @@ def runway_create_image_to_video_job(image_bytes: bytes, style_prompt: str) -> s
                 elif img.mode != 'RGB':
                     img = img.convert('RGB')
                 
-                # Compress to JPEG with quality 85 (good balance between size and quality)
+                # Compress to JPEG with quality 70 (lower quality for smaller file size)
+                # Try to keep base64 string under 1800 chars (leaving ~200 chars for "data:image/jpeg;base64," prefix)
                 output = BytesIO()
-                img.save(output, format='JPEG', quality=85, optimize=True)
+                quality = 70
+                img.save(output, format='JPEG', quality=quality, optimize=True)
                 processed_image_bytes = output.getvalue()
+                
+                # If still too large, reduce quality further
+                base64_size = len(base64.b64encode(processed_image_bytes).decode('utf-8'))
+                max_base64_size = 1800  # Leave room for data URI prefix
+                if base64_size > max_base64_size:
+                    quality = 50
+                    output = BytesIO()
+                    img.save(output, format='JPEG', quality=quality, optimize=True)
+                    processed_image_bytes = output.getvalue()
+                
                 mime_type = 'image/jpeg'
                 width, height = img.size
         except Exception as e:
