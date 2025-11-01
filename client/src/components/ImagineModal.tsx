@@ -67,13 +67,13 @@ type ImagineOwnerModalProps = {
   isOpen: boolean
   onClose: () => void
   videoUrl?: string
-  onAddToPost: () => void
-  onCancel: () => void
+  onReplace: () => void
+  onAddAlongside: () => void
   isProcessing?: boolean
   error?: string | null
 }
 
-export function ImagineOwnerModal({ isOpen, onClose, videoUrl, onAddToPost, onCancel, isProcessing, error }: ImagineOwnerModalProps) {
+export function ImagineOwnerModal({ isOpen, onClose, videoUrl, onReplace, onAddAlongside, isProcessing, error }: ImagineOwnerModalProps) {
   if (!isOpen) return null
   return (
     <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4" onClick={(e)=> e.currentTarget === e.target && !isProcessing && onClose()}>
@@ -98,24 +98,24 @@ export function ImagineOwnerModal({ isOpen, onClose, videoUrl, onAddToPost, onCa
           <button
             type="button"
             className="flex-1 rounded-full border border-white/15 px-4 py-2 text-sm text-white hover:bg-white/10 transition"
-            onClick={onCancel}
+            onClick={onAddAlongside}
             disabled={isProcessing}
           >
-            Cancel
+            Add alongside original
           </button>
           <button
             type="button"
             className="flex-1 rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110 transition"
-            onClick={onAddToPost}
+            onClick={onReplace}
             disabled={isProcessing}
           >
-            Add video to post
+            Replace original photo
           </button>
         </div>
         {isProcessing && (
           <div className="mt-3 flex items-center gap-2 text-sm text-[#4db6ac]">
             <i className="fa-solid fa-spinner fa-spin" />
-            <span>Processing…</span>
+            <span>Applying your choice…</span>
           </div>
         )}
       </div>
