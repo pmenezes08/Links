@@ -33,6 +33,25 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
     videoSeekedRef.current.clear()
   }, [items.length])
 
+  // Force video reload when slide changes
+  useEffect(() => {
+    // Find the current video element and force it to reload
+    const videoElements = document.querySelectorAll('[data-carousel-video]')
+    videoElements.forEach((element, index) => {
+      const video = element as HTMLVideoElement
+      if (index === currentIndex && video) {
+        console.log('[Carousel] Forcing video reload for current slide:', currentIndex)
+        // Force reload by temporarily changing src
+        const currentSrc = video.src
+        video.src = ''
+        setTimeout(() => {
+          video.src = currentSrc
+          video.load()
+        }, 10)
+      }
+    })
+  }, [currentIndex])
+
   const handleTouchStart = (e: React.TouchEvent) => {
     setIsDragging(true)
     setStartX(e.touches[0].clientX)
@@ -177,7 +196,7 @@ export default function VideoCarousel({ items, className = '', onPreviewImage }:
                     </div>
                   )}
                   <video
-                    key={`${item.video_url}-${index}`}
+                    key={`${item.video_url}-${index}-${currentIndex === index ? 'active' : 'inactive'}`}
                     src={item.video_path ? normalizePath(item.video_path) : (item.video_url || '')}
                     className="w-full max-h-[520px] rounded border border-white/10 bg-black"
                     controls
