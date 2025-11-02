@@ -3623,6 +3623,8 @@ def a2e_create_image_to_video_job(
                     'image_url': image_url,
                     'negative_prompt': negative_prompt,
                 }
+                # Some API variants expect `negative_prmpt`
+                json_payload['negative_prmpt'] = negative_prompt
                 if job_name:
                     json_payload['name'] = job_name
                 response = requests.post(start_endpoint, headers=headers, json=json_payload, timeout=(10, 45))
@@ -3638,7 +3640,22 @@ def a2e_create_image_to_video_job(
                         base_start_error = f"start returned non-JSON: {snippet}" if snippet else "start returned empty response"
                     else:
                         result = response.json()
-                        if result.get('success') is False:
+                        if isinstance(result, dict) and 'code' in result:
+                            code_val = result.get('code')
+                            if code_val == 0:
+                                data_obj = result.get('data') or {}
+                                job_id = (
+                                    data_obj.get('_id') or data_obj.get('id') or data_obj.get('task_id') or
+                                    data_obj.get('taskId') or data_obj.get('task')
+                                )
+                                if job_id:
+                                    logger.info(f"[Imagine] A2E job created successfully via {start_endpoint} (task_id={job_id})")
+                                    return str(job_id)
+                                base_start_error = "start response missing data._id"
+                            else:
+                                error_msg = result.get('message') or result.get('error') or json.dumps(result)[:200]
+                                base_start_error = f"start error code {code_val}: {error_msg}"
+                        elif result.get('success') is False:
                             error_msg = result.get('error') or result.get('message') or json.dumps(result)[:200]
                             base_start_error = f"start error: {error_msg}"
                         else:
@@ -3840,6 +3857,14 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
         '/api/v1/userImage2Video/getResult?taskId={job_id}',
         '/api/v1/userImage2Video/getStatus/{job_id}',
         '/api/v1/userImage2Video/getStatus?task_id={job_id}',
+        '/api/v1/userImage2Video/task/{job_id}',
+        '/api/v1/userImage2Video/task/{job_id}/',
+        '/api/v1/userImage2Video/task?task_id={job_id}',
+        '/api/v1/userImage2Video/task?taskId={job_id}',
+        '/api/v1/userImage2Video/task?task={job_id}',
+        '/api/v1/userImage2Video/check/{job_id}',
+        '/api/v1/userImage2Video/check?task_id={job_id}',
+        '/api/v1/userImage2Video/check?taskId={job_id}',
         '/api/image-to-video/status/{job_id}',
         '/api/image-to-video/status/{job_id}/',
         '/api/image-to-video/status?task_id={job_id}',
