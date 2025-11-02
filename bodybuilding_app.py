@@ -3828,10 +3828,26 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
         '/api/v1/userImage2Video/status/?task_id={job_id}',
         '/api/v1/userImage2Video/status?taskId={job_id}',
         '/api/v1/userImage2Video/status/?taskId={job_id}',
+        '/api/v1/userImage2Video/status?task={job_id}',
         '/api/v1/userImage2Video/result/{job_id}',
         '/api/v1/userImage2Video/result/{job_id}/',
         '/api/v1/userImage2Video/result?task_id={job_id}',
+        '/api/v1/userImage2Video/result/?task_id={job_id}',
         '/api/v1/userImage2Video/result?taskId={job_id}',
+        '/api/v1/userImage2Video/result?task={job_id}',
+        '/api/v1/userImage2Video/getResult/{job_id}',
+        '/api/v1/userImage2Video/getResult?task_id={job_id}',
+        '/api/v1/userImage2Video/getResult?taskId={job_id}',
+        '/api/v1/userImage2Video/getStatus/{job_id}',
+        '/api/v1/userImage2Video/getStatus?task_id={job_id}',
+        '/api/image-to-video/status/{job_id}',
+        '/api/image-to-video/status/{job_id}/',
+        '/api/image-to-video/status?task_id={job_id}',
+        '/api/image-to-video/status?taskId={job_id}',
+        '/api/image-to-video/status?task={job_id}',
+        '/api/image-to-video/result/{job_id}',
+        '/api/image-to-video/result?task_id={job_id}',
+        '/api/image-to-video/result?taskId={job_id}',
         '/v1/jobs/{job_id}',
         '/api/v1/jobs/{job_id}',
         '/v1/tasks/{job_id}',
@@ -3842,6 +3858,10 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
     status_post_endpoints = [
         '/api/v1/userImage2Video/status',
         '/api/v1/userImage2Video/result',
+        '/api/v1/userImage2Video/getResult',
+        '/api/v1/userImage2Video/getStatus',
+        '/api/image-to-video/status',
+        '/api/image-to-video/result',
     ]
 
     attempt_summaries: List[Dict[str, Optional[str]]] = []
@@ -3879,6 +3899,7 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
             url = f"{base_url}{path.format(job_id=job_id)}"
             try:
                 response = requests.get(url, headers=headers, timeout=(10, 20))
+                logger.info(f"[Imagine] Polling A2E status via GET {url} -> {response.status_code}")
                 if response.status_code < 400:
                     try:
                         return response.json()
@@ -3899,23 +3920,38 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
             for path in status_post_endpoints:
                 url = f"{base_url}{path}"
                 try:
-                    payload = {'task_id': job_id, 'taskId': job_id}
-                    response = requests.post(url, headers={**headers, 'Content-Type': 'application/json'}, json=payload, timeout=(10, 20))
-                    if response.status_code < 400:
+                    for payload in (
+                        {'task_id': job_id},
+                        {'taskId': job_id},
+                        {'id': job_id},
+                        {'task': job_id},
+                    ):
                         try:
-                            return response.json()
-                        except ValueError:
-                            text = response.text or ''
-                            raise RuntimeError(f"A2E status POST returned non-JSON response via {url}: {text[:200]}")
-                    elif response.status_code == 404:
-                        continue
-                    else:
-                        raise RuntimeError(f"A2E status POST failed ({response.status_code}) via {url}: {response.text[:200]}")
+                            response = requests.post(
+                                url,
+                                headers={**headers, 'Content-Type': 'application/json'},
+                                json=payload,
+                                timeout=(10, 20)
+                            )
+                            logger.info(f"[Imagine] Polling A2E status via POST {url} payload_keys={list(payload.keys())} -> {response.status_code}")
+                            if response.status_code < 400:
+                                try:
+                                    return response.json()
+                                except ValueError:
+                                    text = response.text or ''
+                                    raise RuntimeError(f"A2E status POST returned non-JSON response via {url}: {text[:200]}")
+                            elif response.status_code == 404:
+                                continue
+                            else:
+                                raise RuntimeError(f"A2E status POST failed ({response.status_code}) via {url}: {response.text[:200]}")
+                        except requests.exceptions.RequestException as e:
+                            base_fallback_post_error = base_fallback_post_error or f"POST network error via {url}: {e}"
+                            continue
+                        except RuntimeError as e:
+                            base_fallback_post_error = base_fallback_post_error or str(e)
+                            continue
                 except requests.exceptions.RequestException as e:
-                    base_fallback_post_error = base_fallback_post_error or str(e)
-                    continue
-                except RuntimeError as e:
-                    base_fallback_post_error = base_fallback_post_error or str(e)
+                    base_fallback_post_error = base_fallback_post_error or f"POST network error via {url}: {e}"
                     continue
 
         attempt_summaries.append({
