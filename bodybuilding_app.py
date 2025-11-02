@@ -3165,8 +3165,8 @@ def process_audio_for_summary(audio_file_path, username=None):
 def imagine_style_prompt(style: str, nsfw_allowed: bool = False) -> str:
     safe_suffix = " Keep the result tasteful and safe for work." if not nsfw_allowed else ""
     base_prompts = {
-        'normal': "Create a natural-looking video animation of this scene with gentle camera motion and subtle lighting",
-        'fun': "Create an energetic, colorful animation of this scene with playful motion and vibrant effects",
+        'normal': "Dynamic video animation: Natural flowing movements, gentle swaying and shifting, smooth body motion, subtle gestures, organic transitions, continuous movement throughout",
+        'fun': "Energetic vibrant video: Playful bouncing and dancing, lively body movements, colorful dynamic motion, active gestures, cheerful swaying, continuous fun action",
         'spicy': "Create a dramatic, cinematic animation of this scene with bold lighting and dynamic motion"
     }
     key = style.lower()
@@ -3745,8 +3745,8 @@ def process_imagine_job(job_id: int):
                     # Don't use original - it will fail
                     raise RuntimeError(f"Failed to compress image for Kling: {e}. Original size: {original_size} bytes")
             
-            # Create Kling job with explicit prompt emphasizing dynamic movement
-            kling_prompt = "Erotic video with energetic sexy movements: Dynamic body motion, continuous writhing and swaying, active grinding and thrusting, rhythmic hip movements, sensual dancing, vigorous stroking and touching, energetic passionate motions, moaning with desire, glistening wet skin, intense climactic movements, 4K."
+            # Create Kling job with maximum movement-focused explicit prompt
+            kling_prompt = "Erotic video with extreme motion: Vigorous writhing, intense grinding and thrusting, energetic sexy dancing, rapid hip swaying, active stroking, passionate movements, moaning, wet skin, climax, high motion."
             kling_task_id = kling_create_image_to_video_job(
                 kling_image_bytes,
                 kling_prompt,
