@@ -3688,6 +3688,19 @@ def _a2e_finalize_job_identifier(
     return resolved or job_identifier
 
 
+def _a2e_accept_job_identifier(
+    base_url: str,
+    identifier: Optional[str],
+    headers: Dict[str, str],
+    job_name: Optional[str] = None,
+    image_url: Optional[str] = None,
+) -> str:
+    final_id = _a2e_finalize_job_identifier(base_url, identifier, headers, job_name=job_name, image_url=image_url)
+    if final_id and _a2e_is_object_id(final_id):
+        return str(final_id)
+    raise ValueError(f"A2E response returned non-object identifier '{identifier}'")
+
+
 def _a2e_status_param_variants(candidate: str, job_name: Optional[str]) -> List[Dict[str, str]]:
     variants: List[Dict[str, str]] = [
         {'task_id': candidate},
