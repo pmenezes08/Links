@@ -3608,9 +3608,60 @@ def a2e_create_image_to_video_job(
     attempt_summaries: List[Dict[str, Optional[str]]] = []
 
     for base_url in _a2e_base_urls():
+        base_start_error: Optional[str] = None
         base_primary_error: Optional[str] = None
         base_fallback_error: Optional[str] = None
         base_fallback_response_error: Optional[str] = None
+
+        if image_url:
+            start_endpoint = f"{base_url}/api/v1/userImage2Video/start"
+            try:
+                headers = base_headers.copy()
+                headers['Content-Type'] = 'application/json'
+                json_payload = {
+                    'prompt': prompt,
+                    'image_url': image_url,
+                    'negative_prompt': negative_prompt,
+                }
+                if job_name:
+                    json_payload['name'] = job_name
+                response = requests.post(start_endpoint, headers=headers, json=json_payload, timeout=(10, 45))
+                if response.status_code < 400:
+                    content_type = (response.headers.get('content-type') or '').lower()
+                    if 'application/json' not in content_type:
+                        text = response.text or ''
+                        job_id = _extract_job_id_from_text(text)
+                        if job_id:
+                            logger.info(f"[Imagine] A2E job created via {start_endpoint} with plain-text response")
+                            return str(job_id)
+                        snippet = text.strip()[:200]
+                        base_start_error = f"start returned non-JSON: {snippet}" if snippet else "start returned empty response"
+                    else:
+                        result = response.json()
+                        if result.get('success') is False:
+                            error_msg = result.get('error') or result.get('message') or json.dumps(result)[:200]
+                            base_start_error = f"start error: {error_msg}"
+                        else:
+                            job_id = (
+                                result.get('task_id') or result.get('taskId') or
+                                result.get('id') or result.get('job_id') or result.get('jobId')
+                            )
+                            if job_id:
+                                logger.info(f"[Imagine] A2E job created successfully via {start_endpoint}")
+                                return str(job_id)
+                            base_start_error = "start response missing task id"
+                elif response.status_code == 404:
+                    snippet = (response.text or '').strip()[:200]
+                    base_start_error = f"start endpoint 404: {snippet or 'not found'}"
+                else:
+                    snippet = response.text[:200]
+                    raise RuntimeError(f"A2E job creation failed ({response.status_code}) via {start_endpoint}: {snippet}")
+            except requests.exceptions.RequestException as e:
+                base_start_error = f"start network error: {e}"
+            except (RuntimeError, ValueError) as e:
+                base_start_error = str(e)
+        else:
+            base_start_error = None
 
         primary_endpoint = f"{base_url}/api/image-to-video/"
         try:
@@ -3741,6 +3792,7 @@ def a2e_create_image_to_video_job(
 
         attempt_summaries.append({
             'base': base_url,
+            'start': base_start_error,
             'primary': base_primary_error,
             'fallback_error': base_fallback_error,
             'fallback_response': base_fallback_response_error,
@@ -3750,6 +3802,8 @@ def a2e_create_image_to_video_job(
         parts = []
         for summary in attempt_summaries:
             reasons: List[str] = []
+            if summary['start']:
+                reasons.append(f"start: {summary['start']}")
             if summary['primary']:
                 reasons.append(f"primary: {summary['primary']}")
             if summary['fallback_response']:
@@ -3768,6 +3822,9 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
     headers = a2e_headers()
 
     status_paths = [
+        '/api/v1/userImage2Video/status/{job_id}',
+        '/api/v1/userImage2Video/status?task_id={job_id}',
+        '/api/v1/userImage2Video/result/{job_id}',
         '/v1/jobs/{job_id}',
         '/api/v1/jobs/{job_id}',
         '/v1/tasks/{job_id}',
@@ -4093,8 +4150,11 @@ def process_imagine_job(job_id: int):
             source_public_url = None
             try:
                 source_public_url = get_public_upload_url(source_path)
+                if source_public_url and not source_public_url.lower().startswith('http'):
+                    source_public_url = None
             except Exception as url_err:
                 logger.warning(f"[Imagine] Unable to derive public URL for source image: {url_err}")
+                source_public_url = None
             job_display_name = f"Imagine Job {job_id}"
             a2e_job_id = a2e_create_image_to_video_job(
                 a2e_image_bytes,
