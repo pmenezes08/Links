@@ -24,8 +24,8 @@ from pywebpush import webpush, WebPushException
 from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from urllib.parse import urlencode, urljoin
-from typing import Optional, Dict, Any, List
+from urllib.parse import urlencode, urljoin, quote_plus
+from typing import Optional, Dict, Any, List, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
 try:
@@ -3493,6 +3493,186 @@ def _a2e_base_urls() -> List[str]:
 
     return candidates
 
+
+HEX_OBJECT_ID_RE = re.compile(r'^[0-9a-fA-F]{24}$')
+
+
+def _a2e_is_object_id(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    return bool(HEX_OBJECT_ID_RE.fullmatch(value.strip()))
+
+
+def _a2e_try_parse_json(response: requests.Response) -> Optional[Any]:
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
+def _a2e_normalize_compare_url(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    return url.split('?')[0].rstrip('/').lower()
+
+
+def _a2e_iter_task_records(payload: Any) -> Iterable[Dict[str, Any]]:
+    if payload is None:
+        return
+    stack: List[Any] = [payload]
+    seen: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if isinstance(current, (dict, list)):
+            obj_id = id(current)
+            if obj_id in seen:
+                continue
+            seen.add(obj_id)
+        if isinstance(current, dict):
+            # Yield dictionaries that look like task records
+            if any(key in current for key in ('_id', 'name', 'image_url', 'imageUrl', 'current_status', 'task_id', 'taskId')):
+                yield current
+            for value in current.values():
+                if isinstance(value, (dict, list)):
+                    stack.append(value)
+        elif isinstance(current, list):
+            for item in current:
+                if isinstance(item, (dict, list)):
+                    stack.append(item)
+
+
+def _a2e_select_matching_task(payload: Any, identifier: Optional[str], job_name: Optional[str], image_url: Optional[str]) -> Optional[Dict[str, Any]]:
+    normalized_identifier = (identifier or '').strip()
+    normalized_job_name = (job_name or '').strip()
+    normalized_image_url = _a2e_normalize_compare_url(image_url)
+
+    for record in _a2e_iter_task_records(payload):
+        candidate_id = record.get('_id') or record.get('id') or record.get('task_id') or record.get('taskId') or record.get('task')
+        if _a2e_is_object_id(candidate_id):
+            if _a2e_is_object_id(normalized_identifier) and candidate_id == normalized_identifier:
+                return record
+        candidate_names = [
+            record.get('name'),
+            record.get('task_name'),
+            record.get('title'),
+            record.get('taskId'),
+            record.get('task_id'),
+            record.get('task'),
+        ]
+        for candidate in candidate_names:
+            if candidate and normalized_identifier and str(candidate).strip() == normalized_identifier:
+                if _a2e_is_object_id(candidate_id):
+                    return record
+            if candidate and normalized_job_name and str(candidate).strip() == normalized_job_name:
+                if _a2e_is_object_id(candidate_id):
+                    return record
+        if normalized_image_url:
+            record_url = record.get('image_url') or record.get('imageUrl')
+            if record_url and _a2e_normalize_compare_url(record_url) == normalized_image_url:
+                if _a2e_is_object_id(candidate_id):
+                    return record
+    return None
+
+
+def _a2e_resolve_task_object_id(
+    base_url: str,
+    identifier: Optional[str],
+    headers: Dict[str, str],
+    job_name: Optional[str] = None,
+    image_url: Optional[str] = None,
+) -> Optional[str]:
+    if not identifier:
+        return identifier
+    if _a2e_is_object_id(identifier):
+        return identifier
+
+    resolve_headers = headers.copy()
+    resolve_headers.setdefault('Accept', 'application/json')
+
+    direct_paths = [
+        f"/api/v1/userImage2Video/{identifier}",
+        f"/api/v1/userImage2Video/task/{identifier}",
+        f"/api/v1/userImage2Video/getResult/{identifier}",
+        f"/api/v1/userImage2Video/getStatus/{identifier}",
+        f"/api/v1/userImage2Video/check/{identifier}",
+        f"/api/image-to-video/status/{identifier}",
+        f"/api/image-to-video/result/{identifier}",
+    ]
+
+    for path in direct_paths:
+        url = f"{base_url}{path}"
+        try:
+            response = requests.get(url, headers=resolve_headers, timeout=(10, 15))
+            if response.status_code >= 400:
+                continue
+            payload = _a2e_try_parse_json(response)
+            if not payload:
+                continue
+            record = _a2e_select_matching_task(payload, identifier, job_name, image_url)
+            if record:
+                candidate_id = record.get('_id') or record.get('id')
+                if _a2e_is_object_id(candidate_id):
+                    return candidate_id
+        except requests.exceptions.RequestException:
+            continue
+
+    query_endpoints: List[str] = []
+    if job_name:
+        encoded_name = quote_plus(job_name)
+        query_endpoints.extend([
+            f"/api/v1/userImage2Video?name={encoded_name}",
+            f"/api/v1/userImage2Video/list?name={encoded_name}",
+        ])
+    if image_url:
+        encoded_url = quote_plus(image_url)
+        query_endpoints.extend([
+            f"/api/v1/userImage2Video?image_url={encoded_url}",
+            f"/api/v1/userImage2Video/list?image_url={encoded_url}",
+        ])
+
+    list_endpoints = [
+        '/api/v1/userImage2Video/list',
+        '/api/v1/userImage2Video',
+        '/api/v1/userImage2Video/tasks',
+        '/api/v1/userImage2Video/all',
+        '/api/v1/userImage2Video/listAll',
+        '/api/v1/userImage2Video/my',
+        '/api/image-to-video/list',
+        '/api/image-to-video/tasks',
+    ]
+
+    for path in query_endpoints + list_endpoints:
+        url = f"{base_url}{path}"
+        try:
+            response = requests.get(url, headers=resolve_headers, timeout=(10, 15))
+            if response.status_code >= 400:
+                continue
+            payload = _a2e_try_parse_json(response)
+            if not payload:
+                continue
+            record = _a2e_select_matching_task(payload, identifier, job_name, image_url)
+            if record:
+                candidate_id = record.get('_id') or record.get('id')
+                if _a2e_is_object_id(candidate_id):
+                    return candidate_id
+        except requests.exceptions.RequestException:
+            continue
+
+    return identifier
+
+
+def _a2e_finalize_job_identifier(
+    base_url: str,
+    job_identifier: Optional[str],
+    headers: Dict[str, str],
+    job_name: Optional[str] = None,
+    image_url: Optional[str] = None,
+) -> Optional[str]:
+    resolved = _a2e_resolve_task_object_id(base_url, job_identifier, headers, job_name=job_name, image_url=image_url)
+    if resolved and job_identifier and resolved != job_identifier:
+        logger.info(f"[Imagine] Resolved A2E task identifier {job_identifier} -> {resolved} using {base_url}")
+    return resolved or job_identifier
+
 def a2e_create_image_to_video_job(
     image_bytes: bytes,
     prompt: str,
@@ -3635,7 +3815,8 @@ def a2e_create_image_to_video_job(
                         job_id = _extract_job_id_from_text(text)
                         if job_id:
                             logger.info(f"[Imagine] A2E job created via {start_endpoint} with plain-text response (task_id={job_id})")
-                            return str(job_id)
+                            final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
+                            return str(final_job_id) if final_job_id is not None else str(job_id)
                         snippet = text.strip()[:200]
                         base_start_error = f"start returned non-JSON: {snippet}" if snippet else "start returned empty response"
                     else:
@@ -3650,7 +3831,8 @@ def a2e_create_image_to_video_job(
                                 )
                                 if job_id:
                                     logger.info(f"[Imagine] A2E job created successfully via {start_endpoint} (task_id={job_id})")
-                                    return str(job_id)
+                                    final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
+                                    return str(final_job_id) if final_job_id is not None else str(job_id)
                                 base_start_error = "start response missing data._id"
                             else:
                                 error_msg = result.get('message') or result.get('error') or json.dumps(result)[:200]
@@ -3665,7 +3847,8 @@ def a2e_create_image_to_video_job(
                             )
                             if job_id:
                                 logger.info(f"[Imagine] A2E job created successfully via {start_endpoint} (task_id={job_id})")
-                                return str(job_id)
+                                final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
+                                return str(final_job_id) if final_job_id is not None else str(job_id)
                             base_start_error = "start response missing task id"
                 elif response.status_code == 404:
                     snippet = (response.text or '').strip()[:200]
@@ -3693,7 +3876,8 @@ def a2e_create_image_to_video_job(
                     job_id = _extract_job_id_from_text(text)
                     if job_id:
                         logger.info(f"[Imagine] A2E job created via primary endpoint with plain-text response")
-                        return str(job_id)
+                        final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
+                        return str(final_job_id) if final_job_id is not None else str(job_id)
                     snippet = text.strip()[:200]
                     raise RuntimeError(f"A2E primary endpoint returned non-JSON response: {snippet}")
                 result = response.json()
@@ -3704,7 +3888,8 @@ def a2e_create_image_to_video_job(
                     )
                     if job_id:
                         logger.info(f"[Imagine] A2E job created successfully via primary endpoint (task_id={job_id})")
-                        return str(job_id)
+                        final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
+                        return str(final_job_id) if final_job_id is not None else str(job_id)
                     raise RuntimeError("A2E primary endpoint response missing task id")
                 error_msg = result.get('error') or result.get('message') or json.dumps(result)[:200]
                 base_primary_error = f"Primary endpoint error: {error_msg}"
@@ -3740,7 +3925,8 @@ def a2e_create_image_to_video_job(
                                 )
                                 if job_id:
                                     logger.info(f"[Imagine] A2E job created successfully via {url} (JSON payload, task_id={job_id})")
-                                    return str(job_id)
+                                    final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
+                                    return str(final_job_id) if final_job_id is not None else str(job_id)
                                 logger.warning(f"[Imagine] A2E JSON response missing job id via {url}: {result}")
                                 if not base_fallback_response_error:
                                     base_fallback_response_error = f"Missing job id in JSON response via {url}"
@@ -3749,7 +3935,8 @@ def a2e_create_image_to_video_job(
                                 job_id = _extract_job_id_from_text(response_text)
                                 if job_id:
                                     logger.info(f"[Imagine] A2E job created via {url} with plain-text response (task_id={job_id})")
-                                    return str(job_id)
+                                    final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
+                                    return str(final_job_id) if final_job_id is not None else str(job_id)
                                 snippet = response_text.strip()[:200]
                                 logger.warning(f"[Imagine] A2E JSON response not parseable via {url} (status {response.status_code}): {snippet}")
                                 if not base_fallback_response_error:
@@ -3779,7 +3966,8 @@ def a2e_create_image_to_video_job(
                             )
                             if job_id:
                                 logger.info(f"[Imagine] A2E job created successfully via {url} (multipart fallback, task_id={job_id})")
-                                return str(job_id)
+                                final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
+                                return str(final_job_id) if final_job_id is not None else str(job_id)
                             logger.warning(f"[Imagine] A2E multipart response missing job id via {url}: {result}")
                             if not base_fallback_response_error:
                                 base_fallback_response_error = f"Missing job id in multipart response via {url}"
@@ -3788,7 +3976,8 @@ def a2e_create_image_to_video_job(
                             job_id = _extract_job_id_from_text(response_text)
                             if job_id:
                                 logger.info(f"[Imagine] A2E job created via {url} (multipart) with plain-text response (task_id={job_id})")
-                                return str(job_id)
+                                final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
+                                return str(final_job_id) if final_job_id is not None else str(job_id)
                             snippet = response_text.strip()[:200]
                             logger.warning(f"[Imagine] A2E multipart response not parseable via {url} (status {response.status_code}): {snippet}")
                             if not base_fallback_response_error:
@@ -3896,7 +4085,15 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
         base_fallback_error: Optional[str] = None
         base_fallback_post_error: Optional[str] = None
 
-        primary_url = f"{base_url}/api/tasks/{job_id}/"
+        effective_job_id = job_id
+        if not _a2e_is_object_id(effective_job_id):
+            resolved_candidate = _a2e_resolve_task_object_id(base_url, effective_job_id, headers)
+            if resolved_candidate and resolved_candidate != effective_job_id and _a2e_is_object_id(resolved_candidate):
+                logger.info(f"[Imagine] Resolved A2E status identifier {effective_job_id} -> {resolved_candidate} for base {base_url}")
+                effective_job_id = resolved_candidate
+                job_id = resolved_candidate
+
+        primary_url = f"{base_url}/api/tasks/{effective_job_id}/"
         try:
             response = requests.get(primary_url, headers=headers, timeout=(10, 20))
             if response.status_code < 400:
@@ -3921,7 +4118,7 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
 
         fallback_error: Optional[str] = None
         for path in status_get_paths:
-            url = f"{base_url}{path.format(job_id=job_id)}"
+            url = f"{base_url}{path.format(job_id=effective_job_id)}"
             try:
                 response = requests.get(url, headers=headers, timeout=(10, 20))
                 logger.info(f"[Imagine] Polling A2E status via GET {url} -> {response.status_code}")
@@ -3946,10 +4143,10 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
                 url = f"{base_url}{path}"
                 try:
                     for payload in (
-                        {'task_id': job_id},
-                        {'taskId': job_id},
-                        {'id': job_id},
-                        {'task': job_id},
+                        {'task_id': effective_job_id},
+                        {'taskId': effective_job_id},
+                        {'id': effective_job_id},
+                        {'task': effective_job_id},
                     ):
                         try:
                             response = requests.post(
