@@ -905,6 +905,38 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     }
   }, [post.id, post.image_path, post.video_path, post.replies?.length, post.replies])
 
+  // Refetch carousel when imagine jobs complete
+  useEffect(() => {
+    const completedJobs = Object.values(imagine.jobs).filter(
+      (job: ImagineJobState) => 
+        job.targetId === post.id && 
+        job.targetType === 'post' &&
+        (job.status === 'completed' || job.status === 'awaiting_owner')
+    )
+    if (completedJobs.length > 0) {
+      console.log('[Carousel] AI jobs completed, triggering carousel refresh for post', post.id)
+      // Refetch carousel items
+      async function refetch() {
+        setCarouselLoading(true)
+        try {
+          const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
+          const json = await resp.json().catch(() => null)
+          if (resp.ok && json?.success && json.videos) {
+            const hasAiVideos = json.videos.some((v: any) => v.type === 'ai_video')
+            if (hasAiVideos) {
+              setCarouselItems(json.videos)
+            }
+          }
+        } catch (err) {
+          console.error('[Carousel] Refetch failed:', err)
+        } finally {
+          setCarouselLoading(false)
+        }
+      }
+      refetch()
+    }
+  }, [imagine.jobs, post.id])
+
   function startRenamingLink(link: DetectedLink) {
     setRenamingLink(link)
     setLinkDisplayName(link.displayText)
