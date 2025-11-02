@@ -142,6 +142,11 @@ KLING_ACCESS_KEY = (os.environ.get('Kling_Access_KEY') or os.environ.get('KLING_
 KLING_API_URL = 'https://api.klingai.com/v1'
 KLING_TIMEOUT_SECONDS = int(os.environ.get('KLING_TIMEOUT_SECONDS', '600'))
 KLING_POLL_INTERVAL_SECONDS = int(os.environ.get('KLING_POLL_INTERVAL_SECONDS', '10'))
+# D-ID configuration for talking avatar videos
+DID_API_KEY = (os.environ.get('DID_API_KEY') or '').strip() or None
+DID_API_URL = 'https://api.d-id.com'
+DID_TIMEOUT_SECONDS = int(os.environ.get('DID_TIMEOUT_SECONDS', '300'))
+DID_POLL_INTERVAL_SECONDS = int(os.environ.get('DID_POLL_INTERVAL_SECONDS', '5'))
 PUBLIC_BASE_URL = (os.environ.get('PUBLIC_BASE_URL') or '').rstrip('/') or None
 try:
     imagine_executor = ThreadPoolExecutor(max_workers=int(os.environ.get('IMAGINE_MAX_WORKERS', '2')))
