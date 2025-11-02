@@ -3857,18 +3857,21 @@ def a2e_create_image_to_video_job(
         if image_url:
             start_endpoint = _a2e_join(base_url, A2E_START_ENDPOINT)
             try:
-                headers = base_headers.copy()
-                headers['Content-Type'] = 'application/json'
-                json_payload = {
-                    'prompt': prompt,
+                form_headers = base_headers.copy()
+                form_headers['Content-Type'] = 'application/x-www-form-urlencoded'
+                form_headers.setdefault('Accept', 'application/json')
+                form_payload = {
+                    'name': (job_name or f"Imagine-{int(time.time()*1000)}"),
                     'image_url': image_url,
-                    'negative_prompt': negative_prompt,
+                    'prompt': prompt or '',
+                    'negative_prmpt': negative_prompt or '',
+                    'negative_prompt': negative_prompt or '',
+                    'duration': str(duration),
+                    'resolution': resolution,
                 }
-                # Some API variants expect `negative_prmpt`
-                json_payload['negative_prmpt'] = negative_prompt
-                if job_name:
-                    json_payload['name'] = job_name
-                response = requests.post(start_endpoint, headers=headers, json=json_payload, timeout=(10, 45))
+                if aspect_ratio:
+                    form_payload['aspect_ratio'] = aspect_ratio
+                response = requests.post(start_endpoint, headers=form_headers, data=form_payload, timeout=(10, 45))
                 if response.status_code < 400:
                     content_type = (response.headers.get('content-type') or '').lower()
                     if 'application/json' not in content_type:
@@ -3881,7 +3884,7 @@ def a2e_create_image_to_video_job(
                         snippet = text.strip()[:200]
                         base_start_error = f"start returned non-JSON: {snippet}" if snippet else "start returned empty response"
                     else:
-                        result = response.json()
+                        result = _a2e_try_parse_json(response)
                         if isinstance(result, dict) and 'code' in result:
                             code_val = result.get('code')
                             if code_val == 0:
@@ -4166,7 +4169,7 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                         payload = _a2e_try_parse_json(response)
                         if payload is None:
                             snippet = (response.text or '').strip()[:200]
-                            errors.append(f"GET params={params} returned non-JSON: {snippet}")
+                            errors.append(f"POST params={params} returned non-JSON: {snippet}")
                             continue
                         normalized = _a2e_normalize_status(payload)
                         normalized['task_id'] = candidate
@@ -4521,7 +4524,7 @@ def process_imagine_job(job_id: int):
             except Exception as url_err:
                 logger.warning(f"[Imagine] Unable to derive public URL for source image: {url_err}")
                 source_public_url = None
-            job_display_name = f"Imagine Job {job_id}"
+            job_display_name = f"Imagine Job {job_id}-{int(time.time())}"
             a2e_job_id = a2e_create_image_to_video_job(
                 a2e_image_bytes,
                 a2e_prompt,
