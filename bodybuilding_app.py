@@ -137,7 +137,7 @@ RUNWAY_API_KEY = (os.environ.get('RUNWAY_API_KEY') or '').strip() or None
 RUNWAY_MODEL_ID = os.environ.get('RUNWAY_MODEL_ID', 'gen4_turbo')
 RUNWAY_API_URL = os.environ.get('RUNWAY_API_URL', 'https://api.dev.runwayml.com')
 A2E_API_KEY = (os.environ.get('A2E_API_KEY') or '').strip() or None
-A2E_API_URL = os.environ.get('A2E_API_URL', 'https://api.a2e.ai')
+A2E_API_URL = os.environ.get('A2E_API_URL', 'https://video.a2e.ai')
 A2E_START_ENDPOINT = os.environ.get('A2E_START_ENDPOINT', '/api/v1/userImage2Video/start')
 A2E_STATUS_ENDPOINT = os.environ.get('A2E_STATUS_ENDPOINT', '/api/v1/userImage2Video/status')
 A2E_TASK_ENDPOINT = os.environ.get('A2E_TASK_ENDPOINT', '/api/v1/userImage2Video/{task_id}')
@@ -3484,17 +3484,18 @@ def _a2e_base_urls() -> List[str]:
 
     configured = (A2E_API_URL or '').strip()
     _add(configured)
-    # Prefer the documented API host while maintaining backwards compatibility with legacy hosts
-    _add('https://api.a2e.ai')
+    # Prefer the documented video host first, then legacy api host
     _add('https://video.a2e.ai')
+    _add('https://api.a2e.ai')
 
-    if not configured or 'video.a2e.ai' in configured:
+    # Ensure configured host stays at front
+    if configured:
         try:
-            idx = candidates.index('https://api.a2e.ai')
+            idx = candidates.index(configured)
+            if idx > 0:
+                candidates.insert(0, candidates.pop(idx))
         except ValueError:
-            idx = -1
-        if idx > 0:
-            candidates.insert(0, candidates.pop(idx))
+            pass
 
     return candidates
 
@@ -3514,6 +3515,14 @@ def _a2e_is_object_id(value: Optional[str]) -> bool:
     if not value:
         return False
     return bool(HEX_OBJECT_ID_RE.fullmatch(value.strip()))
+
+
+def _a2e_is_html_response(response: requests.Response) -> bool:
+    content_type = (response.headers.get('content-type') or '').lower()
+    if 'text/html' in content_type:
+        return True
+    text = (response.text or '').lstrip().lower()
+    return text.startswith('<!doctype') or text.startswith('<html')
 
 
 def _a2e_try_parse_json(response: requests.Response) -> Optional[Any]:
@@ -4287,6 +4296,10 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                             logger.info(f"[Imagine] A2E status raw response (POST params={params}): {response.text[:500]}")
                         except Exception:
                             pass
+                        if _a2e_is_html_response(response):
+                            snippet = (response.text or '').strip()[:200]
+                            errors.append(f"POST params={params} returned HTML: {snippet}")
+                            continue
                         payload = _a2e_try_parse_json(response)
                         if payload is None:
                             snippet = (response.text or '').strip()[:200]
@@ -4320,6 +4333,10 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                             logger.info(f"[Imagine] A2E status raw response (GET url={url}): {response.text[:500]}")
                         except Exception:
                             pass
+                        if _a2e_is_html_response(response):
+                            snippet = (response.text or '').strip()[:200]
+                            errors.append(f"GET {url} returned HTML: {snippet}")
+                            continue
                         payload = _a2e_try_parse_json(response)
                         if payload is None:
                             snippet = (response.text or '').strip()[:200]
@@ -4364,6 +4381,10 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                                 logger.info(f"[Imagine] A2E status raw response (POST url={url}, payload_keys={list(payload.keys())}): {response.text[:500]}")
                             except Exception:
                                 pass
+                            if _a2e_is_html_response(response):
+                                snippet = (response.text or '').strip()[:200]
+                                errors.append(f"POST {url} payload_keys={list(payload.keys())} returned HTML: {snippet}")
+                                continue
                             payload_json = _a2e_try_parse_json(response)
                             if payload_json is None:
                                 snippet = (response.text or '').strip()[:200]
