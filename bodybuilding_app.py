@@ -3741,7 +3741,7 @@ def process_talking_avatar_job(job_id: int):
                     result_path=rel_path
                 )
                 
-                # Update post with video (replace audio with video)
+                # Update post with video (keep audio_summary, remove audio_path)
                 target_type = job.get('target_type')
                 target_id = job.get('target_id')
                 
@@ -3749,9 +3749,10 @@ def process_talking_avatar_job(job_id: int):
                     with get_db_connection() as conn:
                         c = conn.cursor()
                         ph = get_sql_placeholder()
+                        # Update video_path and clear audio_path, but keep audio_summary
                         c.execute(f"UPDATE posts SET video_path={ph}, audio_path=NULL WHERE id={ph}", (rel_path, target_id))
                         conn.commit()
-                    logger.info(f'[TalkingAvatar] Post {target_id} updated with video')
+                    logger.info(f'[TalkingAvatar] Post {target_id} updated with video (audio_summary preserved)')
                 
                 logger.info(f'[TalkingAvatar] Job {job_id} completed successfully')
                 break
@@ -9374,18 +9375,27 @@ def api_create_talking_avatar():
         audio_file.save(audio_full_path)
         audio_path = f"uploads/audio/{audio_filename}"
         
-        # Create post first (with pending video)
+        # Generate AI summary from audio
+        logger.info(f'[TalkingAvatar] Generating AI summary for audio: {audio_full_path}')
+        audio_summary = process_audio_for_summary(audio_full_path, username)
+        if audio_summary:
+            logger.info(f'[TalkingAvatar] AI summary generated: {audio_summary[:100]}...')
+        else:
+            logger.warning(f'[TalkingAvatar] AI summary generation failed')
+        
+        # Create post first (with pending video and audio summary)
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
             c.execute(f"""
-                INSERT INTO posts (community_id, username, content, video_path, timestamp)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
+                INSERT INTO posts (community_id, username, content, video_path, audio_summary, timestamp)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """, (
                 community_id,
                 username,
                 content,
                 'pending',  # Placeholder until video is ready
+                audio_summary,  # Store AI summary
                 datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
             ))
             post_id = c.lastrowid
