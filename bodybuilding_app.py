@@ -3603,6 +3603,7 @@ def _a2e_resolve_task_object_id(
     resolve_headers.setdefault('Accept', 'application/json')
 
     direct_paths = [
+        A2E_TASK_ENDPOINT.format(task_id=identifier) if '{' in A2E_TASK_ENDPOINT else A2E_TASK_ENDPOINT,
         f"/api/v1/userImage2Video/{identifier}",
         f"/api/v1/userImage2Video/task/{identifier}",
         f"/api/v1/userImage2Video/getResult/{identifier}",
@@ -4159,12 +4160,18 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                     if response.status_code == 200:
                         payload = _a2e_try_parse_json(response)
                         if payload is None:
+                            snippet = (response.text or '').strip()[:200]
+                            errors.append(f"GET params={params} returned non-JSON: {snippet}")
                             continue
                         normalized = _a2e_normalize_status(payload)
                         normalized['task_id'] = candidate
                         normalized['base_url'] = base_url
                         normalized['request_params'] = params
                         if normalized.get('status') or normalized.get('result_url'):
+                            logger.info(
+                                f"[Imagine] A2E status resolved via GET {status_url} params={params}: "
+                                f"status={normalized.get('status')} result={normalized.get('result_url')}"
+                            )
                             return normalized
                         errors.append(f"GET params={params} missing status")
                     elif response.status_code == 404:
@@ -4182,12 +4189,18 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                     if response.status_code == 200:
                         payload = _a2e_try_parse_json(response)
                         if payload is None:
+                            snippet = (response.text or '').strip()[:200]
+                            errors.append(f"GET {url} returned non-JSON: {snippet}")
                             continue
                         normalized = _a2e_normalize_status(payload)
                         normalized['task_id'] = candidate
                         normalized['base_url'] = base_url
                         normalized['request_url'] = url
                         if normalized.get('status') or normalized.get('result_url'):
+                            logger.info(
+                                f"[Imagine] A2E status resolved via GET {url}: "
+                                f"status={normalized.get('status')} result={normalized.get('result_url')}"
+                            )
                             return normalized
                         errors.append(f"GET {url} missing status")
                     elif response.status_code == 404:
@@ -4216,6 +4229,8 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                         if response.status_code == 200:
                             payload_json = _a2e_try_parse_json(response)
                             if payload_json is None:
+                                snippet = (response.text or '').strip()[:200]
+                                errors.append(f"POST {url} payload_keys={list(payload.keys())} returned non-JSON: {snippet}")
                                 continue
                             normalized = _a2e_normalize_status(payload_json)
                             normalized['task_id'] = candidate
@@ -4223,6 +4238,10 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                             normalized['request_url'] = url
                             normalized['request_payload'] = payload
                             if normalized.get('status') or normalized.get('result_url'):
+                                logger.info(
+                                    f"[Imagine] A2E status resolved via POST {url} payload_keys={list(payload.keys())}: "
+                                    f"status={normalized.get('status')} result={normalized.get('result_url')}"
+                                )
                                 return normalized
                             errors.append(f"POST {url} payload_keys={list(payload.keys())} missing status")
                         elif response.status_code == 404:
