@@ -25,7 +25,7 @@ from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode, urljoin, quote_plus
-from typing import Optional, Dict, Any, List, Iterable
+from typing import Optional, Dict, Any, List, Iterable, Tuple
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
 try:
@@ -3701,6 +3701,22 @@ def _a2e_accept_job_identifier(
     raise ValueError(f"A2E response returned non-object identifier '{identifier}'")
 
 
+def _a2e_validate_job_identifier(
+    base_url: str,
+    identifier: Optional[str],
+    headers: Dict[str, str],
+    job_name: Optional[str] = None,
+    image_url: Optional[str] = None,
+) -> Tuple[Optional[str], Optional[str]]:
+    if not identifier:
+        return None, "A2E response missing task identifier"
+    try:
+        resolved = _a2e_accept_job_identifier(base_url, identifier, headers, job_name=job_name, image_url=image_url)
+        return resolved, None
+    except ValueError as err:
+        return None, str(err)
+
+
 def _a2e_status_param_variants(candidate: str, job_name: Optional[str]) -> List[Dict[str, str]]:
     variants: List[Dict[str, str]] = [
         {'task_id': candidate},
@@ -3889,13 +3905,26 @@ def a2e_create_image_to_video_job(
                     content_type = (response.headers.get('content-type') or '').lower()
                     if 'application/json' not in content_type:
                         text = response.text or ''
+                        if '<html' in text.lower():
+                            snippet = text.strip()[:200]
+                            base_start_error = f"start returned HTML response: {snippet}" if snippet else "start returned HTML response"
+                            raise ValueError(base_start_error)
                         job_id = _extract_job_id_from_text(text)
-                        if job_id:
-                            logger.info(f"[Imagine] A2E job created via {start_endpoint} with plain-text response (task_id={job_id})")
-                            final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
-                            return str(final_job_id) if final_job_id is not None else str(job_id)
+                        final_job_id, err = _a2e_validate_job_identifier(
+                            base_url,
+                            job_id,
+                            base_headers,
+                            job_name=job_name,
+                            image_url=image_url,
+                        )
+                        if final_job_id:
+                            logger.info(
+                                f"[Imagine] A2E job created via {start_endpoint} with plain-text response "
+                                f"(task_id={job_id}, resolved={final_job_id})"
+                            )
+                            return final_job_id
                         snippet = text.strip()[:200]
-                        base_start_error = f"start returned non-JSON: {snippet}" if snippet else "start returned empty response"
+                        base_start_error = err or (f"start returned non-JSON: {snippet}" if snippet else "start returned empty response")
                     else:
                         result = _a2e_try_parse_json(response)
                         if isinstance(result, dict) and 'code' in result:
@@ -3906,11 +3935,20 @@ def a2e_create_image_to_video_job(
                                     data_obj.get('_id') or data_obj.get('id') or data_obj.get('task_id') or
                                     data_obj.get('taskId') or data_obj.get('task')
                                 )
-                                if job_id:
-                                    logger.info(f"[Imagine] A2E job created successfully via {start_endpoint} (task_id={job_id})")
-                                    final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
-                                    return str(final_job_id) if final_job_id is not None else str(job_id)
-                                base_start_error = "start response missing data._id"
+                                final_job_id, err = _a2e_validate_job_identifier(
+                                    base_url,
+                                    job_id,
+                                    base_headers,
+                                    job_name=job_name,
+                                    image_url=image_url,
+                                )
+                                if final_job_id:
+                                    logger.info(
+                                        f"[Imagine] A2E job created successfully via {start_endpoint} "
+                                        f"(task_id={job_id}, resolved={final_job_id})"
+                                    )
+                                    return final_job_id
+                                base_start_error = err or "start response missing data._id"
                             else:
                                 error_msg = result.get('message') or result.get('error') or json.dumps(result)[:200]
                                 base_start_error = f"start error code {code_val}: {error_msg}"
@@ -3922,11 +3960,20 @@ def a2e_create_image_to_video_job(
                                 result.get('task_id') or result.get('taskId') or
                                 result.get('id') or result.get('job_id') or result.get('jobId')
                             )
-                            if job_id:
-                                logger.info(f"[Imagine] A2E job created successfully via {start_endpoint} (task_id={job_id})")
-                                final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
-                                return str(final_job_id) if final_job_id is not None else str(job_id)
-                            base_start_error = "start response missing task id"
+                            final_job_id, err = _a2e_validate_job_identifier(
+                                base_url,
+                                job_id,
+                                base_headers,
+                                job_name=job_name,
+                                image_url=image_url,
+                            )
+                            if final_job_id:
+                                logger.info(
+                                    f"[Imagine] A2E job created successfully via {start_endpoint} "
+                                    f"(task_id={job_id}, resolved={final_job_id})"
+                                )
+                                return final_job_id
+                            base_start_error = err or "start response missing task id"
                 elif response.status_code == 404:
                     snippet = (response.text or '').strip()[:200]
                     base_start_error = f"start endpoint 404: {snippet or 'not found'}"
@@ -3950,24 +3997,45 @@ def a2e_create_image_to_video_job(
                 content_type = (response.headers.get('content-type') or '').lower()
                 if 'application/json' not in content_type:
                     text = response.text or ''
+                    if '<html' in text.lower():
+                        snippet = text.strip()[:200]
+                        raise RuntimeError(f"A2E primary endpoint returned HTML: {snippet}")
                     job_id = _extract_job_id_from_text(text)
-                    if job_id:
-                        logger.info(f"[Imagine] A2E job created via primary endpoint with plain-text response")
-                        final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
-                        return str(final_job_id) if final_job_id is not None else str(job_id)
+                    final_job_id, err = _a2e_validate_job_identifier(
+                        base_url,
+                        job_id,
+                        base_headers,
+                        job_name=job_name,
+                        image_url=image_url,
+                    )
+                    if final_job_id:
+                        logger.info(
+                            f"[Imagine] A2E job created via primary endpoint with plain-text response "
+                            f"(task_id={job_id}, resolved={final_job_id})"
+                        )
+                        return final_job_id
                     snippet = text.strip()[:200]
-                    raise RuntimeError(f"A2E primary endpoint returned non-JSON response: {snippet}")
+                    raise RuntimeError(err or f"A2E primary endpoint returned non-JSON response: {snippet}")
                 result = response.json()
                 if result.get('success'):
                     job_id = (
                         result.get('task_id') or result.get('taskId') or
                         result.get('id') or result.get('job_id') or result.get('jobId')
                     )
-                    if job_id:
-                        logger.info(f"[Imagine] A2E job created successfully via primary endpoint (task_id={job_id})")
-                        final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
-                        return str(final_job_id) if final_job_id is not None else str(job_id)
-                    raise RuntimeError("A2E primary endpoint response missing task id")
+                    final_job_id, err = _a2e_validate_job_identifier(
+                        base_url,
+                        job_id,
+                        base_headers,
+                        job_name=job_name,
+                        image_url=image_url,
+                    )
+                    if final_job_id:
+                        logger.info(
+                            f"[Imagine] A2E job created successfully via primary endpoint "
+                            f"(task_id={job_id}, resolved={final_job_id})"
+                        )
+                        return final_job_id
+                    raise RuntimeError(err or "A2E primary endpoint response missing task id")
                 error_msg = result.get('error') or result.get('message') or json.dumps(result)[:200]
                 base_primary_error = f"Primary endpoint error: {error_msg}"
             elif response.status_code == 404:
@@ -4000,20 +4068,38 @@ def a2e_create_image_to_video_job(
                                     result.get('id') or result.get('job_id') or result.get('jobId') or
                                     result.get('task_id') or result.get('taskId')
                                 )
-                                if job_id:
-                                    logger.info(f"[Imagine] A2E job created successfully via {url} (JSON payload, task_id={job_id})")
-                                    final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
-                                    return str(final_job_id) if final_job_id is not None else str(job_id)
+                                final_job_id, err = _a2e_validate_job_identifier(
+                                    base_url,
+                                    job_id,
+                                    base_headers,
+                                    job_name=job_name,
+                                    image_url=image_url,
+                                )
+                                if final_job_id:
+                                    logger.info(
+                                        f"[Imagine] A2E job created successfully via {url} "
+                                        f"(JSON payload, task_id={job_id}, resolved={final_job_id})"
+                                    )
+                                    return final_job_id
                                 logger.warning(f"[Imagine] A2E JSON response missing job id via {url}: {result}")
                                 if not base_fallback_response_error:
                                     base_fallback_response_error = f"Missing job id in JSON response via {url}"
                             except ValueError:
                                 response_text = response.text or ''
                                 job_id = _extract_job_id_from_text(response_text)
-                                if job_id:
-                                    logger.info(f"[Imagine] A2E job created via {url} with plain-text response (task_id={job_id})")
-                                    final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
-                                    return str(final_job_id) if final_job_id is not None else str(job_id)
+                                final_job_id, err = _a2e_validate_job_identifier(
+                                    base_url,
+                                    job_id,
+                                    base_headers,
+                                    job_name=job_name,
+                                    image_url=image_url,
+                                )
+                                if final_job_id:
+                                    logger.info(
+                                        f"[Imagine] A2E job created via {url} with plain-text response "
+                                        f"(task_id={job_id}, resolved={final_job_id})"
+                                    )
+                                    return final_job_id
                                 snippet = response_text.strip()[:200]
                                 logger.warning(f"[Imagine] A2E JSON response not parseable via {url} (status {response.status_code}): {snippet}")
                                 if not base_fallback_response_error:
@@ -4041,20 +4127,38 @@ def a2e_create_image_to_video_job(
                                 result.get('id') or result.get('job_id') or result.get('jobId') or
                                 result.get('task_id') or result.get('taskId')
                             )
-                            if job_id:
-                                logger.info(f"[Imagine] A2E job created successfully via {url} (multipart fallback, task_id={job_id})")
-                                final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
-                                return str(final_job_id) if final_job_id is not None else str(job_id)
+                            final_job_id, err = _a2e_validate_job_identifier(
+                                base_url,
+                                job_id,
+                                base_headers,
+                                job_name=job_name,
+                                image_url=image_url,
+                            )
+                            if final_job_id:
+                                logger.info(
+                                    f"[Imagine] A2E job created successfully via {url} "
+                                    f"(multipart fallback, task_id={job_id}, resolved={final_job_id})"
+                                )
+                                return final_job_id
                             logger.warning(f"[Imagine] A2E multipart response missing job id via {url}: {result}")
                             if not base_fallback_response_error:
                                 base_fallback_response_error = f"Missing job id in multipart response via {url}"
                         except ValueError:
                             response_text = response.text or ''
                             job_id = _extract_job_id_from_text(response_text)
-                            if job_id:
-                                logger.info(f"[Imagine] A2E job created via {url} (multipart) with plain-text response (task_id={job_id})")
-                                final_job_id = _a2e_finalize_job_identifier(base_url, job_id, base_headers, job_name=job_name, image_url=image_url)
-                                return str(final_job_id) if final_job_id is not None else str(job_id)
+                            final_job_id, err = _a2e_validate_job_identifier(
+                                base_url,
+                                job_id,
+                                base_headers,
+                                job_name=job_name,
+                                image_url=image_url,
+                            )
+                            if final_job_id:
+                                logger.info(
+                                    f"[Imagine] A2E job created via {url} (multipart) with plain-text response "
+                                    f"(task_id={job_id}, resolved={final_job_id})"
+                                )
+                                return final_job_id
                             snippet = response_text.strip()[:200]
                             logger.warning(f"[Imagine] A2E multipart response not parseable via {url} (status {response.status_code}): {snippet}")
                             if not base_fallback_response_error:
