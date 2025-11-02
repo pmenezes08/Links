@@ -16,6 +16,7 @@ import EditableAISummary from '../components/EditableAISummary'
 import { useImagineJobs, type ImagineJobState, type ImagineStyle } from '../hooks/useImagineJobs'
 import { ImagineStyleModal, ImagineOwnerModal } from '../components/ImagineModal'
 import VideoCarousel from '../components/VideoCarousel'
+import { TalkingAvatarModal } from '../components/TalkingAvatarModal'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}> }
@@ -113,7 +114,7 @@ export default function PostDetail(){
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
   const [replyGif, setReplyGif] = useState<GifSelection | null>(null)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
-  const [currentUser, setCurrentUser] = useState<string | null>(null)
+  const [currentUser, setCurrentUser] = useState<{username: string; profile_picture?: string | null} | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
   const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview, level } = useAudioRecorder() as any
@@ -472,7 +473,12 @@ export default function PostDetail(){
         const r = await fetch('/api/home_timeline', { credentials:'include' })
         const j = await r.json().catch(()=>null)
         if (!mounted) return
-        if (j?.success && j.username) setCurrentUser(j.username)
+        if (j?.success && j.username) {
+          setCurrentUser({
+            username: j.username,
+            profile_picture: j.profile_picture || null
+          })
+        }
       }catch{}
     }
     loadUser()
@@ -594,6 +600,13 @@ export default function PostDetail(){
   async function submitReply(parentReplyId?: number){
     if (!post || (!content && !file && !replyPreview?.blob && !replyGif)) return
     if (submittingReply) return
+    
+    // If talking avatar is enabled and we have audio, open the modal instead
+    if (enableTalkingAvatar && replyPreview?.blob) {
+      setTalkingAvatarModalOpen(true)
+      return
+    }
+    
     setSubmittingReply(true)
     const fd = new FormData()
     fd.append('post_id', String(post.id))
@@ -705,6 +718,40 @@ export default function PostDetail(){
         return { ...p, replies: removeById(p.replies) }
       })
     }catch{}
+  }
+
+  async function handleTalkingAvatarSubmit(audioFile: File, imageFile: File | null, useProfilePic: boolean) {
+    if (!post) return
+    
+    try {
+      const fd = new FormData()
+      fd.append('audio', audioFile)
+      fd.append('community_id', String((post as any).community_id || '1')) // Fallback to 1 if not available
+      fd.append('content', content)
+      fd.append('use_profile_pic', String(useProfilePic))
+      
+      if (imageFile) {
+        fd.append('image', imageFile)
+      }
+      
+      const r = await fetch('/api/create_talking_avatar', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json().catch(() => null)
+      
+      if (j?.success) {
+        // Clear form
+        setContent('')
+        clearReplyPreview()
+        setEnableTalkingAvatar(false)
+        
+        // Refresh page to show new post
+        window.location.reload()
+      } else {
+        alert(j?.error || 'Failed to create talking avatar video')
+      }
+    } catch (err: any) {
+      console.error('Failed to create talking avatar:', err)
+      alert('Failed to create talking avatar video. Please try again.')
+    }
   }
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
@@ -927,15 +974,28 @@ export default function PostDetail(){
               </div>
             )}
             {replyPreview && (
-              <div className="flex items-center gap-2 mr-auto flex-1 min-w-0">
-                <audio controls className="w-full" playsInline webkit-playsinline="true" src={replyPreview.url} />
-                <button 
-                  onClick={() => { clearReplyPreview() }}
-                  className="ml-1 text-[#9fb0b5] hover:text-white"
-                  aria-label="Remove audio"
-                >
-                  <i className="fa-regular fa-trash-can" />
-                </button>
+              <div className="flex flex-col gap-2 mr-auto flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <audio controls className="w-full" playsInline webkit-playsinline="true" src={replyPreview.url} />
+                  <button 
+                    onClick={() => { clearReplyPreview(); setEnableTalkingAvatar(false) }}
+                    className="ml-1 text-[#9fb0b5] hover:text-white"
+                    aria-label="Remove audio"
+                  >
+                    <i className="fa-regular fa-trash-can" />
+                  </button>
+                </div>
+                {/* Talking Avatar Toggle */}
+                <label className="flex items-center gap-2 text-xs text-white/70 cursor-pointer hover:text-white/90 transition select-none">
+                  <input 
+                    type="checkbox"
+                    checked={enableTalkingAvatar}
+                    onChange={(e) => setEnableTalkingAvatar(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded border-white/20 bg-white/10 text-[#4db6ac] focus:ring-[#4db6ac]/50"
+                  />
+                  <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
+                  <span>Convert to Talking Avatar Video</span>
+                </label>
               </div>
             )}
             <button type="button" className="w-10 h-10 rounded-full hover:bg-white/10 grid place-items-center" aria-label="Add image" onClick={()=> fileInputRef.current?.click()}>
@@ -1041,7 +1101,7 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
 const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   if (prev.reply !== next.reply) return false
   if (prev.inlineSendingFlag !== next.inlineSendingFlag) return false
-  if (prev.currentUser !== next.currentUser) return false
+  if (prev.currentUser?.username !== next.currentUser?.username) return false
   if (prev.depth !== next.depth) return false
   if (prev.onImagine !== next.onImagine) return false
   if (prev.getImagineJob !== next.getImagineJob) return false
@@ -1090,7 +1150,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           <div className="flex items-center gap-2">
             <div className="font-medium">{reply.username}</div>
             <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatSmartTime(reply.timestamp)}</div>
-            {(currentUser && (currentUser === reply.username || currentUser === 'admin')) ? (
+            {(currentUser && (currentUser.username === reply.username || currentUser.username === 'admin')) ? (
               <>
                 <button
                   className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"

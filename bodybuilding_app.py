@@ -3531,6 +3531,242 @@ def kling_download_video(video_url: str) -> bytes:
     except requests.exceptions.RequestException as e:
         raise RuntimeError(f'Failed downloading Kling video: {str(e)}')
 
+# --- D-ID functions for talking avatar videos ---
+def did_headers() -> Dict[str, str]:
+    """Generate D-ID authentication headers"""
+    if not DID_API_KEY:
+        raise RuntimeError('D-ID API key is not configured. Set DID_API_KEY environment variable.')
+    return {
+        'Authorization': f'Basic {DID_API_KEY}',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
+
+def did_upload_image(image_path: str) -> str:
+    """Upload image to D-ID and return URL"""
+    if not DID_API_KEY:
+        raise RuntimeError('D-ID API key not configured')
+    
+    try:
+        # Read image file
+        with open(image_path, 'rb') as f:
+            image_data = f.read()
+        
+        # Upload to D-ID
+        headers = {
+            'Authorization': f'Basic {DID_API_KEY}',
+            'Content-Type': 'image/jpeg'
+        }
+        url = f'{DID_API_URL}/images'
+        resp = requests.post(url, headers=headers, data=image_data, timeout=30)
+        resp.raise_for_status()
+        image_url = resp.json()['url']
+        logger.info(f'[D-ID] Image uploaded: {image_url}')
+        return image_url
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f'D-ID image upload failed: {str(e)}')
+    except KeyError:
+        raise RuntimeError(f'D-ID image upload response missing url: {resp.text[:200]}')
+
+def did_upload_audio(audio_path: str) -> str:
+    """Upload audio to D-ID and return URL"""
+    if not DID_API_KEY:
+        raise RuntimeError('D-ID API key not configured')
+    
+    try:
+        # Read audio file
+        with open(audio_path, 'rb') as f:
+            audio_data = f.read()
+        
+        # Upload to D-ID
+        headers = {
+            'Authorization': f'Basic {DID_API_KEY}',
+            'Content-Type': 'audio/mpeg'
+        }
+        url = f'{DID_API_URL}/audios'
+        resp = requests.post(url, headers=headers, data=audio_data, timeout=30)
+        resp.raise_for_status()
+        audio_url = resp.json()['url']
+        logger.info(f'[D-ID] Audio uploaded: {audio_url}')
+        return audio_url
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f'D-ID audio upload failed: {str(e)}')
+    except KeyError:
+        raise RuntimeError(f'D-ID audio upload response missing url: {resp.text[:200]}')
+
+def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
+    """Create talking avatar video using D-ID (audio-to-video with lip sync)"""
+    if not DID_API_KEY:
+        raise RuntimeError('D-ID API key not configured. Set DID_API_KEY environment variable.')
+    
+    try:
+        # Upload image and audio to D-ID first
+        logger.info(f'[D-ID] Uploading image: {image_path}')
+        image_url = did_upload_image(image_path)
+        
+        logger.info(f'[D-ID] Uploading audio: {audio_path}')
+        audio_url = did_upload_audio(audio_path)
+        
+        # Create talk
+        headers = did_headers()
+        payload = {
+            'source_url': image_url,
+            'script': {
+                'type': 'audio',
+                'audio_url': audio_url
+            },
+            'config': {
+                'stitch': True  # Seamlessly stitch video segments
+            }
+        }
+        
+        url = f'{DID_API_URL}/talks'
+        logger.info(f'[D-ID] Creating talk at {url}')
+        logger.info(f'[D-ID] Payload: {payload}')
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        logger.info(f'[D-ID] Response status: {resp.status_code}')
+        logger.info(f'[D-ID] Response body: {resp.text[:500]}')
+        resp.raise_for_status()
+        
+        talk_id = resp.json()['id']
+        logger.info(f'[D-ID] Talk created: {talk_id}')
+        return talk_id
+        
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f'D-ID talk creation failed: {str(e)}')
+    except KeyError:
+        raise RuntimeError(f'D-ID response missing id: {resp.text[:200]}')
+
+def did_get_talk_status(talk_id: str) -> dict:
+    """Poll D-ID talk status"""
+    if not DID_API_KEY:
+        raise RuntimeError('D-ID API key not configured')
+    
+    headers = did_headers()
+    url = f'{DID_API_URL}/talks/{talk_id}'
+    try:
+        resp = requests.get(url, headers=headers, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f'D-ID status check failed: {str(e)}')
+
+def did_download_video(video_url: str) -> bytes:
+    """Download video from D-ID"""
+    try:
+        response = requests.get(video_url, timeout=(10, 120))
+        response.raise_for_status()
+        return response.content
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f'Failed downloading D-ID video: {str(e)}')
+
+
+def process_talking_avatar_job(job_id: int):
+    """Background worker to generate talking avatar video using D-ID"""
+    try:
+        logger.info(f'[TalkingAvatar] Starting job {job_id}')
+        
+        # Fetch job details
+        job = fetch_imagine_job(job_id)
+        if not job:
+            logger.error(f'[TalkingAvatar] Job {job_id} not found')
+            return
+        
+        update_imagine_job(job_id, status=IMAGINE_STATUS_PROCESSING)
+        
+        # Get paths
+        image_path = job.get('source_path')  # Profile pic or custom image
+        audio_path = job.get('audio_path')    # Voice message
+        
+        if not image_path or not audio_path:
+            raise RuntimeError('Missing image or audio path')
+        
+        # Resolve full paths
+        if not os.path.isabs(image_path):
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_path.replace('uploads/', '', 1))
+        if not os.path.isabs(audio_path):
+            audio_path = os.path.join(app.config['UPLOAD_FOLDER'], audio_path.replace('uploads/', '', 1))
+        
+        logger.info(f'[TalkingAvatar] Image: {image_path}, Audio: {audio_path}')
+        
+        # Create talking avatar with D-ID
+        logger.info(f'[TalkingAvatar] Creating D-ID talk for job {job_id}')
+        talk_id = did_create_talking_avatar(image_path, audio_path)
+        
+        # Store talk_id for polling
+        update_imagine_job(job_id, runway_job_id=talk_id)  # Reuse runway_job_id field for talk_id
+        
+        # Poll for completion
+        start_time = time.time()
+        poll_interval = DID_POLL_INTERVAL_SECONDS
+        timeout = DID_TIMEOUT_SECONDS
+        
+        while True:
+            elapsed = time.time() - start_time
+            if elapsed > timeout:
+                raise RuntimeError(f'D-ID talk timeout after {timeout}s')
+            
+            logger.info(f'[TalkingAvatar] Polling D-ID talk {talk_id} (elapsed: {int(elapsed)}s)')
+            status_data = did_get_talk_status(talk_id)
+            status = status_data.get('status')
+            
+            logger.info(f'[TalkingAvatar] D-ID status: {status}')
+            
+            if status == 'done':
+                # Get video URL
+                result_url = status_data.get('result_url')
+                if not result_url:
+                    raise RuntimeError('D-ID result missing video URL')
+                
+                logger.info(f'[TalkingAvatar] D-ID video ready: {result_url}')
+                
+                # Download video
+                video_bytes = did_download_video(result_url)
+                
+                # Save video
+                filename = f"avatar_{job_id}_{int(time.time())}.mp4"
+                rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{filename}"
+                full_path = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SUBDIR, filename)
+                
+                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                with open(full_path, 'wb') as f:
+                    f.write(video_bytes)
+                
+                logger.info(f'[TalkingAvatar] Video saved: {rel_path}')
+                
+                # Update job as completed
+                update_imagine_job(
+                    job_id,
+                    status=IMAGINE_STATUS_COMPLETED,
+                    result_path=rel_path
+                )
+                
+                # Update post with video (replace audio with video)
+                target_type = job.get('target_type')
+                target_id = job.get('target_id')
+                
+                if target_type == 'post':
+                    with get_db_connection() as conn:
+                        c = conn.cursor()
+                        ph = get_sql_placeholder()
+                        c.execute(f"UPDATE posts SET video_path={ph}, audio_path=NULL WHERE id={ph}", (rel_path, target_id))
+                        conn.commit()
+                    logger.info(f'[TalkingAvatar] Post {target_id} updated with video')
+                
+                logger.info(f'[TalkingAvatar] Job {job_id} completed successfully')
+                break
+                
+            elif status == 'error' or status == 'rejected':
+                error_msg = status_data.get('error', {}).get('description', 'Unknown error')
+                raise RuntimeError(f'D-ID talk failed: {error_msg}')
+            
+            # Still processing, wait and poll again
+            time.sleep(poll_interval)
+        
+    except Exception as e:
+        logger.error(f'[TalkingAvatar] Job {job_id} failed: {e}')
+        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=str(e))
+
 
 def fetch_imagine_job(job_id: int) -> Optional[Dict[str, Any]]:
     try:
@@ -9089,6 +9325,109 @@ def send_photo_message():
         return jsonify({'success': False, 'error': 'Failed to send photo'})
 
 # Message photos served by web server static mapping (/uploads/message_photos -> uploads/message_photos)
+
+@app.route('/api/create_talking_avatar', methods=['POST'])
+@login_required
+def api_create_talking_avatar():
+    """Create talking avatar video from audio + image"""
+    try:
+        audio_file = request.files.get('audio')
+        image_file = request.files.get('image')  # Custom uploaded image
+        use_profile_pic = request.form.get('use_profile_pic') == 'true'
+        community_id = request.form.get('community_id')
+        content = request.form.get('content', '')
+        
+        if not audio_file:
+            return jsonify({'success': False, 'error': 'Audio file required'}), 400
+        
+        if not community_id:
+            return jsonify({'success': False, 'error': 'Community ID required'}), 400
+        
+        user = get_current_user()
+        username = user['username']
+        
+        # Determine which image to use
+        if use_profile_pic:
+            # Use user's profile picture
+            profile_pic_path = user.get('profile_picture')
+            if not profile_pic_path:
+                return jsonify({'success': False, 'error': 'No profile picture set'}), 400
+            image_path = profile_pic_path
+        else:
+            # Use uploaded custom image
+            if not image_file:
+                return jsonify({'success': False, 'error': 'Image file required'}), 400
+            
+            # Save uploaded image temporarily
+            image_filename = secure_filename(f"avatar_{user['id']}_{int(time.time())}_{image_file.filename}")
+            image_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'avatar_sources')
+            os.makedirs(image_dir, exist_ok=True)
+            image_full_path = os.path.join(image_dir, image_filename)
+            image_file.save(image_full_path)
+            image_path = f"uploads/avatar_sources/{image_filename}"
+        
+        # Save audio file
+        audio_filename = secure_filename(f"audio_{user['id']}_{int(time.time())}.webm")
+        audio_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'audio')
+        os.makedirs(audio_dir, exist_ok=True)
+        audio_full_path = os.path.join(audio_dir, audio_filename)
+        audio_file.save(audio_full_path)
+        audio_path = f"uploads/audio/{audio_filename}"
+        
+        # Create post first (with pending video)
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"""
+                INSERT INTO posts (community_id, username, content, video_path, timestamp)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
+            """, (
+                community_id,
+                username,
+                content,
+                'pending',  # Placeholder until video is ready
+                datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            ))
+            post_id = c.lastrowid
+            conn.commit()
+        
+        # Create job in imagine_jobs table
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"""
+                INSERT INTO imagine_jobs 
+                (created_by, source_path, source_type, audio_path, target_type, target_id,
+                 status, provider, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (
+                username,
+                image_path,
+                'talking_avatar',
+                audio_path,
+                'post',
+                post_id,
+                IMAGINE_STATUS_PENDING,
+                'did',
+                datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            ))
+            job_id = c.lastrowid
+            conn.commit()
+        
+        # Queue background job
+        logger.info(f'[TalkingAvatar] Queuing job {job_id} for post {post_id}')
+        imagine_executor.submit(process_talking_avatar_job, job_id)
+        
+        return jsonify({
+            'success': True,
+            'job_id': job_id,
+            'post_id': post_id,
+            'message': 'Talking avatar video is being generated'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error creating talking avatar: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/send_audio_message', methods=['POST'])
 @login_required
