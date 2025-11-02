@@ -136,17 +136,12 @@ os.makedirs(IMAGINE_OUTPUT_DIR, exist_ok=True)
 RUNWAY_API_KEY = (os.environ.get('RUNWAY_API_KEY') or '').strip() or None
 RUNWAY_MODEL_ID = os.environ.get('RUNWAY_MODEL_ID', 'gen4_turbo')
 RUNWAY_API_URL = os.environ.get('RUNWAY_API_URL', 'https://api.dev.runwayml.com')
-A2E_API_KEY = (os.environ.get('A2E_API_KEY') or '').strip() or None
-A2E_API_URL = os.environ.get('A2E_API_URL', 'https://video.a2e.ai')
-A2E_START_ENDPOINT = os.environ.get('A2E_START_ENDPOINT', '/api/v1/image-to-video/json')
-A2E_STATUS_ENDPOINT = os.environ.get('A2E_STATUS_ENDPOINT', '/api/v1/userImage2Video/status')
-A2E_TASK_ENDPOINT = os.environ.get('A2E_TASK_ENDPOINT', '/api/v1/userImage2Video/{task_id}')
-A2E_TIMEOUT_SECONDS = int(os.environ.get('A2E_TIMEOUT_SECONDS', '600'))
-A2E_POLL_INTERVAL_SECONDS = int(os.environ.get('A2E_POLL_INTERVAL_SECONDS', os.environ.get('A2E_POLL_INTERVAL', '8')))
-A2E_DEFAULT_NEGATIVE_PROMPT = (
-    """lowres, low quality, worst quality, bad anatomy, deformed face, extra limbs, moving viewpoint,"""
-    """ motion blur, static image, distorted proportions, nsfw artifacts"""
-)
+# Kling AI configuration for spicy video generation
+KLING_SECRET_KEY = (os.environ.get('Kling_Secret_KEY') or os.environ.get('KLING_SECRET_KEY') or '').strip() or None
+KLING_ACCESS_KEY = (os.environ.get('Kling_Access_KEY') or os.environ.get('KLING_ACCESS_KEY') or '').strip() or None
+KLING_API_URL = 'https://api.klingai.com/v1'
+KLING_TIMEOUT_SECONDS = int(os.environ.get('KLING_TIMEOUT_SECONDS', '600'))
+KLING_POLL_INTERVAL_SECONDS = int(os.environ.get('KLING_POLL_INTERVAL_SECONDS', '10'))
 PUBLIC_BASE_URL = (os.environ.get('PUBLIC_BASE_URL') or '').rstrip('/') or None
 try:
     imagine_executor = ThreadPoolExecutor(max_workers=int(os.environ.get('IMAGINE_MAX_WORKERS', '2')))
@@ -3179,8 +3174,8 @@ def imagine_style_prompt(style: str, nsfw_allowed: bool = False) -> str:
     if key == 'spicy':
         if nsfw_allowed:
             # Make spicy style much more sexual/explicit when NSFW is allowed
-            # Note: When using A2E.ai (uncensored), this prompt will be replaced with an explicit one
-            # This is only used as fallback if A2E is not available
+            # Note: When using Kling AI (uncensored), this prompt will be replaced with an explicit one
+            # This is only used as fallback if Kling is not available
             prompt = "Create a dramatic, intense video animation with bold camera movements, dynamic lighting, fluid motion, rhythmic pacing, expressive gestures, and heightened dramatic tension. Make it visually striking, emotionally charged, and artistically bold with dynamic and engaging movement."
         else:
             prompt = prompt + safe_suffix
@@ -3461,989 +3456,71 @@ def runway_download_asset(asset_url: str) -> bytes:
     return response.content
 
 
-# --- A2E.AI functions for uncensored/spicy videos ---
-def a2e_headers() -> Dict[str, str]:
-    if not A2E_API_KEY:
-        raise RuntimeError('A2E API key is not configured. Set A2E_API_KEY environment variable.')
+# --- Kling AI functions for uncensored/spicy videos ---
+def kling_headers() -> Dict[str, str]:
+    """Generate Kling AI authentication headers"""
+    if not KLING_ACCESS_KEY:
+        raise RuntimeError('Kling API key is not configured. Set Kling_Access_KEY environment variable.')
     return {
-        'Authorization': f'Bearer {A2E_API_KEY}',
+        'Authorization': f'Bearer {KLING_ACCESS_KEY}',
         'Accept': 'application/json'
     }
 
-def _a2e_base_urls() -> List[str]:
-    candidates: List[str] = []
 
-    def _add(url: Optional[str]) -> None:
-        if not url:
-            return
-        normalized = url.strip().rstrip('/')
-        if not normalized:
-            return
-        if normalized not in candidates:
-            candidates.append(normalized)
-
-    configured = (A2E_API_URL or '').strip()
-    _add(configured)
-    # Prefer the documented video host first, then legacy api host
-    _add('https://video.a2e.ai')
-    _add('https://api.a2e.ai')
-
-    # Ensure configured host stays at front
-    if configured:
-        try:
-            idx = candidates.index(configured)
-            if idx > 0:
-                candidates.insert(0, candidates.pop(idx))
-        except ValueError:
-            pass
-
-    return candidates
-
-
-def _a2e_join(base_url: str, path: Optional[str]) -> str:
-    if not path:
-        return base_url
-    if path.startswith('http://') or path.startswith('https://'):
-        return path
-    return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
-
-
-HEX_OBJECT_ID_RE = re.compile(r'^[0-9a-fA-F]{24}$')
-
-
-def _a2e_is_object_id(value: Optional[str]) -> bool:
-    if not value:
-        return False
-    return bool(HEX_OBJECT_ID_RE.fullmatch(value.strip()))
-
-
-def _a2e_is_html_response(response: requests.Response) -> bool:
-    content_type = (response.headers.get('content-type') or '').lower()
-    if 'text/html' in content_type:
-        return True
-    text = (response.text or '').lstrip().lower()
-    return text.startswith('<!doctype') or text.startswith('<html')
-
-
-def _a2e_try_parse_json(response: requests.Response) -> Optional[Any]:
-    try:
-        return response.json()
-    except ValueError:
-        return None
-
-
-def _a2e_normalize_compare_url(url: Optional[str]) -> Optional[str]:
-    if not url:
-        return None
-    return url.split('?')[0].rstrip('/').lower()
-
-
-def _a2e_iter_task_records(payload: Any) -> Iterable[Dict[str, Any]]:
-    if payload is None:
-        return
-    stack: List[Any] = [payload]
-    seen: set[int] = set()
-    while stack:
-        current = stack.pop()
-        if isinstance(current, (dict, list)):
-            obj_id = id(current)
-            if obj_id in seen:
-                continue
-            seen.add(obj_id)
-        if isinstance(current, dict):
-            # Yield dictionaries that look like task records
-            if any(key in current for key in ('_id', 'name', 'image_url', 'imageUrl', 'current_status', 'task_id', 'taskId')):
-                yield current
-            for value in current.values():
-                if isinstance(value, (dict, list)):
-                    stack.append(value)
-        elif isinstance(current, list):
-            for item in current:
-                if isinstance(item, (dict, list)):
-                    stack.append(item)
-
-
-def _a2e_select_matching_task(payload: Any, identifier: Optional[str], job_name: Optional[str], image_url: Optional[str]) -> Optional[Dict[str, Any]]:
-    normalized_identifier = (identifier or '').strip()
-    normalized_job_name = (job_name or '').strip()
-    normalized_image_url = _a2e_normalize_compare_url(image_url)
-
-    for record in _a2e_iter_task_records(payload):
-        candidate_id = record.get('_id') or record.get('id') or record.get('task_id') or record.get('taskId') or record.get('task')
-        if _a2e_is_object_id(candidate_id):
-            if _a2e_is_object_id(normalized_identifier) and candidate_id == normalized_identifier:
-                return record
-        candidate_names = [
-            record.get('name'),
-            record.get('task_name'),
-            record.get('title'),
-            record.get('taskId'),
-            record.get('task_id'),
-            record.get('task'),
-        ]
-        for candidate in candidate_names:
-            if candidate and normalized_identifier and str(candidate).strip() == normalized_identifier:
-                if _a2e_is_object_id(candidate_id):
-                    return record
-            if candidate and normalized_job_name and str(candidate).strip() == normalized_job_name:
-                if _a2e_is_object_id(candidate_id):
-                    return record
-        if normalized_image_url:
-            record_url = record.get('image_url') or record.get('imageUrl')
-            if record_url and _a2e_normalize_compare_url(record_url) == normalized_image_url:
-                if _a2e_is_object_id(candidate_id):
-                    return record
-    return None
-
-
-def _a2e_resolve_task_object_id(
-    base_url: str,
-    identifier: Optional[str],
-    headers: Dict[str, str],
-    job_name: Optional[str] = None,
-    image_url: Optional[str] = None,
-) -> Optional[str]:
-    if not identifier:
-        return identifier
-    if _a2e_is_object_id(identifier):
-        return identifier
-
-    resolve_headers = headers.copy()
-    resolve_headers.setdefault('Accept', 'application/json')
-
-    direct_paths = [
-        A2E_TASK_ENDPOINT.format(task_id=identifier) if '{' in A2E_TASK_ENDPOINT else A2E_TASK_ENDPOINT,
-        f"/api/v1/userImage2Video/{identifier}",
-        f"/api/v1/userImage2Video/task/{identifier}",
-        f"/api/v1/userImage2Video/getResult/{identifier}",
-        f"/api/v1/userImage2Video/getStatus/{identifier}",
-        f"/api/v1/userImage2Video/check/{identifier}",
-        f"/api/image-to-video/status/{identifier}",
-        f"/api/image-to-video/result/{identifier}",
-    ]
-
-    for path in direct_paths:
-        url = f"{base_url}{path}"
-        try:
-            response = requests.get(url, headers=resolve_headers, timeout=(10, 15))
-            if response.status_code >= 400:
-                continue
-            payload = _a2e_try_parse_json(response)
-            if not payload:
-                continue
-            record = _a2e_select_matching_task(payload, identifier, job_name, image_url)
-            if record:
-                candidate_id = record.get('_id') or record.get('id')
-                if _a2e_is_object_id(candidate_id):
-                    return candidate_id
-        except requests.exceptions.RequestException:
-            continue
-
-    query_endpoints: List[str] = []
-    if job_name:
-        encoded_name = quote_plus(job_name)
-        query_endpoints.extend([
-            f"/api/v1/userImage2Video?name={encoded_name}",
-            f"/api/v1/userImage2Video/list?name={encoded_name}",
-        ])
-    if image_url:
-        encoded_url = quote_plus(image_url)
-        query_endpoints.extend([
-            f"/api/v1/userImage2Video?image_url={encoded_url}",
-            f"/api/v1/userImage2Video/list?image_url={encoded_url}",
-        ])
-
-    list_endpoints = [
-        '/api/v1/userImage2Video/list',
-        '/api/v1/userImage2Video',
-        '/api/v1/userImage2Video/tasks',
-        '/api/v1/userImage2Video/all',
-        '/api/v1/userImage2Video/listAll',
-        '/api/v1/userImage2Video/my',
-        '/api/image-to-video/list',
-        '/api/image-to-video/tasks',
-    ]
-
-    for path in query_endpoints + list_endpoints:
-        url = f"{base_url}{path}"
-        try:
-            response = requests.get(url, headers=resolve_headers, timeout=(10, 15))
-            if response.status_code >= 400:
-                continue
-            payload = _a2e_try_parse_json(response)
-            if not payload:
-                continue
-            record = _a2e_select_matching_task(payload, identifier, job_name, image_url)
-            if record:
-                candidate_id = record.get('_id') or record.get('id')
-                if _a2e_is_object_id(candidate_id):
-                    return candidate_id
-        except requests.exceptions.RequestException:
-            continue
-
-    return identifier
-
-
-def _a2e_finalize_job_identifier(
-    base_url: str,
-    job_identifier: Optional[str],
-    headers: Dict[str, str],
-    job_name: Optional[str] = None,
-    image_url: Optional[str] = None,
-) -> Optional[str]:
-    resolved = _a2e_resolve_task_object_id(base_url, job_identifier, headers, job_name=job_name, image_url=image_url)
-    if resolved and job_identifier and resolved != job_identifier:
-        logger.info(f"[Imagine] Resolved A2E task identifier {job_identifier} -> {resolved} using {base_url}")
-    return resolved or job_identifier
-
-
-def _a2e_accept_job_identifier(
-    base_url: str,
-    identifier: Optional[str],
-    headers: Dict[str, str],
-    job_name: Optional[str] = None,
-    image_url: Optional[str] = None,
-) -> str:
-    final_id = _a2e_finalize_job_identifier(base_url, identifier, headers, job_name=job_name, image_url=image_url)
-    if final_id and _a2e_is_object_id(final_id):
-        return str(final_id)
-    raise ValueError(f"A2E response returned non-object identifier '{identifier}'")
-
-
-def _a2e_validate_job_identifier(
-    base_url: str,
-    identifier: Optional[str],
-    headers: Dict[str, str],
-    job_name: Optional[str] = None,
-    image_url: Optional[str] = None,
-) -> Tuple[Optional[str], Optional[str]]:
-    if not identifier:
-        return None, "A2E response missing task identifier"
-    try:
-        resolved = _a2e_accept_job_identifier(base_url, identifier, headers, job_name=job_name, image_url=image_url)
-        return resolved, None
-    except ValueError as err:
-        return None, str(err)
-
-
-def _a2e_status_param_variants(candidate: str, job_name: Optional[str]) -> List[Dict[str, str]]:
-    variants: List[Dict[str, str]] = [
-        {'task_id': candidate},
-        {'taskId': candidate},
-        {'id': candidate},
-        {'task': candidate},
-    ]
-    if _a2e_is_object_id(candidate):
-        variants.append({'_id': candidate})
-    if job_name:
-        variants.append({'name': job_name})
-    return variants
-
-
-def _a2e_normalize_status(payload: Any) -> Dict[str, Any]:
-    normalized: Dict[str, Any] = {'raw': payload}
-    if payload is None:
-        return normalized
-    if isinstance(payload, dict):
-        if 'code' in payload and isinstance(payload.get('data'), dict):
-            data = payload.get('data') or {}
-            normalized['data'] = data
-            status = data.get('current_status') or data.get('status') or payload.get('status')
-            video_url = data.get('result_url') or data.get('video_url') or payload.get('video_url')
-            normalized['status'] = status
-            normalized['result_url'] = video_url
-            normalized['video_url'] = video_url
-            error_msg = data.get('failed_message') or data.get('error') or data.get('failed_reason') or payload.get('message') or payload.get('error')
-            if error_msg:
-                normalized['error'] = error_msg
-            return normalized
-        status = payload.get('status') or payload.get('current_status')
-        if status:
-            normalized['status'] = status
-        video_url = payload.get('result_url') or payload.get('video_url')
-        if video_url:
-            normalized['result_url'] = video_url
-            normalized['video_url'] = video_url
-        error_msg = payload.get('error') or payload.get('failed_message') or payload.get('failed_reason') or payload.get('message')
-        if error_msg:
-            normalized['error'] = error_msg
-        if 'data' in payload and isinstance(payload['data'], dict):
-            normalized.setdefault('data', payload['data'])
-        return normalized
-    return normalized
-
-def a2e_create_image_to_video_job(
-    image_bytes: bytes,
-    prompt: str,
-    duration: int = 5,
-    resolution: str = '1080p',
-    image_url: Optional[str] = None,
-    job_name: Optional[str] = None,
-    negative_prompt: Optional[str] = None
-) -> str:
-    """Create an image-to-video job using a2e.ai API (uncensored)"""
+def kling_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int = 5) -> str:
+    """Create image-to-video job using Kling AI (for spicy content)"""
+    if not KLING_ACCESS_KEY:
+        raise RuntimeError('Kling API key not configured. Set Kling_Access_KEY environment variable.')
     if not image_bytes:
-        raise RuntimeError('Missing image bytes for A2E request')
+        raise RuntimeError('Missing image bytes for Kling request')
     
-    def _extract_job_id_from_text(text: Optional[str]) -> Optional[str]:
-        if not text:
-            return None
-        stripped = text.strip()
-        if not stripped:
-            return None
-        if all(ch.isalnum() or ch in ('-', '_', ':') for ch in stripped) and len(stripped) >= 8:
-            return stripped
-        match = re.search(r"(?:task[_-]?id|job[_-]?id|run[_-]?id|id)\s*[:=]\s*['\"]?([A-Za-z0-9\-_.]{8,})", stripped, re.IGNORECASE)
-        if match:
-            return match.group(1)
-        return None
-
-    negative_prompt = negative_prompt or A2E_DEFAULT_NEGATIVE_PROMPT
-
-    files = {'image': ('image.jpg', image_bytes, 'image/jpeg')}
-    legacy_form_data = {
+    headers = kling_headers()
+    files = {'image': ('input.jpg', image_bytes, 'image/jpeg')}
+    data = {
         'prompt': prompt,
         'duration': str(duration),
-        'resolution': resolution,
+        'resolution': '1080p'
     }
-    api_form_data = {
-        'prompt': prompt,
-        'duration': str(duration),
-        'resolution': resolution,
-        'negative_prompt': negative_prompt,
-    }
-    if job_name:
-        api_form_data['name'] = job_name
-        legacy_form_data['name'] = job_name
-    if image_url:
-        api_form_data['image_url'] = image_url
-        legacy_form_data['image_url'] = image_url
-    if negative_prompt:
-        legacy_form_data['negative_prompt'] = negative_prompt
-
-    aspect_ratio = None
-    if isinstance(resolution, str):
-        res_lower = resolution.lower()
-        if res_lower in ('1080p', '720p', '1440p', '2160p', '4k'):
-            aspect_ratio = '16:9'
-        elif res_lower in ('square', '1:1'):
-            aspect_ratio = '1:1'
-    if aspect_ratio:
-        api_form_data['aspect_ratio'] = aspect_ratio
-        legacy_form_data['aspect_ratio'] = aspect_ratio
-
-    base_headers = a2e_headers()
-    fallback_paths = [
-        ('/v1/image-to-video/json', 'json'),
-        ('/api/v1/image-to-video/json', 'json'),
-        ('/image-to-video/json', 'json'),
-        ('/generate/json', 'json'),
-        ('/v1/image-to-video', 'multipart'),
-        ('/api/v1/image-to-video', 'multipart'),
-        ('/image-to-video', 'multipart'),
-        ('/generate', 'multipart'),
-    ]
-
-    encoded_image = base64.b64encode(image_bytes).decode('utf-8')
-    data_uri = f"data:image/jpeg;base64,{encoded_image}"
-    json_payload_variants = [
-        {
-            'prompt': prompt,
-            'duration': str(duration),
-            'resolution': resolution,
-            'image': data_uri
-        },
-        {
-            'prompt': prompt,
-            'duration': str(duration),
-            'resolution': resolution,
-            'image_base64': encoded_image,
-            'image_mime_type': 'image/jpeg'
-        },
-        {
-            'prompt': prompt,
-            'duration': str(duration),
-            'resolution': resolution,
-            'image': encoded_image,
-            'image_format': 'jpeg'
-        },
-        {
-            'prompt': prompt,
-            'duration': str(duration),
-            'resolution': resolution,
-            'imageData': data_uri
-        }
-    ]
-    for payload in json_payload_variants:
-        if aspect_ratio:
-            payload['aspect_ratio'] = aspect_ratio
-        if negative_prompt:
-            payload['negative_prompt'] = negative_prompt
-        if image_url:
-            payload['image_url'] = image_url
-        if job_name:
-            payload['name'] = job_name
-
-    attempt_summaries: List[Dict[str, Optional[str]]] = []
-
-    for base_url in _a2e_base_urls():
-        base_start_error: Optional[str] = None
-        base_primary_error: Optional[str] = None
-        base_fallback_error: Optional[str] = None
-        base_fallback_response_error: Optional[str] = None
-
-        if image_url:
-            start_endpoint = _a2e_join(base_url, A2E_START_ENDPOINT)
-            try:
-                form_headers = base_headers.copy()
-                form_headers['Content-Type'] = 'application/x-www-form-urlencoded'
-                form_headers.setdefault('Accept', 'application/json')
-                form_payload = {
-                    'name': (job_name or f"Imagine-{int(time.time()*1000)}"),
-                    'image_url': image_url,
-                    'prompt': prompt or '',
-                    'negative_prmpt': negative_prompt or '',
-                    'negative_prompt': negative_prompt or '',
-                    'duration': str(duration),
-                    'resolution': resolution,
-                }
-                if aspect_ratio:
-                    form_payload['aspect_ratio'] = aspect_ratio
-                response = requests.post(start_endpoint, headers=form_headers, data=form_payload, timeout=(10, 45))
-                if response.status_code < 400:
-                    content_type = (response.headers.get('content-type') or '').lower()
-                    if 'application/json' not in content_type:
-                        text = response.text or ''
-                        if '<html' in text.lower():
-                            snippet = text.strip()[:200]
-                            base_start_error = f"start returned HTML response: {snippet}" if snippet else "start returned HTML response"
-                            raise ValueError(base_start_error)
-                        job_id = _extract_job_id_from_text(text)
-                        final_job_id, err = _a2e_validate_job_identifier(
-                            base_url,
-                            job_id,
-                            base_headers,
-                            job_name=job_name,
-                            image_url=image_url,
-                        )
-                        if final_job_id:
-                            logger.info(
-                                f"[Imagine] A2E job created via {start_endpoint} with plain-text response "
-                                f"(task_id={job_id}, resolved={final_job_id})"
-                            )
-                            return final_job_id
-                        snippet = text.strip()[:200]
-                        base_start_error = err or (f"start returned non-JSON: {snippet}" if snippet else "start returned empty response")
-                    else:
-                        result = _a2e_try_parse_json(response)
-                        if isinstance(result, dict) and 'code' in result:
-                            code_val = result.get('code')
-                            if code_val == 0:
-                                data_obj = result.get('data') or {}
-                                job_id = (
-                                    data_obj.get('_id') or data_obj.get('id') or data_obj.get('task_id') or
-                                    data_obj.get('taskId') or data_obj.get('task')
-                                )
-                                final_job_id, err = _a2e_validate_job_identifier(
-                                    base_url,
-                                    job_id,
-                                    base_headers,
-                                    job_name=job_name,
-                                    image_url=image_url,
-                                )
-                                if final_job_id:
-                                    logger.info(
-                                        f"[Imagine] A2E job created successfully via {start_endpoint} "
-                                        f"(task_id={job_id}, resolved={final_job_id})"
-                                    )
-                                    return final_job_id
-                                base_start_error = err or "start response missing data._id"
-                            else:
-                                error_msg = result.get('message') or result.get('error') or json.dumps(result)[:200]
-                                base_start_error = f"start error code {code_val}: {error_msg}"
-                        elif result.get('success') is False:
-                            error_msg = result.get('error') or result.get('message') or json.dumps(result)[:200]
-                            base_start_error = f"start error: {error_msg}"
-                        else:
-                            job_id = (
-                                result.get('task_id') or result.get('taskId') or
-                                result.get('id') or result.get('job_id') or result.get('jobId')
-                            )
-                            final_job_id, err = _a2e_validate_job_identifier(
-                                base_url,
-                                job_id,
-                                base_headers,
-                                job_name=job_name,
-                                image_url=image_url,
-                            )
-                            if final_job_id:
-                                logger.info(
-                                    f"[Imagine] A2E job created successfully via {start_endpoint} "
-                                    f"(task_id={job_id}, resolved={final_job_id})"
-                                )
-                                return final_job_id
-                            base_start_error = err or "start response missing task id"
-                elif response.status_code == 404:
-                    snippet = (response.text or '').strip()[:200]
-                    base_start_error = f"start endpoint 404: {snippet or 'not found'}"
-                else:
-                    snippet = response.text[:200]
-                    raise RuntimeError(f"A2E job creation failed ({response.status_code}) via {start_endpoint}: {snippet}")
-            except requests.exceptions.RequestException as e:
-                base_start_error = f"start network error: {e}"
-            except (RuntimeError, ValueError) as e:
-                base_start_error = str(e)
-        else:
-            base_start_error = None
-
-        primary_endpoint = f"{base_url}/api/image-to-video/"
-        try:
-            headers = base_headers.copy()
-            headers.pop('Content-Type', None)
-            logger.info(f"[Imagine] Trying A2E primary endpoint: {primary_endpoint}")
-            response = requests.post(primary_endpoint, headers=headers, files=files, data=api_form_data, timeout=(10, 45))
-            if response.status_code < 400:
-                content_type = (response.headers.get('content-type') or '').lower()
-                if 'application/json' not in content_type:
-                    text = response.text or ''
-                    if '<html' in text.lower():
-                        snippet = text.strip()[:200]
-                        raise RuntimeError(f"A2E primary endpoint returned HTML: {snippet}")
-                    job_id = _extract_job_id_from_text(text)
-                    final_job_id, err = _a2e_validate_job_identifier(
-                        base_url,
-                        job_id,
-                        base_headers,
-                        job_name=job_name,
-                        image_url=image_url,
-                    )
-                    if final_job_id:
-                        logger.info(
-                            f"[Imagine] A2E job created via primary endpoint with plain-text response "
-                            f"(task_id={job_id}, resolved={final_job_id})"
-                        )
-                        return final_job_id
-                    snippet = text.strip()[:200]
-                    raise RuntimeError(err or f"A2E primary endpoint returned non-JSON response: {snippet}")
-                result = response.json()
-                if result.get('success'):
-                    job_id = (
-                        result.get('task_id') or result.get('taskId') or
-                        result.get('id') or result.get('job_id') or result.get('jobId')
-                    )
-                    final_job_id, err = _a2e_validate_job_identifier(
-                        base_url,
-                        job_id,
-                        base_headers,
-                        job_name=job_name,
-                        image_url=image_url,
-                    )
-                    if final_job_id:
-                        logger.info(
-                            f"[Imagine] A2E job created successfully via primary endpoint "
-                            f"(task_id={job_id}, resolved={final_job_id})"
-                        )
-                        return final_job_id
-                    raise RuntimeError(err or "A2E primary endpoint response missing task id")
-                error_msg = result.get('error') or result.get('message') or json.dumps(result)[:200]
-                base_primary_error = f"Primary endpoint error: {error_msg}"
-            elif response.status_code == 404:
-                snippet = (response.text or '').strip()[:200]
-                base_primary_error = f"Primary endpoint 404: {snippet or 'not found'}"
-            else:
-                snippet = response.text[:200]
-                raise RuntimeError(f"A2E job creation failed ({response.status_code}) via primary endpoint: {snippet}")
-        except requests.exceptions.RequestException as e:
-            base_primary_error = str(e)
-        except (RuntimeError, ValueError) as e:
-            base_primary_error = str(e)
-
-        if base_primary_error:
-            logger.warning(f"[Imagine] A2E primary endpoint failed for {base_url}: {base_primary_error}")
-
-        for path, mode in fallback_paths:
-            url = f"{base_url}{path}"
-            try:
-                logger.info(f"[Imagine] Trying A2E endpoint: {url}")
-                if mode == 'json':
-                    for payload in json_payload_variants:
-                        headers = base_headers.copy()
-                        headers['Content-Type'] = 'application/json'
-                        response = requests.post(url, headers=headers, json=payload, timeout=(10, 45))
-                        if response.status_code < 400:
-                            try:
-                                result = response.json()
-                                job_id = (
-                                    result.get('id') or result.get('job_id') or result.get('jobId') or
-                                    result.get('task_id') or result.get('taskId')
-                                )
-                                final_job_id, err = _a2e_validate_job_identifier(
-                                    base_url,
-                                    job_id,
-                                    base_headers,
-                                    job_name=job_name,
-                                    image_url=image_url,
-                                )
-                                if final_job_id:
-                                    logger.info(
-                                        f"[Imagine] A2E job created successfully via {url} "
-                                        f"(JSON payload, task_id={job_id}, resolved={final_job_id})"
-                                    )
-                                    return final_job_id
-                                logger.warning(f"[Imagine] A2E JSON response missing job id via {url}: {result}")
-                                if not base_fallback_response_error:
-                                    base_fallback_response_error = f"Missing job id in JSON response via {url}"
-                            except ValueError:
-                                response_text = response.text or ''
-                                job_id = _extract_job_id_from_text(response_text)
-                                final_job_id, err = _a2e_validate_job_identifier(
-                                    base_url,
-                                    job_id,
-                                    base_headers,
-                                    job_name=job_name,
-                                    image_url=image_url,
-                                )
-                                if final_job_id:
-                                    logger.info(
-                                        f"[Imagine] A2E job created via {url} with plain-text response "
-                                        f"(task_id={job_id}, resolved={final_job_id})"
-                                    )
-                                    return final_job_id
-                                snippet = response_text.strip()[:200]
-                                logger.warning(f"[Imagine] A2E JSON response not parseable via {url} (status {response.status_code}): {snippet}")
-                                if not base_fallback_response_error:
-                                    base_fallback_response_error = (
-                                        f"Non-JSON success response via {url}: {snippet}" if snippet else f"Empty success response via {url}"
-                                    )
-                                continue
-                        elif response.status_code in (404, 405):
-                            break
-                        elif response.status_code in (400, 415, 422):
-                            if not base_fallback_response_error:
-                                base_fallback_response_error = f"{response.status_code} via {url}: {response.text[:200]}"
-                            continue
-                        else:
-                            raise RuntimeError(f"A2E job creation failed ({response.status_code}) via {url}: {response.text[:200]}")
-                    continue
-                else:
-                    headers = base_headers.copy()
-                    headers.pop('Content-Type', None)
-                    response = requests.post(url, headers=headers, files=files, data=legacy_form_data, timeout=(10, 45))
-                    if response.status_code < 400:
-                        try:
-                            result = response.json()
-                            job_id = (
-                                result.get('id') or result.get('job_id') or result.get('jobId') or
-                                result.get('task_id') or result.get('taskId')
-                            )
-                            final_job_id, err = _a2e_validate_job_identifier(
-                                base_url,
-                                job_id,
-                                base_headers,
-                                job_name=job_name,
-                                image_url=image_url,
-                            )
-                            if final_job_id:
-                                logger.info(
-                                    f"[Imagine] A2E job created successfully via {url} "
-                                    f"(multipart fallback, task_id={job_id}, resolved={final_job_id})"
-                                )
-                                return final_job_id
-                            logger.warning(f"[Imagine] A2E multipart response missing job id via {url}: {result}")
-                            if not base_fallback_response_error:
-                                base_fallback_response_error = f"Missing job id in multipart response via {url}"
-                        except ValueError:
-                            response_text = response.text or ''
-                            job_id = _extract_job_id_from_text(response_text)
-                            final_job_id, err = _a2e_validate_job_identifier(
-                                base_url,
-                                job_id,
-                                base_headers,
-                                job_name=job_name,
-                                image_url=image_url,
-                            )
-                            if final_job_id:
-                                logger.info(
-                                    f"[Imagine] A2E job created via {url} (multipart) with plain-text response "
-                                    f"(task_id={job_id}, resolved={final_job_id})"
-                                )
-                                return final_job_id
-                            snippet = response_text.strip()[:200]
-                            logger.warning(f"[Imagine] A2E multipart response not parseable via {url} (status {response.status_code}): {snippet}")
-                            if not base_fallback_response_error:
-                                base_fallback_response_error = (
-                                    f"Non-JSON success response via {url}: {snippet}" if snippet else f"Empty success response via {url}"
-                                )
-                            continue
-                    elif response.status_code in (404, 405):
-                        continue
-                    else:
-                        raise RuntimeError(f"A2E job creation failed ({response.status_code}) via {url}: {response.text[:200]}")
-            except requests.exceptions.RequestException as e:
-                base_fallback_error = base_fallback_error or str(e)
-                continue
-            except RuntimeError as e:
-                base_fallback_response_error = base_fallback_response_error or str(e)
-                continue
-
-        attempt_summaries.append({
-            'base': base_url,
-            'start': base_start_error,
-            'primary': base_primary_error,
-            'fallback_error': base_fallback_error,
-            'fallback_response': base_fallback_response_error,
-        })
-
-    if attempt_summaries:
-        parts = []
-        for summary in attempt_summaries:
-            reasons: List[str] = []
-            if summary['start']:
-                reasons.append(f"start: {summary['start']}")
-            if summary['primary']:
-                reasons.append(f"primary: {summary['primary']}")
-            if summary['fallback_response']:
-                reasons.append(f"fallback: {summary['fallback_response']}")
-            elif summary['fallback_error']:
-                reasons.append(f"fallback network: {summary['fallback_error']}")
-            if not reasons:
-                reasons.append('no response')
-            parts.append(f"{summary['base']} ({'; '.join(reasons)})")
-        raise RuntimeError(f"A2E job creation failed across bases: {' | '.join(parts)}")
-
-    raise RuntimeError('A2E job creation failed: no base URLs available')
-
-def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional[str] = None) -> Dict[str, Any]:
-    """Get A2E job status"""
-    headers = a2e_headers()
-    attempt_summaries: List[str] = []
-
-    status_get_paths = [
-        '/api/v1/userImage2Video/status/{job_id}',
-        '/api/v1/userImage2Video/status/{job_id}/',
-        '/api/v1/userImage2Video/status?task_id={job_id}',
-        '/api/v1/userImage2Video/status/?task_id={job_id}',
-        '/api/v1/userImage2Video/status?taskId={job_id}',
-        '/api/v1/userImage2Video/status/?taskId={job_id}',
-        '/api/v1/userImage2Video/status?task={job_id}',
-        '/api/v1/userImage2Video/result/{job_id}',
-        '/api/v1/userImage2Video/result/{job_id}/',
-        '/api/v1/userImage2Video/result?task_id={job_id}',
-        '/api/v1/userImage2Video/result/?task_id={job_id}',
-        '/api/v1/userImage2Video/result?taskId={job_id}',
-        '/api/v1/userImage2Video/result?task={job_id}',
-        '/api/v1/userImage2Video/getResult/{job_id}',
-        '/api/v1/userImage2Video/getResult?task_id={job_id}',
-        '/api/v1/userImage2Video/getResult?taskId={job_id}',
-        '/api/v1/userImage2Video/getStatus/{job_id}',
-        '/api/v1/userImage2Video/getStatus?task_id={job_id}',
-        '/api/v1/userImage2Video/task/{job_id}',
-        '/api/v1/userImage2Video/task/{job_id}/',
-        '/api/v1/userImage2Video/task?task_id={job_id}',
-        '/api/v1/userImage2Video/task?taskId={job_id}',
-        '/api/v1/userImage2Video/task?task={job_id}',
-        '/api/v1/userImage2Video/check/{job_id}',
-        '/api/v1/userImage2Video/check?task_id={job_id}',
-        '/api/v1/userImage2Video/check?taskId={job_id}',
-        '/api/image-to-video/status/{job_id}',
-        '/api/image-to-video/status/{job_id}/',
-        '/api/image-to-video/status?task_id={job_id}',
-        '/api/image-to-video/status?taskId={job_id}',
-        '/api/image-to-video/status?task={job_id}',
-        '/api/image-to-video/result/{job_id}',
-        '/api/image-to-video/result?task_id={job_id}',
-        '/api/image-to-video/result?taskId={job_id}',
-        '/v1/jobs/{job_id}',
-        '/api/v1/jobs/{job_id}',
-        '/v1/tasks/{job_id}',
-        '/api/v1/tasks/{job_id}',
-        '/status/{job_id}',
-    ]
-
-    status_post_endpoints = [
-        '/api/v1/userImage2Video/status',
-        '/api/v1/userImage2Video/result',
-        '/api/v1/userImage2Video/getResult',
-        '/api/v1/userImage2Video/getStatus',
-        '/api/image-to-video/status',
-        '/api/image-to-video/result',
-    ]
-
-    for base_url in _a2e_base_urls():
-        errors: List[str] = []
-        candidate_ids: List[str] = []
-        if job_id:
-            candidate_ids.append(job_id)
-        resolved_candidate = _a2e_resolve_task_object_id(base_url, job_id, headers, job_name=job_name, image_url=image_url)
-        if resolved_candidate and resolved_candidate not in candidate_ids:
-            candidate_ids.insert(0, resolved_candidate)
-
-        status_url = _a2e_join(base_url, A2E_STATUS_ENDPOINT)
-
-        for candidate in candidate_ids:
-            param_variants = _a2e_status_param_variants(candidate, job_name)
-            for params in param_variants:
-                try:
-                    response = requests.post(
-                        status_url,
-                        headers={**headers, 'Content-Type': 'application/x-www-form-urlencoded'},
-                        data=params,
-                        timeout=(10, 20)
-                    )
-                    logger.info(f"[Imagine] Polling A2E status via POST {status_url} params={params} -> {response.status_code}")
-                    if response.status_code == 200:
-                        try:
-                            logger.info(f"[Imagine] A2E status raw response (POST params={params}): {response.text[:500]}")
-                        except Exception:
-                            pass
-                        if _a2e_is_html_response(response):
-                            snippet = (response.text or '').strip()[:200]
-                            errors.append(f"POST params={params} returned HTML: {snippet}")
-                            continue
-                        payload = _a2e_try_parse_json(response)
-                        if payload is None:
-                            snippet = (response.text or '').strip()[:200]
-                            errors.append(f"POST params={params} returned non-JSON: {snippet}")
-                            continue
-                        normalized = _a2e_normalize_status(payload)
-                        normalized['task_id'] = candidate
-                        normalized['base_url'] = base_url
-                        normalized['request_params'] = params
-                        if normalized.get('status') or normalized.get('result_url'):
-                            logger.info(
-                                f"[Imagine] A2E status resolved via GET {status_url} params={params}: "
-                                f"status={normalized.get('status')} result={normalized.get('result_url')}"
-                            )
-                            return normalized
-                        errors.append(f"POST params={params} missing status")
-                    elif response.status_code == 404:
-                        errors.append(f"POST params={params} -> 404")
-                    else:
-                        errors.append(f"POST params={params} -> {response.status_code}: {response.text[:200]}")
-                except requests.exceptions.RequestException as exc:
-                    errors.append(f"POST params={params} network error: {exc}")
-
-            for path in status_get_paths:
-                url = _a2e_join(base_url, path.format(job_id=candidate))
-                try:
-                    response = requests.get(url, headers=headers, timeout=(10, 20))
-                    logger.info(f"[Imagine] Polling A2E status via GET {url} -> {response.status_code}")
-                    if response.status_code == 200:
-                        try:
-                            logger.info(f"[Imagine] A2E status raw response (GET url={url}): {response.text[:500]}")
-                        except Exception:
-                            pass
-                        if _a2e_is_html_response(response):
-                            snippet = (response.text or '').strip()[:200]
-                            errors.append(f"GET {url} returned HTML: {snippet}")
-                            continue
-                        payload = _a2e_try_parse_json(response)
-                        if payload is None:
-                            snippet = (response.text or '').strip()[:200]
-                            errors.append(f"GET {url} returned non-JSON: {snippet}")
-                            continue
-                        normalized = _a2e_normalize_status(payload)
-                        normalized['task_id'] = candidate
-                        normalized['base_url'] = base_url
-                        normalized['request_url'] = url
-                        if normalized.get('status') or normalized.get('result_url'):
-                            logger.info(
-                                f"[Imagine] A2E status resolved via GET {url}: "
-                                f"status={normalized.get('status')} result={normalized.get('result_url')}"
-                            )
-                            return normalized
-                        errors.append(f"GET {url} missing status")
-                    elif response.status_code == 404:
-                        continue
-                    else:
-                        errors.append(f"GET {url} -> {response.status_code}: {response.text[:200]}")
-                except requests.exceptions.RequestException as exc:
-                    errors.append(f"GET {url} network error: {exc}")
-
-            for path in status_post_endpoints:
-                url = _a2e_join(base_url, path)
-                for payload in (
-                    {'task_id': candidate},
-                    {'taskId': candidate},
-                    {'id': candidate},
-                    {'task': candidate},
-                ):
-                    try:
-                        response = requests.post(
-                            url,
-                            headers={**headers, 'Content-Type': 'application/json'},
-                            json=payload,
-                            timeout=(10, 20)
-                        )
-                        logger.info(f"[Imagine] Polling A2E status via POST {url} payload_keys={list(payload.keys())} -> {response.status_code}")
-                        if response.status_code == 200:
-                            try:
-                                logger.info(f"[Imagine] A2E status raw response (POST url={url}, payload_keys={list(payload.keys())}): {response.text[:500]}")
-                            except Exception:
-                                pass
-                            if _a2e_is_html_response(response):
-                                snippet = (response.text or '').strip()[:200]
-                                errors.append(f"POST {url} payload_keys={list(payload.keys())} returned HTML: {snippet}")
-                                continue
-                            payload_json = _a2e_try_parse_json(response)
-                            if payload_json is None:
-                                snippet = (response.text or '').strip()[:200]
-                                errors.append(f"POST {url} payload_keys={list(payload.keys())} returned non-JSON: {snippet}")
-                                continue
-                            normalized = _a2e_normalize_status(payload_json)
-                            normalized['task_id'] = candidate
-                            normalized['base_url'] = base_url
-                            normalized['request_url'] = url
-                            normalized['request_payload'] = payload
-                            if normalized.get('status') or normalized.get('result_url'):
-                                logger.info(
-                                    f"[Imagine] A2E status resolved via POST {url} payload_keys={list(payload.keys())}: "
-                                    f"status={normalized.get('status')} result={normalized.get('result_url')}"
-                                )
-                                return normalized
-                            errors.append(f"POST {url} payload_keys={list(payload.keys())} missing status")
-                        elif response.status_code == 404:
-                            continue
-                        else:
-                            errors.append(f"POST {url} payload_keys={list(payload.keys())} -> {response.status_code}: {response.text[:200]}")
-                    except requests.exceptions.RequestException as exc:
-                        errors.append(f"POST {url} payload_keys={list(payload.keys())} network error: {exc}")
-
-        reason = '; '.join(errors) if errors else 'no response'
-        attempt_summaries.append(f"{base_url} ({reason})")
-
-    if attempt_summaries:
-        raise RuntimeError(f"A2E job fetch failed across bases: {' | '.join(attempt_summaries)}")
-
-    raise RuntimeError('A2E job fetch failed: no base URLs available')
-
-def a2e_extract_video_url(job_data: Dict[str, Any]) -> Optional[str]:
-    """Extract video URL from A2E job response"""
-    # Try common response formats
-    video_url = (
-        job_data.get('result_url')
-        or job_data.get('videoUrl')
-        or job_data.get('video_url')
-        or job_data.get('video')
-    )
-    if isinstance(video_url, str):
-        return video_url
     
-    # Check nested structures
-    result = job_data.get('result') or job_data.get('data')
-    if isinstance(result, dict):
-        return result.get('videoUrl') or result.get('video_url') or result.get('url')
-    elif isinstance(result, str):
-        return result
-    
-    return None
+    # Create job
+    url = f'{KLING_API_URL}/video/generate'
+    try:
+        logger.info(f'[Imagine] Creating Kling AI job')
+        resp = requests.post(url, headers=headers, files=files, data=data, timeout=60)
+        resp.raise_for_status()
+        task_id = resp.json()['task_id']
+        logger.info(f'[Imagine] Kling job created: {task_id}')
+        return task_id
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f'Kling job creation failed: {str(e)}')
+    except KeyError:
+        raise RuntimeError(f'Kling response missing task_id: {resp.text[:200]}')
 
-def a2e_download_video(video_url: str) -> bytes:
-    """Download video from A2E"""
-    response = requests.get(video_url, timeout=(10, 60))
-    if response.status_code >= 400:
-        raise RuntimeError(f"Failed downloading A2E video ({response.status_code}): {response.text[:200]}")
-    return response.content
+
+def kling_get_job_status(task_id: str) -> dict:
+    """Poll Kling AI job status"""
+    if not KLING_ACCESS_KEY:
+        raise RuntimeError('Kling API key not configured')
+    
+    headers = kling_headers()
+    url = f'{KLING_API_URL}/video/{task_id}'
+    
+    try:
+        resp = requests.get(url, headers=headers, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f'Kling status check failed: {str(e)}')
+
+
+def kling_download_video(video_url: str) -> bytes:
+    """Download video from Kling AI"""
+    try:
+        response = requests.get(video_url, timeout=(10, 120))
+        response.raise_for_status()
+        return response.content
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f'Failed downloading Kling video: {str(e)}')
 
 
 def fetch_imagine_job(job_id: int) -> Optional[Dict[str, Any]]:
@@ -4594,15 +3671,15 @@ def process_imagine_job(job_id: int):
         allow_nsfw = is_imagine_spicy_allowed(job.get('community_id'))
         style_prompt = imagine_style_prompt(style, allow_nsfw)
         
-        # Use A2E.ai for spicy videos when NSFW is allowed (uncensored)
+        # Use Kling AI for spicy videos when NSFW is allowed (uncensored)
         # Otherwise use Runway
-        use_a2e = (style == 'spicy' and allow_nsfw and A2E_API_KEY)
+        use_kling = (style == 'spicy' and allow_nsfw and KLING_ACCESS_KEY)
         
-        if use_a2e:
-            logger.info(f"[Imagine] Using A2E.ai for spicy video (job {job_id})")
-            # Compress image aggressively before sending to A2E to avoid 413 errors
-            # A2E API server has limits, so we need to keep images small (<2MB ideally)
-            a2e_image_bytes = image_bytes
+        if use_kling:
+            logger.info(f"[Imagine] Using Kling AI for spicy video (job {job_id})")
+            # Compress image aggressively before sending to Kling to avoid 413 errors
+            # Kling API server has limits, so we need to keep images small (<2MB ideally)
+            kling_image_bytes = image_bytes
             original_size = len(image_bytes)
             if PIL_AVAILABLE:
                 try:
@@ -4634,19 +3711,19 @@ def process_imagine_job(job_id: int):
                         quality = 70
                         output = BytesIO()
                         img.save(output, format='JPEG', quality=quality, optimize=True)
-                        a2e_image_bytes = output.getvalue()
+                        kling_image_bytes = output.getvalue()
                         
                         # If still too large (>2MB), reduce quality further
                         max_size = 2 * 1024 * 1024  # 2MB
-                        if len(a2e_image_bytes) > max_size:
+                        if len(kling_image_bytes) > max_size:
                             quality = 50
                             output = BytesIO()
                             img.save(output, format='JPEG', quality=quality, optimize=True)
-                            a2e_image_bytes = output.getvalue()
+                            kling_image_bytes = output.getvalue()
                             
                             # If still too large, resize even smaller
-                            if len(a2e_image_bytes) > max_size:
-                                logger.warning(f"[Imagine] Image still too large ({len(a2e_image_bytes)} bytes), resizing to 1024px")
+                            if len(kling_image_bytes) > max_size:
+                                logger.warning(f"[Imagine] Image still too large ({len(kling_image_bytes)} bytes), resizing to 1024px")
                                 max_dimension = 1024
                                 if img.size[0] > max_dimension or img.size[1] > max_dimension:
                                     if img.size[0] > img.size[1]:
@@ -4656,53 +3733,42 @@ def process_imagine_job(job_id: int):
                                     img = img.resize(new_size, Image.Resampling.LANCZOS)
                                     output = BytesIO()
                                     img.save(output, format='JPEG', quality=40, optimize=True)
-                                    a2e_image_bytes = output.getvalue()
+                                    kling_image_bytes = output.getvalue()
                         
-                        logger.info(f"[Imagine] Compressed image for A2E: {original_size} bytes -> {len(a2e_image_bytes)} bytes")
+                        logger.info(f"[Imagine] Compressed image for Kling: {original_size} bytes -> {len(kling_image_bytes)} bytes")
                 except Exception as e:
-                    logger.error(f"[Imagine] Failed to compress image for A2E: {e}, error will occur", exc_info=True)
+                    logger.error(f"[Imagine] Failed to compress image for Kling: {e}, error will occur", exc_info=True)
                     # Don't use original - it will fail
-                    raise RuntimeError(f"Failed to compress image for A2E: {e}. Original size: {original_size} bytes")
+                    raise RuntimeError(f"Failed to compress image for Kling: {e}. Original size: {original_size} bytes")
             
-            # Create A2E job with explicit prompt for sexual content
-            a2e_prompt = "Create a highly sexual, erotic, and explicit video animation with seductive movements, provocative poses, sensual atmosphere, and intense sexual energy. Make it very sexual, erotic, and explicit."
-            source_public_url = None
-            try:
-                source_public_url = get_public_upload_url(source_path)
-                if source_public_url and not source_public_url.lower().startswith('http'):
-                    source_public_url = None
-            except Exception as url_err:
-                logger.warning(f"[Imagine] Unable to derive public URL for source image: {url_err}")
-                source_public_url = None
-            job_display_name = f"Imagine Job {job_id}-{int(time.time())}"
-            a2e_job_id = a2e_create_image_to_video_job(
-                a2e_image_bytes,
-                a2e_prompt,
-                duration=5,
-                resolution='1080p',
-                image_url=source_public_url,
-                job_name=job_display_name,
-                negative_prompt=A2E_DEFAULT_NEGATIVE_PROMPT,
+            # Create Kling job with explicit prompt for sexual content
+            kling_prompt = "Create a highly sexual, erotic, and explicit video animation with seductive movements, provocative poses, sensual atmosphere, and intense sexual energy. Make it very sexual, erotic, and explicit."
+            kling_task_id = kling_create_image_to_video_job(
+                kling_image_bytes,
+                kling_prompt,
+                duration=5
             )
-            update_imagine_job(job_id, runway_job_id=a2e_job_id)  # Reuse runway_job_id field
-            poll_interval = max(2, A2E_POLL_INTERVAL_SECONDS)
-            max_wait = A2E_TIMEOUT_SECONDS
+            update_imagine_job(job_id, runway_job_id=kling_task_id)  # Reuse runway_job_id field
+            poll_interval = max(2, KLING_POLL_INTERVAL_SECONDS)
+            max_wait = KLING_TIMEOUT_SECONDS
             start_time = time.time()
             last_error = None
             while time.time() - start_time < max_wait:
                 time.sleep(max(poll_interval, 2))
                 try:
-                    a2e_job = a2e_get_job(a2e_job_id, job_name=job_display_name, image_url=source_public_url)
+                    kling_job = kling_get_job_status(kling_task_id)
                 except Exception as e:
                     last_error = str(e)
                     continue
-                status = str(a2e_job.get('status') or a2e_job.get('state') or '').lower()
+                status = str(kling_job.get('status') or kling_job.get('state') or '').lower()
+                progress = kling_job.get('progress', 0)
+                logger.info(f"[Imagine] Kling job {kling_task_id} status: {status}, progress: {progress}%")
                 if status in ('succeeded', 'completed', 'complete', 'success', 'done'):
-                    video_url = a2e_extract_video_url(a2e_job)
+                    video_url = kling_job.get('video_url')
                     if not video_url:
-                        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='A2E job completed without video URL')
+                        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='Kling job completed without video URL')
                         return
-                    video_bytes = a2e_download_video(video_url)
+                    video_bytes = kling_download_video(video_url)
                     if not video_bytes:
                         update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error='Failed downloading generated video')
                         return
@@ -4720,15 +3786,15 @@ def process_imagine_job(job_id: int):
                         update_imagine_job(job_id, status=IMAGINE_STATUS_AWAITING_OWNER, result_path=rel_path)
                     else:
                         update_imagine_job(job_id, status=IMAGINE_STATUS_COMPLETED, result_path=rel_path, action='carousel_only')
-                    logger.info(f"[Imagine] A2E job {job_id} completed")
+                    logger.info(f"[Imagine] Kling job {job_id} completed")
                     return
                 if status in ('failed', 'error', 'cancelled'):
-                    error_message = a2e_job.get('error') or a2e_job.get('message') or json.dumps(a2e_job)[:200]
+                    error_message = kling_job.get('error') or kling_job.get('message') or json.dumps(kling_job)[:200]
                     update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=error_message)
                     return
-            update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=last_error or 'Timed out waiting for A2E job')
+            update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=last_error or 'Timed out waiting for Kling job')
         else:
-            # Use Runway for normal/fun styles or when A2E is not available
+            # Use Runway for normal/fun styles or when Kling is not available
             logger.info(f"[Imagine] Using Runway for job {job_id}")
             runway_job_id = runway_create_image_to_video_job(image_bytes, style_prompt)
             update_imagine_job(job_id, runway_job_id=runway_job_id)
