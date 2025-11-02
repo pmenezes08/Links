@@ -3459,18 +3459,18 @@ def runway_download_asset(asset_url: str) -> bytes:
 # --- Kling AI functions for uncensored/spicy videos ---
 def kling_headers() -> Dict[str, str]:
     """Generate Kling AI authentication headers"""
-    if not KLING_ACCESS_KEY:
-        raise RuntimeError('Kling API key is not configured. Set Kling_Access_KEY environment variable.')
+    if not KLING_SECRET_KEY:
+        raise RuntimeError('Kling API key is not configured. Set Kling_Secret_KEY environment variable.')
     return {
-        'Authorization': f'Bearer {KLING_ACCESS_KEY}',
+        'Authorization': f'Bearer {KLING_SECRET_KEY}',
         'Accept': 'application/json'
     }
 
 
 def kling_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int = 5) -> str:
     """Create image-to-video job using Kling AI (for spicy content)"""
-    if not KLING_ACCESS_KEY:
-        raise RuntimeError('Kling API key not configured. Set Kling_Access_KEY environment variable.')
+    if not KLING_SECRET_KEY:
+        raise RuntimeError('Kling API key not configured. Set Kling_Secret_KEY environment variable.')
     if not image_bytes:
         raise RuntimeError('Missing image bytes for Kling request')
     
@@ -3503,7 +3503,7 @@ def kling_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: i
 
 def kling_get_job_status(task_id: str) -> dict:
     """Poll Kling AI job status"""
-    if not KLING_ACCESS_KEY:
+    if not KLING_SECRET_KEY:
         raise RuntimeError('Kling API key not configured')
     
     headers = kling_headers()
@@ -3677,7 +3677,7 @@ def process_imagine_job(job_id: int):
         
         # Use Kling AI for spicy videos when NSFW is allowed (uncensored)
         # Otherwise use Runway
-        use_kling = (style == 'spicy' and allow_nsfw and KLING_ACCESS_KEY)
+        use_kling = (style == 'spicy' and allow_nsfw and KLING_SECRET_KEY)
         
         if use_kling:
             logger.info(f"[Imagine] Using Kling AI for spicy video (job {job_id})")
