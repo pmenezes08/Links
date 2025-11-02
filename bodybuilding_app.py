@@ -3632,7 +3632,7 @@ def a2e_create_image_to_video_job(
                         text = response.text or ''
                         job_id = _extract_job_id_from_text(text)
                         if job_id:
-                            logger.info(f"[Imagine] A2E job created via {start_endpoint} with plain-text response")
+                            logger.info(f"[Imagine] A2E job created via {start_endpoint} with plain-text response (task_id={job_id})")
                             return str(job_id)
                         snippet = text.strip()[:200]
                         base_start_error = f"start returned non-JSON: {snippet}" if snippet else "start returned empty response"
@@ -3647,7 +3647,7 @@ def a2e_create_image_to_video_job(
                                 result.get('id') or result.get('job_id') or result.get('jobId')
                             )
                             if job_id:
-                                logger.info(f"[Imagine] A2E job created successfully via {start_endpoint}")
+                                logger.info(f"[Imagine] A2E job created successfully via {start_endpoint} (task_id={job_id})")
                                 return str(job_id)
                             base_start_error = "start response missing task id"
                 elif response.status_code == 404:
@@ -3686,7 +3686,7 @@ def a2e_create_image_to_video_job(
                         result.get('id') or result.get('job_id') or result.get('jobId')
                     )
                     if job_id:
-                        logger.info(f"[Imagine] A2E job created successfully via primary endpoint")
+                        logger.info(f"[Imagine] A2E job created successfully via primary endpoint (task_id={job_id})")
                         return str(job_id)
                     raise RuntimeError("A2E primary endpoint response missing task id")
                 error_msg = result.get('error') or result.get('message') or json.dumps(result)[:200]
@@ -3722,7 +3722,7 @@ def a2e_create_image_to_video_job(
                                     result.get('task_id') or result.get('taskId')
                                 )
                                 if job_id:
-                                    logger.info(f"[Imagine] A2E job created successfully via {url} (JSON payload)")
+                                    logger.info(f"[Imagine] A2E job created successfully via {url} (JSON payload, task_id={job_id})")
                                     return str(job_id)
                                 logger.warning(f"[Imagine] A2E JSON response missing job id via {url}: {result}")
                                 if not base_fallback_response_error:
@@ -3731,7 +3731,7 @@ def a2e_create_image_to_video_job(
                                 response_text = response.text or ''
                                 job_id = _extract_job_id_from_text(response_text)
                                 if job_id:
-                                    logger.info(f"[Imagine] A2E job created via {url} with plain-text response")
+                                    logger.info(f"[Imagine] A2E job created via {url} with plain-text response (task_id={job_id})")
                                     return str(job_id)
                                 snippet = response_text.strip()[:200]
                                 logger.warning(f"[Imagine] A2E JSON response not parseable via {url} (status {response.status_code}): {snippet}")
@@ -3761,7 +3761,7 @@ def a2e_create_image_to_video_job(
                                 result.get('task_id') or result.get('taskId')
                             )
                             if job_id:
-                                logger.info(f"[Imagine] A2E job created successfully via {url} (multipart fallback)")
+                                logger.info(f"[Imagine] A2E job created successfully via {url} (multipart fallback, task_id={job_id})")
                                 return str(job_id)
                             logger.warning(f"[Imagine] A2E multipart response missing job id via {url}: {result}")
                             if not base_fallback_response_error:
@@ -3770,7 +3770,7 @@ def a2e_create_image_to_video_job(
                             response_text = response.text or ''
                             job_id = _extract_job_id_from_text(response_text)
                             if job_id:
-                                logger.info(f"[Imagine] A2E job created via {url} (multipart) with plain-text response")
+                                logger.info(f"[Imagine] A2E job created via {url} (multipart) with plain-text response (task_id={job_id})")
                                 return str(job_id)
                             snippet = response_text.strip()[:200]
                             logger.warning(f"[Imagine] A2E multipart response not parseable via {url} (status {response.status_code}): {snippet}")
@@ -3821,10 +3821,17 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
     """Get A2E job status"""
     headers = a2e_headers()
 
-    status_paths = [
+    status_get_paths = [
         '/api/v1/userImage2Video/status/{job_id}',
+        '/api/v1/userImage2Video/status/{job_id}/',
         '/api/v1/userImage2Video/status?task_id={job_id}',
+        '/api/v1/userImage2Video/status/?task_id={job_id}',
+        '/api/v1/userImage2Video/status?taskId={job_id}',
+        '/api/v1/userImage2Video/status/?taskId={job_id}',
         '/api/v1/userImage2Video/result/{job_id}',
+        '/api/v1/userImage2Video/result/{job_id}/',
+        '/api/v1/userImage2Video/result?task_id={job_id}',
+        '/api/v1/userImage2Video/result?taskId={job_id}',
         '/v1/jobs/{job_id}',
         '/api/v1/jobs/{job_id}',
         '/v1/tasks/{job_id}',
@@ -3832,11 +3839,17 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
         '/status/{job_id}',
     ]
 
+    status_post_endpoints = [
+        '/api/v1/userImage2Video/status',
+        '/api/v1/userImage2Video/result',
+    ]
+
     attempt_summaries: List[Dict[str, Optional[str]]] = []
 
     for base_url in _a2e_base_urls():
         base_primary_error: Optional[str] = None
         base_fallback_error: Optional[str] = None
+        base_fallback_post_error: Optional[str] = None
 
         primary_url = f"{base_url}/api/tasks/{job_id}/"
         try:
@@ -3862,7 +3875,7 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
             logger.warning(f"[Imagine] Falling back to legacy A2E status endpoints for {base_url}: {base_primary_error}")
 
         fallback_error: Optional[str] = None
-        for path in status_paths:
+        for path in status_get_paths:
             url = f"{base_url}{path.format(job_id=job_id)}"
             try:
                 response = requests.get(url, headers=headers, timeout=(10, 20))
@@ -3882,10 +3895,34 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
                 fallback_error = fallback_error or str(e)
                 continue
 
+        if not fallback_error:
+            for path in status_post_endpoints:
+                url = f"{base_url}{path}"
+                try:
+                    payload = {'task_id': job_id, 'taskId': job_id}
+                    response = requests.post(url, headers={**headers, 'Content-Type': 'application/json'}, json=payload, timeout=(10, 20))
+                    if response.status_code < 400:
+                        try:
+                            return response.json()
+                        except ValueError:
+                            text = response.text or ''
+                            raise RuntimeError(f"A2E status POST returned non-JSON response via {url}: {text[:200]}")
+                    elif response.status_code == 404:
+                        continue
+                    else:
+                        raise RuntimeError(f"A2E status POST failed ({response.status_code}) via {url}: {response.text[:200]}")
+                except requests.exceptions.RequestException as e:
+                    base_fallback_post_error = base_fallback_post_error or str(e)
+                    continue
+                except RuntimeError as e:
+                    base_fallback_post_error = base_fallback_post_error or str(e)
+                    continue
+
         attempt_summaries.append({
             'base': base_url,
             'primary': base_primary_error,
             'fallback': fallback_error,
+            'fallback_post': base_fallback_post_error,
         })
 
     if attempt_summaries:
@@ -3896,6 +3933,8 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
                 reasons.append(f"primary: {summary['primary']}")
             if summary['fallback']:
                 reasons.append(f"fallback: {summary['fallback']}")
+            if summary['fallback_post']:
+                reasons.append(f"fallback_post: {summary['fallback_post']}")
             if not reasons:
                 reasons.append('no response')
             parts.append(f"{summary['base']} ({'; '.join(reasons)})")
