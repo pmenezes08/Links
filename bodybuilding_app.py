@@ -3746,7 +3746,7 @@ def process_imagine_job(job_id: int):
                     raise RuntimeError(f"Failed to compress image for Kling: {e}. Original size: {original_size} bytes")
             
             # Create Kling job with spicy prompt (moderation-friendly)
-            kling_prompt = "Generate a sexy video with classy and elegant moves, sensual atmosphere, alluring poses, captivating motion, and sophisticated style. Make it visually appealing and tastefully seductive."
+            kling_prompt = "Create a sexy video with provocative movements, dynamic motion, sensual gestures, alluring body language, and captivating rhythm. Generate fluid and expressive animation with bold, seductive poses and energetic transitions."
             kling_task_id = kling_create_image_to_video_job(
                 kling_image_bytes,
                 kling_prompt,
