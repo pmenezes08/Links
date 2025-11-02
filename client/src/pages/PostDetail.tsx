@@ -128,6 +128,8 @@ export default function PostDetail(){
   const [resolvingJobId, setResolvingJobId] = useState<number | null>(null)
   const [carouselItems, setCarouselItems] = useState<Array<{type: 'original' | 'ai_video', image_path?: string | null, image_url?: string | null, video_path?: string | null, video_url?: string | null, created_by?: string | null, style?: string | null}>>([])
   const [carouselLoading, setCarouselLoading] = useState(false)
+  const [talkingAvatarModalOpen, setTalkingAvatarModalOpen] = useState(false)
+  const [enableTalkingAvatar, setEnableTalkingAvatar] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
@@ -829,7 +831,7 @@ export default function PostDetail(){
                 <EditableAISummary
                   postId={post.id}
                   initialSummary={post.audio_summary}
-                  isOwner={post.username === currentUser}
+                  isOwner={post.username === currentUser?.username}
                   onSummaryUpdate={(newSummary) => {
                     setPost(prev => prev ? {...prev, audio_summary: newSummary} as any : null);
                   }}
@@ -874,7 +876,7 @@ export default function PostDetail(){
             <ReplyNodeMemo
               key={r.id}
               reply={r}
-              currentUser={currentUser}
+              currentUser={currentUser?.username || null}
               onToggle={(id, reaction)=> toggleReplyReaction(id, reaction)}
               onInlineReply={(id, text, file)=> submitInlineReply(id, text, file)}
               onDelete={(id)=> deleteReply(id)}
@@ -1076,6 +1078,19 @@ export default function PostDetail(){
           if (fileInputRef.current) fileInputRef.current.value = ''
         }}
       />
+      
+      {/* Talking Avatar Modal */}
+      {replyPreview && currentUser && (
+        <TalkingAvatarModal
+          isOpen={talkingAvatarModalOpen}
+          onClose={() => setTalkingAvatarModalOpen(false)}
+          audioBlob={replyPreview.blob}
+          audioDuration={replyPreview.duration}
+          userProfilePic={currentUser.profile_picture}
+          username={currentUser.username}
+          onSubmit={handleTalkingAvatarSubmit}
+        />
+      )}
     </div>
   )
 }
@@ -1101,7 +1116,7 @@ function Reaction({ icon, count, active, onClick }:{ icon: string, count: number
 const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   if (prev.reply !== next.reply) return false
   if (prev.inlineSendingFlag !== next.inlineSendingFlag) return false
-  if (prev.currentUser?.username !== next.currentUser?.username) return false
+  if (prev.currentUser !== next.currentUser) return false
   if (prev.depth !== next.depth) return false
   if (prev.onImagine !== next.onImagine) return false
   if (prev.getImagineJob !== next.getImagineJob) return false
@@ -1109,7 +1124,8 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   return true
 })
 
-function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, onImagine, getImagineJob, nsfwAllowed }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, onImagine?: (targetType: 'post' | 'reply', targetId: number, nsfwAllowed?: boolean) => void, getImagineJob?: (targetType: 'post' | 'reply', targetId: number) => ImagineJobState | undefined, nsfwAllowed?: boolean }){
+function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, onImagine, getImagineJob, nsfwAllowed }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, onImagine?: (targetType: 'post' | 'reply', targetId: number, nsfwAllowed?: boolean) => void, getImagineJob?: (targetType: 'post' | 'reply', targetId: number) => ImagineJobState | undefined, nsfwAllowed?: boolean }){
+  const currentUser = currentUserName
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
@@ -1150,7 +1166,7 @@ function ReplyNode({ reply, depth=0, currentUser, onToggle, onInlineReply, onDel
           <div className="flex items-center gap-2">
             <div className="font-medium">{reply.username}</div>
             <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatSmartTime(reply.timestamp)}</div>
-            {(currentUser && (currentUser.username === reply.username || currentUser.username === 'admin')) ? (
+            {(currentUser && (currentUser === reply.username || currentUser === 'admin')) ? (
               <>
                 <button
                   className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
