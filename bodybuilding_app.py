@@ -4179,6 +4179,10 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                     )
                     logger.info(f"[Imagine] Polling A2E status via POST {status_url} params={params} -> {response.status_code}")
                     if response.status_code == 200:
+                        try:
+                            logger.info(f"[Imagine] A2E status raw response (POST params={params}): {response.text[:500]}")
+                        except Exception:
+                            pass
                         payload = _a2e_try_parse_json(response)
                         if payload is None:
                             snippet = (response.text or '').strip()[:200]
@@ -4208,6 +4212,10 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                     response = requests.get(url, headers=headers, timeout=(10, 20))
                     logger.info(f"[Imagine] Polling A2E status via GET {url} -> {response.status_code}")
                     if response.status_code == 200:
+                        try:
+                            logger.info(f"[Imagine] A2E status raw response (GET url={url}): {response.text[:500]}")
+                        except Exception:
+                            pass
                         payload = _a2e_try_parse_json(response)
                         if payload is None:
                             snippet = (response.text or '').strip()[:200]
@@ -4248,6 +4256,10 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                         )
                         logger.info(f"[Imagine] Polling A2E status via POST {url} payload_keys={list(payload.keys())} -> {response.status_code}")
                         if response.status_code == 200:
+                            try:
+                                logger.info(f"[Imagine] A2E status raw response (POST url={url}, payload_keys={list(payload.keys())}): {response.text[:500]}")
+                            except Exception:
+                                pass
                             payload_json = _a2e_try_parse_json(response)
                             if payload_json is None:
                                 snippet = (response.text or '').strip()[:200]
