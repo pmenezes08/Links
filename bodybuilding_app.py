@@ -3465,7 +3465,16 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
     if not image_bytes:
         raise RuntimeError('Missing image bytes for A2E request')
     
-    url = f"{A2E_API_URL}/v1/image-to-video"
+    # Try different possible endpoints - A2E API might use different format
+    base_url = A2E_API_URL.rstrip('/')
+    
+    # Try endpoints in order of likelihood
+    endpoints = [
+        f"{base_url}/v1/image-to-video",
+        f"{base_url}/api/v1/image-to-video",
+        f"{base_url}/image-to-video",
+        f"{base_url}/generate"
+    ]
     
     # Prepare multipart form data
     files = {'image': ('image.jpg', image_bytes, 'image/jpeg')}
@@ -3475,7 +3484,42 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
         'resolution': resolution
     }
     
-    response = requests.post(url, headers=a2e_headers(), files=files, data=data, timeout=(10, 45))
+    headers = a2e_headers()
+    # Don't set Content-Type manually for multipart - requests handles it with boundary
+    if 'Content-Type' in headers:
+        del headers['Content-Type']
+    
+    last_error = None
+    for url in endpoints:
+        try:
+            logger.info(f"[Imagine] Trying A2E endpoint: {url}")
+            response = requests.post(url, headers=headers, files=files, data=data, timeout=(10, 45))
+            if response.status_code < 400:
+                # Check if response is JSON
+                try:
+                    result = response.json()
+                    job_id = result.get('id') or result.get('job_id') or result.get('jobId') or result.get('task_id') or result.get('taskId')
+                    if job_id:
+                        logger.info(f"[Imagine] A2E job created successfully via {url}")
+                        return str(job_id)
+                except ValueError:
+                    # Not JSON - might be wrong endpoint
+                    continue
+            elif response.status_code == 404:
+                # Endpoint doesn't exist - try next
+                continue
+            else:
+                # Real error from this endpoint
+                raise RuntimeError(f"A2E job creation failed ({response.status_code}): {response.text[:200]}")
+        except requests.exceptions.RequestException as e:
+            last_error = str(e)
+            continue
+    
+    # If we get here, all endpoints failed
+    if last_error:
+        raise RuntimeError(f"A2E job creation failed - tried {len(endpoints)} endpoints. Last error: {last_error}")
+    else:
+        raise RuntimeError(f"A2E job creation failed - tried {len(endpoints)} endpoints, all returned non-JSON or 404")
     if response.status_code >= 400:
         raise RuntimeError(f"A2E job creation failed ({response.status_code}): {response.text}")
     
