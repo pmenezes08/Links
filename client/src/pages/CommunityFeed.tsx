@@ -14,6 +14,7 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import VideoCarousel from '../components/VideoCarousel'
+import { useImagineJobs, type ImagineJobState } from '../hooks/useImagineJobs'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -837,6 +838,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [gifPickerTarget, setGifPickerTarget] = useState<'main' | number | null>(null)
   const [carouselItems, setCarouselItems] = useState<Array<{type: 'original' | 'ai_video', image_path?: string | null, image_url?: string | null, video_path?: string | null, video_url?: string | null, created_by?: string | null, style?: string | null}>>([])
   const [carouselLoading, setCarouselLoading] = useState(false)
+  const imagine = useImagineJobs()
 
   // Detect links when editing
   useEffect(() => {
