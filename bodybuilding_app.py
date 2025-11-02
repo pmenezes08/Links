@@ -138,6 +138,10 @@ RUNWAY_MODEL_ID = os.environ.get('RUNWAY_MODEL_ID', 'gen4_turbo')
 RUNWAY_API_URL = os.environ.get('RUNWAY_API_URL', 'https://api.dev.runwayml.com')
 A2E_API_KEY = (os.environ.get('A2E_API_KEY') or '').strip() or None
 A2E_API_URL = os.environ.get('A2E_API_URL', 'https://api.a2e.ai')
+A2E_DEFAULT_NEGATIVE_PROMPT = (
+    """lowres, low quality, worst quality, bad anatomy, deformed face, extra limbs, moving viewpoint,"""
+    """ motion blur, static image, distorted proportions, nsfw artifacts"""
+)
 PUBLIC_BASE_URL = (os.environ.get('PUBLIC_BASE_URL') or '').rstrip('/') or None
 try:
     imagine_executor = ThreadPoolExecutor(max_workers=int(os.environ.get('IMAGINE_MAX_WORKERS', '2')))
@@ -3489,7 +3493,15 @@ def _a2e_base_urls() -> List[str]:
 
     return candidates
 
-def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int = 5, resolution: str = '1080p') -> str:
+def a2e_create_image_to_video_job(
+    image_bytes: bytes,
+    prompt: str,
+    duration: int = 5,
+    resolution: str = '1080p',
+    image_url: Optional[str] = None,
+    job_name: Optional[str] = None,
+    negative_prompt: Optional[str] = None
+) -> str:
     """Create an image-to-video job using a2e.ai API (uncensored)"""
     if not image_bytes:
         raise RuntimeError('Missing image bytes for A2E request')
@@ -3507,17 +3519,28 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
             return match.group(1)
         return None
 
+    negative_prompt = negative_prompt or A2E_DEFAULT_NEGATIVE_PROMPT
+
     files = {'image': ('image.jpg', image_bytes, 'image/jpeg')}
     legacy_form_data = {
         'prompt': prompt,
-        'duration': duration,
-        'resolution': resolution
+        'duration': str(duration),
+        'resolution': resolution,
     }
     api_form_data = {
         'prompt': prompt,
         'duration': str(duration),
-        'resolution': resolution
+        'resolution': resolution,
+        'negative_prompt': negative_prompt,
     }
+    if job_name:
+        api_form_data['name'] = job_name
+        legacy_form_data['name'] = job_name
+    if image_url:
+        api_form_data['image_url'] = image_url
+        legacy_form_data['image_url'] = image_url
+    if negative_prompt:
+        legacy_form_data['negative_prompt'] = negative_prompt
 
     aspect_ratio = None
     if isinstance(resolution, str):
@@ -3572,9 +3595,15 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
             'imageData': data_uri
         }
     ]
-    if aspect_ratio:
-        for payload in json_payload_variants:
+    for payload in json_payload_variants:
+        if aspect_ratio:
             payload['aspect_ratio'] = aspect_ratio
+        if negative_prompt:
+            payload['negative_prompt'] = negative_prompt
+        if image_url:
+            payload['image_url'] = image_url
+        if job_name:
+            payload['name'] = job_name
 
     attempt_summaries: List[Dict[str, Optional[str]]] = []
 
@@ -4061,7 +4090,21 @@ def process_imagine_job(job_id: int):
             
             # Create A2E job with explicit prompt for sexual content
             a2e_prompt = "Create a highly sexual, erotic, and explicit video animation with seductive movements, provocative poses, sensual atmosphere, and intense sexual energy. Make it very sexual, erotic, and explicit."
-            a2e_job_id = a2e_create_image_to_video_job(a2e_image_bytes, a2e_prompt, duration=5, resolution='1080p')
+            source_public_url = None
+            try:
+                source_public_url = get_public_upload_url(source_path)
+            except Exception as url_err:
+                logger.warning(f"[Imagine] Unable to derive public URL for source image: {url_err}")
+            job_display_name = f"Imagine Job {job_id}"
+            a2e_job_id = a2e_create_image_to_video_job(
+                a2e_image_bytes,
+                a2e_prompt,
+                duration=5,
+                resolution='1080p',
+                image_url=source_public_url,
+                job_name=job_display_name,
+                negative_prompt=A2E_DEFAULT_NEGATIVE_PROMPT,
+            )
             update_imagine_job(job_id, runway_job_id=a2e_job_id)  # Reuse runway_job_id field
             poll_interval = int(os.environ.get('A2E_POLL_INTERVAL', '10'))
             max_wait = int(os.environ.get('A2E_MAX_WAIT_SECONDS', '300'))
