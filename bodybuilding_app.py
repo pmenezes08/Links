@@ -3520,40 +3520,43 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
         raise RuntimeError(f"A2E job creation failed - tried {len(endpoints)} endpoints. Last error: {last_error}")
     else:
         raise RuntimeError(f"A2E job creation failed - tried {len(endpoints)} endpoints, all returned non-JSON or 404")
-    if response.status_code >= 400:
-        raise RuntimeError(f"A2E job creation failed ({response.status_code}): {response.text}")
-    
-    # Handle response - A2E might return JSON or different format
-    try:
-        result = response.json()
-    except ValueError as e:
-        # If not JSON, check if it's a plain text ID
-        response_text = response.text.strip()
-        if response_text:
-            # Try to extract ID from response text
-            raise RuntimeError(f"A2E API returned non-JSON response: {response_text[:200]}")
-        else:
-            raise RuntimeError(f"A2E API returned empty response: {response.status_code}")
-    
-    job_id = result.get('id') or result.get('job_id') or result.get('jobId') or result.get('task_id') or result.get('taskId')
-    if not job_id:
-        # Log the full response for debugging
-        logger.error(f"A2E API response missing job id. Response: {result}")
-        raise RuntimeError(f'A2E API response missing job id. Response keys: {list(result.keys()) if isinstance(result, dict) else "not a dict"}')
-    return str(job_id)
 
 def a2e_get_job(job_id: str) -> Dict[str, Any]:
     """Get A2E job status"""
-    url = f"{A2E_API_URL}/v1/jobs/{job_id}"
-    response = requests.get(url, headers=a2e_headers(), timeout=(10, 20))
-    if response.status_code >= 400:
-        raise RuntimeError(f"A2E job fetch failed ({response.status_code}): {response.text}")
+    base_url = A2E_API_URL.rstrip('/')
     
-    try:
-        return response.json()
-    except ValueError as e:
-        response_text = response.text[:500]
-        raise RuntimeError(f"A2E API returned non-JSON response: {response_text}")
+    # Try different possible endpoints for status
+    endpoints = [
+        f"{base_url}/v1/jobs/{job_id}",
+        f"{base_url}/api/v1/jobs/{job_id}",
+        f"{base_url}/v1/tasks/{job_id}",
+        f"{base_url}/api/v1/tasks/{job_id}",
+        f"{base_url}/status/{job_id}"
+    ]
+    
+    headers = a2e_headers()
+    last_error = None
+    
+    for url in endpoints:
+        try:
+            response = requests.get(url, headers=headers, timeout=(10, 20))
+            if response.status_code < 400:
+                try:
+                    return response.json()
+                except ValueError:
+                    continue  # Try next endpoint
+            elif response.status_code == 404:
+                continue  # Try next endpoint
+            else:
+                raise RuntimeError(f"A2E job fetch failed ({response.status_code}): {response.text[:200]}")
+        except requests.exceptions.RequestException as e:
+            last_error = str(e)
+            continue
+    
+    if last_error:
+        raise RuntimeError(f"A2E job fetch failed - tried {len(endpoints)} endpoints. Last error: {last_error}")
+    else:
+        raise RuntimeError(f"A2E job fetch failed - tried {len(endpoints)} endpoints, all returned non-JSON or 404")
 
 def a2e_extract_video_url(job_data: Dict[str, Any]) -> Optional[str]:
     """Extract video URL from A2E job response"""
