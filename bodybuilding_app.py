@@ -138,6 +138,11 @@ RUNWAY_MODEL_ID = os.environ.get('RUNWAY_MODEL_ID', 'gen4_turbo')
 RUNWAY_API_URL = os.environ.get('RUNWAY_API_URL', 'https://api.dev.runwayml.com')
 A2E_API_KEY = (os.environ.get('A2E_API_KEY') or '').strip() or None
 A2E_API_URL = os.environ.get('A2E_API_URL', 'https://api.a2e.ai')
+A2E_START_ENDPOINT = os.environ.get('A2E_START_ENDPOINT', '/api/v1/userImage2Video/start')
+A2E_STATUS_ENDPOINT = os.environ.get('A2E_STATUS_ENDPOINT', '/api/v1/userImage2Video/status')
+A2E_TASK_ENDPOINT = os.environ.get('A2E_TASK_ENDPOINT', '/api/v1/userImage2Video/{task_id}')
+A2E_TIMEOUT_SECONDS = int(os.environ.get('A2E_TIMEOUT_SECONDS', '600'))
+A2E_POLL_INTERVAL_SECONDS = int(os.environ.get('A2E_POLL_INTERVAL_SECONDS', os.environ.get('A2E_POLL_INTERVAL', '8')))
 A2E_DEFAULT_NEGATIVE_PROMPT = (
     """lowres, low quality, worst quality, bad anatomy, deformed face, extra limbs, moving viewpoint,"""
     """ motion blur, static image, distorted proportions, nsfw artifacts"""
@@ -3494,6 +3499,14 @@ def _a2e_base_urls() -> List[str]:
     return candidates
 
 
+def _a2e_join(base_url: str, path: Optional[str]) -> str:
+    if not path:
+        return base_url
+    if path.startswith('http://') or path.startswith('https://'):
+        return path
+    return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+
 HEX_OBJECT_ID_RE = re.compile(r'^[0-9a-fA-F]{24}$')
 
 
@@ -3673,6 +3686,53 @@ def _a2e_finalize_job_identifier(
         logger.info(f"[Imagine] Resolved A2E task identifier {job_identifier} -> {resolved} using {base_url}")
     return resolved or job_identifier
 
+
+def _a2e_status_param_variants(candidate: str, job_name: Optional[str]) -> List[Dict[str, str]]:
+    variants: List[Dict[str, str]] = [
+        {'task_id': candidate},
+        {'taskId': candidate},
+        {'id': candidate},
+        {'task': candidate},
+    ]
+    if _a2e_is_object_id(candidate):
+        variants.append({'_id': candidate})
+    if job_name:
+        variants.append({'name': job_name})
+    return variants
+
+
+def _a2e_normalize_status(payload: Any) -> Dict[str, Any]:
+    normalized: Dict[str, Any] = {'raw': payload}
+    if payload is None:
+        return normalized
+    if isinstance(payload, dict):
+        if 'code' in payload and isinstance(payload.get('data'), dict):
+            data = payload.get('data') or {}
+            normalized['data'] = data
+            status = data.get('current_status') or data.get('status') or payload.get('status')
+            video_url = data.get('result_url') or data.get('video_url') or payload.get('video_url')
+            normalized['status'] = status
+            normalized['result_url'] = video_url
+            normalized['video_url'] = video_url
+            error_msg = data.get('failed_message') or data.get('error') or data.get('failed_reason') or payload.get('message') or payload.get('error')
+            if error_msg:
+                normalized['error'] = error_msg
+            return normalized
+        status = payload.get('status') or payload.get('current_status')
+        if status:
+            normalized['status'] = status
+        video_url = payload.get('result_url') or payload.get('video_url')
+        if video_url:
+            normalized['result_url'] = video_url
+            normalized['video_url'] = video_url
+        error_msg = payload.get('error') or payload.get('failed_message') or payload.get('failed_reason') or payload.get('message')
+        if error_msg:
+            normalized['error'] = error_msg
+        if 'data' in payload and isinstance(payload['data'], dict):
+            normalized.setdefault('data', payload['data'])
+        return normalized
+    return normalized
+
 def a2e_create_image_to_video_job(
     image_bytes: bytes,
     prompt: str,
@@ -3794,7 +3854,7 @@ def a2e_create_image_to_video_job(
         base_fallback_response_error: Optional[str] = None
 
         if image_url:
-            start_endpoint = f"{base_url}/api/v1/userImage2Video/start"
+            start_endpoint = _a2e_join(base_url, A2E_START_ENDPOINT)
             try:
                 headers = base_headers.copy()
                 headers['Content-Type'] = 'application/json'
@@ -4023,9 +4083,10 @@ def a2e_create_image_to_video_job(
 
     raise RuntimeError('A2E job creation failed: no base URLs available')
 
-def a2e_get_job(job_id: str) -> Dict[str, Any]:
+def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional[str] = None) -> Dict[str, Any]:
     """Get A2E job status"""
     headers = a2e_headers()
+    attempt_summaries: List[str] = []
 
     status_get_paths = [
         '/api/v1/userImage2Video/status/{job_id}',
@@ -4078,132 +4139,116 @@ def a2e_get_job(job_id: str) -> Dict[str, Any]:
         '/api/image-to-video/result',
     ]
 
-    attempt_summaries: List[Dict[str, Optional[str]]] = []
-
     for base_url in _a2e_base_urls():
-        base_primary_error: Optional[str] = None
-        base_fallback_error: Optional[str] = None
-        base_fallback_post_error: Optional[str] = None
+        errors: List[str] = []
+        candidate_ids: List[str] = []
+        if job_id:
+            candidate_ids.append(job_id)
+        resolved_candidate = _a2e_resolve_task_object_id(base_url, job_id, headers, job_name=job_name, image_url=image_url)
+        if resolved_candidate and resolved_candidate not in candidate_ids:
+            candidate_ids.insert(0, resolved_candidate)
 
-        effective_job_id = job_id
-        if not _a2e_is_object_id(effective_job_id):
-            resolved_candidate = _a2e_resolve_task_object_id(base_url, effective_job_id, headers)
-            if resolved_candidate and resolved_candidate != effective_job_id and _a2e_is_object_id(resolved_candidate):
-                logger.info(f"[Imagine] Resolved A2E status identifier {effective_job_id} -> {resolved_candidate} for base {base_url}")
-                effective_job_id = resolved_candidate
-                job_id = resolved_candidate
+        status_url = _a2e_join(base_url, A2E_STATUS_ENDPOINT)
 
-        primary_url = f"{base_url}/api/tasks/{effective_job_id}/"
-        try:
-            response = requests.get(primary_url, headers=headers, timeout=(10, 20))
-            if response.status_code < 400:
+        for candidate in candidate_ids:
+            param_variants = _a2e_status_param_variants(candidate, job_name)
+            for params in param_variants:
                 try:
-                    return response.json()
-                except ValueError:
-                    text = response.text or ''
-                    raise RuntimeError(f"A2E primary status returned non-JSON response: {text[:200]}")
-            elif response.status_code == 404:
-                snippet = (response.text or '').strip()[:200]
-                base_primary_error = f"Primary status endpoint 404: {snippet or 'not found'}"
-            else:
-                snippet = response.text[:200]
-                raise RuntimeError(f"A2E job fetch failed ({response.status_code}) via primary endpoint: {snippet}")
-        except requests.exceptions.RequestException as e:
-            base_primary_error = str(e)
-        except RuntimeError as e:
-            base_primary_error = str(e)
+                    response = requests.get(status_url, headers=headers, params=params, timeout=(10, 20))
+                    logger.info(f"[Imagine] Polling A2E status via GET {status_url} params={params} -> {response.status_code}")
+                    if response.status_code == 200:
+                        payload = _a2e_try_parse_json(response)
+                        if payload is None:
+                            continue
+                        normalized = _a2e_normalize_status(payload)
+                        normalized['task_id'] = candidate
+                        normalized['base_url'] = base_url
+                        normalized['request_params'] = params
+                        if normalized.get('status') or normalized.get('result_url'):
+                            return normalized
+                        errors.append(f"GET params={params} missing status")
+                    elif response.status_code == 404:
+                        errors.append(f"GET params={params} -> 404")
+                    else:
+                        errors.append(f"GET params={params} -> {response.status_code}: {response.text[:200]}")
+                except requests.exceptions.RequestException as exc:
+                    errors.append(f"GET params={params} network error: {exc}")
 
-        if base_primary_error:
-            logger.warning(f"[Imagine] Falling back to legacy A2E status endpoints for {base_url}: {base_primary_error}")
-
-        fallback_error: Optional[str] = None
-        for path in status_get_paths:
-            url = f"{base_url}{path.format(job_id=effective_job_id)}"
-            try:
-                response = requests.get(url, headers=headers, timeout=(10, 20))
-                logger.info(f"[Imagine] Polling A2E status via GET {url} -> {response.status_code}")
-                if response.status_code < 400:
-                    try:
-                        return response.json()
-                    except ValueError:
+            for path in status_get_paths:
+                url = _a2e_join(base_url, path.format(job_id=candidate))
+                try:
+                    response = requests.get(url, headers=headers, timeout=(10, 20))
+                    logger.info(f"[Imagine] Polling A2E status via GET {url} -> {response.status_code}")
+                    if response.status_code == 200:
+                        payload = _a2e_try_parse_json(response)
+                        if payload is None:
+                            continue
+                        normalized = _a2e_normalize_status(payload)
+                        normalized['task_id'] = candidate
+                        normalized['base_url'] = base_url
+                        normalized['request_url'] = url
+                        if normalized.get('status') or normalized.get('result_url'):
+                            return normalized
+                        errors.append(f"GET {url} missing status")
+                    elif response.status_code == 404:
                         continue
-                elif response.status_code == 404:
-                    continue
-                else:
-                    raise RuntimeError(f"A2E job fetch failed ({response.status_code}) via {url}: {response.text[:200]}")
-            except requests.exceptions.RequestException as e:
-                fallback_error = fallback_error or str(e)
-                continue
-            except RuntimeError as e:
-                fallback_error = fallback_error or str(e)
-                continue
+                    else:
+                        errors.append(f"GET {url} -> {response.status_code}: {response.text[:200]}")
+                except requests.exceptions.RequestException as exc:
+                    errors.append(f"GET {url} network error: {exc}")
 
-        if not fallback_error:
             for path in status_post_endpoints:
-                url = f"{base_url}{path}"
-                try:
-                    for payload in (
-                        {'task_id': effective_job_id},
-                        {'taskId': effective_job_id},
-                        {'id': effective_job_id},
-                        {'task': effective_job_id},
-                    ):
-                        try:
-                            response = requests.post(
-                                url,
-                                headers={**headers, 'Content-Type': 'application/json'},
-                                json=payload,
-                                timeout=(10, 20)
-                            )
-                            logger.info(f"[Imagine] Polling A2E status via POST {url} payload_keys={list(payload.keys())} -> {response.status_code}")
-                            if response.status_code < 400:
-                                try:
-                                    return response.json()
-                                except ValueError:
-                                    text = response.text or ''
-                                    raise RuntimeError(f"A2E status POST returned non-JSON response via {url}: {text[:200]}")
-                            elif response.status_code == 404:
+                url = _a2e_join(base_url, path)
+                for payload in (
+                    {'task_id': candidate},
+                    {'taskId': candidate},
+                    {'id': candidate},
+                    {'task': candidate},
+                ):
+                    try:
+                        response = requests.post(
+                            url,
+                            headers={**headers, 'Content-Type': 'application/json'},
+                            json=payload,
+                            timeout=(10, 20)
+                        )
+                        logger.info(f"[Imagine] Polling A2E status via POST {url} payload_keys={list(payload.keys())} -> {response.status_code}")
+                        if response.status_code == 200:
+                            payload_json = _a2e_try_parse_json(response)
+                            if payload_json is None:
                                 continue
-                            else:
-                                raise RuntimeError(f"A2E status POST failed ({response.status_code}) via {url}: {response.text[:200]}")
-                        except requests.exceptions.RequestException as e:
-                            base_fallback_post_error = base_fallback_post_error or f"POST network error via {url}: {e}"
+                            normalized = _a2e_normalize_status(payload_json)
+                            normalized['task_id'] = candidate
+                            normalized['base_url'] = base_url
+                            normalized['request_url'] = url
+                            normalized['request_payload'] = payload
+                            if normalized.get('status') or normalized.get('result_url'):
+                                return normalized
+                            errors.append(f"POST {url} payload_keys={list(payload.keys())} missing status")
+                        elif response.status_code == 404:
                             continue
-                        except RuntimeError as e:
-                            base_fallback_post_error = base_fallback_post_error or str(e)
-                            continue
-                except requests.exceptions.RequestException as e:
-                    base_fallback_post_error = base_fallback_post_error or f"POST network error via {url}: {e}"
-                    continue
+                        else:
+                            errors.append(f"POST {url} payload_keys={list(payload.keys())} -> {response.status_code}: {response.text[:200]}")
+                    except requests.exceptions.RequestException as exc:
+                        errors.append(f"POST {url} payload_keys={list(payload.keys())} network error: {exc}")
 
-        attempt_summaries.append({
-            'base': base_url,
-            'primary': base_primary_error,
-            'fallback': fallback_error,
-            'fallback_post': base_fallback_post_error,
-        })
+        reason = '; '.join(errors) if errors else 'no response'
+        attempt_summaries.append(f"{base_url} ({reason})")
 
     if attempt_summaries:
-        parts = []
-        for summary in attempt_summaries:
-            reasons: List[str] = []
-            if summary['primary']:
-                reasons.append(f"primary: {summary['primary']}")
-            if summary['fallback']:
-                reasons.append(f"fallback: {summary['fallback']}")
-            if summary['fallback_post']:
-                reasons.append(f"fallback_post: {summary['fallback_post']}")
-            if not reasons:
-                reasons.append('no response')
-            parts.append(f"{summary['base']} ({'; '.join(reasons)})")
-        raise RuntimeError(f"A2E job fetch failed across bases: {' | '.join(parts)}")
+        raise RuntimeError(f"A2E job fetch failed across bases: {' | '.join(attempt_summaries)}")
 
     raise RuntimeError('A2E job fetch failed: no base URLs available')
 
 def a2e_extract_video_url(job_data: Dict[str, Any]) -> Optional[str]:
     """Extract video URL from A2E job response"""
     # Try common response formats
-    video_url = job_data.get('videoUrl') or job_data.get('video_url') or job_data.get('video')
+    video_url = (
+        job_data.get('result_url')
+        or job_data.get('videoUrl')
+        or job_data.get('video_url')
+        or job_data.get('video')
+    )
     if isinstance(video_url, str):
         return video_url
     
@@ -4463,14 +4508,14 @@ def process_imagine_job(job_id: int):
                 negative_prompt=A2E_DEFAULT_NEGATIVE_PROMPT,
             )
             update_imagine_job(job_id, runway_job_id=a2e_job_id)  # Reuse runway_job_id field
-            poll_interval = int(os.environ.get('A2E_POLL_INTERVAL', '10'))
-            max_wait = int(os.environ.get('A2E_MAX_WAIT_SECONDS', '300'))
+            poll_interval = max(2, A2E_POLL_INTERVAL_SECONDS)
+            max_wait = A2E_TIMEOUT_SECONDS
             start_time = time.time()
             last_error = None
             while time.time() - start_time < max_wait:
                 time.sleep(max(poll_interval, 2))
                 try:
-                    a2e_job = a2e_get_job(a2e_job_id)
+                    a2e_job = a2e_get_job(a2e_job_id, job_name=job_display_name, image_url=source_public_url)
                 except Exception as e:
                     last_error = str(e)
                     continue
