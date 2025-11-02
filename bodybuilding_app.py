@@ -3485,8 +3485,12 @@ def kling_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: i
     # Create job
     url = f'{KLING_API_URL}/video/generate'
     try:
-        logger.info(f'[Imagine] Creating Kling AI job')
+        logger.info(f'[Imagine] Creating Kling AI job at {url}')
+        logger.info(f'[Imagine] Headers: {headers}')
+        logger.info(f'[Imagine] Data: {data}')
         resp = requests.post(url, headers=headers, files=files, data=data, timeout=60)
+        logger.info(f'[Imagine] Response status: {resp.status_code}')
+        logger.info(f'[Imagine] Response body: {resp.text[:500]}')
         resp.raise_for_status()
         task_id = resp.json()['task_id']
         logger.info(f'[Imagine] Kling job created: {task_id}')
