@@ -3458,6 +3458,7 @@ def a2e_headers() -> Dict[str, str]:
         raise RuntimeError('A2E API key is not configured. Set A2E_API_KEY environment variable.')
     return {
         'Authorization': f'Bearer {A2E_API_KEY}',
+        'Accept': 'application/json'
     }
 
 def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int = 5, resolution: str = '1080p') -> str:
@@ -3470,10 +3471,14 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
     
     # Try endpoints in order of likelihood
     endpoints = [
-        f"{base_url}/v1/image-to-video",
-        f"{base_url}/api/v1/image-to-video",
-        f"{base_url}/image-to-video",
-        f"{base_url}/generate"
+        (f"{base_url}/v1/image-to-video/json", 'json'),
+        (f"{base_url}/api/v1/image-to-video/json", 'json'),
+        (f"{base_url}/image-to-video/json", 'json'),
+        (f"{base_url}/generate/json", 'json'),
+        (f"{base_url}/v1/image-to-video", 'multipart'),
+        (f"{base_url}/api/v1/image-to-video", 'multipart'),
+        (f"{base_url}/image-to-video", 'multipart'),
+        (f"{base_url}/generate", 'multipart')
     ]
     
     # Prepare multipart form data
@@ -3484,33 +3489,94 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
         'resolution': resolution
     }
     
-    headers = a2e_headers()
-    # Don't set Content-Type manually for multipart - requests handles it with boundary
-    if 'Content-Type' in headers:
-        del headers['Content-Type']
-    
+    encoded_image = base64.b64encode(image_bytes).decode('utf-8')
+    data_uri = f"data:image/jpeg;base64,{encoded_image}"
+
+    json_payload_variants = [
+        {
+            'prompt': prompt,
+            'duration': duration,
+            'resolution': resolution,
+            'image': data_uri
+        },
+        {
+            'prompt': prompt,
+            'duration': duration,
+            'resolution': resolution,
+            'image_base64': encoded_image,
+            'image_mime_type': 'image/jpeg'
+        },
+        {
+            'prompt': prompt,
+            'duration': duration,
+            'resolution': resolution,
+            'image': encoded_image,
+            'image_format': 'jpeg'
+        },
+        {
+            'prompt': prompt,
+            'duration': duration,
+            'resolution': resolution,
+            'imageData': data_uri
+        }
+    ]
+
     last_error = None
-    for url in endpoints:
+    last_response_error = None
+    for url, mode in endpoints:
         try:
             logger.info(f"[Imagine] Trying A2E endpoint: {url}")
-            response = requests.post(url, headers=headers, files=files, data=data, timeout=(10, 45))
-            if response.status_code < 400:
-                # Check if response is JSON
-                try:
-                    result = response.json()
-                    job_id = result.get('id') or result.get('job_id') or result.get('jobId') or result.get('task_id') or result.get('taskId')
-                    if job_id:
-                        logger.info(f"[Imagine] A2E job created successfully via {url}")
-                        return str(job_id)
-                except ValueError:
-                    # Not JSON - might be wrong endpoint
+            if mode == 'json':
+                for payload in json_payload_variants:
+                    headers = a2e_headers().copy()
+                    headers['Content-Type'] = 'application/json'
+                    response = requests.post(url, headers=headers, json=payload, timeout=(10, 45))
+                    if response.status_code < 400:
+                        try:
+                            result = response.json()
+                            job_id = result.get('id') or result.get('job_id') or result.get('jobId') or result.get('task_id') or result.get('taskId')
+                            if job_id:
+                                logger.info(f"[Imagine] A2E job created successfully via {url} (JSON payload)")
+                                return str(job_id)
+                            logger.warning(f"[Imagine] A2E JSON response missing job id via {url}: {result}")
+                            last_response_error = f"Missing job id in JSON response via {url}"
+                        except ValueError:
+                            logger.warning(f"[Imagine] A2E JSON response not parseable via {url}, trying next payload")
+                            continue
+                    elif response.status_code in (404, 405):
+                        # Endpoint likely not available
+                        break
+                    elif response.status_code in (400, 415, 422):
+                        last_response_error = f"{response.status_code} via {url}: {response.text[:200]}"
+                        # Try next payload variant in case field names differ
+                        continue
+                    else:
+                        raise RuntimeError(f"A2E job creation failed ({response.status_code}) via {url}: {response.text[:200]}")
+                else:
+                    # Tried all payload variants without success, move to next endpoint
                     continue
-            elif response.status_code == 404:
-                # Endpoint doesn't exist - try next
+                # If we hit a break (e.g., 404/405), continue to next endpoint
                 continue
             else:
-                # Real error from this endpoint
-                raise RuntimeError(f"A2E job creation failed ({response.status_code}): {response.text[:200]}")
+                headers = a2e_headers().copy()
+                headers.pop('Content-Type', None)
+                response = requests.post(url, headers=headers, files=files, data=data, timeout=(10, 45))
+                if response.status_code < 400:
+                    try:
+                        result = response.json()
+                        job_id = result.get('id') or result.get('job_id') or result.get('jobId') or result.get('task_id') or result.get('taskId')
+                        if job_id:
+                            logger.info(f"[Imagine] A2E job created successfully via {url} (multipart fallback)")
+                            return str(job_id)
+                        logger.warning(f"[Imagine] A2E multipart response missing job id via {url}: {result}")
+                        last_response_error = f"Missing job id in multipart response via {url}"
+                    except ValueError:
+                        # Not JSON - might be wrong endpoint
+                        continue
+                elif response.status_code in (404, 405):
+                    continue
+                else:
+                    raise RuntimeError(f"A2E job creation failed ({response.status_code}) via {url}: {response.text[:200]}")
         except requests.exceptions.RequestException as e:
             last_error = str(e)
             continue
@@ -3518,6 +3584,8 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
     # If we get here, all endpoints failed
     if last_error:
         raise RuntimeError(f"A2E job creation failed - tried {len(endpoints)} endpoints. Last error: {last_error}")
+    elif last_response_error:
+        raise RuntimeError(f"A2E job creation failed - tried {len(endpoints)} endpoints. Last response error: {last_response_error}")
     else:
         raise RuntimeError(f"A2E job creation failed - tried {len(endpoints)} endpoints, all returned non-JSON or 404")
 
