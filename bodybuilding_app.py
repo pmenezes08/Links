@@ -4155,8 +4155,13 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
             param_variants = _a2e_status_param_variants(candidate, job_name)
             for params in param_variants:
                 try:
-                    response = requests.get(status_url, headers=headers, params=params, timeout=(10, 20))
-                    logger.info(f"[Imagine] Polling A2E status via GET {status_url} params={params} -> {response.status_code}")
+                    response = requests.post(
+                        status_url,
+                        headers={**headers, 'Content-Type': 'application/x-www-form-urlencoded'},
+                        data=params,
+                        timeout=(10, 20)
+                    )
+                    logger.info(f"[Imagine] Polling A2E status via POST {status_url} params={params} -> {response.status_code}")
                     if response.status_code == 200:
                         payload = _a2e_try_parse_json(response)
                         if payload is None:
@@ -4173,13 +4178,13 @@ def a2e_get_job(job_id: str, job_name: Optional[str] = None, image_url: Optional
                                 f"status={normalized.get('status')} result={normalized.get('result_url')}"
                             )
                             return normalized
-                        errors.append(f"GET params={params} missing status")
+                        errors.append(f"POST params={params} missing status")
                     elif response.status_code == 404:
-                        errors.append(f"GET params={params} -> 404")
+                        errors.append(f"POST params={params} -> 404")
                     else:
-                        errors.append(f"GET params={params} -> {response.status_code}: {response.text[:200]}")
+                        errors.append(f"POST params={params} -> {response.status_code}: {response.text[:200]}")
                 except requests.exceptions.RequestException as exc:
-                    errors.append(f"GET params={params} network error: {exc}")
+                    errors.append(f"POST params={params} network error: {exc}")
 
             for path in status_get_paths:
                 url = _a2e_join(base_url, path.format(job_id=candidate))
