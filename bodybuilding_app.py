@@ -3466,6 +3466,19 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
     if not image_bytes:
         raise RuntimeError('Missing image bytes for A2E request')
     
+    def _extract_job_id_from_text(text: Optional[str]) -> Optional[str]:
+        if not text:
+            return None
+        stripped = text.strip()
+        if not stripped:
+            return None
+        if all(ch.isalnum() or ch in ('-', '_', ':') for ch in stripped) and len(stripped) >= 8:
+            return stripped
+        match = re.search(r"(?:job[_-]?id|task[_-]?id|run[_-]?id|id)\s*[:=]\s*['\"]?([A-Za-z0-9\-_.]{8,})", stripped, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        return None
+
     # Try different possible endpoints - A2E API might use different format
     base_url = A2E_API_URL.rstrip('/')
     
@@ -3541,7 +3554,14 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
                             logger.warning(f"[Imagine] A2E JSON response missing job id via {url}: {result}")
                             last_response_error = f"Missing job id in JSON response via {url}"
                         except ValueError:
-                            logger.warning(f"[Imagine] A2E JSON response not parseable via {url}, trying next payload")
+                            response_text = response.text or ''
+                            job_id = _extract_job_id_from_text(response_text)
+                            if job_id:
+                                logger.info(f"[Imagine] A2E job created via {url} with plain-text response")
+                                return str(job_id)
+                            snippet = response_text.strip()[:200]
+                            logger.warning(f"[Imagine] A2E JSON response not parseable via {url} (status {response.status_code}): {snippet}")
+                            last_response_error = f"Non-JSON success response via {url}: {snippet}" if snippet else f"Empty success response via {url}"
                             continue
                     elif response.status_code in (404, 405):
                         # Endpoint likely not available
@@ -3571,7 +3591,14 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
                         logger.warning(f"[Imagine] A2E multipart response missing job id via {url}: {result}")
                         last_response_error = f"Missing job id in multipart response via {url}"
                     except ValueError:
-                        # Not JSON - might be wrong endpoint
+                        response_text = response.text or ''
+                        job_id = _extract_job_id_from_text(response_text)
+                        if job_id:
+                            logger.info(f"[Imagine] A2E job created via {url} (multipart) with plain-text response")
+                            return str(job_id)
+                        snippet = response_text.strip()[:200]
+                        logger.warning(f"[Imagine] A2E multipart response not parseable via {url} (status {response.status_code}): {snippet}")
+                        last_response_error = f"Non-JSON success response via {url}: {snippet}" if snippet else f"Empty success response via {url}"
                         continue
                 elif response.status_code in (404, 405):
                     continue
