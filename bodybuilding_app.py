@@ -25,7 +25,7 @@ from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode, urljoin
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
 try:
@@ -3461,6 +3461,34 @@ def a2e_headers() -> Dict[str, str]:
         'Accept': 'application/json'
     }
 
+def _a2e_base_urls() -> List[str]:
+    candidates: List[str] = []
+
+    def _add(url: Optional[str]) -> None:
+        if not url:
+            return
+        normalized = url.strip().rstrip('/')
+        if not normalized:
+            return
+        if normalized not in candidates:
+            candidates.append(normalized)
+
+    configured = (A2E_API_URL or '').strip()
+    _add(configured)
+    # Prefer the documented API host while maintaining backwards compatibility with legacy hosts
+    _add('https://api.a2e.ai')
+    _add('https://video.a2e.ai')
+
+    if not configured or 'video.a2e.ai' in configured:
+        try:
+            idx = candidates.index('https://api.a2e.ai')
+        except ValueError:
+            idx = -1
+        if idx > 0:
+            candidates.insert(0, candidates.pop(idx))
+
+    return candidates
+
 def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int = 5, resolution: str = '1080p') -> str:
     """Create an image-to-video job using a2e.ai API (uncensored)"""
     if not image_bytes:
@@ -3478,8 +3506,6 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
         if match:
             return match.group(1)
         return None
-
-    base_url = A2E_API_URL.rstrip('/')
 
     files = {'image': ('image.jpg', image_bytes, 'image/jpeg')}
     legacy_form_data = {
@@ -3505,54 +3531,19 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
         legacy_form_data['aspect_ratio'] = aspect_ratio
 
     base_headers = a2e_headers()
-    last_error: Optional[str] = None
-    last_response_error: Optional[str] = None
-
-    primary_endpoint = f"{base_url}/api/image-to-video/"
-    try:
-        headers = base_headers.copy()
-        headers.pop('Content-Type', None)
-        logger.info(f"[Imagine] Trying A2E primary endpoint: {primary_endpoint}")
-        response = requests.post(primary_endpoint, headers=headers, files=files, data=api_form_data, timeout=(10, 45))
-        if response.status_code < 400:
-            content_type = (response.headers.get('content-type') or '').lower()
-            if 'application/json' not in content_type:
-                text = response.text or ''
-                job_id = _extract_job_id_from_text(text)
-                if job_id:
-                    logger.info(f"[Imagine] A2E job created via primary endpoint with plain-text response")
-                    return str(job_id)
-                snippet = text.strip()[:200]
-                raise RuntimeError(f"A2E primary endpoint returned non-JSON response: {snippet}")
-            result = response.json()
-            if result.get('success'):
-                job_id = (
-                    result.get('task_id') or result.get('taskId') or
-                    result.get('id') or result.get('job_id') or result.get('jobId')
-                )
-                if job_id:
-                    logger.info(f"[Imagine] A2E job created successfully via primary endpoint")
-                    return str(job_id)
-                raise RuntimeError("A2E primary endpoint response missing task id")
-            error_msg = result.get('error') or result.get('message') or json.dumps(result)[:200]
-            last_response_error = f"Primary endpoint error: {error_msg}"
-        elif response.status_code == 404:
-            snippet = (response.text or '').strip()[:200]
-            last_response_error = f"Primary endpoint 404: {snippet}"
-        else:
-            snippet = response.text[:200]
-            raise RuntimeError(f"A2E job creation failed ({response.status_code}) via primary endpoint: {snippet}")
-    except requests.exceptions.RequestException as e:
-        last_error = str(e)
-    except (RuntimeError, ValueError) as e:
-        last_response_error = str(e)
-
-    if last_response_error:
-        logger.warning(f"[Imagine] Falling back to legacy A2E endpoints: {last_response_error}")
+    fallback_paths = [
+        ('/v1/image-to-video/json', 'json'),
+        ('/api/v1/image-to-video/json', 'json'),
+        ('/image-to-video/json', 'json'),
+        ('/generate/json', 'json'),
+        ('/v1/image-to-video', 'multipart'),
+        ('/api/v1/image-to-video', 'multipart'),
+        ('/image-to-video', 'multipart'),
+        ('/generate', 'multipart'),
+    ]
 
     encoded_image = base64.b64encode(image_bytes).decode('utf-8')
     data_uri = f"data:image/jpeg;base64,{encoded_image}"
-
     json_payload_variants = [
         {
             'prompt': prompt,
@@ -3585,25 +3576,103 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
         for payload in json_payload_variants:
             payload['aspect_ratio'] = aspect_ratio
 
-    endpoints = [
-        (f"{base_url}/v1/image-to-video/json", 'json'),
-        (f"{base_url}/api/v1/image-to-video/json", 'json'),
-        (f"{base_url}/image-to-video/json", 'json'),
-        (f"{base_url}/generate/json", 'json'),
-        (f"{base_url}/v1/image-to-video", 'multipart'),
-        (f"{base_url}/api/v1/image-to-video", 'multipart'),
-        (f"{base_url}/image-to-video", 'multipart'),
-        (f"{base_url}/generate", 'multipart')
-    ]
+    attempt_summaries: List[Dict[str, Optional[str]]] = []
 
-    for url, mode in endpoints:
+    for base_url in _a2e_base_urls():
+        base_primary_error: Optional[str] = None
+        base_fallback_error: Optional[str] = None
+        base_fallback_response_error: Optional[str] = None
+
+        primary_endpoint = f"{base_url}/api/image-to-video/"
         try:
-            logger.info(f"[Imagine] Trying A2E endpoint: {url}")
-            if mode == 'json':
-                for payload in json_payload_variants:
+            headers = base_headers.copy()
+            headers.pop('Content-Type', None)
+            logger.info(f"[Imagine] Trying A2E primary endpoint: {primary_endpoint}")
+            response = requests.post(primary_endpoint, headers=headers, files=files, data=api_form_data, timeout=(10, 45))
+            if response.status_code < 400:
+                content_type = (response.headers.get('content-type') or '').lower()
+                if 'application/json' not in content_type:
+                    text = response.text or ''
+                    job_id = _extract_job_id_from_text(text)
+                    if job_id:
+                        logger.info(f"[Imagine] A2E job created via primary endpoint with plain-text response")
+                        return str(job_id)
+                    snippet = text.strip()[:200]
+                    raise RuntimeError(f"A2E primary endpoint returned non-JSON response: {snippet}")
+                result = response.json()
+                if result.get('success'):
+                    job_id = (
+                        result.get('task_id') or result.get('taskId') or
+                        result.get('id') or result.get('job_id') or result.get('jobId')
+                    )
+                    if job_id:
+                        logger.info(f"[Imagine] A2E job created successfully via primary endpoint")
+                        return str(job_id)
+                    raise RuntimeError("A2E primary endpoint response missing task id")
+                error_msg = result.get('error') or result.get('message') or json.dumps(result)[:200]
+                base_primary_error = f"Primary endpoint error: {error_msg}"
+            elif response.status_code == 404:
+                snippet = (response.text or '').strip()[:200]
+                base_primary_error = f"Primary endpoint 404: {snippet or 'not found'}"
+            else:
+                snippet = response.text[:200]
+                raise RuntimeError(f"A2E job creation failed ({response.status_code}) via primary endpoint: {snippet}")
+        except requests.exceptions.RequestException as e:
+            base_primary_error = str(e)
+        except (RuntimeError, ValueError) as e:
+            base_primary_error = str(e)
+
+        if base_primary_error:
+            logger.warning(f"[Imagine] A2E primary endpoint failed for {base_url}: {base_primary_error}")
+
+        for path, mode in fallback_paths:
+            url = f"{base_url}{path}"
+            try:
+                logger.info(f"[Imagine] Trying A2E endpoint: {url}")
+                if mode == 'json':
+                    for payload in json_payload_variants:
+                        headers = base_headers.copy()
+                        headers['Content-Type'] = 'application/json'
+                        response = requests.post(url, headers=headers, json=payload, timeout=(10, 45))
+                        if response.status_code < 400:
+                            try:
+                                result = response.json()
+                                job_id = (
+                                    result.get('id') or result.get('job_id') or result.get('jobId') or
+                                    result.get('task_id') or result.get('taskId')
+                                )
+                                if job_id:
+                                    logger.info(f"[Imagine] A2E job created successfully via {url} (JSON payload)")
+                                    return str(job_id)
+                                logger.warning(f"[Imagine] A2E JSON response missing job id via {url}: {result}")
+                                if not base_fallback_response_error:
+                                    base_fallback_response_error = f"Missing job id in JSON response via {url}"
+                            except ValueError:
+                                response_text = response.text or ''
+                                job_id = _extract_job_id_from_text(response_text)
+                                if job_id:
+                                    logger.info(f"[Imagine] A2E job created via {url} with plain-text response")
+                                    return str(job_id)
+                                snippet = response_text.strip()[:200]
+                                logger.warning(f"[Imagine] A2E JSON response not parseable via {url} (status {response.status_code}): {snippet}")
+                                if not base_fallback_response_error:
+                                    base_fallback_response_error = (
+                                        f"Non-JSON success response via {url}: {snippet}" if snippet else f"Empty success response via {url}"
+                                    )
+                                continue
+                        elif response.status_code in (404, 405):
+                            break
+                        elif response.status_code in (400, 415, 422):
+                            if not base_fallback_response_error:
+                                base_fallback_response_error = f"{response.status_code} via {url}: {response.text[:200]}"
+                            continue
+                        else:
+                            raise RuntimeError(f"A2E job creation failed ({response.status_code}) via {url}: {response.text[:200]}")
+                    continue
+                else:
                     headers = base_headers.copy()
-                    headers['Content-Type'] = 'application/json'
-                    response = requests.post(url, headers=headers, json=payload, timeout=(10, 45))
+                    headers.pop('Content-Type', None)
+                    response = requests.post(url, headers=headers, files=files, data=legacy_form_data, timeout=(10, 45))
                     if response.status_code < 400:
                         try:
                             result = response.json()
@@ -3612,140 +3681,141 @@ def a2e_create_image_to_video_job(image_bytes: bytes, prompt: str, duration: int
                                 result.get('task_id') or result.get('taskId')
                             )
                             if job_id:
-                                logger.info(f"[Imagine] A2E job created successfully via {url} (JSON payload)")
+                                logger.info(f"[Imagine] A2E job created successfully via {url} (multipart fallback)")
                                 return str(job_id)
-                            logger.warning(f"[Imagine] A2E JSON response missing job id via {url}: {result}")
-                            last_response_error = f"Missing job id in JSON response via {url}"
+                            logger.warning(f"[Imagine] A2E multipart response missing job id via {url}: {result}")
+                            if not base_fallback_response_error:
+                                base_fallback_response_error = f"Missing job id in multipart response via {url}"
                         except ValueError:
                             response_text = response.text or ''
                             job_id = _extract_job_id_from_text(response_text)
                             if job_id:
-                                logger.info(f"[Imagine] A2E job created via {url} with plain-text response")
+                                logger.info(f"[Imagine] A2E job created via {url} (multipart) with plain-text response")
                                 return str(job_id)
                             snippet = response_text.strip()[:200]
-                            logger.warning(f"[Imagine] A2E JSON response not parseable via {url} (status {response.status_code}): {snippet}")
-                            last_response_error = f"Non-JSON success response via {url}: {snippet}" if snippet else f"Empty success response via {url}"
+                            logger.warning(f"[Imagine] A2E multipart response not parseable via {url} (status {response.status_code}): {snippet}")
+                            if not base_fallback_response_error:
+                                base_fallback_response_error = (
+                                    f"Non-JSON success response via {url}: {snippet}" if snippet else f"Empty success response via {url}"
+                                )
                             continue
                     elif response.status_code in (404, 405):
-                        break
-                    elif response.status_code in (400, 415, 422):
-                        last_response_error = f"{response.status_code} via {url}: {response.text[:200]}"
                         continue
                     else:
                         raise RuntimeError(f"A2E job creation failed ({response.status_code}) via {url}: {response.text[:200]}")
-                else:
-                    continue
+            except requests.exceptions.RequestException as e:
+                base_fallback_error = base_fallback_error or str(e)
                 continue
-            else:
-                headers = base_headers.copy()
-                headers.pop('Content-Type', None)
-                response = requests.post(url, headers=headers, files=files, data=legacy_form_data, timeout=(10, 45))
-                if response.status_code < 400:
-                    try:
-                        result = response.json()
-                        job_id = (
-                            result.get('id') or result.get('job_id') or result.get('jobId') or
-                            result.get('task_id') or result.get('taskId')
-                        )
-                        if job_id:
-                            logger.info(f"[Imagine] A2E job created successfully via {url} (multipart fallback)")
-                            return str(job_id)
-                        logger.warning(f"[Imagine] A2E multipart response missing job id via {url}: {result}")
-                        last_response_error = f"Missing job id in multipart response via {url}"
-                    except ValueError:
-                        response_text = response.text or ''
-                        job_id = _extract_job_id_from_text(response_text)
-                        if job_id:
-                            logger.info(f"[Imagine] A2E job created via {url} (multipart) with plain-text response")
-                            return str(job_id)
-                        snippet = response_text.strip()[:200]
-                        logger.warning(f"[Imagine] A2E multipart response not parseable via {url} (status {response.status_code}): {snippet}")
-                        last_response_error = f"Non-JSON success response via {url}: {snippet}" if snippet else f"Empty success response via {url}"
-                        continue
-                elif response.status_code in (404, 405):
-                    continue
-                else:
-                    raise RuntimeError(f"A2E job creation failed ({response.status_code}) via {url}: {response.text[:200]}")
-        except requests.exceptions.RequestException as e:
-            last_error = str(e)
-            continue
-        except RuntimeError as e:
-            last_response_error = str(e)
-            continue
+            except RuntimeError as e:
+                base_fallback_response_error = base_fallback_response_error or str(e)
+                continue
 
-    fallback_count = len(endpoints)
-    if last_error:
-        raise RuntimeError(f"A2E job creation failed after trying primary endpoint and {fallback_count} fallback endpoints. Last error: {last_error}")
-    elif last_response_error:
-        raise RuntimeError(f"A2E job creation failed after trying primary endpoint and {fallback_count} fallback endpoints. Last response error: {last_response_error}")
-    else:
-        raise RuntimeError(f"A2E job creation failed after trying primary endpoint and {fallback_count} fallback endpoints, all returned non-JSON or 404")
+        attempt_summaries.append({
+            'base': base_url,
+            'primary': base_primary_error,
+            'fallback_error': base_fallback_error,
+            'fallback_response': base_fallback_response_error,
+        })
+
+    if attempt_summaries:
+        parts = []
+        for summary in attempt_summaries:
+            reasons: List[str] = []
+            if summary['primary']:
+                reasons.append(f"primary: {summary['primary']}")
+            if summary['fallback_response']:
+                reasons.append(f"fallback: {summary['fallback_response']}")
+            elif summary['fallback_error']:
+                reasons.append(f"fallback network: {summary['fallback_error']}")
+            if not reasons:
+                reasons.append('no response')
+            parts.append(f"{summary['base']} ({'; '.join(reasons)})")
+        raise RuntimeError(f"A2E job creation failed across bases: {' | '.join(parts)}")
+
+    raise RuntimeError('A2E job creation failed: no base URLs available')
 
 def a2e_get_job(job_id: str) -> Dict[str, Any]:
     """Get A2E job status"""
-    base_url = A2E_API_URL.rstrip('/')
     headers = a2e_headers()
 
-    primary_url = f"{base_url}/api/tasks/{job_id}/"
-    primary_error: Optional[str] = None
-
-    try:
-        response = requests.get(primary_url, headers=headers, timeout=(10, 20))
-        if response.status_code < 400:
-            try:
-                return response.json()
-            except ValueError:
-                text = response.text or ''
-                raise RuntimeError(f"A2E primary status returned non-JSON response: {text[:200]}")
-        elif response.status_code == 404:
-            snippet = (response.text or '').strip()[:200]
-            primary_error = f"Primary status endpoint 404: {snippet}"
-        else:
-            snippet = response.text[:200]
-            raise RuntimeError(f"A2E job fetch failed ({response.status_code}) via primary endpoint: {snippet}")
-    except requests.exceptions.RequestException as e:
-        primary_error = str(e)
-    except RuntimeError as e:
-        primary_error = str(e)
-
-    if primary_error:
-        logger.warning(f"[Imagine] Falling back to legacy A2E status endpoints: {primary_error}")
-
-    endpoints = [
-        f"{base_url}/v1/jobs/{job_id}",
-        f"{base_url}/api/v1/jobs/{job_id}",
-        f"{base_url}/v1/tasks/{job_id}",
-        f"{base_url}/api/v1/tasks/{job_id}",
-        f"{base_url}/status/{job_id}"
+    status_paths = [
+        '/v1/jobs/{job_id}',
+        '/api/v1/jobs/{job_id}',
+        '/v1/tasks/{job_id}',
+        '/api/v1/tasks/{job_id}',
+        '/status/{job_id}',
     ]
 
-    last_error: Optional[str] = None
-    for url in endpoints:
+    attempt_summaries: List[Dict[str, Optional[str]]] = []
+
+    for base_url in _a2e_base_urls():
+        base_primary_error: Optional[str] = None
+        base_fallback_error: Optional[str] = None
+
+        primary_url = f"{base_url}/api/tasks/{job_id}/"
         try:
-            response = requests.get(url, headers=headers, timeout=(10, 20))
+            response = requests.get(primary_url, headers=headers, timeout=(10, 20))
             if response.status_code < 400:
                 try:
                     return response.json()
                 except ValueError:
-                    continue
+                    text = response.text or ''
+                    raise RuntimeError(f"A2E primary status returned non-JSON response: {text[:200]}")
             elif response.status_code == 404:
-                continue
+                snippet = (response.text or '').strip()[:200]
+                base_primary_error = f"Primary status endpoint 404: {snippet or 'not found'}"
             else:
-                raise RuntimeError(f"A2E job fetch failed ({response.status_code}): {response.text[:200]}")
+                snippet = response.text[:200]
+                raise RuntimeError(f"A2E job fetch failed ({response.status_code}) via primary endpoint: {snippet}")
         except requests.exceptions.RequestException as e:
-            last_error = str(e)
-            continue
+            base_primary_error = str(e)
         except RuntimeError as e:
-            last_error = str(e)
-            continue
+            base_primary_error = str(e)
 
-    if last_error and primary_error:
-        raise RuntimeError(f"A2E job fetch failed after primary endpoint and fallbacks. Primary error: {primary_error}. Last fallback error: {last_error}")
-    if last_error:
-        raise RuntimeError(f"A2E job fetch failed - last fallback error: {last_error}")
-    if primary_error:
-        raise RuntimeError(f"A2E job fetch failed after primary endpoint and fallbacks. Primary error: {primary_error}")
-    raise RuntimeError(f"A2E job fetch failed - tried legacy endpoints, all returned non-JSON or 404")
+        if base_primary_error:
+            logger.warning(f"[Imagine] Falling back to legacy A2E status endpoints for {base_url}: {base_primary_error}")
+
+        fallback_error: Optional[str] = None
+        for path in status_paths:
+            url = f"{base_url}{path.format(job_id=job_id)}"
+            try:
+                response = requests.get(url, headers=headers, timeout=(10, 20))
+                if response.status_code < 400:
+                    try:
+                        return response.json()
+                    except ValueError:
+                        continue
+                elif response.status_code == 404:
+                    continue
+                else:
+                    raise RuntimeError(f"A2E job fetch failed ({response.status_code}) via {url}: {response.text[:200]}")
+            except requests.exceptions.RequestException as e:
+                fallback_error = fallback_error or str(e)
+                continue
+            except RuntimeError as e:
+                fallback_error = fallback_error or str(e)
+                continue
+
+        attempt_summaries.append({
+            'base': base_url,
+            'primary': base_primary_error,
+            'fallback': fallback_error,
+        })
+
+    if attempt_summaries:
+        parts = []
+        for summary in attempt_summaries:
+            reasons: List[str] = []
+            if summary['primary']:
+                reasons.append(f"primary: {summary['primary']}")
+            if summary['fallback']:
+                reasons.append(f"fallback: {summary['fallback']}")
+            if not reasons:
+                reasons.append('no response')
+            parts.append(f"{summary['base']} ({'; '.join(reasons)})")
+        raise RuntimeError(f"A2E job fetch failed across bases: {' | '.join(parts)}")
+
+    raise RuntimeError('A2E job fetch failed: no base URLs available')
 
 def a2e_extract_video_url(job_data: Dict[str, Any]) -> Optional[str]:
     """Extract video URL from A2E job response"""
