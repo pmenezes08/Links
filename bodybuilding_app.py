@@ -9344,13 +9344,14 @@ def api_create_talking_avatar():
         if not community_id:
             return jsonify({'success': False, 'error': 'Community ID required'}), 400
         
-        user = get_current_user()
-        username = user['username']
+        username = session.get('username')
+        if not username:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
         
         # Determine which image to use
         if use_profile_pic:
             # Use user's profile picture
-            profile_pic_path = user.get('profile_picture')
+            profile_pic_path = get_profile_picture(username)
             if not profile_pic_path:
                 return jsonify({'success': False, 'error': 'No profile picture set'}), 400
             image_path = profile_pic_path
@@ -9360,7 +9361,7 @@ def api_create_talking_avatar():
                 return jsonify({'success': False, 'error': 'Image file required'}), 400
             
             # Save uploaded image temporarily
-            image_filename = secure_filename(f"avatar_{user['id']}_{int(time.time())}_{image_file.filename}")
+            image_filename = secure_filename(f"avatar_{username}_{int(time.time())}_{image_file.filename}")
             image_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'avatar_sources')
             os.makedirs(image_dir, exist_ok=True)
             image_full_path = os.path.join(image_dir, image_filename)
@@ -9368,7 +9369,7 @@ def api_create_talking_avatar():
             image_path = f"uploads/avatar_sources/{image_filename}"
         
         # Save audio file
-        audio_filename = secure_filename(f"audio_{user['id']}_{int(time.time())}.webm")
+        audio_filename = secure_filename(f"audio_{username}_{int(time.time())}.webm")
         audio_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'audio')
         os.makedirs(audio_dir, exist_ok=True)
         audio_full_path = os.path.join(audio_dir, audio_filename)
