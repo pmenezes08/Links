@@ -3665,113 +3665,65 @@ def did_compress_image_to_limit(image_path: str, max_bytes: int = 9_000_000) -> 
         return image_path  # Return original if compression fails
 
 def did_convert_audio_to_mp3(audio_path: str, max_bytes: int = 9_000_000) -> str:
-    """Convert audio to MP3 format for D-ID (supports: flac,mp3,mp4,wav,m4a). Compress if > 9MB."""
+    """Convert audio to MP3 format for D-ID (supports: flac,mp3,mp4,wav,m4a)."""
     import subprocess
     
-    # Check original file size
-    orig_size = os.path.getsize(audio_path) if os.path.exists(audio_path) else 0
-    logger.info(f'[D-ID] Original audio file size: {orig_size} bytes ({orig_size/1_000_000:.2f} MB)')
-    
-    # Determine output path
+    # Check if already in supported format
     if audio_path.endswith(('.mp3', '.mp4', '.wav', '.m4a', '.flac')):
-        # Already in supported format, but might need compression
+        orig_size = os.path.getsize(audio_path) if os.path.exists(audio_path) else 0
         if orig_size <= max_bytes:
-            logger.info(f'[D-ID] Audio already in supported format and under limit')
+            logger.info(f'[D-ID] Audio already in supported format: {audio_path}')
             return audio_path
-        output_path = audio_path.rsplit('.', 1)[0] + '_compressed.mp3'
-        needs_conversion = True
-    else:
-        # Need to convert from WebM
-        output_path = audio_path.rsplit('.', 1)[0] + '_converted.mp3'
-        needs_conversion = True
     
-    # Convert/compress audio
-    if needs_conversion:
-        try:
-            logger.info(f'[D-ID] Converting/compressing {audio_path} to MP3: {output_path}')
-            
-            # First, probe the audio to get duration
-            probe_result = subprocess.run([
-                'ffprobe', '-v', 'error', '-show_entries', 
-                'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1',
-                audio_path
-            ], capture_output=True, text=True)
-            
-            duration = 0
-            try:
-                duration = float(probe_result.stdout.strip())
-                logger.info(f'[D-ID] Audio duration: {duration:.2f} seconds')
-            except:
-                logger.warning(f'[D-ID] Could not determine audio duration')
-            
-            # Use lower bitrate if file is too large (96k for files > 5MB, otherwise 128k)
-            bitrate = '96k' if orig_size > 5_000_000 else '128k'
-            logger.info(f'[D-ID] Using bitrate: {bitrate}')
-            
-            # Use ffmpeg with explicit ABR (average bitrate) - more reliable than VBR or CBR
-            # Add audio filter to ensure proper encoding
-            result = subprocess.run([
-                'ffmpeg', '-i', audio_path,
-                '-vn',  # No video
-                '-acodec', 'libmp3lame',
-                '-ab', bitrate,  # Average bitrate (ABR) - more reliable
-                '-ar', '48000',  # Sample rate
-                '-ac', '2',  # Stereo (converts mono to stereo if needed)
-                '-joint_stereo', '1',  # Use joint stereo for efficiency
-                '-y',  # Overwrite
+    # Need to convert - use simplest possible FFmpeg command
+    output_path = audio_path.rsplit('.', 1)[0] + '_converted.mp3'
+    
+    try:
+        logger.info(f'[D-ID] Converting {audio_path} to MP3')
+        
+        # SIMPLEST POSSIBLE COMMAND - let FFmpeg use defaults
+        result = subprocess.run([
+            'ffmpeg', 
+            '-i', audio_path,
+            '-f', 'mp3',  # Force MP3 format
+            '-y',  # Overwrite
+            output_path
+        ], capture_output=True, text=True, timeout=30)
+        
+        if result.returncode != 0:
+            logger.error(f'[D-ID] FFmpeg failed: {result.stderr}')
+            raise RuntimeError(f'FFmpeg conversion failed')
+        
+        # Check result
+        conv_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        logger.info(f'[D-ID] Audio converted to {conv_size} bytes ({conv_size/1_000_000:.2f} MB)')
+        
+        if conv_size == 0:
+            raise RuntimeError('Converted audio file is empty')
+        
+        if conv_size > max_bytes:
+            logger.warning(f'[D-ID] File too large, trying with compression')
+            # Try again with explicit low bitrate
+            subprocess.run([
+                'ffmpeg',
+                '-i', audio_path,
+                '-codec:a', 'libmp3lame',
+                '-b:a', '64k',
+                '-f', 'mp3',
+                '-y',
                 output_path
-            ], capture_output=True, text=True)
-            
-            # Log stderr (FFmpeg outputs progress info there)
-            if result.stderr:
-                logger.info(f'[D-ID] FFmpeg output: {result.stderr[-500:]}')  # Last 500 chars
-            
-            if result.returncode != 0:
-                logger.error(f'[D-ID] FFmpeg failed with code {result.returncode}')
-                logger.error(f'[D-ID] FFmpeg stderr: {result.stderr}')
-                raise RuntimeError(f'FFmpeg conversion failed with code {result.returncode}')
-            
-            # Check converted file size
-            conv_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
-            logger.info(f'[D-ID] Audio converted: {orig_size} -> {conv_size} bytes ({conv_size/1_000_000:.2f} MB)')
-            
-            if conv_size == 0:
-                logger.error(f'[D-ID] Converted audio file is empty!')
-                raise RuntimeError('Converted audio file is empty')
-            
-            # Verify the converted audio has similar duration
-            if duration > 0:
-                expected_size = int(duration * int(bitrate.rstrip('k')) * 1000 / 8)  # Rough estimate
-                if conv_size < expected_size * 0.3:  # Less than 30% of expected
-                    logger.error(f'[D-ID] Converted audio seems truncated: {conv_size} bytes vs expected ~{expected_size} bytes')
-                    logger.error(f'[D-ID] Duration: {duration}s, Bitrate: {bitrate}')
-                    raise RuntimeError(f'Audio conversion produced suspiciously small file ({conv_size} bytes for {duration}s audio)')
-            
-            if conv_size > max_bytes:
-                logger.warning(f'[D-ID] Converted audio too large ({conv_size/1_000_000:.2f} MB), trying mono + lower bitrate')
-                # Try even lower bitrate with mono
-                subprocess.run([
-                    'ffmpeg', '-i', audio_path,
-                    '-codec:a', 'libmp3lame',
-                    '-b:a', '64k',  # Lower bitrate
-                    '-ac', '1',      # Mono
-                    '-y',
-                    output_path
-                ], check=True, capture_output=True, text=True)
-                conv_size = os.path.getsize(output_path)
-                logger.info(f'[D-ID] Audio re-compressed: {conv_size} bytes ({conv_size/1_000_000:.2f} MB)')
-            
-            return output_path
-            
-        except subprocess.CalledProcessError as e:
-            logger.error(f'[D-ID] FFmpeg conversion failed: {e.stderr if e.stderr else str(e)}')
-            logger.error(f'[D-ID] FFmpeg stdout: {e.stdout if e.stdout else "none"}')
-            raise RuntimeError(f'Audio conversion failed: {e}')
-        except FileNotFoundError:
-            logger.error('[D-ID] FFmpeg not found - cannot convert audio')
-            raise RuntimeError('FFmpeg not installed - cannot convert WebM to MP3')
-    
-    return audio_path
+            ], check=True, capture_output=True, text=True, timeout=30)
+            conv_size = os.path.getsize(output_path)
+            logger.info(f'[D-ID] Re-compressed to {conv_size} bytes')
+        
+        return output_path
+        
+    except subprocess.TimeoutExpired:
+        logger.error('[D-ID] FFmpeg timeout')
+        raise RuntimeError('Audio conversion timed out')
+    except Exception as e:
+        logger.error(f'[D-ID] Conversion error: {e}')
+        raise RuntimeError(f'Audio conversion failed: {e}')
 
 def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
     """Create talking avatar video using D-ID (audio-to-video with lip sync)"""
