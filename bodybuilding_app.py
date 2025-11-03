@@ -3611,23 +3611,35 @@ def did_convert_audio_to_mp3(audio_path: str) -> str:
     
     # Convert to MP3
     try:
+        # Check original file size
+        orig_size = os.path.getsize(audio_path) if os.path.exists(audio_path) else 0
+        logger.info(f'[D-ID] Original audio file size: {orig_size} bytes')
+        
         output_path = audio_path.rsplit('.', 1)[0] + '_converted.mp3'
         logger.info(f'[D-ID] Converting {audio_path} to MP3: {output_path}')
         
         # Use ffmpeg to convert
-        subprocess.run([
+        result = subprocess.run([
             'ffmpeg', '-i', audio_path, 
             '-codec:a', 'libmp3lame', 
             '-qscale:a', '2',  # High quality
             '-y',  # Overwrite
             output_path
-        ], check=True, capture_output=True)
+        ], check=True, capture_output=True, text=True)
         
-        logger.info(f'[D-ID] Audio converted successfully: {output_path}')
+        # Check converted file size
+        conv_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        logger.info(f'[D-ID] Audio converted successfully: {output_path} ({conv_size} bytes)')
+        
+        if conv_size == 0:
+            logger.error(f'[D-ID] Converted audio file is empty! Original: {orig_size} bytes')
+            raise RuntimeError('Converted audio file is empty')
+        
         return output_path
         
     except subprocess.CalledProcessError as e:
-        logger.error(f'[D-ID] FFmpeg conversion failed: {e.stderr.decode() if e.stderr else str(e)}')
+        logger.error(f'[D-ID] FFmpeg conversion failed: {e.stderr if e.stderr else str(e)}')
+        logger.error(f'[D-ID] FFmpeg stdout: {e.stdout if e.stdout else "none"}')
         raise RuntimeError(f'Audio conversion failed: {e}')
     except FileNotFoundError:
         logger.error('[D-ID] FFmpeg not found - cannot convert audio')
@@ -3646,6 +3658,13 @@ def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
         logger.info(f'[D-ID] Converting paths to public URLs')
         image_url = did_get_public_url(image_path)
         audio_url = did_get_public_url(audio_path)
+        
+        # Log file sizes to verify
+        img_size = os.path.getsize(image_path) if os.path.exists(image_path) else 0
+        aud_size = os.path.getsize(audio_path) if os.path.exists(audio_path) else 0
+        logger.info(f'[D-ID] Sending to D-ID - Image: {img_size} bytes, Audio: {aud_size} bytes')
+        logger.info(f'[D-ID] Image URL: {image_url}')
+        logger.info(f'[D-ID] Audio URL: {audio_url}')
         
         # Create talk with public URLs (as per D-ID API docs)
         headers = did_headers()
