@@ -3675,41 +3675,70 @@ def did_convert_audio_to_mp3(audio_path: str, max_bytes: int = 9_000_000) -> str
             logger.info(f'[D-ID] Audio already in supported format: {audio_path}')
             return audio_path
     
-    # Need to convert - use simplest possible FFmpeg command
+    # Convert WebM to MP3 with EXPLICIT quality settings
     output_path = audio_path.rsplit('.', 1)[0] + '_converted.mp3'
     
     try:
-        logger.info(f'[D-ID] Converting {audio_path} to MP3')
+        orig_size = os.path.getsize(audio_path) if os.path.exists(audio_path) else 0
+        logger.info(f'[D-ID] Converting {audio_path} ({orig_size} bytes) to MP3')
         
-        # SIMPLEST POSSIBLE COMMAND - let FFmpeg use defaults
-        result = subprocess.run([
+        # TWO-STEP CONVERSION: WebM → WAV → MP3
+        # This ensures proper decoding and encoding
+        temp_wav = audio_path.rsplit('.', 1)[0] + '_temp.wav'
+        
+        # Step 1: Decode WebM to WAV (uncompressed, always works)
+        result1 = subprocess.run([
             'ffmpeg', 
             '-i', audio_path,
-            '-f', 'mp3',  # Force MP3 format
-            '-y',  # Overwrite
+            '-acodec', 'pcm_s16le',  # PCM 16-bit (standard WAV)
+            '-ar', '44100',  # 44.1kHz sample rate
+            '-ac', '2',  # Stereo
+            '-y',
+            temp_wav
+        ], capture_output=True, text=True, timeout=30)
+        
+        if result1.returncode != 0:
+            logger.error(f'[D-ID] WAV conversion failed: {result1.stderr[-500:]}')
+            raise RuntimeError('Failed to decode WebM audio')
+        
+        wav_size = os.path.getsize(temp_wav) if os.path.exists(temp_wav) else 0
+        logger.info(f'[D-ID] Decoded to WAV: {wav_size} bytes')
+        
+        # Step 2: Encode WAV to MP3 with fixed bitrate
+        result2 = subprocess.run([
+            'ffmpeg',
+            '-i', temp_wav,
+            '-codec:a', 'libmp3lame',
+            '-b:a', '128k',  # Fixed 128kbps
+            '-y',
             output_path
         ], capture_output=True, text=True, timeout=30)
         
-        if result.returncode != 0:
-            logger.error(f'[D-ID] FFmpeg failed: {result.stderr}')
-            raise RuntimeError(f'FFmpeg conversion failed')
+        # Clean up temp WAV
+        try:
+            os.remove(temp_wav)
+        except:
+            pass
+        
+        if result2.returncode != 0:
+            logger.error(f'[D-ID] MP3 encoding failed: {result2.stderr[-500:]}')
+            raise RuntimeError('Failed to encode MP3')
         
         # Check result
         conv_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
-        logger.info(f'[D-ID] Audio converted to {conv_size} bytes ({conv_size/1_000_000:.2f} MB)')
+        logger.info(f'[D-ID] Final MP3: {conv_size} bytes ({conv_size/1_000_000:.2f} MB)')
         
-        if conv_size == 0:
-            raise RuntimeError('Converted audio file is empty')
+        if conv_size < 1000:
+            raise RuntimeError(f'Converted MP3 is suspiciously small: {conv_size} bytes')
         
+        # If too large, re-encode with lower bitrate
         if conv_size > max_bytes:
-            logger.warning(f'[D-ID] File too large, trying with compression')
-            # Try again with explicit low bitrate
+            logger.warning(f'[D-ID] File too large, re-encoding with 64kbps')
             subprocess.run([
                 'ffmpeg',
-                '-i', audio_path,
+                '-i', temp_wav if os.path.exists(temp_wav) else audio_path,
                 '-codec:a', 'libmp3lame',
                 '-b:a', '64k',
-                '-f', 'mp3',
                 '-y',
                 output_path
             ], check=True, capture_output=True, text=True, timeout=30)
