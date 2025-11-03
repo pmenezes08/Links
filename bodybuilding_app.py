@@ -3769,25 +3769,29 @@ def process_talking_avatar_job(job_id: int):
                 logger.info(f'[TalkingAvatar] D-ID video ready: {result_url}')
                 
                 # Download video
+                logger.info(f'[TalkingAvatar] Downloading video from D-ID...')
                 video_bytes = did_download_video(result_url)
+                logger.info(f'[TalkingAvatar] Downloaded {len(video_bytes)} bytes')
                 
                 # Save video
                 filename = f"avatar_{job_id}_{int(time.time())}.mp4"
                 rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{filename}"
                 full_path = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SUBDIR, filename)
                 
+                logger.info(f'[TalkingAvatar] Saving video to: {full_path}')
                 os.makedirs(os.path.dirname(full_path), exist_ok=True)
                 with open(full_path, 'wb') as f:
                     f.write(video_bytes)
-                
                 logger.info(f'[TalkingAvatar] Video saved: {rel_path}')
                 
                 # Update job as completed
+                logger.info(f'[TalkingAvatar] Updating job {job_id} status to completed')
                 update_imagine_job(
                     job_id,
                     status=IMAGINE_STATUS_COMPLETED,
                     result_path=rel_path
                 )
+                logger.info(f'[TalkingAvatar] Job {job_id} status updated')
                 
                 # Update post with video (keep audio_summary, remove audio_path)
                 target_type = job.get('target_type')
