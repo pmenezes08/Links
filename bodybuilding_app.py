@@ -3686,50 +3686,90 @@ def did_convert_audio_to_mp3(audio_path: str, max_bytes: int = 9_000_000) -> str
         # This ensures proper decoding and encoding
         temp_wav = audio_path.rsplit('.', 1)[0] + '_temp.wav'
         
-        # Step 1: Decode WebM to WAV (uncompressed, always works)
+        # Get duration of original file first
+        probe = subprocess.run([
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', audio_path
+        ], capture_output=True, text=True)
+        
+        duration = 0
+        try:
+            duration = float(probe.stdout.strip())
+            logger.info(f'[D-ID] Original audio duration: {duration:.2f} seconds')
+        except:
+            logger.warning(f'[D-ID] Could not detect duration')
+        
+        # Step 1: Decode WebM to WAV - use copy of codec if possible
+        logger.info(f'[D-ID] Step 1: Decoding WebM to WAV...')
         result1 = subprocess.run([
             'ffmpeg', 
             '-i', audio_path,
-            '-acodec', 'pcm_s16le',  # PCM 16-bit (standard WAV)
-            '-ar', '44100',  # 44.1kHz sample rate
-            '-ac', '2',  # Stereo
+            '-vn',  # No video
+            '-acodec', 'pcm_s16le',  # PCM 16-bit
+            '-ar', '44100',
+            '-ac', '2',
+            '-f', 'wav',  # Force WAV format
             '-y',
             temp_wav
         ], capture_output=True, text=True, timeout=30)
         
         if result1.returncode != 0:
-            logger.error(f'[D-ID] WAV conversion failed: {result1.stderr[-500:]}')
-            raise RuntimeError('Failed to decode WebM audio')
+            logger.error(f'[D-ID] WAV decode STDERR: {result1.stderr}')
+            raise RuntimeError('Failed to decode WebM to WAV')
         
         wav_size = os.path.getsize(temp_wav) if os.path.exists(temp_wav) else 0
-        logger.info(f'[D-ID] Decoded to WAV: {wav_size} bytes')
+        logger.info(f'[D-ID] WAV created: {wav_size} bytes ({wav_size/1_000_000:.2f} MB)')
         
-        # Step 2: Encode WAV to MP3 with fixed bitrate
+        # Verify WAV duration
+        if duration > 0:
+            expected_wav_size = int(duration * 44100 * 2 * 2)  # samples * bytes * channels
+            if wav_size < expected_wav_size * 0.5:
+                logger.error(f'[D-ID] WAV seems truncated! Expected ~{expected_wav_size}, got {wav_size}')
+        
+        # Step 2: Encode WAV to MP3
+        logger.info(f'[D-ID] Step 2: Encoding WAV to MP3 at 128kbps...')
         result2 = subprocess.run([
             'ffmpeg',
             '-i', temp_wav,
+            '-vn',
             '-codec:a', 'libmp3lame',
-            '-b:a', '128k',  # Fixed 128kbps
+            '-b:a', '128k',
+            '-f', 'mp3',
             '-y',
             output_path
         ], capture_output=True, text=True, timeout=30)
         
+        if result2.returncode != 0:
+            logger.error(f'[D-ID] MP3 encode STDERR: {result2.stderr}')
+            # Try to clean up
+            try:
+                os.remove(temp_wav)
+            except:
+                pass
+            raise RuntimeError('Failed to encode WAV to MP3')
+        
         # Clean up temp WAV
         try:
             os.remove(temp_wav)
-        except:
-            pass
+            logger.info(f'[D-ID] Cleaned up temp WAV')
+        except Exception as e:
+            logger.warning(f'[D-ID] Could not remove temp WAV: {e}')
         
-        if result2.returncode != 0:
-            logger.error(f'[D-ID] MP3 encoding failed: {result2.stderr[-500:]}')
-            raise RuntimeError('Failed to encode MP3')
-        
-        # Check result
+        # Check final MP3
         conv_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
         logger.info(f'[D-ID] Final MP3: {conv_size} bytes ({conv_size/1_000_000:.2f} MB)')
         
-        if conv_size < 1000:
-            raise RuntimeError(f'Converted MP3 is suspiciously small: {conv_size} bytes')
+        # Verify MP3 has reasonable size for duration
+        if duration > 0:
+            expected_mp3_size = int(duration * 128 * 1000 / 8)  # duration * bitrate / 8
+            logger.info(f'[D-ID] Expected MP3 size: ~{expected_mp3_size} bytes for {duration:.2f}s at 128kbps')
+            if conv_size < expected_mp3_size * 0.5:
+                logger.error(f'[D-ID] MP3 is too small! Got {conv_size}, expected ~{expected_mp3_size}')
+                logger.error(f'[D-ID] FFmpeg WAV→MP3 stderr: {result2.stderr[-1000:]}')
+                raise RuntimeError(f'MP3 conversion failed - file too small ({conv_size} bytes for {duration:.2f}s audio)')
+        
+        if conv_size < 10000:
+            raise RuntimeError(f'Converted MP3 is too small: {conv_size} bytes')
         
         # If too large, re-encode with lower bitrate
         if conv_size > max_bytes:
