@@ -834,13 +834,17 @@ def ensure_imagine_jobs_table():
                     c.execute("ALTER TABLE imagine_jobs ADD COLUMN source_path TEXT")
                 except Exception:
                     pass
-                # Add source_type and audio_path columns for talking avatar feature
+                # Add source_type, audio_path, and provider columns for talking avatar feature
                 try:
                     c.execute("ALTER TABLE imagine_jobs ADD COLUMN source_type VARCHAR(50) NULL")
                 except Exception:
                     pass
                 try:
                     c.execute("ALTER TABLE imagine_jobs ADD COLUMN audio_path VARCHAR(512) NULL")
+                except Exception:
+                    pass
+                try:
+                    c.execute("ALTER TABLE imagine_jobs ADD COLUMN provider VARCHAR(32) NULL")
                 except Exception:
                     pass
             else:
@@ -872,13 +876,17 @@ def ensure_imagine_jobs_table():
                     c.execute("ALTER TABLE imagine_jobs ADD COLUMN source_path TEXT")
                 except Exception:
                     pass
-                # Add source_type and audio_path columns for talking avatar feature
+                # Add source_type, audio_path, and provider columns for talking avatar feature
                 try:
                     c.execute("ALTER TABLE imagine_jobs ADD COLUMN source_type TEXT")
                 except Exception:
                     pass
                 try:
                     c.execute("ALTER TABLE imagine_jobs ADD COLUMN audio_path TEXT")
+                except Exception:
+                    pass
+                try:
+                    c.execute("ALTER TABLE imagine_jobs ADD COLUMN provider TEXT")
                 except Exception:
                     pass
                 conn.commit()
