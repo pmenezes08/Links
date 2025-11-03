@@ -13050,8 +13050,21 @@ def api_imagine_videos(post_id: int):
                 original_image = post_row[0]
                 post_video = post_row[1]
             
+            # Check if this is a talking avatar post (don't show original image for these)
+            is_talking_avatar = False
+            c.execute(f"""
+                SELECT source_type
+                FROM imagine_jobs
+                WHERE target_type = 'post' AND target_id = {ph} AND source_type = 'talking_avatar'
+                LIMIT 1
+            """, (post_id,))
+            talking_avatar_check = c.fetchone()
+            if talking_avatar_check:
+                is_talking_avatar = True
+            
             # If original image is missing but post has video (replace case), try to get source_path from jobs
-            if not original_image and post_video:
+            # BUT skip this for talking avatar posts
+            if not original_image and post_video and not is_talking_avatar:
                 c.execute(f"""
                     SELECT source_path
                     FROM imagine_jobs
@@ -13088,8 +13101,8 @@ def api_imagine_videos(post_id: int):
             videos = []
             added_video_paths = set()  # Track added videos to avoid duplicates
             
-            # Add original image if it exists
-            if original_image:
+            # Add original image if it exists (but NOT for talking avatar posts)
+            if original_image and not is_talking_avatar:
                 videos.append({
                     'type': 'original',
                     'image_path': original_image,
