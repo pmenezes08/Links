@@ -3574,38 +3574,25 @@ def did_upload_file(file_path: str, file_type: str) -> str:
         raise RuntimeError('D-ID API key not configured')
     
     try:
-        # Determine content type and endpoint
-        if file_type == 'image':
-            if file_path.endswith('.png'):
-                content_type = 'image/png'
-            elif file_path.endswith('.jpg') or file_path.endswith('.jpeg'):
-                content_type = 'image/jpeg'
-            else:
-                content_type = 'image/jpeg'
-            endpoint = f'{DID_API_URL}/images'
-        else:  # audio
-            if file_path.endswith('.mp3'):
-                content_type = 'audio/mpeg'
-            elif file_path.endswith('.wav'):
-                content_type = 'audio/wav'
-            elif file_path.endswith('.m4a') or file_path.endswith('.mp4'):
-                content_type = 'audio/mp4'
-            else:
-                content_type = 'audio/mpeg'
-            endpoint = f'{DID_API_URL}/audios'
+        import base64
         
-        # Read file
+        # Read file and encode as base64
         with open(file_path, 'rb') as f:
             file_data = f.read()
+        file_base64 = base64.b64encode(file_data).decode('utf-8')
         
-        # Upload raw file data in body
-        headers = {
-            'Authorization': f'Basic {DID_API_KEY}',
-            'Content-Type': content_type
-        }
+        # Prepare request based on file type
+        headers = did_headers()
         
-        logger.info(f'[D-ID] Uploading {file_type} to {endpoint} ({len(file_data)} bytes, type: {content_type})')
-        resp = requests.post(endpoint, headers=headers, data=file_data, timeout=60)
+        if file_type == 'image':
+            endpoint = f'{DID_API_URL}/images'
+            payload = {'image': file_base64}
+        else:  # audio
+            endpoint = f'{DID_API_URL}/audios'
+            payload = {'audio': file_base64}
+        
+        logger.info(f'[D-ID] Uploading {file_type} to {endpoint} ({len(file_data)} bytes)')
+        resp = requests.post(endpoint, headers=headers, json=payload, timeout=60)
         logger.info(f'[D-ID] Upload response: {resp.status_code} - {resp.text[:500]}')
         resp.raise_for_status()
         
