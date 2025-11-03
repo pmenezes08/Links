@@ -3600,50 +3600,145 @@ def did_get_public_url(file_path: str) -> str:
         logger.error(f'[D-ID] Failed to generate public URL: {e}')
         raise RuntimeError(f'Could not generate public URL for {file_path}: {e}')
 
-def did_convert_audio_to_mp3(audio_path: str) -> str:
-    """Convert audio to MP3 format for D-ID (supports: flac,mp3,mp4,wav,m4a)"""
-    import subprocess
+def did_compress_image_to_limit(image_path: str, max_bytes: int = 9_000_000) -> str:
+    """Compress image to under max_bytes for D-ID (limit is 10MB, use 9MB for safety)"""
+    from PIL import Image
+    from io import BytesIO
     
-    # Check if already in supported format
-    if audio_path.endswith(('.mp3', '.mp4', '.wav', '.m4a', '.flac')):
-        logger.info(f'[D-ID] Audio already in supported format: {audio_path}')
-        return audio_path
-    
-    # Convert to MP3
     try:
-        # Check original file size
-        orig_size = os.path.getsize(audio_path) if os.path.exists(audio_path) else 0
-        logger.info(f'[D-ID] Original audio file size: {orig_size} bytes')
+        # Check current size
+        current_size = os.path.getsize(image_path)
+        logger.info(f'[D-ID] Original image size: {current_size} bytes')
         
-        output_path = audio_path.rsplit('.', 1)[0] + '_converted.mp3'
-        logger.info(f'[D-ID] Converting {audio_path} to MP3: {output_path}')
+        if current_size <= max_bytes:
+            logger.info(f'[D-ID] Image already under {max_bytes/1_000_000}MB limit')
+            return image_path
         
-        # Use ffmpeg to convert
-        result = subprocess.run([
-            'ffmpeg', '-i', audio_path, 
-            '-codec:a', 'libmp3lame', 
-            '-qscale:a', '2',  # High quality
-            '-y',  # Overwrite
-            output_path
-        ], check=True, capture_output=True, text=True)
+        # Need to compress
+        img = Image.open(image_path)
         
-        # Check converted file size
-        conv_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
-        logger.info(f'[D-ID] Audio converted successfully: {output_path} ({conv_size} bytes)')
+        # Convert to RGB if needed
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            if img.mode in ('RGBA', 'LA'):
+                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+            else:
+                background.paste(img)
+            img = background
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
         
-        if conv_size == 0:
-            logger.error(f'[D-ID] Converted audio file is empty! Original: {orig_size} bytes')
-            raise RuntimeError('Converted audio file is empty')
+        # Try different compression levels
+        output_path = image_path.rsplit('.', 1)[0] + '_compressed.jpg'
+        quality = 85
         
+        while quality >= 40:
+            output = BytesIO()
+            img.save(output, format='JPEG', quality=quality, optimize=True)
+            compressed_size = len(output.getvalue())
+            
+            if compressed_size <= max_bytes:
+                # Save to file
+                with open(output_path, 'wb') as f:
+                    f.write(output.getvalue())
+                logger.info(f'[D-ID] Image compressed: {current_size} -> {compressed_size} bytes (quality={quality})')
+                return output_path
+            
+            quality -= 10
+        
+        # Last resort: resize image
+        logger.warning(f'[D-ID] Compression not enough, resizing image')
+        max_dimension = 1024
+        img.thumbnail((max_dimension, max_dimension), Image.LANCZOS)
+        output = BytesIO()
+        img.save(output, format='JPEG', quality=70, optimize=True)
+        with open(output_path, 'wb') as f:
+            f.write(output.getvalue())
+        final_size = len(output.getvalue())
+        logger.info(f'[D-ID] Image resized and compressed: {current_size} -> {final_size} bytes')
         return output_path
         
-    except subprocess.CalledProcessError as e:
-        logger.error(f'[D-ID] FFmpeg conversion failed: {e.stderr if e.stderr else str(e)}')
-        logger.error(f'[D-ID] FFmpeg stdout: {e.stdout if e.stdout else "none"}')
-        raise RuntimeError(f'Audio conversion failed: {e}')
-    except FileNotFoundError:
-        logger.error('[D-ID] FFmpeg not found - cannot convert audio')
-        raise RuntimeError('FFmpeg not installed - cannot convert WebM to MP3')
+    except Exception as e:
+        logger.error(f'[D-ID] Image compression failed: {e}')
+        return image_path  # Return original if compression fails
+
+def did_convert_audio_to_mp3(audio_path: str, max_bytes: int = 9_000_000) -> str:
+    """Convert audio to MP3 format for D-ID (supports: flac,mp3,mp4,wav,m4a). Compress if > 9MB."""
+    import subprocess
+    
+    # Check original file size
+    orig_size = os.path.getsize(audio_path) if os.path.exists(audio_path) else 0
+    logger.info(f'[D-ID] Original audio file size: {orig_size} bytes ({orig_size/1_000_000:.2f} MB)')
+    
+    # Determine output path
+    if audio_path.endswith(('.mp3', '.mp4', '.wav', '.m4a', '.flac')):
+        # Already in supported format, but might need compression
+        if orig_size <= max_bytes:
+            logger.info(f'[D-ID] Audio already in supported format and under limit')
+            return audio_path
+        output_path = audio_path.rsplit('.', 1)[0] + '_compressed.mp3'
+        needs_conversion = True
+    else:
+        # Need to convert from WebM
+        output_path = audio_path.rsplit('.', 1)[0] + '_converted.mp3'
+        needs_conversion = True
+    
+    # Convert/compress audio
+    if needs_conversion:
+        try:
+            logger.info(f'[D-ID] Converting/compressing {audio_path} to MP3: {output_path}')
+            
+            # Use lower bitrate if file is too large (96k for files > 5MB, otherwise 128k)
+            bitrate = '96k' if orig_size > 5_000_000 else '128k'
+            logger.info(f'[D-ID] Using bitrate: {bitrate}')
+            
+            # Use ffmpeg to convert with compression
+            result = subprocess.run([
+                'ffmpeg', '-i', audio_path,
+                '-codec:a', 'libmp3lame',
+                '-b:a', bitrate,  # Constant bitrate
+                '-ar', '44100',   # Sample rate 44.1kHz
+                '-ac', '1',       # Mono (reduces size, fine for voice)
+                '-y',  # Overwrite
+                output_path
+            ], check=True, capture_output=True, text=True)
+            
+            # Check converted file size
+            conv_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+            logger.info(f'[D-ID] Audio converted: {orig_size} -> {conv_size} bytes ({conv_size/1_000_000:.2f} MB)')
+            
+            if conv_size == 0:
+                logger.error(f'[D-ID] Converted audio file is empty!')
+                raise RuntimeError('Converted audio file is empty')
+            
+            if conv_size > max_bytes:
+                logger.warning(f'[D-ID] Converted audio still too large ({conv_size/1_000_000:.2f} MB), trying lower bitrate')
+                # Try even lower bitrate
+                subprocess.run([
+                    'ffmpeg', '-i', audio_path,
+                    '-codec:a', 'libmp3lame',
+                    '-b:a', '64k',  # Lower bitrate
+                    '-ar', '22050',  # Lower sample rate
+                    '-ac', '1',      # Mono
+                    '-y',
+                    output_path
+                ], check=True, capture_output=True, text=True)
+                conv_size = os.path.getsize(output_path)
+                logger.info(f'[D-ID] Audio re-compressed: {conv_size} bytes ({conv_size/1_000_000:.2f} MB)')
+            
+            return output_path
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f'[D-ID] FFmpeg conversion failed: {e.stderr if e.stderr else str(e)}')
+            logger.error(f'[D-ID] FFmpeg stdout: {e.stdout if e.stdout else "none"}')
+            raise RuntimeError(f'Audio conversion failed: {e}')
+        except FileNotFoundError:
+            logger.error('[D-ID] FFmpeg not found - cannot convert audio')
+            raise RuntimeError('FFmpeg not installed - cannot convert WebM to MP3')
+    
+    return audio_path
 
 def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
     """Create talking avatar video using D-ID (audio-to-video with lip sync)"""
@@ -3651,18 +3746,28 @@ def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
         raise RuntimeError('D-ID API key not configured. Set DID_API_KEY environment variable.')
     
     try:
-        # Convert audio to MP3 if needed (D-ID only supports: flac,mp3,mp4,wav,m4a)
-        audio_path = did_convert_audio_to_mp3(audio_path)
+        # D-ID has 10MB limit per file - compress both image and audio
+        DID_MAX_FILE_SIZE = 9_000_000  # 9MB to be safe
+        
+        # Compress image if needed
+        image_path = did_compress_image_to_limit(image_path, DID_MAX_FILE_SIZE)
+        
+        # Convert/compress audio to MP3 if needed (D-ID only supports: flac,mp3,mp4,wav,m4a)
+        audio_path = did_convert_audio_to_mp3(audio_path, DID_MAX_FILE_SIZE)
         
         # Convert local paths to public URLs that D-ID can access
         logger.info(f'[D-ID] Converting paths to public URLs')
         image_url = did_get_public_url(image_path)
         audio_url = did_get_public_url(audio_path)
         
-        # Log file sizes to verify
+        # Log final file sizes to verify they're under limit
         img_size = os.path.getsize(image_path) if os.path.exists(image_path) else 0
         aud_size = os.path.getsize(audio_path) if os.path.exists(audio_path) else 0
-        logger.info(f'[D-ID] Sending to D-ID - Image: {img_size} bytes, Audio: {aud_size} bytes')
+        logger.info(f'[D-ID] Final file sizes - Image: {img_size} bytes ({img_size/1_000_000:.2f} MB), Audio: {aud_size} bytes ({aud_size/1_000_000:.2f} MB)')
+        
+        if img_size > 10_000_000 or aud_size > 10_000_000:
+            raise RuntimeError(f'File size still exceeds 10MB limit after compression. Image: {img_size/1_000_000:.2f}MB, Audio: {aud_size/1_000_000:.2f}MB')
+        
         logger.info(f'[D-ID] Image URL: {image_url}')
         logger.info(f'[D-ID] Audio URL: {audio_url}')
         
