@@ -834,6 +834,15 @@ def ensure_imagine_jobs_table():
                     c.execute("ALTER TABLE imagine_jobs ADD COLUMN source_path TEXT")
                 except Exception:
                     pass
+                # Add source_type and audio_path columns for talking avatar feature
+                try:
+                    c.execute("ALTER TABLE imagine_jobs ADD COLUMN source_type VARCHAR(50) NULL")
+                except Exception:
+                    pass
+                try:
+                    c.execute("ALTER TABLE imagine_jobs ADD COLUMN audio_path VARCHAR(512) NULL")
+                except Exception:
+                    pass
             else:
                 c.execute(
                     """
@@ -861,6 +870,15 @@ def ensure_imagine_jobs_table():
                 c.execute("CREATE INDEX IF NOT EXISTS idx_imagine_jobs_created_by ON imagine_jobs (created_by)")
                 try:
                     c.execute("ALTER TABLE imagine_jobs ADD COLUMN source_path TEXT")
+                except Exception:
+                    pass
+                # Add source_type and audio_path columns for talking avatar feature
+                try:
+                    c.execute("ALTER TABLE imagine_jobs ADD COLUMN source_type TEXT")
+                except Exception:
+                    pass
+                try:
+                    c.execute("ALTER TABLE imagine_jobs ADD COLUMN audio_path TEXT")
                 except Exception:
                     pass
                 conn.commit()
