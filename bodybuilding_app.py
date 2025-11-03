@@ -3600,12 +3600,48 @@ def did_get_public_url(file_path: str) -> str:
         logger.error(f'[D-ID] Failed to generate public URL: {e}')
         raise RuntimeError(f'Could not generate public URL for {file_path}: {e}')
 
+def did_convert_audio_to_mp3(audio_path: str) -> str:
+    """Convert audio to MP3 format for D-ID (supports: flac,mp3,mp4,wav,m4a)"""
+    import subprocess
+    
+    # Check if already in supported format
+    if audio_path.endswith(('.mp3', '.mp4', '.wav', '.m4a', '.flac')):
+        logger.info(f'[D-ID] Audio already in supported format: {audio_path}')
+        return audio_path
+    
+    # Convert to MP3
+    try:
+        output_path = audio_path.rsplit('.', 1)[0] + '_converted.mp3'
+        logger.info(f'[D-ID] Converting {audio_path} to MP3: {output_path}')
+        
+        # Use ffmpeg to convert
+        subprocess.run([
+            'ffmpeg', '-i', audio_path, 
+            '-codec:a', 'libmp3lame', 
+            '-qscale:a', '2',  # High quality
+            '-y',  # Overwrite
+            output_path
+        ], check=True, capture_output=True)
+        
+        logger.info(f'[D-ID] Audio converted successfully: {output_path}')
+        return output_path
+        
+    except subprocess.CalledProcessError as e:
+        logger.error(f'[D-ID] FFmpeg conversion failed: {e.stderr.decode() if e.stderr else str(e)}')
+        raise RuntimeError(f'Audio conversion failed: {e}')
+    except FileNotFoundError:
+        logger.error('[D-ID] FFmpeg not found - cannot convert audio')
+        raise RuntimeError('FFmpeg not installed - cannot convert WebM to MP3')
+
 def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
     """Create talking avatar video using D-ID (audio-to-video with lip sync)"""
     if not DID_API_KEY:
         raise RuntimeError('D-ID API key not configured. Set DID_API_KEY environment variable.')
     
     try:
+        # Convert audio to MP3 if needed (D-ID only supports: flac,mp3,mp4,wav,m4a)
+        audio_path = did_convert_audio_to_mp3(audio_path)
+        
         # Convert local paths to public URLs that D-ID can access
         logger.info(f'[D-ID] Converting paths to public URLs')
         image_url = did_get_public_url(image_path)
