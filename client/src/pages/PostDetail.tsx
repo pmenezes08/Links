@@ -976,28 +976,31 @@ export default function PostDetail(){
               </div>
             )}
             {replyPreview && (
-              <div className="flex flex-col gap-2 mr-auto flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mr-auto flex-1 min-w-0">
+                <div className="flex flex-col gap-1.5 flex-1 min-w-0">
                   <audio controls className="w-full" playsInline webkit-playsinline="true" src={replyPreview.url} />
-                  <button 
-                    onClick={() => { clearReplyPreview(); setEnableTalkingAvatar(false) }}
-                    className="ml-1 text-[#9fb0b5] hover:text-white"
-                    aria-label="Remove audio"
+                  {/* Talking Avatar Toggle - Compact */}
+                  <button
+                    type="button"
+                    onClick={() => setEnableTalkingAvatar(!enableTalkingAvatar)}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] transition border self-start ${
+                      enableTalkingAvatar 
+                        ? 'bg-[#4db6ac]/15 border-[#4db6ac]/40 text-[#4db6ac]' 
+                        : 'bg-white/5 border-white/10 text-white/60 hover:border-white/20 hover:text-white/80'
+                    }`}
                   >
-                    <i className="fa-regular fa-trash-can" />
+                    {enableTalkingAvatar && <i className="fa-solid fa-check text-[9px]" />}
+                    <i className="fa-solid fa-wand-magic-sparkles text-[10px]" />
+                    <span className="uppercase tracking-wide font-medium">Talking Avatar</span>
                   </button>
                 </div>
-                {/* Talking Avatar Toggle */}
-                <label className="flex items-center gap-2 text-xs text-white/70 cursor-pointer hover:text-white/90 transition select-none">
-                  <input 
-                    type="checkbox"
-                    checked={enableTalkingAvatar}
-                    onChange={(e) => setEnableTalkingAvatar(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded border-white/20 bg-white/10 text-[#4db6ac] focus:ring-[#4db6ac]/50"
-                  />
-                  <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
-                  <span>Convert to Talking Avatar Video</span>
-                </label>
+                <button 
+                  onClick={() => { clearReplyPreview(); setEnableTalkingAvatar(false) }}
+                  className="ml-1 text-[#9fb0b5] hover:text-white"
+                  aria-label="Remove audio"
+                >
+                  <i className="fa-regular fa-trash-can" />
+                </button>
               </div>
             )}
             <button type="button" className="w-10 h-10 rounded-full hover:bg-white/10 grid place-items-center" aria-label="Add image" onClick={()=> fileInputRef.current?.click()}>
