@@ -3568,56 +3568,37 @@ def did_headers() -> Dict[str, str]:
         'Accept': 'application/json'
     }
 
-def did_compress_image(image_path: str) -> str:
-    """Compress image to reduce base64 size for D-ID API"""
-    from PIL import Image
-    from io import BytesIO
-    import base64
-    
+def did_get_public_url(file_path: str) -> str:
+    """Convert local file path to public URL that D-ID can access"""
     try:
-        img = Image.open(image_path)
+        # Extract relative path from static/uploads/
+        if '/static/uploads/' in file_path:
+            rel_path = file_path.split('/static/uploads/')[-1]
+        elif '/uploads/' in file_path:
+            rel_path = file_path.split('/uploads/')[-1]
+        else:
+            raise ValueError(f'File not in uploads directory: {file_path}')
         
-        # Convert to RGB if needed
-        if img.mode in ('RGBA', 'LA', 'P'):
-            background = Image.new('RGB', img.size, (255, 255, 255))
-            if img.mode == 'P':
-                img = img.convert('RGBA')
-            if img.mode in ('RGBA', 'LA'):
-                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-            else:
-                background.paste(img)
-            img = background
-        elif img.mode != 'RGB':
-            img = img.convert('RGB')
-        
-        # Resize to max 400px for smaller payload (D-ID accepts smaller images)
-        max_size = 400
-        if img.size[0] > max_size or img.size[1] > max_size:
-            # Use Image.LANCZOS for compatibility with older Pillow
-            img.thumbnail((max_size, max_size), Image.LANCZOS)
-        
-        # Compress very aggressively
-        output = BytesIO()
-        img.save(output, format='JPEG', quality=50, optimize=True)
-        compressed_data = output.getvalue()
-        
-        logger.info(f'[D-ID] Compressed image from {os.path.getsize(image_path)} to {len(compressed_data)} bytes')
-        return base64.b64encode(compressed_data).decode('utf-8')
-    except Exception as e:
-        logger.error(f'[D-ID] Image compression failed: {e}')
-        # On error, try aggressive fallback
+        # Build public URL
+        from flask import request
         try:
-            img = Image.open(image_path)
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            img.thumbnail((300, 300), Image.LANCZOS)
-            output = BytesIO()
-            img.save(output, format='JPEG', quality=40, optimize=True)
-            return base64.b64encode(output.getvalue()).decode('utf-8')
-        except:
-            # Last resort - original file
-            with open(image_path, 'rb') as f:
-                return base64.b64encode(f.read()).decode('utf-8')
+            # Try to get base URL from request context
+            base_url = request.host_url.rstrip('/')
+        except RuntimeError:
+            # Not in request context, use PUBLIC_BASE_URL if available
+            if PUBLIC_BASE_URL:
+                base_url = PUBLIC_BASE_URL.rstrip('/')
+            else:
+                # Fallback to environment or default
+                base_url = os.environ.get('PUBLIC_BASE_URL', 'https://puntz08.pythonanywhere.com')
+        
+        public_url = f'{base_url}/uploads/{rel_path}'
+        logger.info(f'[D-ID] Converted {file_path} -> {public_url}')
+        return public_url
+        
+    except Exception as e:
+        logger.error(f'[D-ID] Failed to generate public URL: {e}')
+        raise RuntimeError(f'Could not generate public URL for {file_path}: {e}')
 
 def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
     """Create talking avatar video using D-ID (audio-to-video with lip sync)"""
@@ -3625,46 +3606,28 @@ def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
         raise RuntimeError('D-ID API key not configured. Set DID_API_KEY environment variable.')
     
     try:
-        import base64
+        # Convert local paths to public URLs that D-ID can access
+        logger.info(f'[D-ID] Converting paths to public URLs')
+        image_url = did_get_public_url(image_path)
+        audio_url = did_get_public_url(audio_path)
         
-        # Compress and encode image
-        logger.info(f'[D-ID] Compressing image: {image_path}')
-        image_base64 = did_compress_image(image_path)
-        
-        # Read and encode audio
-        logger.info(f'[D-ID] Reading audio: {audio_path}')
-        with open(audio_path, 'rb') as f:
-            audio_data = f.read()
-        audio_base64 = base64.b64encode(audio_data).decode('utf-8')
-        
-        logger.info(f'[D-ID] Base64 sizes - Image: {len(image_base64)} chars, Audio: {len(audio_base64)} chars')
-        
-        # Determine audio type
-        audio_type = 'audio/webm'
-        if audio_path.endswith('.mp3'):
-            audio_type = 'audio/mpeg'
-        elif audio_path.endswith('.wav'):
-            audio_type = 'audio/wav'
-        elif audio_path.endswith('.m4a') or audio_path.endswith('.mp4'):
-            audio_type = 'audio/mp4'
-        
-        # Create talk with base64 data directly
+        # Create talk with public URLs (as per D-ID API docs)
         headers = did_headers()
         payload = {
-            'source_url': f'data:image/jpeg;base64,{image_base64}',
+            'source_url': image_url,
             'script': {
                 'type': 'audio',
-                'audio_url': f'data:{audio_type};base64,{audio_base64}'
+                'audio_url': audio_url
             },
             'config': {
                 'stitch': True,
-                'fluent': False,  # Disable fluent for faster processing
+                'fluent': False,
                 'pad_audio': 0.0
             }
         }
         
         url = f'{DID_API_URL}/talks'
-        logger.info(f'[D-ID] Creating talk at {url}')
+        logger.info(f'[D-ID] Creating talk with URLs: image={image_url}, audio={audio_url}')
         resp = requests.post(url, headers=headers, json=payload, timeout=60)
         logger.info(f'[D-ID] Response status: {resp.status_code}')
         logger.info(f'[D-ID] Response body: {resp.text[:1000]}')
