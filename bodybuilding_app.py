@@ -3690,20 +3690,41 @@ def did_convert_audio_to_mp3(audio_path: str, max_bytes: int = 9_000_000) -> str
         try:
             logger.info(f'[D-ID] Converting/compressing {audio_path} to MP3: {output_path}')
             
+            # First, probe the audio to get duration
+            probe_result = subprocess.run([
+                'ffprobe', '-v', 'error', '-show_entries', 
+                'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1',
+                audio_path
+            ], capture_output=True, text=True)
+            
+            duration = 0
+            try:
+                duration = float(probe_result.stdout.strip())
+                logger.info(f'[D-ID] Audio duration: {duration:.2f} seconds')
+            except:
+                logger.warning(f'[D-ID] Could not determine audio duration')
+            
             # Use lower bitrate if file is too large (96k for files > 5MB, otherwise 128k)
             bitrate = '96k' if orig_size > 5_000_000 else '128k'
             logger.info(f'[D-ID] Using bitrate: {bitrate}')
             
-            # Use ffmpeg to convert with compression
+            # Use ffmpeg to convert - DON'T force mono or change sample rate for now
             result = subprocess.run([
                 'ffmpeg', '-i', audio_path,
                 '-codec:a', 'libmp3lame',
                 '-b:a', bitrate,  # Constant bitrate
-                '-ar', '44100',   # Sample rate 44.1kHz
-                '-ac', '1',       # Mono (reduces size, fine for voice)
                 '-y',  # Overwrite
                 output_path
-            ], check=True, capture_output=True, text=True)
+            ], capture_output=True, text=True)
+            
+            # Log stderr (FFmpeg outputs progress info there)
+            if result.stderr:
+                logger.info(f'[D-ID] FFmpeg output: {result.stderr[-500:]}')  # Last 500 chars
+            
+            if result.returncode != 0:
+                logger.error(f'[D-ID] FFmpeg failed with code {result.returncode}')
+                logger.error(f'[D-ID] FFmpeg stderr: {result.stderr}')
+                raise RuntimeError(f'FFmpeg conversion failed with code {result.returncode}')
             
             # Check converted file size
             conv_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
@@ -3713,14 +3734,21 @@ def did_convert_audio_to_mp3(audio_path: str, max_bytes: int = 9_000_000) -> str
                 logger.error(f'[D-ID] Converted audio file is empty!')
                 raise RuntimeError('Converted audio file is empty')
             
+            # Verify the converted audio has similar duration
+            if duration > 0:
+                expected_size = int(duration * int(bitrate.rstrip('k')) * 1000 / 8)  # Rough estimate
+                if conv_size < expected_size * 0.3:  # Less than 30% of expected
+                    logger.error(f'[D-ID] Converted audio seems truncated: {conv_size} bytes vs expected ~{expected_size} bytes')
+                    logger.error(f'[D-ID] Duration: {duration}s, Bitrate: {bitrate}')
+                    raise RuntimeError(f'Audio conversion produced suspiciously small file ({conv_size} bytes for {duration}s audio)')
+            
             if conv_size > max_bytes:
-                logger.warning(f'[D-ID] Converted audio still too large ({conv_size/1_000_000:.2f} MB), trying lower bitrate')
-                # Try even lower bitrate
+                logger.warning(f'[D-ID] Converted audio too large ({conv_size/1_000_000:.2f} MB), trying mono + lower bitrate')
+                # Try even lower bitrate with mono
                 subprocess.run([
                     'ffmpeg', '-i', audio_path,
                     '-codec:a', 'libmp3lame',
                     '-b:a', '64k',  # Lower bitrate
-                    '-ar', '22050',  # Lower sample rate
                     '-ac', '1',      # Mono
                     '-y',
                     output_path
