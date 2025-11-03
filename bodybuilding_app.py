@@ -3568,53 +3568,94 @@ def did_headers() -> Dict[str, str]:
         'Accept': 'application/json'
     }
 
+def did_upload_file(file_path: str, file_type: str) -> str:
+    """Upload image or audio file to D-ID and get URL"""
+    if not DID_API_KEY:
+        raise RuntimeError('D-ID API key not configured')
+    
+    try:
+        # Determine content type
+        if file_type == 'image':
+            if file_path.endswith('.png'):
+                content_type = 'image/png'
+            elif file_path.endswith('.jpg') or file_path.endswith('.jpeg'):
+                content_type = 'image/jpeg'
+            else:
+                content_type = 'image/jpeg'
+            endpoint = f'{DID_API_URL}/images'
+        else:  # audio
+            if file_path.endswith('.mp3'):
+                content_type = 'audio/mpeg'
+            elif file_path.endswith('.wav'):
+                content_type = 'audio/wav'
+            elif file_path.endswith('.m4a'):
+                content_type = 'audio/mp4'
+            else:
+                content_type = 'audio/mpeg'
+            endpoint = f'{DID_API_URL}/audios'
+        
+        # Read file
+        with open(file_path, 'rb') as f:
+            file_data = f.read()
+        
+        # Upload with multipart form data
+        headers = {
+            'Authorization': f'Basic {DID_API_KEY}',
+        }
+        
+        files = {
+            'file': (os.path.basename(file_path), file_data, content_type)
+        }
+        
+        logger.info(f'[D-ID] Uploading {file_type} to {endpoint} ({len(file_data)} bytes)')
+        resp = requests.post(endpoint, headers=headers, files=files, timeout=60)
+        logger.info(f'[D-ID] Upload response: {resp.status_code} - {resp.text[:500]}')
+        resp.raise_for_status()
+        
+        result = resp.json()
+        file_url = result.get('url')
+        if not file_url:
+            raise RuntimeError(f'No URL in upload response: {resp.text[:500]}')
+        
+        logger.info(f'[D-ID] {file_type.capitalize()} uploaded: {file_url}')
+        return file_url
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f'[D-ID] Upload failed: {str(e)}')
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f'[D-ID] Error response: {e.response.text[:1000]}')
+        raise RuntimeError(f'D-ID {file_type} upload failed: {str(e)}')
+
 def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
     """Create talking avatar video using D-ID (audio-to-video with lip sync)"""
     if not DID_API_KEY:
         raise RuntimeError('D-ID API key not configured. Set DID_API_KEY environment variable.')
     
     try:
-        import base64
+        # Upload image and audio files first
+        logger.info(f'[D-ID] Uploading image: {image_path}')
+        image_url = did_upload_file(image_path, 'image')
         
-        # Read and encode image as base64
-        logger.info(f'[D-ID] Reading image: {image_path}')
-        with open(image_path, 'rb') as f:
-            image_data = f.read()
-        image_base64 = base64.b64encode(image_data).decode('utf-8')
+        logger.info(f'[D-ID] Uploading audio: {audio_path}')
+        audio_url = did_upload_file(audio_path, 'audio')
         
-        # Read and encode audio as base64
-        logger.info(f'[D-ID] Reading audio: {audio_path}')
-        with open(audio_path, 'rb') as f:
-            audio_data = f.read()
-        audio_base64 = base64.b64encode(audio_data).decode('utf-8')
-        
-        # Determine audio type from file extension
-        audio_type = 'audio/wav'
-        if audio_path.endswith('.mp3'):
-            audio_type = 'audio/mpeg'
-        elif audio_path.endswith('.webm'):
-            audio_type = 'audio/webm'
-        elif audio_path.endswith('.m4a'):
-            audio_type = 'audio/mp4'
-        
-        # Create talk with base64 encoded data
+        # Create talk with uploaded URLs
         headers = did_headers()
         payload = {
-            'source_url': f'data:image/jpeg;base64,{image_base64}',
+            'source_url': image_url,
             'script': {
                 'type': 'audio',
-                'audio_url': f'data:{audio_type};base64,{audio_base64}'
+                'audio_url': audio_url
             },
             'config': {
                 'stitch': True,
                 'fluent': True,
-                'pad_audio': 0
+                'pad_audio': 0.0
             }
         }
         
         url = f'{DID_API_URL}/talks'
-        logger.info(f'[D-ID] Creating talk at {url}')
-        logger.info(f'[D-ID] Image size: {len(image_data)} bytes, Audio size: {len(audio_data)} bytes')
+        logger.info(f'[D-ID] Creating talk with payload: {payload}')
         resp = requests.post(url, headers=headers, json=payload, timeout=60)
         logger.info(f'[D-ID] Response status: {resp.status_code}')
         logger.info(f'[D-ID] Response body: {resp.text[:1000]}')
