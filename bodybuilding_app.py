@@ -3590,23 +3590,34 @@ def did_compress_image(image_path: str) -> str:
         elif img.mode != 'RGB':
             img = img.convert('RGB')
         
-        # Resize to max 512px (D-ID recommends smaller images)
-        max_size = 512
+        # Resize to max 400px for smaller payload (D-ID accepts smaller images)
+        max_size = 400
         if img.size[0] > max_size or img.size[1] > max_size:
-            img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+            # Use Image.LANCZOS for compatibility with older Pillow
+            img.thumbnail((max_size, max_size), Image.LANCZOS)
         
-        # Compress aggressively
+        # Compress very aggressively
         output = BytesIO()
-        img.save(output, format='JPEG', quality=60, optimize=True)
+        img.save(output, format='JPEG', quality=50, optimize=True)
         compressed_data = output.getvalue()
         
         logger.info(f'[D-ID] Compressed image from {os.path.getsize(image_path)} to {len(compressed_data)} bytes')
         return base64.b64encode(compressed_data).decode('utf-8')
     except Exception as e:
         logger.error(f'[D-ID] Image compression failed: {e}')
-        # Fallback to original
-        with open(image_path, 'rb') as f:
-            return base64.b64encode(f.read()).decode('utf-8')
+        # On error, try aggressive fallback
+        try:
+            img = Image.open(image_path)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            img.thumbnail((300, 300), Image.LANCZOS)
+            output = BytesIO()
+            img.save(output, format='JPEG', quality=40, optimize=True)
+            return base64.b64encode(output.getvalue()).decode('utf-8')
+        except:
+            # Last resort - original file
+            with open(image_path, 'rb') as f:
+                return base64.b64encode(f.read()).decode('utf-8')
 
 def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
     """Create talking avatar video using D-ID (audio-to-video with lip sync)"""
