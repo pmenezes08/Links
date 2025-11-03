@@ -3785,7 +3785,13 @@ def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
     except requests.exceptions.RequestException as e:
         logger.error(f'[D-ID] Request failed: {str(e)}')
         if hasattr(e, 'response') and e.response is not None:
-            logger.error(f'[D-ID] Error response: {e.response.text[:1000]}')
+            error_text = e.response.text
+            logger.error(f'[D-ID] Error response: {error_text[:1000]}')
+            
+            # Check for face detection error
+            if 'face' in error_text.lower() or 'detect' in error_text.lower():
+                raise RuntimeError('D-ID requires a clear human face in the image. Cartoons, drawings, and animated characters are not supported. Please use a photo with a visible human face, or try the regular video animation feature instead.')
+        
         raise RuntimeError(f'D-ID talk creation failed: {str(e)}')
     except KeyError as e:
         logger.error(f'[D-ID] Missing key in response: {e}')
