@@ -3574,7 +3574,7 @@ def did_upload_file(file_path: str, file_type: str) -> str:
         raise RuntimeError('D-ID API key not configured')
     
     try:
-        # Determine content type
+        # Determine content type and endpoint
         if file_type == 'image':
             if file_path.endswith('.png'):
                 content_type = 'image/png'
@@ -3588,7 +3588,7 @@ def did_upload_file(file_path: str, file_type: str) -> str:
                 content_type = 'audio/mpeg'
             elif file_path.endswith('.wav'):
                 content_type = 'audio/wav'
-            elif file_path.endswith('.m4a'):
+            elif file_path.endswith('.m4a') or file_path.endswith('.mp4'):
                 content_type = 'audio/mp4'
             else:
                 content_type = 'audio/mpeg'
@@ -3598,17 +3598,14 @@ def did_upload_file(file_path: str, file_type: str) -> str:
         with open(file_path, 'rb') as f:
             file_data = f.read()
         
-        # Upload with multipart form data
+        # Upload raw file data in body
         headers = {
             'Authorization': f'Basic {DID_API_KEY}',
+            'Content-Type': content_type
         }
         
-        files = {
-            'file': (os.path.basename(file_path), file_data, content_type)
-        }
-        
-        logger.info(f'[D-ID] Uploading {file_type} to {endpoint} ({len(file_data)} bytes)')
-        resp = requests.post(endpoint, headers=headers, files=files, timeout=60)
+        logger.info(f'[D-ID] Uploading {file_type} to {endpoint} ({len(file_data)} bytes, type: {content_type})')
+        resp = requests.post(endpoint, headers=headers, data=file_data, timeout=60)
         logger.info(f'[D-ID] Upload response: {resp.status_code} - {resp.text[:500]}')
         resp.raise_for_status()
         
