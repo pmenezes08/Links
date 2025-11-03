@@ -3708,11 +3708,14 @@ def did_convert_audio_to_mp3(audio_path: str, max_bytes: int = 9_000_000) -> str
             bitrate = '96k' if orig_size > 5_000_000 else '128k'
             logger.info(f'[D-ID] Using bitrate: {bitrate}')
             
-            # Use ffmpeg to convert - DON'T force mono or change sample rate for now
+            # Use ffmpeg to convert with explicit audio parameters
+            # Use -q:a (quality) instead of -b:a (bitrate) for better results
+            # quality scale: 0-9, where 2 is high quality (~170-210 kbps VBR)
             result = subprocess.run([
                 'ffmpeg', '-i', audio_path,
                 '-codec:a', 'libmp3lame',
-                '-b:a', bitrate,  # Constant bitrate
+                '-q:a', '2',  # High quality VBR (better than CBR for speech)
+                '-ar', '48000',  # Keep original sample rate
                 '-y',  # Overwrite
                 output_path
             ], capture_output=True, text=True)
