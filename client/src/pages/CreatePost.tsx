@@ -444,6 +444,19 @@ export default function CreatePost(){
           }
         }}
       />
+      
+      {/* Talking Avatar Modal */}
+      {preview && currentUser && (
+        <TalkingAvatarModal
+          isOpen={talkingAvatarModalOpen}
+          onClose={() => setTalkingAvatarModalOpen(false)}
+          audioBlob={preview.blob}
+          audioDuration={preview.duration}
+          userProfilePic={currentUser.profile_picture}
+          username={currentUser.username}
+          onSubmit={handleTalkingAvatarSubmit}
+        />
+      )}
     </div>
   )
 }
