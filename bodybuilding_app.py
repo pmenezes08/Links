@@ -3893,7 +3893,7 @@ def did_download_video(video_url: str) -> bytes:
 
 
 def process_talking_avatar_job(job_id: int):
-    """Background worker to generate talking avatar video using D-ID"""
+    """Background worker to generate talking avatar video using MuseTalk (local)"""
     try:
         logger.info(f'[TalkingAvatar] Starting job {job_id}')
         
@@ -3920,84 +3920,48 @@ def process_talking_avatar_job(job_id: int):
         
         logger.info(f'[TalkingAvatar] Image: {image_path}, Audio: {audio_path}')
         
-        # Create talking avatar with D-ID
-        logger.info(f'[TalkingAvatar] Creating D-ID talk for job {job_id}')
-        talk_id = did_create_talking_avatar(image_path, audio_path)
+        # Prepare output path
+        filename = f"avatar_{job_id}_{int(time.time())}.mp4"
+        rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{filename}"
+        full_path = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SUBDIR, filename)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
         
-        # Store talk_id for polling
-        update_imagine_job(job_id, runway_job_id=talk_id)  # Reuse runway_job_id field for talk_id
+        # Generate talking avatar with MuseTalk (local processing)
+        logger.info(f'[TalkingAvatar] Generating video with MuseTalk...')
+        from musetalk_integration import generate_talking_avatar
         
-        # Poll for completion
-        start_time = time.time()
-        poll_interval = DID_POLL_INTERVAL_SECONDS
-        timeout = DID_TIMEOUT_SECONDS
+        generate_talking_avatar(
+            image_path=image_path,
+            audio_path=audio_path,
+            output_path=full_path
+        )
         
-        while True:
-            elapsed = time.time() - start_time
-            if elapsed > timeout:
-                raise RuntimeError(f'D-ID talk timeout after {timeout}s')
-            
-            logger.info(f'[TalkingAvatar] Polling D-ID talk {talk_id} (elapsed: {int(elapsed)}s)')
-            status_data = did_get_talk_status(talk_id)
-            status = status_data.get('status')
-            
-            logger.info(f'[TalkingAvatar] D-ID status: {status}')
-            
-            if status == 'done':
-                # Get video URL
-                result_url = status_data.get('result_url')
-                if not result_url:
-                    raise RuntimeError('D-ID result missing video URL')
-                
-                logger.info(f'[TalkingAvatar] D-ID video ready: {result_url}')
-                
-                # Download video
-                logger.info(f'[TalkingAvatar] Downloading video from D-ID...')
-                video_bytes = did_download_video(result_url)
-                logger.info(f'[TalkingAvatar] Downloaded {len(video_bytes)} bytes')
-                
-                # Save video
-                filename = f"avatar_{job_id}_{int(time.time())}.mp4"
-                rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{filename}"
-                full_path = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SUBDIR, filename)
-                
-                logger.info(f'[TalkingAvatar] Saving video to: {full_path}')
-                os.makedirs(os.path.dirname(full_path), exist_ok=True)
-                with open(full_path, 'wb') as f:
-                    f.write(video_bytes)
-                logger.info(f'[TalkingAvatar] Video saved: {rel_path}')
-                
-                # Update job as completed
-                logger.info(f'[TalkingAvatar] Updating job {job_id} status to completed')
-                update_imagine_job(
-                    job_id,
-                    status=IMAGINE_STATUS_COMPLETED,
-                    result_path=rel_path
-                )
-                logger.info(f'[TalkingAvatar] Job {job_id} status updated')
-                
-                # Update post with video (keep audio_summary, remove audio_path)
-                target_type = job.get('target_type')
-                target_id = job.get('target_id')
-                
-                if target_type == 'post':
-                    with get_db_connection() as conn:
-                        c = conn.cursor()
-                        ph = get_sql_placeholder()
-                        # Update video_path and clear audio_path, but keep audio_summary
-                        c.execute(f"UPDATE posts SET video_path={ph}, audio_path=NULL WHERE id={ph}", (rel_path, target_id))
-                        conn.commit()
-                    logger.info(f'[TalkingAvatar] Post {target_id} updated with video (audio_summary preserved)')
-                
-                logger.info(f'[TalkingAvatar] Job {job_id} completed successfully')
-                break
-                
-            elif status == 'error' or status == 'rejected':
-                error_msg = status_data.get('error', {}).get('description', 'Unknown error')
-                raise RuntimeError(f'D-ID talk failed: {error_msg}')
-            
-            # Still processing, wait and poll again
-            time.sleep(poll_interval)
+        if not os.path.exists(full_path):
+            raise RuntimeError('MuseTalk failed to generate video file')
+        
+        video_size = os.path.getsize(full_path)
+        logger.info(f'[TalkingAvatar] Video generated: {video_size} bytes')
+        
+        # Update job as completed
+        update_imagine_job(
+            job_id,
+            status=IMAGINE_STATUS_COMPLETED,
+            result_path=rel_path
+        )
+        
+        # Update post with video (keep audio_summary, remove audio_path)
+        target_type = job.get('target_type')
+        target_id = job.get('target_id')
+        
+        if target_type == 'post':
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(f"UPDATE posts SET video_path={ph}, audio_path=NULL WHERE id={ph}", (rel_path, target_id))
+                conn.commit()
+            logger.info(f'[TalkingAvatar] Post {target_id} updated with video')
+        
+        logger.info(f'[TalkingAvatar] Job {job_id} completed successfully')
         
     except Exception as e:
         logger.error(f'[TalkingAvatar] Job {job_id} failed: {e}')
