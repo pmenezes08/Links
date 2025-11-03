@@ -3568,47 +3568,45 @@ def did_headers() -> Dict[str, str]:
         'Accept': 'application/json'
     }
 
-def did_upload_file(file_path: str, file_type: str) -> str:
-    """Upload image or audio file to D-ID and get URL"""
-    if not DID_API_KEY:
-        raise RuntimeError('D-ID API key not configured')
+def did_compress_image(image_path: str) -> str:
+    """Compress image to reduce base64 size for D-ID API"""
+    from PIL import Image
+    from io import BytesIO
+    import base64
     
     try:
-        import base64
+        img = Image.open(image_path)
         
-        # Read file and encode as base64
-        with open(file_path, 'rb') as f:
-            file_data = f.read()
-        file_base64 = base64.b64encode(file_data).decode('utf-8')
+        # Convert to RGB if needed
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            if img.mode in ('RGBA', 'LA'):
+                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+            else:
+                background.paste(img)
+            img = background
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
         
-        # Prepare request based on file type
-        headers = did_headers()
+        # Resize to max 512px (D-ID recommends smaller images)
+        max_size = 512
+        if img.size[0] > max_size or img.size[1] > max_size:
+            img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
         
-        if file_type == 'image':
-            endpoint = f'{DID_API_URL}/images'
-            payload = {'image': file_base64}
-        else:  # audio
-            endpoint = f'{DID_API_URL}/audios'
-            payload = {'audio': file_base64}
+        # Compress aggressively
+        output = BytesIO()
+        img.save(output, format='JPEG', quality=60, optimize=True)
+        compressed_data = output.getvalue()
         
-        logger.info(f'[D-ID] Uploading {file_type} to {endpoint} ({len(file_data)} bytes)')
-        resp = requests.post(endpoint, headers=headers, json=payload, timeout=60)
-        logger.info(f'[D-ID] Upload response: {resp.status_code} - {resp.text[:500]}')
-        resp.raise_for_status()
-        
-        result = resp.json()
-        file_url = result.get('url')
-        if not file_url:
-            raise RuntimeError(f'No URL in upload response: {resp.text[:500]}')
-        
-        logger.info(f'[D-ID] {file_type.capitalize()} uploaded: {file_url}')
-        return file_url
-        
-    except requests.exceptions.RequestException as e:
-        logger.error(f'[D-ID] Upload failed: {str(e)}')
-        if hasattr(e, 'response') and e.response is not None:
-            logger.error(f'[D-ID] Error response: {e.response.text[:1000]}')
-        raise RuntimeError(f'D-ID {file_type} upload failed: {str(e)}')
+        logger.info(f'[D-ID] Compressed image from {os.path.getsize(image_path)} to {len(compressed_data)} bytes')
+        return base64.b64encode(compressed_data).decode('utf-8')
+    except Exception as e:
+        logger.error(f'[D-ID] Image compression failed: {e}')
+        # Fallback to original
+        with open(image_path, 'rb') as f:
+            return base64.b64encode(f.read()).decode('utf-8')
 
 def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
     """Create talking avatar video using D-ID (audio-to-video with lip sync)"""
@@ -3616,30 +3614,46 @@ def did_create_talking_avatar(image_path: str, audio_path: str) -> str:
         raise RuntimeError('D-ID API key not configured. Set DID_API_KEY environment variable.')
     
     try:
-        # Upload image and audio files first
-        logger.info(f'[D-ID] Uploading image: {image_path}')
-        image_url = did_upload_file(image_path, 'image')
+        import base64
         
-        logger.info(f'[D-ID] Uploading audio: {audio_path}')
-        audio_url = did_upload_file(audio_path, 'audio')
+        # Compress and encode image
+        logger.info(f'[D-ID] Compressing image: {image_path}')
+        image_base64 = did_compress_image(image_path)
         
-        # Create talk with uploaded URLs
+        # Read and encode audio
+        logger.info(f'[D-ID] Reading audio: {audio_path}')
+        with open(audio_path, 'rb') as f:
+            audio_data = f.read()
+        audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+        
+        logger.info(f'[D-ID] Base64 sizes - Image: {len(image_base64)} chars, Audio: {len(audio_base64)} chars')
+        
+        # Determine audio type
+        audio_type = 'audio/webm'
+        if audio_path.endswith('.mp3'):
+            audio_type = 'audio/mpeg'
+        elif audio_path.endswith('.wav'):
+            audio_type = 'audio/wav'
+        elif audio_path.endswith('.m4a') or audio_path.endswith('.mp4'):
+            audio_type = 'audio/mp4'
+        
+        # Create talk with base64 data directly
         headers = did_headers()
         payload = {
-            'source_url': image_url,
+            'source_url': f'data:image/jpeg;base64,{image_base64}',
             'script': {
                 'type': 'audio',
-                'audio_url': audio_url
+                'audio_url': f'data:{audio_type};base64,{audio_base64}'
             },
             'config': {
                 'stitch': True,
-                'fluent': True,
+                'fluent': False,  # Disable fluent for faster processing
                 'pad_audio': 0.0
             }
         }
         
         url = f'{DID_API_URL}/talks'
-        logger.info(f'[D-ID] Creating talk with payload: {payload}')
+        logger.info(f'[D-ID] Creating talk at {url}')
         resp = requests.post(url, headers=headers, json=payload, timeout=60)
         logger.info(f'[D-ID] Response status: {resp.status_code}')
         logger.info(f'[D-ID] Response body: {resp.text[:1000]}')
