@@ -6,6 +6,7 @@ import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/link
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import { TalkingAvatarModal } from '../components/TalkingAvatarModal'
 
 export default function CreatePost(){
   const [params] = useSearchParams()
@@ -28,6 +29,9 @@ export default function CreatePost(){
   const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const videoInputRef = useRef<HTMLInputElement|null>(null)
+  const [talkingAvatarModalOpen, setTalkingAvatarModalOpen] = useState(false)
+  const [enableTalkingAvatar, setEnableTalkingAvatar] = useState(false)
+  const [currentUser, setCurrentUser] = useState<{username: string; profile_picture?: string | null} | null>(null)
 
   const videoPreviewUrl = useMemo(() => {
     if (!videoFile) return null
@@ -41,6 +45,26 @@ export default function CreatePost(){
       if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl)
     }
   }, [videoPreviewUrl])
+
+  // Fetch current user info for talking avatar
+  useEffect(() => {
+    let mounted = true
+    async function loadUser(){
+      try{
+        const r = await fetch('/api/home_timeline', { credentials:'include' })
+        const j = await r.json().catch(()=>null)
+        if (!mounted) return
+        if (j?.success && j.username) {
+          setCurrentUser({
+            username: j.username,
+            profile_picture: j.profile_picture || null
+          })
+        }
+      }catch{}
+    }
+    loadUser()
+    return () => { mounted = false }
+  }, [])
 
   // Detect links when content changes
   useEffect(() => {
@@ -75,9 +99,49 @@ export default function CreatePost(){
     setLinkDisplayName('')
   }
 
+  async function handleTalkingAvatarSubmit(audioFile: File, imageFile: File | null, useProfilePic: boolean) {
+    try {
+      const fd = new FormData()
+      fd.append('audio', audioFile)
+      fd.append('community_id', communityId || '1')
+      fd.append('content', content)
+      fd.append('use_profile_pic', String(useProfilePic))
+      
+      if (imageFile) {
+        fd.append('image', imageFile)
+      }
+      
+      const r = await fetch('/api/create_talking_avatar', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json().catch(() => null)
+      
+      if (j?.success) {
+        // Clear form
+        setContent('')
+        clearPreview()
+        setEnableTalkingAvatar(false)
+        
+        // Navigate back to feed
+        if (communityId) navigate(`/community_feed_react/${communityId}`)
+        else navigate(-1)
+      } else {
+        alert(j?.error || 'Failed to create talking avatar video')
+      }
+    } catch (err: any) {
+      console.error('Failed to create talking avatar:', err)
+      alert('Failed to create talking avatar video. Please try again.')
+    }
+  }
+
   async function submit(){
     // If user is still recording, stop and wait briefly for preview to finalize
     if (recording) await ensurePreview(5000)
+    
+    // If talking avatar is enabled and we have audio, open the modal instead
+    if (enableTalkingAvatar && preview?.blob) {
+      setTalkingAvatarModalOpen(true)
+      return
+    }
+    
     const activeVideoFile = isGroupPost ? null : videoFile
     if (!content && !file && !gifFile && !preview?.blob && !activeVideoFile) {
       alert('Add text, media, or finish recording audio before posting')
@@ -144,7 +208,7 @@ export default function CreatePost(){
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">
           <div className="px-6 py-3 rounded-full border border-[#4db6ac]/40 bg-black/90 backdrop-blur-sm shadow-lg">
             <div className="text-sm font-medium text-white">
-              Great job! <span className="text-[#4db6ac]">First post created</span> ✨
+              Great job! <span className="text-[#4db6ac]">First post created</span> ?
             </div>
           </div>
         </div>
@@ -232,13 +296,24 @@ export default function CreatePost(){
           </div>
         ) : null}
         {preview ? (
-          <div className="mt-3 rounded-xl border border-white/10 p-3 bg-white/[0.03]">
+          <div className="mt-3 rounded-xl border border-white/10 p-3 bg-white/[0.03] space-y-2">
             <audio controls src={preview.url} className="w-full" playsInline webkit-playsinline="true" />
+            {/* Talking Avatar Toggle */}
+            <label className="flex items-center gap-2 text-xs text-white/70 cursor-pointer hover:text-white/90 transition select-none">
+              <input 
+                type="checkbox"
+                checked={enableTalkingAvatar}
+                onChange={(e) => setEnableTalkingAvatar(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-white/20 bg-white/10 text-[#4db6ac] focus:ring-[#4db6ac]/50"
+              />
+              <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
+              <span>Convert to Talking Avatar Video</span>
+            </label>
           </div>
         ) : null}
         {recording && (
           <div className="mt-3 px-3">
-            <div className="text-xs text-[#9fb0b5] mb-1">Recording… {Math.min(60, Math.round((recordMs||0)/1000))}s</div>
+            <div className="text-xs text-[#9fb0b5] mb-1">Recording? {Math.min(60, Math.round((recordMs||0)/1000))}s</div>
             <div className="h-2 w-full bg-white/5 rounded overflow-hidden">
               <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recordMs||0)/600) )}%`, opacity: 0.9 }} />
             </div>
@@ -345,7 +420,7 @@ export default function CreatePost(){
           )}
           <div className="flex-1" />
           <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !gifFile && !preview && !hasVideoAttachment)}>
-            {submitting ? 'Posting…' : 'Post'}
+            {submitting ? 'Posting?' : 'Post'}
           </button>
         </div>
       </div>
