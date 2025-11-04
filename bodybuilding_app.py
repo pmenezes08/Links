@@ -846,6 +846,11 @@ def ensure_imagine_jobs_table():
                     c.execute("ALTER TABLE imagine_jobs ADD COLUMN provider VARCHAR(32) NULL")
                 except Exception:
                     pass
+                # Add progress column for tracking generation progress
+                try:
+                    c.execute("ALTER TABLE imagine_jobs ADD COLUMN progress INT DEFAULT 0")
+                except Exception:
+                    pass
             else:
                 c.execute(
                     """
@@ -886,6 +891,11 @@ def ensure_imagine_jobs_table():
                     pass
                 try:
                     c.execute("ALTER TABLE imagine_jobs ADD COLUMN provider TEXT")
+                except Exception:
+                    pass
+                # Add progress column for tracking generation progress
+                try:
+                    c.execute("ALTER TABLE imagine_jobs ADD COLUMN progress INTEGER DEFAULT 0")
                 except Exception:
                     pass
                 conn.commit()
