@@ -59,7 +59,7 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         
         # Run MuseTalk inference script
         cmd = [
-            'python', os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
+            'python3', os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
             '--inference_config', config_path,
             '--output_dir', output_dir,
             '--use_float16',
@@ -68,9 +68,14 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         
         logger.info(f'[MuseTalk] Running: {" ".join(cmd)}')
         
+        # Set PYTHONPATH to include MuseTalk directory
+        env = os.environ.copy()
+        env['PYTHONPATH'] = MUSETALK_PATH + ':' + env.get('PYTHONPATH', '')
+        
         result = subprocess.run(
             cmd,
             cwd=MUSETALK_PATH,
+            env=env,
             capture_output=True,
             text=True,
             timeout=300
