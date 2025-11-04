@@ -7,6 +7,8 @@ import os
 import sys
 import subprocess
 import logging
+import yaml
+import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -17,7 +19,7 @@ MUSETALK_MODELS_PATH = os.path.join(MUSETALK_PATH, 'models')
 
 def check_musetalk_installed():
     """Check if MuseTalk is installed"""
-    return os.path.exists(MUSETALK_PATH) and os.path.exists(MUSETALK_MODELS_PATH)
+    return os.path.exists(MUSETALK_PATH) and os.path.exists(os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'))
 
 def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) -> str:
     """
@@ -33,33 +35,84 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
     """
     
     if not check_musetalk_installed():
-        raise RuntimeError('MuseTalk is not installed. Run install_musetalk.sh first.')
+        raise RuntimeError('MuseTalk is not installed. Clone repo and run download_weights.sh')
     
     try:
         logger.info(f'[MuseTalk] Generating video: {image_path} + {audio_path}')
         
-        # Add MuseTalk to Python path
-        if MUSETALK_PATH not in sys.path:
-            sys.path.insert(0, MUSETALK_PATH)
+        # Create temporary inference config
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            config = {
+                'task1': {
+                    'video_path': image_path,  # MuseTalk can take image or video
+                    'audio_path': audio_path,
+                    'result_name': os.path.basename(output_path),
+                    'bbox_shift': 0
+                }
+            }
+            yaml.dump(config, f)
+            config_path = f.name
         
-        # Import MuseTalk modules
-        from musetalk.inference import inference
+        # Get output directory
+        output_dir = os.path.dirname(output_path)
+        os.makedirs(output_dir, exist_ok=True)
         
-        # Run MuseTalk inference
-        result = inference(
-            source_image=image_path,
-            audio_path=audio_path,
-            output_path=output_path,
-            batch_size=8,  # Adjust based on available memory
-            fps=25,
-            device='cpu'  # Use 'cuda' if GPU available
+        # Run MuseTalk inference script
+        cmd = [
+            'python', os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
+            '--inference_config', config_path,
+            '--output_dir', output_dir,
+            '--use_float16',
+            '--batch_size', '8'
+        ]
+        
+        logger.info(f'[MuseTalk] Running: {" ".join(cmd)}')
+        
+        result = subprocess.run(
+            cmd,
+            cwd=MUSETALK_PATH,
+            capture_output=True,
+            text=True,
+            timeout=300
         )
         
-        if not os.path.exists(output_path):
-            raise RuntimeError('MuseTalk failed to generate video')
+        # Clean up temp config
+        try:
+            os.unlink(config_path)
+        except:
+            pass
+        
+        if result.returncode != 0:
+            logger.error(f'[MuseTalk] STDERR: {result.stderr}')
+            logger.error(f'[MuseTalk] STDOUT: {result.stdout}')
+            raise RuntimeError(f'MuseTalk inference failed with code {result.returncode}')
+        
+        # Find generated video in output directory
+        # MuseTalk saves as results/<task_name>/<result_name>
+        expected_paths = [
+            output_path,
+            os.path.join(output_dir, 'results', 'task1', os.path.basename(output_path)),
+            os.path.join(output_dir, os.path.basename(output_path))
+        ]
+        
+        video_found = None
+        for path in expected_paths:
+            if os.path.exists(path):
+                video_found = path
+                break
+        
+        if not video_found:
+            # List what was actually created
+            logger.error(f'[MuseTalk] Expected video not found. Checked: {expected_paths}')
+            logger.error(f'[MuseTalk] Output dir contents: {os.listdir(output_dir)}')
+            raise RuntimeError('MuseTalk did not create output video')
+        
+        # Move to final location if needed
+        if video_found != output_path:
+            os.rename(video_found, output_path)
         
         output_size = os.path.getsize(output_path)
-        logger.info(f'[MuseTalk] Video generated: {output_size} bytes')
+        logger.info(f'[MuseTalk] Video generated: {output_size} bytes at {output_path}')
         
         return output_path
         
@@ -73,19 +126,24 @@ def check_requirements():
     issues = []
     
     if not check_musetalk_installed():
-        issues.append('MuseTalk not installed - run install_musetalk.sh')
+        issues.append('MuseTalk not installed - clone repo and run download_weights.sh')
     
     try:
         import torch
-        logger.info(f'PyTorch version: {torch.__version__}')
-        logger.info(f'CUDA available: {torch.cuda.is_available()}')
+        print(f'PyTorch version: {torch.__version__}')
+        print(f'CUDA available: {torch.cuda.is_available()}')
     except ImportError:
-        issues.append('PyTorch not installed')
+        issues.append('PyTorch not installed - run: pip install torch')
     
     try:
         import cv2
     except ImportError:
-        issues.append('OpenCV not installed')
+        issues.append('OpenCV not installed - run: pip install opencv-python')
+    
+    try:
+        import yaml
+    except ImportError:
+        issues.append('PyYAML not installed - run: pip install pyyaml')
     
     return issues
 
