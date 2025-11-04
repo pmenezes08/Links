@@ -7,6 +7,7 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { TalkingAvatarModal } from '../components/TalkingAvatarModal'
+import { TalkingAvatarLoadingModal } from '../components/TalkingAvatarLoadingModal'
 
 export default function CreatePost(){
   const [params] = useSearchParams()
@@ -32,6 +33,9 @@ export default function CreatePost(){
   const [talkingAvatarModalOpen, setTalkingAvatarModalOpen] = useState(false)
   const [enableTalkingAvatar, setEnableTalkingAvatar] = useState(false)
   const [currentUser, setCurrentUser] = useState<{username: string; profile_picture?: string | null} | null>(null)
+  const [showLoadingModal, setShowLoadingModal] = useState(false)
+  const [talkingAvatarJobId, setTalkingAvatarJobId] = useState<number | null>(null)
+  const [talkingAvatarPostId, setTalkingAvatarPostId] = useState<number | null>(null)
 
   const videoPreviewUrl = useMemo(() => {
     if (!videoFile) return null
@@ -115,14 +119,11 @@ export default function CreatePost(){
       const j = await r.json().catch(() => null)
       
       if (j?.success) {
-        // Clear form
-        setContent('')
-        clearPreview()
-        setEnableTalkingAvatar(false)
-        
-        // Navigate back to feed
-        if (communityId) navigate(`/community_feed_react/${communityId}`)
-        else navigate(-1)
+        // Show loading modal and poll for progress
+        setTalkingAvatarJobId(j.job_id)
+        setTalkingAvatarPostId(j.post_id)
+        setTalkingAvatarModalOpen(false) // Close selection modal
+        setShowLoadingModal(true) // Show loading modal
       } else {
         alert(j?.error || 'Failed to create talking avatar video')
       }
@@ -458,6 +459,29 @@ export default function CreatePost(){
           userProfilePic={currentUser.profile_picture}
           username={currentUser.username}
           onSubmit={handleTalkingAvatarSubmit}
+        />
+      )}
+
+      {/* Talking Avatar Loading Modal */}
+      {showLoadingModal && talkingAvatarJobId && talkingAvatarPostId && (
+        <TalkingAvatarLoadingModal
+          jobId={talkingAvatarJobId}
+          postId={talkingAvatarPostId}
+          onComplete={() => {
+            // Clear form and navigate to feed
+            setContent('')
+            clearPreview()
+            setEnableTalkingAvatar(false)
+            setShowLoadingModal(false)
+            if (communityId) navigate(`/community_feed_react/${communityId}`)
+            else navigate(-1)
+          }}
+          onError={(error) => {
+            setShowLoadingModal(false)
+            alert(error)
+            if (communityId) navigate(`/community_feed_react/${communityId}`)
+            else navigate(-1)
+          }}
         />
       )}
     </div>

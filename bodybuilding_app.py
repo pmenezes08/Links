@@ -3903,7 +3903,7 @@ def process_talking_avatar_job(job_id: int):
             logger.error(f'[TalkingAvatar] Job {job_id} not found')
             return
         
-        update_imagine_job(job_id, status=IMAGINE_STATUS_PROCESSING)
+        update_imagine_job(job_id, status=IMAGINE_STATUS_PROCESSING, progress=10)
         
         # Get paths
         image_path = job.get('source_path')  # Profile pic or custom image
@@ -3928,13 +3928,17 @@ def process_talking_avatar_job(job_id: int):
         
         # Generate talking avatar with MuseTalk (local processing)
         logger.info(f'[TalkingAvatar] Generating video with MuseTalk...')
+        update_imagine_job(job_id, progress=30)
+        
         from musetalk_integration import generate_talking_avatar
         
+        update_imagine_job(job_id, progress=50)
         generate_talking_avatar(
             image_path=image_path,
             audio_path=audio_path,
             output_path=full_path
         )
+        update_imagine_job(job_id, progress=90)
         
         if not os.path.exists(full_path):
             raise RuntimeError('MuseTalk failed to generate video file')
@@ -3946,7 +3950,8 @@ def process_talking_avatar_job(job_id: int):
         update_imagine_job(
             job_id,
             status=IMAGINE_STATUS_COMPLETED,
-            result_path=rel_path
+            result_path=rel_path,
+            progress=100
         )
         
         # Update post with video (keep audio_summary, remove audio_path)
@@ -9636,6 +9641,37 @@ def api_create_talking_avatar():
         
     except Exception as e:
         logger.error(f"Error creating talking avatar: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/talking_avatar_status/<int:job_id>', methods=['GET'])
+@login_required
+def api_talking_avatar_status(job_id: int):
+    """Check talking avatar generation progress"""
+    try:
+        job = fetch_imagine_job(job_id)
+        if not job:
+            return jsonify({'success': False, 'error': 'Job not found'}), 404
+        
+        # Check if user owns this job
+        username = session.get('username')
+        if job.get('created_by') != username and username != 'admin':
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+        status = job.get('status')
+        progress = job.get('progress', 0)
+        
+        return jsonify({
+            'success': True,
+            'status': status,
+            'progress': progress,
+            'completed': status == IMAGINE_STATUS_COMPLETED,
+            'failed': status == IMAGINE_STATUS_FAILED,
+            'post_id': job.get('target_id')
+        })
+        
+    except Exception as e:
+        logger.error(f"Error checking talking avatar status: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -17741,6 +17777,18 @@ def delete_post():
             if not post or (post['username'] != username and username != 'admin'):
                 return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
             
+            # Cancel any pending imagine jobs for this post
+            try:
+                ph = get_sql_placeholder()
+                c.execute(f"""
+                    UPDATE imagine_jobs 
+                    SET status = {ph}
+                    WHERE target_type = {ph} AND target_id = {ph} AND status IN ({ph}, {ph})
+                """, (IMAGINE_STATUS_FAILED, 'post', post_id, IMAGINE_STATUS_PENDING, IMAGINE_STATUS_PROCESSING))
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not cancel imagine jobs for post {post_id}: {e}")
+            
             # Delete image file if it exists
             if post['image_path']:
                 try:
@@ -17749,7 +17797,7 @@ def delete_post():
                         os.remove(image_file_path)
                 except Exception as e:
                     logger.warning(f"Could not delete image file {post['image_path']}: {e}")
-            # Delete video file if it exists
+            # Delete video file if it exists (skip if pending)
             video_path_val = None
             try:
                 video_path_val = post['video_path']
@@ -17758,7 +17806,7 @@ def delete_post():
                     video_path_val = post[2]
                 except Exception:
                     video_path_val = None
-            if video_path_val:
+            if video_path_val and video_path_val != 'pending':
                 try:
                     video_file_path = os.path.join('static', video_path_val)
                     if os.path.exists(video_file_path):
@@ -19857,10 +19905,12 @@ def api_community_feed(community_id):
 
             # Posts
             # Limit initial posts returned to reduce payload; clients can paginate if needed
+            # Exclude posts with pending videos (talking avatar still generating)
             c.execute(
                 """
                 SELECT * FROM posts 
                 WHERE community_id = ? 
+                AND (video_path IS NULL OR video_path != 'pending')
                 ORDER BY id DESC
                 LIMIT 200
                 """,
