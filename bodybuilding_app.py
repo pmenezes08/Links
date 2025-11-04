@@ -9666,7 +9666,7 @@ def api_talking_avatar_status(job_id: int):
             'status': status,
             'progress': progress,
             'completed': status == IMAGINE_STATUS_COMPLETED,
-            'failed': status == IMAGINE_STATUS_FAILED,
+            'failed': status == IMAGINE_STATUS_ERROR,
             'post_id': job.get('target_id')
         })
         
@@ -17784,7 +17784,7 @@ def delete_post():
                     UPDATE imagine_jobs 
                     SET status = {ph}
                     WHERE target_type = {ph} AND target_id = {ph} AND status IN ({ph}, {ph})
-                """, (IMAGINE_STATUS_FAILED, 'post', post_id, IMAGINE_STATUS_PENDING, IMAGINE_STATUS_PROCESSING))
+                """, (IMAGINE_STATUS_ERROR, 'post', post_id, IMAGINE_STATUS_PENDING, IMAGINE_STATUS_PROCESSING))
                 conn.commit()
             except Exception as e:
                 logger.warning(f"Could not cancel imagine jobs for post {post_id}: {e}")
