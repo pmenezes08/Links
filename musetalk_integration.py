@@ -10,13 +10,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-# Try to import yaml, install if missing
-try:
-    import yaml
-except ImportError:
-    logging.warning("PyYAML not found, attempting to install...")
-    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--user', 'PyYAML'])
-    import yaml
+import yaml  # Just import normally, we'll handle environment in subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +59,13 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         os.makedirs(output_dir, exist_ok=True)
         
         # Run MuseTalk inference script
-        # Use sys.executable to ensure same Python interpreter as Flask app
+        # Use 'python3' explicitly since sys.executable might be uwsgi/gunicorn
+        python_exec = 'python3'
+        if 'uwsgi' not in sys.executable.lower() and 'gunicorn' not in sys.executable.lower():
+            python_exec = sys.executable
+        
         cmd = [
-            sys.executable, '-u',  # -u for unbuffered output
+            python_exec, '-u',  # -u for unbuffered output
             os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
             '--inference_config', config_path,
             '--output_dir', output_dir,
