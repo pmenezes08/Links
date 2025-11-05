@@ -10,9 +10,10 @@ import logging
 import tempfile
 from pathlib import Path
 
-import yaml  # Just import normally, we'll handle environment in subprocess
-
 logger = logging.getLogger(__name__)
+
+# Don't import yaml at module level - it might not be available in uWSGI environment
+# We'll import it inside functions where needed
 
 # MuseTalk installation path
 MUSETALK_PATH = os.path.join(os.path.dirname(__file__), 'MuseTalk')
@@ -39,6 +40,12 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         raise RuntimeError('MuseTalk is not installed. Clone repo and run download_weights.sh')
     
     try:
+        # Import yaml here to avoid import errors at module load time
+        try:
+            import yaml
+        except ImportError:
+            raise RuntimeError('PyYAML not available. Install with: pip3 install --user PyYAML')
+        
         logger.info(f'[MuseTalk] Generating video: {image_path} + {audio_path}')
         
         # Create temporary inference config
