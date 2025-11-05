@@ -68,25 +68,13 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         output_dir = os.path.dirname(output_path)
         os.makedirs(output_dir, exist_ok=True)
         
-        # Run MuseTalk inference script
-        # Find the correct Python interpreter that has PyYAML installed
+        # Run MuseTalk inference script using ~/.local/bin/python3 which has PyYAML
         python_exec = os.path.expanduser('~/.local/bin/python3')
-        
-        # Verify this Python has yaml
-        try:
-            test_result = subprocess.run(
-                [python_exec, '-c', 'import yaml; print("OK")'],
-                capture_output=True,
-                timeout=2
-            )
-            if test_result.returncode == 0:
-                logger.info(f'[MuseTalk] Using Python with yaml: {python_exec}')
-            else:
-                logger.error(f'[MuseTalk] Python at {python_exec} cannot import yaml: {test_result.stderr}')
-                python_exec = 'python3'  # Fallback
-        except Exception as e:
-            logger.error(f'[MuseTalk] Error testing Python: {e}')
+        if not os.path.exists(python_exec):
             python_exec = 'python3'
+            logger.warning(f'[MuseTalk] ~/.local/bin/python3 not found, using system python3')
+        else:
+            logger.info(f'[MuseTalk] Using Python: {python_exec}')
         
         cmd = [
             python_exec,
