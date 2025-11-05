@@ -7,9 +7,16 @@ import os
 import sys
 import subprocess
 import logging
-import yaml
 import tempfile
 from pathlib import Path
+
+# Try to import yaml, install if missing
+try:
+    import yaml
+except ImportError:
+    logging.warning("PyYAML not found, attempting to install...")
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--user', 'PyYAML'])
+    import yaml
 
 logger = logging.getLogger(__name__)
 
