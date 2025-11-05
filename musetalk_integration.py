@@ -60,7 +60,8 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         # Run MuseTalk inference script
         # Use sys.executable to ensure same Python interpreter as Flask app
         cmd = [
-            sys.executable, os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
+            sys.executable, '-u',  # -u for unbuffered output
+            os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
             '--inference_config', config_path,
             '--output_dir', output_dir,
             '--use_float16',
@@ -69,19 +70,20 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         
         logger.info(f'[MuseTalk] Running: {" ".join(cmd)}')
         
-        # Set PYTHONPATH to include MuseTalk directory and user site-packages
+        # Set environment to include user site-packages and MuseTalk paths
         env = os.environ.copy()
+        
+        # Force Python to find user site-packages
+        import site
+        user_base = site.getuserbase()
+        if user_base:
+            env['PYTHONUSERBASE'] = user_base
+        
+        # Build comprehensive PYTHONPATH
         pythonpath_parts = [MUSETALK_PATH]
         
-        # Add user site-packages to ensure PyYAML and other deps are found
-        import site
-        user_site = site.getusersitepackages()
-        if user_site and os.path.exists(user_site):
-            pythonpath_parts.append(user_site)
-        
-        # Preserve existing PYTHONPATH
-        if env.get('PYTHONPATH'):
-            pythonpath_parts.append(env['PYTHONPATH'])
+        # Add all sys.path entries to ensure subprocess has same Python environment
+        pythonpath_parts.extend(sys.path)
         
         env['PYTHONPATH'] = ':'.join(pythonpath_parts)
         
