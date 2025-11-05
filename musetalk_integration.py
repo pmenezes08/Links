@@ -78,19 +78,32 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         # Set environment to include user site-packages and MuseTalk paths
         env = os.environ.copy()
         
-        # Force Python to find user site-packages
-        import site
-        user_base = site.getuserbase()
-        if user_base:
-            env['PYTHONUSERBASE'] = user_base
-        
-        # Build comprehensive PYTHONPATH
+        # Build PYTHONPATH with explicit paths
         pythonpath_parts = [MUSETALK_PATH]
         
-        # Add all sys.path entries to ensure subprocess has same Python environment
-        pythonpath_parts.extend(sys.path)
+        # Add the EXACT user site-packages path where PyYAML is installed
+        # This is critical for uWSGI environments that don't preserve user paths
+        home_dir = os.path.expanduser('~')
+        user_site_packages = os.path.join(home_dir, '.local', 'lib', 'python3.10', 'site-packages')
+        if os.path.exists(user_site_packages):
+            pythonpath_parts.append(user_site_packages)
+            logger.info(f'[MuseTalk] Adding user site-packages to path: {user_site_packages}')
+        
+        # Also try the generic way
+        import site
+        try:
+            user_site = site.getusersitepackages()
+            if user_site and os.path.exists(user_site) and user_site not in pythonpath_parts:
+                pythonpath_parts.append(user_site)
+        except:
+            pass
+        
+        # Preserve existing PYTHONPATH
+        if env.get('PYTHONPATH'):
+            pythonpath_parts.append(env['PYTHONPATH'])
         
         env['PYTHONPATH'] = ':'.join(pythonpath_parts)
+        logger.info(f'[MuseTalk] PYTHONPATH: {env["PYTHONPATH"]}')
         
         result = subprocess.run(
             cmd,
