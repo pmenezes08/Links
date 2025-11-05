@@ -59,10 +59,35 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         os.makedirs(output_dir, exist_ok=True)
         
         # Run MuseTalk inference script
-        # Use 'python3' explicitly since sys.executable might be uwsgi/gunicorn
-        python_exec = 'python3'
-        if 'uwsgi' not in sys.executable.lower() and 'gunicorn' not in sys.executable.lower():
-            python_exec = sys.executable
+        # Find the correct Python interpreter that has PyYAML installed
+        python_exec = None
+        
+        # Try to find python3 that can import yaml
+        possible_pythons = [
+            os.path.expanduser('~/.local/bin/python3'),  # User-installed Python
+            '/usr/bin/python3',
+            '/usr/local/bin/python3',
+            'python3'
+        ]
+        
+        for py in possible_pythons:
+            try:
+                # Test if this python can import yaml
+                test_result = subprocess.run(
+                    [py, '-c', 'import yaml'],
+                    capture_output=True,
+                    timeout=2
+                )
+                if test_result.returncode == 0:
+                    python_exec = py
+                    logger.info(f'[MuseTalk] Found Python with yaml: {python_exec}')
+                    break
+            except:
+                continue
+        
+        if not python_exec:
+            python_exec = 'python3'
+            logger.warning('[MuseTalk] Could not find Python with yaml, using default python3')
         
         cmd = [
             python_exec, '-u',  # -u for unbuffered output
