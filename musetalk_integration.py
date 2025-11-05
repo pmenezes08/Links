@@ -211,7 +211,7 @@ def check_requirements():
         issues.append('OpenCV not installed - run: pip install opencv-python')
     
     try:
-        import yaml
+        import yaml  # Local import to avoid module-level errors
     except ImportError:
         issues.append('PyYAML not installed - run: pip install pyyaml')
     
