@@ -67,37 +67,26 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         
         # Run MuseTalk inference script
         # Find the correct Python interpreter that has PyYAML installed
-        python_exec = None
+        python_exec = os.path.expanduser('~/.local/bin/python3')
         
-        # Try to find python3 that can import yaml
-        possible_pythons = [
-            os.path.expanduser('~/.local/bin/python3'),  # User-installed Python
-            '/usr/bin/python3',
-            '/usr/local/bin/python3',
-            'python3'
-        ]
-        
-        for py in possible_pythons:
-            try:
-                # Test if this python can import yaml
-                test_result = subprocess.run(
-                    [py, '-c', 'import yaml'],
-                    capture_output=True,
-                    timeout=2
-                )
-                if test_result.returncode == 0:
-                    python_exec = py
-                    logger.info(f'[MuseTalk] Found Python with yaml: {python_exec}')
-                    break
-            except:
-                continue
-        
-        if not python_exec:
+        # Verify this Python has yaml
+        try:
+            test_result = subprocess.run(
+                [python_exec, '-c', 'import yaml; print("OK")'],
+                capture_output=True,
+                timeout=2
+            )
+            if test_result.returncode == 0:
+                logger.info(f'[MuseTalk] Using Python with yaml: {python_exec}')
+            else:
+                logger.error(f'[MuseTalk] Python at {python_exec} cannot import yaml: {test_result.stderr}')
+                python_exec = 'python3'  # Fallback
+        except Exception as e:
+            logger.error(f'[MuseTalk] Error testing Python: {e}')
             python_exec = 'python3'
-            logger.warning('[MuseTalk] Could not find Python with yaml, using default python3')
         
         cmd = [
-            python_exec, '-u',  # -u for unbuffered output
+            python_exec,
             os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
             '--inference_config', config_path,
             '--output_dir', output_dir,
@@ -107,35 +96,9 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         
         logger.info(f'[MuseTalk] Running: {" ".join(cmd)}')
         
-        # Set environment to include user site-packages and MuseTalk paths
+        # Set environment - minimal changes to avoid breaking things
         env = os.environ.copy()
-        
-        # Build PYTHONPATH with explicit paths
-        pythonpath_parts = [MUSETALK_PATH]
-        
-        # Add the EXACT user site-packages path where PyYAML is installed
-        # This is critical for uWSGI environments that don't preserve user paths
-        home_dir = os.path.expanduser('~')
-        user_site_packages = os.path.join(home_dir, '.local', 'lib', 'python3.10', 'site-packages')
-        if os.path.exists(user_site_packages):
-            pythonpath_parts.append(user_site_packages)
-            logger.info(f'[MuseTalk] Adding user site-packages to path: {user_site_packages}')
-        
-        # Also try the generic way
-        import site
-        try:
-            user_site = site.getusersitepackages()
-            if user_site and os.path.exists(user_site) and user_site not in pythonpath_parts:
-                pythonpath_parts.append(user_site)
-        except:
-            pass
-        
-        # Preserve existing PYTHONPATH
-        if env.get('PYTHONPATH'):
-            pythonpath_parts.append(env['PYTHONPATH'])
-        
-        env['PYTHONPATH'] = ':'.join(pythonpath_parts)
-        logger.info(f'[MuseTalk] PYTHONPATH: {env["PYTHONPATH"]}')
+        env['PYTHONPATH'] = MUSETALK_PATH + ':' + env.get('PYTHONPATH', '')
         
         result = subprocess.run(
             cmd,
