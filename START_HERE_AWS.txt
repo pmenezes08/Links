@@ -1,0 +1,229 @@
+================================================================================
+                    🚀 AWS EC2 MUSETALK - START HERE 🚀
+================================================================================
+
+Welcome! You're about to deploy MuseTalk on AWS EC2 g5.xlarge.
+
+WHAT YOU'LL GET:
+  ✅ NVIDIA A10G GPU (24GB VRAM)
+  ✅ 10-30 second video generation
+  ✅ Cost: $0.40-0.60/hour (spot pricing)
+  ✅ Scalable cloud infrastructure
+
+SETUP TIME: 30-45 minutes
+
+================================================================================
+                    📖 WHICH GUIDE TO FOLLOW?
+================================================================================
+
+Choose ONE of these options:
+
+┌─────────────────────────────────────────────────────────────────┐
+│ OPTION 1: DETAILED GUIDE (RECOMMENDED FOR BEGINNERS)           │
+├─────────────────────────────────────────────────────────────────┤
+│ File: AWS_EC2_MUSETALK_SETUP.md                                │
+│ What: Complete 10-step guide with explanations                 │
+│ Best for: First-time AWS users                                 │
+│ Time: 45 minutes                                                │
+│                                                                 │
+│ Read it:                                                        │
+│   cat AWS_EC2_MUSETALK_SETUP.md                                │
+│   or view on GitHub                                            │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ OPTION 2: QUICK CHECKLIST (IF YOU KNOW AWS)                    │
+├─────────────────────────────────────────────────────────────────┤
+│ File: AWS_QUICK_CHECKLIST.md                                   │
+│ What: Step-by-step checklist format                            │
+│ Best for: Experienced AWS users                                │
+│ Time: 30 minutes                                                │
+│                                                                 │
+│ Read it:                                                        │
+│   cat AWS_QUICK_CHECKLIST.md                                   │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ OPTION 3: AUTOMATED SCRIPT (AFTER EC2 LAUNCH)                  │
+├─────────────────────────────────────────────────────────────────┤
+│ File: ec2_setup_musetalk.sh                                    │
+│ What: Automated installation on EC2 instance                   │
+│ Best for: Quick setup after launching EC2                      │
+│ Time: 20-30 minutes (mostly automated)                         │
+│                                                                 │
+│ Use it (on EC2 after SSH):                                     │
+│   wget https://raw.githubusercontent.com/pmenezes08/Links/main/ec2_setup_musetalk.sh
+│   chmod +x ec2_setup_musetalk.sh                               │
+│   ./ec2_setup_musetalk.sh                                      │
+└─────────────────────────────────────────────────────────────────┘
+
+================================================================================
+                    📋 PREREQUISITES
+================================================================================
+
+Before you start, make sure you have:
+
+  [ ] AWS account (https://aws.amazon.com/)
+  [ ] Payment method added
+  [ ] $10-50 budget for initial testing
+  [ ] 45 minutes of uninterrupted time
+  [ ] Basic SSH knowledge (connect to remote server)
+
+================================================================================
+                    🎯 QUICK OVERVIEW
+================================================================================
+
+Here's what you'll do:
+
+PART 1: AWS Console (10 minutes)
+  1. Log into AWS
+  2. Launch EC2 g5.xlarge spot instance
+  3. Configure security groups (ports 22, 5000)
+  4. Download SSH key
+
+PART 2: EC2 Server Setup (25 minutes)
+  1. SSH to your instance
+  2. Install NVIDIA drivers & CUDA
+  3. Install MuseTalk
+  4. Deploy API server
+  5. Get your API secret
+
+PART 3: Configure Main App (5 minutes)
+  1. Update .env with API URL
+  2. Test connection
+  3. Reload app
+
+PART 4: Test (3 minutes)
+  1. Generate a talking avatar
+  2. Verify it works!
+
+================================================================================
+                    💰 COST ESTIMATE
+================================================================================
+
+Spot Instance: $0.40-0.60/hour
+Storage (50GB): ~$5/month
+
+Monthly estimates:
+  - 24/7 uptime:     $288-432/month
+  - 8 hours/day:     $96-144/month
+  - 4 hours/day:     $48-72/month  ← with auto-shutdown
+  - 2 hours/day:     $24-36/month
+
+Per video: ~$0.001-0.003 (10-30 seconds)
+
+================================================================================
+                    🚀 GETTING STARTED
+================================================================================
+
+STEP 1: Pull latest code on your PythonAnywhere server
+────────────────────────────────────────────────────────
+cd ~/WorkoutX/Links
+git pull origin main
+
+
+STEP 2: Read the summary
+────────────────────────────────────────────────────────
+cat AWS_SUMMARY.md
+
+This gives you a complete overview!
+
+
+STEP 3: Choose your guide and follow it
+────────────────────────────────────────────────────────
+Recommendation: Start with AWS_EC2_MUSETALK_SETUP.md
+
+cat AWS_EC2_MUSETALK_SETUP.md
+
+
+STEP 4: Launch your EC2 instance
+────────────────────────────────────────────────────────
+Go to: https://console.aws.amazon.com/ec2/
+
+Follow the guide step-by-step!
+
+================================================================================
+                    📁 FILES YOU HAVE
+================================================================================
+
+Documentation:
+  - AWS_SUMMARY.md              ← Overview and key info
+  - AWS_EC2_MUSETALK_SETUP.md   ← Complete guide (MAIN)
+  - AWS_QUICK_CHECKLIST.md      ← Quick checklist
+  - START_HERE_AWS.txt          ← This file
+
+Scripts:
+  - ec2_setup_musetalk.sh       ← Automated setup for EC2
+  - musetalk_api_server.py      ← API server (already in repo)
+  - cleanup_musetalk_local.sh   ← Clean local install (optional)
+
+Your main app (musetalk_integration.py) is already configured to use API!
+
+================================================================================
+                    ⚠️ IMPORTANT NOTES
+================================================================================
+
+1. SAVE YOUR KEY FILE
+   The .pem key file can only be downloaded once!
+   Save it somewhere safe (e.g., ~/Downloads/)
+
+2. SAVE YOUR API SECRET
+   You'll get a secret key during setup
+   You need it to configure your main app
+
+3. BILLING ALERTS
+   Set up AWS budget alerts ($50-100/month)
+   AWS Console → Billing → Budgets
+
+4. SECURITY GROUP
+   Must allow:
+     - Port 22 (SSH)
+     - Port 5000 (API)
+
+5. REBOOT REQUIRED
+   After installing NVIDIA drivers, you must reboot!
+
+================================================================================
+                    🆘 GETTING HELP
+================================================================================
+
+Each guide includes:
+  ✅ Troubleshooting section
+  ✅ Common issues and solutions
+  ✅ Verification steps
+  ✅ How to check logs
+
+If something goes wrong:
+  1. Check the troubleshooting section in the guide
+  2. Check logs: tail -f ~/musetalk-api/api.log (on EC2)
+  3. Check GPU: nvidia-smi (on EC2)
+  4. Test locally: curl http://localhost:5000/health (on EC2)
+
+================================================================================
+                    ✅ SUCCESS CHECKLIST
+================================================================================
+
+You'll know it works when:
+
+  [ ] nvidia-smi shows NVIDIA A10G on EC2
+  [ ] curl http://localhost:5000/health returns "healthy"
+  [ ] Your main app connects to API (test passes)
+  [ ] Talking avatar generates in 10-30 seconds
+  [ ] Video plays correctly in your app
+
+================================================================================
+                    🎉 READY TO START?
+================================================================================
+
+Read this first:
+  cat AWS_SUMMARY.md
+
+Then follow the guide:
+  cat AWS_EC2_MUSETALK_SETUP.md
+
+Or view on GitHub:
+  https://github.com/pmenezes08/Links/blob/main/AWS_EC2_MUSETALK_SETUP.md
+
+Good luck! 🚀
+
+================================================================================
