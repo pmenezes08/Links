@@ -67,18 +67,25 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         output_dir = os.path.dirname(output_path)
         os.makedirs(output_dir, exist_ok=True)
         
-        # Run MuseTalk inference script using user's Python with yaml
-        python_exec = os.path.expanduser('~/.local/bin/python3')
-        if not os.path.exists(python_exec):
-            python_exec = 'python3'
+        # Use venv Python if available, fallback to user Python
+        venv_python = os.path.join(os.path.dirname(MUSETALK_PATH), 'musetalk_env', 'bin', 'python')
+        if os.path.exists(venv_python):
+            python_exec = venv_python
+            logger.info(f'[MuseTalk] Using venv Python: {python_exec}')
+        else:
+            python_exec = os.path.expanduser('~/.local/bin/python3')
+            if not os.path.exists(python_exec):
+                python_exec = 'python3'
+            logger.info(f'[MuseTalk] Using system Python: {python_exec}')
         
+        # Run as module (works better with venv)
         cmd = [
             python_exec,
-            os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
+            '-m', 'musetalk.scripts.inference',
             '--inference_config', config_path,
-            '--result_dir', output_dir,  # Changed from --output_dir
-            '--use_float16',
-            '--batch_size', '1',  # Low memory mode
+            '--result_dir', output_dir,
+            '--use_float16',  # Halves RAM usage
+            '--batch_size', '1',  # Critical for low memory
             '--version', 'v1'
         ]
         
