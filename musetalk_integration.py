@@ -76,9 +76,10 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         else:
             logger.info(f'[MuseTalk] Using Python: {python_exec}')
         
-        # Run as Python module for better compatibility
+        # Run inference script directly
         cmd = [
-            python_exec, '-m', 'musetalk.scripts.inference',
+            python_exec,
+            os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
             '--inference_config', config_path,
             '--result_dir', output_dir,
             '--use_float16',  # Use half precision to save memory
