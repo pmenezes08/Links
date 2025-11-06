@@ -80,9 +80,9 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
             python_exec,
             os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
             '--inference_config', config_path,
-            '--output_dir', output_dir,
+            '--result_dir', output_dir,  # Changed from --output_dir to --result_dir
             '--use_float16',
-            '--batch_size', '8'
+            '--batch_size', str(8)  # Ensure it's a string
         ]
         
         logger.info(f'[MuseTalk] Running: {" ".join(cmd)}')
