@@ -3948,9 +3948,17 @@ def process_talking_avatar_job(job_id: int):
             python_exec = 'python3'
         
         # Create wrapper script that runs MuseTalk
+        project_dir = os.path.dirname(os.path.abspath(__file__))
         wrapper_code = f"""
 import sys
+import os
+# Add project directory to path
+sys.path.insert(0, '{project_dir}')
+# Add user site-packages
 sys.path.insert(0, '/home/puntz08/.local/lib/python3.10/site-packages')
+# Change to project directory
+os.chdir('{project_dir}')
+
 from musetalk_integration import generate_talking_avatar
 generate_talking_avatar('{image_path}', '{audio_path}', '{full_path}')
 print('SUCCESS')
