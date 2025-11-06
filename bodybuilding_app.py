@@ -3936,23 +3936,45 @@ def process_talking_avatar_job(job_id: int):
         full_path = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SUBDIR, filename)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         
-        # Generate talking avatar with MuseTalk (local processing)
-        logger.info(f'[TalkingAvatar] Generating video with MuseTalk...')
-        update_imagine_job(job_id, progress=30)
+        # Try D-ID first (faster, more reliable), fallback to MuseTalk
+        did_api_key = os.getenv('DID_API_KEY')
         
-        try:
-            from musetalk_integration import generate_talking_avatar
-        except Exception as import_err:
-            logger.error(f'[TalkingAvatar] Failed to import musetalk_integration: {import_err}')
-            raise RuntimeError(f'MuseTalk module import failed: {import_err}')
+        if did_api_key:
+            # Use D-ID cloud service
+            logger.info(f'[TalkingAvatar] Generating video with D-ID...')
+            update_imagine_job(job_id, progress=30)
+            
+            try:
+                video_data = did_create_talking_avatar(image_path, audio_path)
+                update_imagine_job(job_id, progress=70)
+                
+                # Save D-ID video to file
+                with open(full_path, 'wb') as f:
+                    f.write(video_data)
+                update_imagine_job(job_id, progress=90)
+                logger.info(f'[TalkingAvatar] D-ID video saved: {len(video_data)} bytes')
+            except Exception as did_err:
+                logger.error(f'[TalkingAvatar] D-ID failed: {did_err}, falling back to MuseTalk')
+                did_api_key = None  # Trigger fallback
         
-        update_imagine_job(job_id, progress=50)
-        generate_talking_avatar(
-            image_path=image_path,
-            audio_path=audio_path,
-            output_path=full_path
-        )
-        update_imagine_job(job_id, progress=90)
+        if not did_api_key:
+            # Fallback to MuseTalk (local processing)
+            logger.info(f'[TalkingAvatar] Generating video with MuseTalk (no D-ID API key)...')
+            update_imagine_job(job_id, progress=30)
+            
+            try:
+                from musetalk_integration import generate_talking_avatar
+            except Exception as import_err:
+                logger.error(f'[TalkingAvatar] Failed to import musetalk_integration: {import_err}')
+                raise RuntimeError(f'MuseTalk module import failed: {import_err}')
+            
+            update_imagine_job(job_id, progress=50)
+            generate_talking_avatar(
+                image_path=image_path,
+                audio_path=audio_path,
+                output_path=full_path
+            )
+            update_imagine_job(job_id, progress=90)
         
         if not os.path.exists(full_path):
             raise RuntimeError('MuseTalk failed to generate video file')
