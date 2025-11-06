@@ -78,8 +78,9 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
                 python_exec = 'python3'
             logger.info(f'[MuseTalk] Using user Python: {python_exec}')
         
-        # Run inference script directly (not as module - no setup.py)
+        # Run inference script with nice to reduce priority (avoid OOM killer)
         cmd = [
+            'nice', '-n', '19',  # Lowest CPU priority
             python_exec,
             os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
             '--inference_config', config_path,
