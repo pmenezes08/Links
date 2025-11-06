@@ -82,7 +82,8 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
             '--inference_config', config_path,
             '--result_dir', output_dir,  # Changed from --output_dir to --result_dir
             '--use_float16',
-            '--batch_size', str(8)  # Ensure it's a string
+            '--batch_size', str(8),  # Ensure it's a string
+            '--version', 'v1'  # Force v1 to avoid v15 config issues
         ]
         
         logger.info(f'[MuseTalk] Running: {" ".join(cmd)}')
