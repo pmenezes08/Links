@@ -67,18 +67,12 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         output_dir = os.path.dirname(output_path)
         os.makedirs(output_dir, exist_ok=True)
         
-        # Use venv Python if available, fallback to user Python
-        venv_python = os.path.join(os.path.dirname(MUSETALK_PATH), 'musetalk_env', 'bin', 'python')
-        if os.path.exists(venv_python):
-            python_exec = venv_python
-            logger.info(f'[MuseTalk] Using venv Python: {python_exec}')
-        else:
-            python_exec = os.path.expanduser('~/.local/bin/python3')
-            if not os.path.exists(python_exec):
-                python_exec = 'python3'
-            logger.info(f'[MuseTalk] Using system Python: {python_exec}')
+        # Use user's Python (has all deps already)
+        python_exec = os.path.expanduser('~/.local/bin/python3')
+        if not os.path.exists(python_exec):
+            python_exec = 'python3'
         
-        # Run inference script directly with optimizations
+        # Run inference script directly with memory optimizations
         cmd = [
             python_exec,
             os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
