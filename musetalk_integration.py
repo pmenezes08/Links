@@ -78,10 +78,10 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
                 python_exec = 'python3'
             logger.info(f'[MuseTalk] Using system Python: {python_exec}')
         
-        # Run as module (works better with venv)
+        # Run inference script directly with optimizations
         cmd = [
             python_exec,
-            '-m', 'musetalk.scripts.inference',
+            os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
             '--inference_config', config_path,
             '--result_dir', output_dir,
             '--use_float16',  # Halves RAM usage
