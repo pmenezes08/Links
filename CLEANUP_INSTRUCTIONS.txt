@@ -1,0 +1,141 @@
+================================================================================
+                    MUSETALK CLEANUP INSTRUCTIONS
+================================================================================
+
+Both 'main' and 'develop' branches now have:
+  ✅ Cleanup scripts
+  ✅ GPU API refactor
+  ✅ Complete documentation
+
+================================================================================
+                    ON YOUR PYTHONANYWHERE SERVER
+================================================================================
+
+STEP 1: CLEANUP MAIN BRANCH
+----------------------------
+
+cd ~/WorkoutX/Links
+git checkout main
+git pull origin main
+
+# Run cleanup
+bash cleanup_musetalk_local.sh
+
+# Verify cleanup
+python3 verify_musetalk_removed.py
+
+# Expected: 5-10GB freed
+
+
+STEP 2: CLEANUP DEVELOP BRANCH
+-------------------------------
+
+cd ~/WorkoutX/Links
+git checkout develop
+git pull origin develop
+
+# Run cleanup
+bash cleanup_musetalk_local.sh
+
+# Verify cleanup
+python3 verify_musetalk_removed.py
+
+# Expected: Another 5-10GB freed
+
+
+STEP 3: VERIFY TOTAL SPACE FREED
+---------------------------------
+
+df -h | grep /dev/
+
+# You should see ~10-20GB more free space!
+
+
+STEP 4: CONFIGURE API (if not already done)
+--------------------------------------------
+
+# Edit .env file (on both branches if needed)
+nano ~/WorkoutX/Links/.env
+
+# Add these lines:
+MUSETALK_API_URL=https://your-ngrok-or-server-url
+MUSETALK_API_SECRET=your-secret-key-from-gpu-setup
+
+# Save and exit
+
+
+STEP 5: RELOAD APP
+------------------
+
+touch /var/www/puntz08_pythonanywhere_com_wsgi.py
+
+# Or click "Reload" in PythonAnywhere web interface
+
+
+================================================================================
+                    WHAT WAS REMOVED
+================================================================================
+
+From BOTH branches:
+  ✅ MuseTalk/ directory (~2-5GB each)
+  ✅ musetalk_env/ virtual environment (~1-2GB each)
+  ✅ PyTorch, torchvision, torchaudio (~1-2GB each)
+  ✅ mmcv, mmpose, mmdet packages (~500MB-1GB each)
+  ✅ diffusers, transformers, accelerate
+  ✅ Model weight files
+  ✅ Pip cache
+
+Total space freed: ~10-20GB
+
+
+================================================================================
+                    WHAT WAS KEPT
+================================================================================
+
+  ✅ Your app code (bodybuilding_app.py, etc.)
+  ✅ Database and user data
+  ✅ Essential packages (numpy, opencv, requests, Pillow)
+  ✅ All other app functionality
+
+
+================================================================================
+                    NEXT STEPS
+================================================================================
+
+After cleanup on your server:
+
+1. Follow MY_MUSETALK_CHECKLIST.md to set up GPU server (~25 min)
+2. Test talking avatar generation
+3. Enjoy fast GPU-powered videos! 🚀
+
+
+================================================================================
+                    TROUBLESHOOTING
+================================================================================
+
+If cleanup script doesn't run:
+  chmod +x cleanup_musetalk_local.sh verify_musetalk_removed.py
+
+If git pull fails:
+  git status
+  git stash  # Save any local changes
+  git pull origin main  # or develop
+  git stash pop  # Restore local changes
+
+If app breaks after cleanup:
+  Check .env has MUSETALK_API_URL and MUSETALK_API_SECRET
+  Check logs: tail -f ~/WorkoutX/Links/server.log
+
+
+================================================================================
+                    SUMMARY
+================================================================================
+
+✅ Cleanup scripts pushed to both main and develop branches
+✅ API refactor code in both branches
+✅ Ready to free up 10-20GB on your server
+✅ App will use GPU API for talking avatars
+
+Run the cleanup scripts on your server when ready!
+
+================================================================================
