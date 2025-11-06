@@ -3988,22 +3988,28 @@ def process_talking_avatar_job(job_id: int):
 
 
 def fetch_imagine_job(job_id: int) -> Optional[Dict[str, Any]]:
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT * FROM imagine_jobs WHERE id={ph}", (job_id,))
-            row = c.fetchone()
-            if not row:
-                return None
-            if hasattr(row, 'keys'):
-                return dict(row)
-            # SQLite tuple fallback
-            columns = [col[0] for col in c.description]
-            return dict(zip(columns, row))
-    except Exception as e:
-        logger.error(f"Failed fetching imagine job {job_id}: {e}")
-        return None
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(f"SELECT * FROM imagine_jobs WHERE id={ph}", (job_id,))
+                row = c.fetchone()
+                if not row:
+                    return None
+                if hasattr(row, 'keys'):
+                    return dict(row)
+                # SQLite tuple fallback
+                columns = [col[0] for col in c.description]
+                return dict(zip(columns, row))
+        except Exception as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Failed fetching imagine job {job_id} (attempt {attempt+1}): {e}, retrying...")
+                time.sleep(0.5)  # Wait before retry
+                continue
+            logger.error(f"Failed fetching imagine job {job_id} after {max_retries} attempts: {e}")
+            return None
 
 
 def update_imagine_job(job_id: int, **fields):
