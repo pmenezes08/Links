@@ -98,7 +98,7 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
             env=env,
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=600  # Increased from 300 to 600 seconds (10 minutes) for CPU processing
         )
         
         # Clean up temp config
