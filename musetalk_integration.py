@@ -81,8 +81,8 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
             os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
             '--inference_config', config_path,
             '--result_dir', output_dir,  # Changed from --output_dir to --result_dir
-            '--use_float16',
-            '--batch_size', str(8),  # Ensure it's a string
+            '--use_float16',  # Use half precision to save memory
+            '--batch_size', str(1),  # Reduced from 8 to 1 to use less memory
             '--version', 'v1'  # Force v1 to avoid v15 config issues
         ]
         
