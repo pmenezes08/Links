@@ -9674,6 +9674,7 @@ def api_talking_avatar_status(job_id: int):
         
         status = job.get('status')
         progress = job.get('progress', 0)
+        error_msg = job.get('error')
         
         return jsonify({
             'success': True,
@@ -9681,11 +9682,13 @@ def api_talking_avatar_status(job_id: int):
             'progress': progress,
             'completed': status == IMAGINE_STATUS_COMPLETED,
             'failed': status == IMAGINE_STATUS_ERROR,
-            'post_id': job.get('target_id')
+            'error': error_msg if status == IMAGINE_STATUS_ERROR else None,
+            'post_id': job.get('target_id'),
+            'result_path': job.get('result_path')
         })
         
     except Exception as e:
-        logger.error(f"Error checking talking avatar status: {e}")
+        logger.error(f"Error checking talking avatar status: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
