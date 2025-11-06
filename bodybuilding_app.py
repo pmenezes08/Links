@@ -3940,7 +3940,11 @@ def process_talking_avatar_job(job_id: int):
         logger.info(f'[TalkingAvatar] Generating video with MuseTalk...')
         update_imagine_job(job_id, progress=30)
         
-        from musetalk_integration import generate_talking_avatar
+        try:
+            from musetalk_integration import generate_talking_avatar
+        except Exception as import_err:
+            logger.error(f'[TalkingAvatar] Failed to import musetalk_integration: {import_err}')
+            raise RuntimeError(f'MuseTalk module import failed: {import_err}')
         
         update_imagine_job(job_id, progress=50)
         generate_talking_avatar(
