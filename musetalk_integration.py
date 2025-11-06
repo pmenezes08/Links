@@ -7,20 +7,11 @@ import os
 import sys
 import subprocess
 import logging
+import yaml
 import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-# Fix for uWSGI: Add user site-packages to sys.path so yaml can be imported
-# Wrapped in try-except to prevent app startup crashes
-try:
-    home_dir = os.path.expanduser('~')
-    user_site_packages = os.path.join(home_dir, '.local', 'lib', 'python3.10', 'site-packages')
-    if os.path.exists(user_site_packages) and user_site_packages not in sys.path:
-        sys.path.insert(0, user_site_packages)
-except Exception as e:
-    logger.warning(f'Could not add user site-packages to path: {e}')
 
 # MuseTalk installation path
 MUSETALK_PATH = os.path.join(os.path.dirname(__file__), 'MuseTalk')
@@ -47,12 +38,6 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         raise RuntimeError('MuseTalk is not installed. Clone repo and run download_weights.sh')
     
     try:
-        # Import yaml here to avoid import errors at module load time
-        try:
-            import yaml
-        except ImportError:
-            raise RuntimeError('PyYAML not available. Install with: pip3 install --user PyYAML')
-        
         logger.info(f'[MuseTalk] Generating video: {image_path} + {audio_path}')
         
         # Create temporary inference config
@@ -72,28 +57,18 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         output_dir = os.path.dirname(output_path)
         os.makedirs(output_dir, exist_ok=True)
         
-        # Run MuseTalk inference script using ~/.local/bin/python3 which has PyYAML
-        python_exec = os.path.expanduser('~/.local/bin/python3')
-        if not os.path.exists(python_exec):
-            python_exec = 'python3'
-            logger.warning(f'[MuseTalk] ~/.local/bin/python3 not found, using system python3')
-        else:
-            logger.info(f'[MuseTalk] Using Python: {python_exec}')
-        
-        # Run inference script directly
+        # Run MuseTalk inference script
         cmd = [
-            python_exec,
-            os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
+            'python3', os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
             '--inference_config', config_path,
-            '--result_dir', output_dir,
-            '--use_float16',  # Use half precision to save memory
-            '--batch_size', str(1),  # Low memory mode
-            '--version', 'v1'  # Force v1 to avoid v15 config issues
+            '--output_dir', output_dir,
+            '--use_float16',
+            '--batch_size', '8'
         ]
         
         logger.info(f'[MuseTalk] Running: {" ".join(cmd)}')
         
-        # Set environment - minimal changes to avoid breaking things
+        # Set PYTHONPATH to include MuseTalk directory
         env = os.environ.copy()
         env['PYTHONPATH'] = MUSETALK_PATH + ':' + env.get('PYTHONPATH', '')
         
@@ -103,7 +78,7 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
             env=env,
             capture_output=True,
             text=True,
-            timeout=600  # Increased from 300 to 600 seconds (10 minutes) for CPU processing
+            timeout=300
         )
         
         # Clean up temp config
@@ -171,7 +146,7 @@ def check_requirements():
         issues.append('OpenCV not installed - run: pip install opencv-python')
     
     try:
-        import yaml  # Local import to avoid module-level errors
+        import yaml
     except ImportError:
         issues.append('PyYAML not installed - run: pip install pyyaml')
     
