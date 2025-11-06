@@ -10,13 +10,17 @@ import logging
 import tempfile
 from pathlib import Path
 
-# Fix for uWSGI: Add user site-packages to sys.path so yaml can be imported
-home_dir = os.path.expanduser('~')
-user_site_packages = os.path.join(home_dir, '.local', 'lib', 'python3.10', 'site-packages')
-if os.path.exists(user_site_packages) and user_site_packages not in sys.path:
-    sys.path.insert(0, user_site_packages)
-
 logger = logging.getLogger(__name__)
+
+# Fix for uWSGI: Add user site-packages to sys.path so yaml can be imported
+# Wrapped in try-except to prevent app startup crashes
+try:
+    home_dir = os.path.expanduser('~')
+    user_site_packages = os.path.join(home_dir, '.local', 'lib', 'python3.10', 'site-packages')
+    if os.path.exists(user_site_packages) and user_site_packages not in sys.path:
+        sys.path.insert(0, user_site_packages)
+except Exception as e:
+    logger.warning(f'Could not add user site-packages to path: {e}')
 
 # MuseTalk installation path
 MUSETALK_PATH = os.path.join(os.path.dirname(__file__), 'MuseTalk')
