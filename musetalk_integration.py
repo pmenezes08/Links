@@ -67,12 +67,18 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         output_dir = os.path.dirname(output_path)
         os.makedirs(output_dir, exist_ok=True)
         
-        # Use user's Python (has all deps already)
-        python_exec = os.path.expanduser('~/.local/bin/python3')
-        if not os.path.exists(python_exec):
-            python_exec = 'python3'
+        # Use venv Python if exists, otherwise user Python
+        venv_python = '/home/puntz08/WorkoutX/Links/musetalk_env/bin/python'
+        if os.path.exists(venv_python):
+            python_exec = venv_python
+            logger.info(f'[MuseTalk] Using venv Python: {venv_python}')
+        else:
+            python_exec = os.path.expanduser('~/.local/bin/python3')
+            if not os.path.exists(python_exec):
+                python_exec = 'python3'
+            logger.info(f'[MuseTalk] Using user Python: {python_exec}')
         
-        # Run inference script directly with memory optimizations
+        # Run inference script directly (not as module - no setup.py)
         cmd = [
             python_exec,
             os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
@@ -85,9 +91,16 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         
         logger.info(f'[MuseTalk] Running: {" ".join(cmd)}')
         
-        # Set PYTHONPATH to include MuseTalk directory
+        # Set PYTHONPATH to include MuseTalk + user site-packages
         env = os.environ.copy()
-        env['PYTHONPATH'] = MUSETALK_PATH + ':' + env.get('PYTHONPATH', '')
+        pythonpath_parts = [
+            MUSETALK_PATH,
+            '/home/puntz08/.local/lib/python3.10/site-packages'  # User packages
+        ]
+        if env.get('PYTHONPATH'):
+            pythonpath_parts.append(env['PYTHONPATH'])
+        env['PYTHONPATH'] = ':'.join(pythonpath_parts)
+        logger.info(f'[MuseTalk] PYTHONPATH: {env["PYTHONPATH"]}')
         
         result = subprocess.run(
             cmd,
