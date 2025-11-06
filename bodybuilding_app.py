@@ -4023,15 +4023,23 @@ def update_imagine_job(job_id: int, **fields):
         values.append(value)
     values.append(job_id)
     set_clause = ', '.join(assignments)
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"UPDATE imagine_jobs SET {set_clause} WHERE id={ph}", tuple(values))
-            if not USE_MYSQL:
-                conn.commit()
-    except Exception as e:
-        logger.error(f"Failed updating imagine job {job_id}: {e}")
+    
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(f"UPDATE imagine_jobs SET {set_clause} WHERE id={ph}", tuple(values))
+                if not USE_MYSQL:
+                    conn.commit()
+            return  # Success
+        except Exception as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Failed updating imagine job {job_id} (attempt {attempt+1}): {e}, retrying...")
+                time.sleep(0.5)
+                continue
+            logger.error(f"Failed updating imagine job {job_id} after {max_retries} attempts: {e}")
 
 
 def is_imagine_spicy_allowed(community_id: Optional[int]) -> bool:
