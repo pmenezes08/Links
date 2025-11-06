@@ -7,9 +7,19 @@ import os
 import sys
 import subprocess
 import logging
-import yaml
 import tempfile
 from pathlib import Path
+
+# Fix for uWSGI: Add user site-packages to sys.path so yaml can be imported
+try:
+    home_dir = os.path.expanduser('~')
+    user_site_packages = os.path.join(home_dir, '.local', 'lib', 'python3.10', 'site-packages')
+    if os.path.exists(user_site_packages) and user_site_packages not in sys.path:
+        sys.path.insert(0, user_site_packages)
+except:
+    pass  # Silently fail to avoid crashes
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -57,13 +67,19 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
         output_dir = os.path.dirname(output_path)
         os.makedirs(output_dir, exist_ok=True)
         
-        # Run MuseTalk inference script
+        # Run MuseTalk inference script using user's Python with yaml
+        python_exec = os.path.expanduser('~/.local/bin/python3')
+        if not os.path.exists(python_exec):
+            python_exec = 'python3'
+        
         cmd = [
-            'python3', os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
+            python_exec,
+            os.path.join(MUSETALK_PATH, 'scripts', 'inference.py'),
             '--inference_config', config_path,
-            '--output_dir', output_dir,
+            '--result_dir', output_dir,  # Changed from --output_dir
             '--use_float16',
-            '--batch_size', '8'
+            '--batch_size', '1',  # Low memory mode
+            '--version', 'v1'
         ]
         
         logger.info(f'[MuseTalk] Running: {" ".join(cmd)}')
@@ -78,7 +94,7 @@ def generate_talking_avatar(image_path: str, audio_path: str, output_path: str) 
             env=env,
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=600  # 10 minutes for CPU processing
         )
         
         # Clean up temp config
