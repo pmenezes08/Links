@@ -10,6 +10,16 @@ import time
 import logging
 from datetime import datetime
 
+# Load environment variables from .env file
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(env_path):
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ.setdefault(key, value)
+
 # Add user site-packages for dependencies
 try:
     home_dir = os.path.expanduser('~')
