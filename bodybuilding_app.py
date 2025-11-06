@@ -3936,23 +3936,62 @@ def process_talking_avatar_job(job_id: int):
         full_path = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SUBDIR, filename)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         
-        # Generate talking avatar with MuseTalk (local processing)
-        logger.info(f'[TalkingAvatar] Generating video with MuseTalk...')
+        # Generate talking avatar with MuseTalk (run as subprocess to avoid uWSGI limits)
+        logger.info(f'[TalkingAvatar] Generating video with MuseTalk via subprocess...')
         update_imagine_job(job_id, progress=30)
         
-        try:
-            from musetalk_integration import generate_talking_avatar
-        except Exception as import_err:
-            logger.error(f'[TalkingAvatar] Failed to import musetalk_integration: {import_err}')
-            raise RuntimeError(f'MuseTalk module import failed: {import_err}')
+        import subprocess
+        import tempfile
         
-        update_imagine_job(job_id, progress=50)
-        generate_talking_avatar(
-            image_path=image_path,
-            audio_path=audio_path,
-            output_path=full_path
-        )
-        update_imagine_job(job_id, progress=90)
+        python_exec = os.path.expanduser('~/.local/bin/python3')
+        if not os.path.exists(python_exec):
+            python_exec = 'python3'
+        
+        # Create wrapper script that runs MuseTalk
+        wrapper_code = f"""
+import sys
+sys.path.insert(0, '/home/puntz08/.local/lib/python3.10/site-packages')
+from musetalk_integration import generate_talking_avatar
+generate_talking_avatar('{image_path}', '{audio_path}', '{full_path}')
+print('SUCCESS')
+"""
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write(wrapper_code)
+            wrapper_path = f.name
+        
+        try:
+            update_imagine_job(job_id, progress=50)
+            
+            result = subprocess.run(
+                [python_exec, wrapper_path],
+                capture_output=True,
+                text=True,
+                timeout=900  # 15 minutes
+            )
+            
+            os.unlink(wrapper_path)
+            
+            if result.returncode != 0:
+                logger.error(f'[MuseTalk] STDERR: {result.stderr}')
+                logger.error(f'[MuseTalk] STDOUT: {result.stdout}')
+                raise RuntimeError(f'MuseTalk failed with code {result.returncode}')
+            
+            logger.info(f'[MuseTalk] Success: {result.stdout}')
+            update_imagine_job(job_id, progress=90)
+            
+        except subprocess.TimeoutExpired:
+            try:
+                os.unlink(wrapper_path)
+            except:
+                pass
+            raise RuntimeError('MuseTalk timed out after 15 minutes')
+        except Exception:
+            try:
+                os.unlink(wrapper_path)
+            except:
+                pass
+            raise
         
         if not os.path.exists(full_path):
             raise RuntimeError('MuseTalk failed to generate video file')
