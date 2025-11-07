@@ -1110,6 +1110,13 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure pending_signups table: {e}")
 
+            # Ensure community_invitations table exists for email invitations
+            try:
+                ensure_community_invitations_table(c)
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure community_invitations table: {e}")
+
             # Idempotency tokens for post creation (prevent duplicate posts)
             try:
                 if USE_MYSQL:
