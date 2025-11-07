@@ -16,7 +16,6 @@ import EditableAISummary from '../components/EditableAISummary'
 import { useImagineJobs, type ImagineJobState, type ImagineStyle } from '../hooks/useImagineJobs'
 import { ImagineStyleModal, ImagineOwnerModal } from '../components/ImagineModal'
 import VideoCarousel from '../components/VideoCarousel'
-import { TalkingAvatarModal } from '../components/TalkingAvatarModal'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}> }
@@ -128,8 +127,6 @@ export default function PostDetail(){
   const [resolvingJobId, setResolvingJobId] = useState<number | null>(null)
   const [carouselItems, setCarouselItems] = useState<Array<{type: 'original' | 'ai_video', image_path?: string | null, image_url?: string | null, video_path?: string | null, video_url?: string | null, created_by?: string | null, style?: string | null}>>([])
   const [carouselLoading, setCarouselLoading] = useState(false)
-  const [talkingAvatarModalOpen, setTalkingAvatarModalOpen] = useState(false)
-  const [enableTalkingAvatar, setEnableTalkingAvatar] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
@@ -603,12 +600,6 @@ export default function PostDetail(){
     if (!post || (!content && !file && !replyPreview?.blob && !replyGif)) return
     if (submittingReply) return
     
-    // If talking avatar is enabled and we have audio, open the modal instead
-    if (enableTalkingAvatar && replyPreview?.blob) {
-      setTalkingAvatarModalOpen(true)
-      return
-    }
-    
     setSubmittingReply(true)
     const fd = new FormData()
     fd.append('post_id', String(post.id))
@@ -722,39 +713,6 @@ export default function PostDetail(){
     }catch{}
   }
 
-  async function handleTalkingAvatarSubmit(audioFile: File, imageFile: File | null, useProfilePic: boolean) {
-    if (!post) return
-    
-    try {
-      const fd = new FormData()
-      fd.append('audio', audioFile)
-      fd.append('community_id', String((post as any).community_id || '1')) // Fallback to 1 if not available
-      fd.append('content', content)
-      fd.append('use_profile_pic', String(useProfilePic))
-      
-      if (imageFile) {
-        fd.append('image', imageFile)
-      }
-      
-      const r = await fetch('/api/create_talking_avatar', { method: 'POST', credentials: 'include', body: fd })
-      const j = await r.json().catch(() => null)
-      
-      if (j?.success) {
-        // Clear form
-        setContent('')
-        clearReplyPreview()
-        setEnableTalkingAvatar(false)
-        
-        // Refresh page to show new post
-        window.location.reload()
-      } else {
-        alert(j?.error || 'Failed to create talking avatar video')
-      }
-    } catch (err: any) {
-      console.error('Failed to create talking avatar:', err)
-      alert('Failed to create talking avatar video. Please try again.')
-    }
-  }
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
@@ -977,25 +935,9 @@ export default function PostDetail(){
             )}
             {replyPreview && (
               <div className="flex items-center gap-2 mr-auto flex-1 min-w-0">
-                <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-                  <audio controls className="w-full" playsInline webkit-playsinline="true" src={replyPreview.url} />
-                  {/* Talking Avatar Toggle - Compact */}
-                  <button
-                    type="button"
-                    onClick={() => setEnableTalkingAvatar(!enableTalkingAvatar)}
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] transition border self-start ${
-                      enableTalkingAvatar 
-                        ? 'bg-[#4db6ac]/15 border-[#4db6ac]/40 text-[#4db6ac]' 
-                        : 'bg-white/5 border-white/10 text-white/60 hover:border-white/20 hover:text-white/80'
-                    }`}
-                  >
-                    {enableTalkingAvatar && <i className="fa-solid fa-check text-[9px]" />}
-                    <i className="fa-solid fa-wand-magic-sparkles text-[10px]" />
-                    <span className="uppercase tracking-wide font-medium">Talking Avatar</span>
-                  </button>
-                </div>
+                <audio controls className="w-full" playsInline webkit-playsinline="true" src={replyPreview.url} />
                 <button 
-                  onClick={() => { clearReplyPreview(); setEnableTalkingAvatar(false) }}
+                  onClick={() => { clearReplyPreview(); }}
                   className="ml-1 text-[#9fb0b5] hover:text-white"
                   aria-label="Remove audio"
                 >
@@ -1082,18 +1024,6 @@ export default function PostDetail(){
         }}
       />
       
-      {/* Talking Avatar Modal */}
-      {replyPreview && currentUser && (
-        <TalkingAvatarModal
-          isOpen={talkingAvatarModalOpen}
-          onClose={() => setTalkingAvatarModalOpen(false)}
-          audioBlob={replyPreview.blob}
-          audioDuration={replyPreview.duration}
-          userProfilePic={currentUser.profile_picture}
-          username={currentUser.username}
-          onSubmit={handleTalkingAvatarSubmit}
-        />
-      )}
     </div>
   )
 }

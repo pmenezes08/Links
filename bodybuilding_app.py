@@ -4274,6 +4274,38 @@ def signup():
     mobile = request.form.get('mobile', '').strip()
     password = request.form.get('password', '')
     confirm_password = request.form.get('confirm_password', '')
+    invite_token = request.form.get('invite_token', '').strip()
+    
+    # Check if this is an invited signup
+    invitation = None
+    if invite_token:
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute("""
+                    SELECT ci.id, ci.community_id, ci.invited_email, ci.used,
+                           c.name as community_name, ci.invited_by_username
+                    FROM community_invitations ci
+                    JOIN communities c ON ci.community_id = c.id
+                    WHERE ci.token = ? AND ci.used = 0
+                """, (invite_token,))
+                invitation = c.fetchone()
+                
+                if invitation:
+                    invited_email = invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[2]
+                    # Email from invitation must match signup email
+                    if email and email.lower() != invited_email.lower():
+                        error_msg = 'Email does not match invitation'
+                        if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
+                            return jsonify({'success': False, 'error': error_msg}), 400
+                        else:
+                            return render_template('signup.html', error=error_msg)
+                    # Use email from invitation if not provided
+                    if not email:
+                        email = invited_email
+        except Exception as e:
+            logger.error(f"Error checking invitation: {e}")
+            invitation = None
     
     # Handle both form types
     if not first_name and not last_name and full_name:
@@ -4349,6 +4381,62 @@ def signup():
             
             # Hash the password (store in pending)
             hashed_password = generate_password_hash(password)
+
+            # If invited, directly create user (email pre-verified)
+            if invitation:
+                try:
+                    invitation_id = invitation['id'] if hasattr(invitation, 'keys') else invitation[0]
+                    community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
+                    community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4]
+                    
+                    # Create user directly (email already verified via invitation)
+                    c.execute("""
+                        INSERT INTO users (username, first_name, last_name, email, mobile, password, subscription, email_verified, email_verified_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'free', 1, ?)
+                    """, (username, first_name, last_name, email, mobile, hashed_password, datetime.now().isoformat()))
+                    
+                    # Get user ID
+                    c.execute("SELECT id FROM users WHERE username = ?", (username,))
+                    user_row = c.fetchone()
+                    user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+                    
+                    # Auto-join the community
+                    c.execute("""
+                        INSERT INTO user_communities (user_id, community_id, username, role, joined_at)
+                        VALUES (?, ?, ?, 'member', ?)
+                    """, (user_id, community_id, username, datetime.now().isoformat()))
+                    
+                    # Mark invitation as used
+                    c.execute("""
+                        UPDATE community_invitations 
+                        SET used = 1, used_at = ?
+                        WHERE id = ?
+                    """, (datetime.now().isoformat(), invitation_id))
+                    
+                    conn.commit()
+                    
+                    # Log the user in
+                    session['username'] = username
+                    session.permanent = True
+                    
+                    # Return success with community info
+                    ua = request.headers.get('User-Agent', '')
+                    is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+                    if is_mobile:
+                        return jsonify({
+                            'success': True, 
+                            'redirect': '/premium_dashboard',
+                            'invited_to_community': community_name,
+                            'needs_email_verification': False
+                        })
+                    else:
+                        flash(f'Welcome! You have been added to {community_name}', 'success')
+                        return redirect(url_for('premium_dashboard'))
+                        
+                except Exception as invite_err:
+                    logger.error(f"Error processing invitation signup: {invite_err}")
+                    # Fall back to normal signup flow
+                    invitation = None
 
             # Ensure pending table exists
             try:
@@ -19036,6 +19124,225 @@ def debug_posts():
     except Exception as e:
         logger.error(f"Error in debug_posts: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/invitation/verify', methods=['GET'])
+def verify_invitation():
+    """Verify invitation token and return invitation details"""
+    token = request.args.get('token', '').strip()
+    
+    if not token:
+        return jsonify({'success': False, 'error': 'Token required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT ci.id, ci.community_id, ci.invited_email, ci.used,
+                       c.name as community_name, ci.invited_by_username
+                FROM community_invitations ci
+                JOIN communities c ON ci.community_id = c.id
+                WHERE ci.token = ?
+            """, (token,))
+            
+            invitation = c.fetchone()
+            
+            if not invitation:
+                return jsonify({'success': False, 'error': 'Invalid invitation'}), 404
+            
+            used = invitation['used'] if hasattr(invitation, 'keys') else invitation[3]
+            if used:
+                return jsonify({'success': False, 'error': 'Invitation already used'}), 400
+            
+            return jsonify({
+                'success': True,
+                'email': invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[2],
+                'community_name': invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4],
+                'invited_by': invitation['invited_by_username'] if hasattr(invitation, 'keys') else invitation[5]
+            })
+            
+    except Exception as e:
+        logger.error(f"Error verifying invitation: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/community/invite', methods=['POST'])
+@login_required
+def invite_to_community():
+    """Send email invitation to join a community (admin only)"""
+    username = session.get('username')
+    data = request.get_json() or {}
+    
+    community_id = data.get('community_id')
+    invited_email = data.get('email', '').strip().lower()
+    
+    if not community_id or not invited_email:
+        return jsonify({'success': False, 'error': 'Community ID and email are required'}), 400
+    
+    # Validate email format
+    import re
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_pattern, invited_email):
+        return jsonify({'success': False, 'error': 'Invalid email format'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user is admin of this community
+            c.execute("""
+                SELECT c.name, c.creator_username, uc.role
+                FROM communities c
+                LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.username = ?
+                WHERE c.id = ?
+            """, (username, community_id))
+            
+            community = c.fetchone()
+            if not community:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            
+            community_name = community['name'] if hasattr(community, 'keys') else community[0]
+            creator = community['creator_username'] if hasattr(community, 'keys') else community[1]
+            role = community['role'] if hasattr(community, 'keys') else community[2]
+            
+            # Check if user is admin or creator
+            is_admin = (username == creator) or (role == 'admin')
+            if not is_admin:
+                return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
+            
+            # Check if user is already a member
+            c.execute("SELECT username FROM users WHERE email = ?", (invited_email,))
+            existing_user = c.fetchone()
+            if existing_user:
+                existing_username = existing_user['username'] if hasattr(existing_user, 'keys') else existing_user[0]
+                c.execute("SELECT 1 FROM user_communities WHERE community_id = ? AND username = ?", 
+                         (community_id, existing_username))
+                if c.fetchone():
+                    return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
+            
+            # Check if invitation already sent
+            c.execute("""
+                SELECT id, used FROM community_invitations 
+                WHERE community_id = ? AND invited_email = ? AND used = 0
+            """, (community_id, invited_email))
+            existing_invite = c.fetchone()
+            
+            if existing_invite:
+                return jsonify({'success': False, 'error': 'An invitation has already been sent to this email'}), 400
+            
+            # Generate unique token
+            import secrets
+            token = secrets.token_urlsafe(32)
+            
+            # Store invitation
+            c.execute("""
+                INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
+                VALUES (?, ?, ?, ?)
+            """, (community_id, invited_email, username, token))
+            conn.commit()
+            
+            # Send invitation email
+            invite_url = f"https://www.c-point.co/signup?invite={token}"
+            
+            html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            </head>
+            <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #000000;">
+                <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #000000;">
+                    <tr>
+                        <td align="center" style="padding: 40px 20px;">
+                            <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 12px; overflow: hidden; max-width: 100%;">
+                                <!-- Header -->
+                                <tr>
+                                    <td style="background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%); padding: 30px; text-align: center;">
+                                        <h1 style="margin: 0; color: #000000; font-size: 28px; font-weight: 700;">
+                                            Welcome to C.Point
+                                        </h1>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Body -->
+                                <tr>
+                                    <td style="padding: 40px 30px; color: #ffffff;">
+                                        <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6;">
+                                            You have been invited to join <strong style="color: #4db6ac;">{community_name}</strong> by <strong>{username}</strong>.
+                                        </p>
+                                        
+                                        <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #b0b0b0;">
+                                            C.Point is a community network where you can connect, share ideas, and engage in meaningful conversations.
+                                        </p>
+                                        
+                                        <!-- Button -->
+                                        <table width="100%" cellpadding="0" cellspacing="0">
+                                            <tr>
+                                                <td align="center" style="padding: 10px 0;">
+                                                    <a href="{invite_url}" style="display: inline-block; padding: 16px 40px; background-color: #4db6ac; color: #000000; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 8px;">
+                                                        Join {community_name}
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                        
+                                        <p style="margin: 30px 0 0 0; font-size: 14px; line-height: 1.6; color: #808080;">
+                                            If the button doesn't work, copy and paste this link into your browser:
+                                        </p>
+                                        <p style="margin: 10px 0 0 0; font-size: 13px; word-break: break-all; color: #4db6ac;">
+                                            {invite_url}
+                                        </p>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Footer -->
+                                <tr>
+                                    <td style="padding: 20px 30px; border-top: 1px solid #2a2a2a; text-align: center;">
+                                        <p style="margin: 0; font-size: 12px; color: #808080;">
+                                            This invitation was sent by {username} from C.Point
+                                        </p>
+                                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #606060;">
+                                            © 2025 C.Point. All rights reserved.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </body>
+            </html>
+            """
+            
+            text = f"""
+Welcome to C.Point
+
+You have been invited to join {community_name} by {username}.
+
+C.Point is a community network where you can connect, share ideas, and engage in meaningful conversations.
+
+Click here to join: {invite_url}
+
+Or copy and paste this link into your browser: {invite_url}
+
+This invitation was sent by {username} from C.Point.
+            """
+            
+            # Send email
+            success = _send_email_via_resend(
+                to_email=invited_email,
+                subject=f"You're invited to join {community_name} on C.Point",
+                html=html,
+                text=text
+            )
+            
+            if not success:
+                return jsonify({'success': False, 'error': 'Failed to send invitation email'}), 500
+            
+            return jsonify({'success': True, 'message': 'Invitation sent successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error sending invitation: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/join_community', methods=['POST'])
 @login_required

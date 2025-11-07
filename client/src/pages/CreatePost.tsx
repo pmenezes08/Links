@@ -6,8 +6,6 @@ import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/link
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
-import { TalkingAvatarModal } from '../components/TalkingAvatarModal'
-import { TalkingAvatarLoadingModal } from '../components/TalkingAvatarLoadingModal'
 
 export default function CreatePost(){
   const [params] = useSearchParams()
@@ -30,12 +28,6 @@ export default function CreatePost(){
   const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const videoInputRef = useRef<HTMLInputElement|null>(null)
-  const [talkingAvatarModalOpen, setTalkingAvatarModalOpen] = useState(false)
-  const [enableTalkingAvatar, setEnableTalkingAvatar] = useState(false)
-  const [currentUser, setCurrentUser] = useState<{username: string; profile_picture?: string | null} | null>(null)
-  const [showLoadingModal, setShowLoadingModal] = useState(false)
-  const [talkingAvatarJobId, setTalkingAvatarJobId] = useState<number | null>(null)
-  const [talkingAvatarPostId, setTalkingAvatarPostId] = useState<number | null>(null)
 
   const videoPreviewUrl = useMemo(() => {
     if (!videoFile) return null
@@ -50,25 +42,6 @@ export default function CreatePost(){
     }
   }, [videoPreviewUrl])
 
-  // Fetch current user info for talking avatar
-  useEffect(() => {
-    let mounted = true
-    async function loadUser(){
-      try{
-        const r = await fetch('/api/home_timeline', { credentials:'include' })
-        const j = await r.json().catch(()=>null)
-        if (!mounted) return
-        if (j?.success && j.username) {
-          setCurrentUser({
-            username: j.username,
-            profile_picture: j.profile_picture || null
-          })
-        }
-      }catch{}
-    }
-    loadUser()
-    return () => { mounted = false }
-  }, [])
 
   // Detect links when content changes
   useEffect(() => {
@@ -103,45 +76,10 @@ export default function CreatePost(){
     setLinkDisplayName('')
   }
 
-  async function handleTalkingAvatarSubmit(audioFile: File, imageFile: File | null, useProfilePic: boolean) {
-    try {
-      const fd = new FormData()
-      fd.append('audio', audioFile)
-      fd.append('community_id', communityId || '1')
-      fd.append('content', content)
-      fd.append('use_profile_pic', String(useProfilePic))
-      
-      if (imageFile) {
-        fd.append('image', imageFile)
-      }
-      
-      const r = await fetch('/api/create_talking_avatar', { method: 'POST', credentials: 'include', body: fd })
-      const j = await r.json().catch(() => null)
-      
-      if (j?.success) {
-        // Show loading modal and poll for progress
-        setTalkingAvatarJobId(j.job_id)
-        setTalkingAvatarPostId(j.post_id)
-        setTalkingAvatarModalOpen(false) // Close selection modal
-        setShowLoadingModal(true) // Show loading modal
-      } else {
-        alert(j?.error || 'Failed to create talking avatar video')
-      }
-    } catch (err: any) {
-      console.error('Failed to create talking avatar:', err)
-      alert('Failed to create talking avatar video. Please try again.')
-    }
-  }
 
   async function submit(){
     // If user is still recording, stop and wait briefly for preview to finalize
     if (recording) await ensurePreview(5000)
-    
-    // If talking avatar is enabled and we have audio, open the modal instead
-    if (enableTalkingAvatar && preview?.blob) {
-      setTalkingAvatarModalOpen(true)
-      return
-    }
     
     const activeVideoFile = isGroupPost ? null : videoFile
     if (!content && !file && !gifFile && !preview?.blob && !activeVideoFile) {
@@ -299,20 +237,6 @@ export default function CreatePost(){
         {preview ? (
           <div className="mt-3 rounded-xl border border-white/10 p-3 bg-white/[0.03] space-y-2">
             <audio controls src={preview.url} className="w-full" playsInline webkit-playsinline="true" />
-            {/* Talking Avatar Toggle - Compact */}
-            <button
-              type="button"
-              onClick={() => setEnableTalkingAvatar(!enableTalkingAvatar)}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] transition border ${
-                enableTalkingAvatar 
-                  ? 'bg-[#4db6ac]/15 border-[#4db6ac]/40 text-[#4db6ac]' 
-                  : 'bg-white/5 border-white/10 text-white/60 hover:border-white/20 hover:text-white/80'
-              }`}
-            >
-              {enableTalkingAvatar && <i className="fa-solid fa-check text-[9px]" />}
-              <i className="fa-solid fa-wand-magic-sparkles text-[10px]" />
-              <span className="uppercase tracking-wide font-medium">Talking Avatar</span>
-            </button>
           </div>
         ) : null}
         {recording && (
@@ -448,42 +372,6 @@ export default function CreatePost(){
           }
         }}
       />
-      
-      {/* Talking Avatar Modal */}
-      {preview && currentUser && (
-        <TalkingAvatarModal
-          isOpen={talkingAvatarModalOpen}
-          onClose={() => setTalkingAvatarModalOpen(false)}
-          audioBlob={preview.blob}
-          audioDuration={preview.duration}
-          userProfilePic={currentUser.profile_picture}
-          username={currentUser.username}
-          onSubmit={handleTalkingAvatarSubmit}
-        />
-      )}
-
-      {/* Talking Avatar Loading Modal */}
-      {showLoadingModal && talkingAvatarJobId && talkingAvatarPostId && (
-        <TalkingAvatarLoadingModal
-          jobId={talkingAvatarJobId}
-          postId={talkingAvatarPostId}
-          onComplete={() => {
-            // Clear form and navigate to feed
-            setContent('')
-            clearPreview()
-            setEnableTalkingAvatar(false)
-            setShowLoadingModal(false)
-            if (communityId) navigate(`/community_feed_react/${communityId}`)
-            else navigate(-1)
-          }}
-          onError={(error) => {
-            setShowLoadingModal(false)
-            alert(error)
-            if (communityId) navigate(`/community_feed_react/${communityId}`)
-            else navigate(-1)
-          }}
-        />
-      )}
     </div>
   )
 }

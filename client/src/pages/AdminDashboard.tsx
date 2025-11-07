@@ -70,6 +70,13 @@ export default function AdminDashboard() {
   const [showLogoModal, setShowLogoModal] = useState(false)
   const [currentLogo, setCurrentLogo] = useState<string | null>(null)
   const [logoStatus, setLogoStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteCommunityId, setInviteCommunityId] = useState<number | null>(null)
+  const [inviteCommunityName, setInviteCommunityName] = useState<string>('')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteLoading, setInviteLoading] = useState(false)
+  const [inviteError, setInviteError] = useState('')
+  const [inviteSuccess, setInviteSuccess] = useState(false)
 
   // New user form
   const [newUser, setNewUser] = useState({
@@ -245,6 +252,55 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleInviteUser = (communityId: number, communityName: string) => {
+    setInviteCommunityId(communityId)
+    setInviteCommunityName(communityName)
+    setInviteEmail('')
+    setInviteError('')
+    setInviteSuccess(false)
+    setShowInviteModal(true)
+  }
+
+  const handleSendInvite = async () => {
+    if (!inviteEmail.trim()) {
+      setInviteError('Email is required')
+      return
+    }
+
+    setInviteLoading(true)
+    setInviteError('')
+    setInviteSuccess(false)
+
+    try {
+      const response = await fetch('/api/community/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          community_id: inviteCommunityId,
+          email: inviteEmail 
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setInviteSuccess(true)
+        setInviteEmail('')
+        setTimeout(() => {
+          setShowInviteModal(false)
+          setInviteSuccess(false)
+        }, 2000)
+      } else {
+        setInviteError(data.error || 'Failed to send invitation')
+      }
+    } catch (error) {
+      console.error('Error sending invitation:', error)
+      setInviteError('Failed to send invitation')
+    } finally {
+      setInviteLoading(false)
+    }
+  }
 
   const handleDeleteCommunity = async (communityId: number) => {
     if (!confirm('Are you sure you want to delete this community?')) return
@@ -720,6 +776,12 @@ export default function AdminDashboard() {
                   
                   <div className="flex gap-2">
                     <button
+                      onClick={() => handleInviteUser(community.id, community.name)}
+                      className="px-2 py-1 text-xs rounded-lg bg-[#4db6ac]/10 border border-[#4db6ac]/20 text-[#4db6ac] hover:bg-[#4db6ac]/20"
+                    >
+                      Invite
+                    </button>
+                    <button
                       onClick={() => navigate(`/community_feed_react/${community.id}`)}
                       className="flex-1 py-1 text-xs bg-white/5 border border-white/10 rounded-lg hover:bg-white/10"
                     >
@@ -829,6 +891,54 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Invite User Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-white/10">
+            <h2 className="text-lg font-semibold mb-2">Invite to {inviteCommunityName}</h2>
+            <p className="text-sm text-white/60 mb-4">Enter the email address of the person you want to invite</p>
+
+            {inviteSuccess && (
+              <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-sm">
+                Invitation sent successfully!
+              </div>
+            )}
+
+            {inviteError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+                {inviteError}
+              </div>
+            )}
+
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="email@example.com"
+              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none mb-4"
+              disabled={inviteLoading || inviteSuccess}
+            />
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowInviteModal(false)}
+                className="flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-medium hover:bg-white/10"
+                disabled={inviteLoading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendInvite}
+                className="flex-1 px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099] disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={inviteLoading || inviteSuccess}
+              >
+                {inviteLoading ? 'Sending...' : 'Send Invite'}
+              </button>
+            </div>
           </div>
         </div>
       )}
