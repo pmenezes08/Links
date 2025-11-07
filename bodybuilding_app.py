@@ -479,6 +479,38 @@ def ensure_pending_signups_table(c):
     except Exception as e:
         logger.warning(f"Could not ensure pending_signups table: {e}")
 
+def ensure_community_invitations_table(c):
+    """Create table for community email invitations"""
+    try:
+        if USE_MYSQL:
+            c.execute('''CREATE TABLE IF NOT EXISTS community_invitations (
+                          id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          community_id INTEGER NOT NULL,
+                          invited_email VARCHAR(191) NOT NULL,
+                          invited_by_username VARCHAR(191) NOT NULL,
+                          invited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          token VARCHAR(191) NOT NULL UNIQUE,
+                          used TINYINT(1) DEFAULT 0,
+                          used_at TIMESTAMP NULL,
+                          FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
+                          FOREIGN KEY (invited_by_username) REFERENCES users(username) ON DELETE CASCADE
+                        )''')
+        else:
+            c.execute('''CREATE TABLE IF NOT EXISTS community_invitations (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          community_id INTEGER NOT NULL,
+                          invited_email TEXT NOT NULL,
+                          invited_by_username VARCHAR(191) NOT NULL,
+                          invited_at TEXT DEFAULT (datetime('now')),
+                          token TEXT NOT NULL UNIQUE,
+                          used INTEGER DEFAULT 0,
+                          used_at TEXT,
+                          FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
+                          FOREIGN KEY (invited_by_username) REFERENCES users(username) ON DELETE CASCADE
+                        )''')
+    except Exception as e:
+        logger.warning(f"Could not ensure community_invitations table: {e}")
+
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
 CANONICAL_SCHEME = os.getenv('CANONICAL_SCHEME', 'https')
