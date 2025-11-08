@@ -255,9 +255,6 @@ export default function Communities(){
                }
               return (
                 <>
-                  {!pidLocal && (
-                    <JoinCommunity onJoined={()=>{ window.location.reload() }} />
-                  )}
                   {activeTab === 'training' && showTrainingTab ? (
                     <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
                       <button
@@ -1118,27 +1115,3 @@ function CommunityItem({
     if (el && el.__open){ el.__open(communityId) }
   }catch{}
 }
-
-function JoinCommunity({ onJoined }:{ onJoined: ()=>void }){
-  const [code, setCode] = useState('')
-  const submit = async()=>{
-    if (!code.trim()) return
-    const fd = new URLSearchParams({ community_code: code.trim() })
-    const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-    const j = await r.json().catch(()=>null)
-    if (j?.success) onJoined()
-    else alert(j?.error||'Invalid code')
-  }
-  return (
-    <div className="w-full flex items-center justify-center">
-      <div className="w-[80%] max-w-md flex items-center gap-2">
-        <input value={code} onChange={e=> setCode(e.target.value)} placeholder="Enter join code" className="flex-1 px-3 py-2 bg-black border border-[#666] text-white placeholder-[#888] focus:outline-none rounded-md" />
-        <button aria-label="Join" title="Join" onClick={submit}
-          className="w-10 h-10 rounded-full hover:bg-white/5 text-white flex items-center justify-center">
-          <i className="fa-solid fa-user-plus" style={{ color: '#22d3c7' }} />
-        </button>
-      </div>
-    </div>
-  )
-}
-

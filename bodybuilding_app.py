@@ -278,7 +278,7 @@ def _block_unverified_users():
             return None
         # API behavior: return JSON instead of HTML redirects to avoid client parse errors
         # Exception for public endpoints (no auth required)
-        public_api_endpoints = ['/api/poll_notification_check', '/api/event_notification_check', '/api/email_verified_status']
+        public_api_endpoints = ['/api/poll_notification_check', '/api/event_notification_check', '/api/email_verified_status', '/api/invitation/verify']
         if path.startswith('/api/') and path not in public_api_endpoints:
             username = session.get('username')
             if not username:
@@ -478,6 +478,40 @@ def ensure_pending_signups_table(c):
                         )''')
     except Exception as e:
         logger.warning(f"Could not ensure pending_signups table: {e}")
+
+def ensure_community_invitations_table(c):
+    """Create table for community email invitations"""
+    try:
+        if USE_MYSQL:
+            c.execute('''CREATE TABLE IF NOT EXISTS community_invitations (
+                          id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          community_id INTEGER NOT NULL,
+                          invited_email VARCHAR(191) NOT NULL,
+                          invited_by_username VARCHAR(191) NOT NULL,
+                          invited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          token VARCHAR(191) NOT NULL UNIQUE,
+                          used TINYINT(1) DEFAULT 0,
+                          used_at TIMESTAMP NULL,
+                          INDEX idx_community_id (community_id),
+                          INDEX idx_invited_email (invited_email),
+                          INDEX idx_token (token),
+                          FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE
+                        )''')
+        else:
+            c.execute('''CREATE TABLE IF NOT EXISTS community_invitations (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          community_id INTEGER NOT NULL,
+                          invited_email TEXT NOT NULL,
+                          invited_by_username VARCHAR(191) NOT NULL,
+                          invited_at TEXT DEFAULT (datetime('now')),
+                          token TEXT NOT NULL UNIQUE,
+                          used INTEGER DEFAULT 0,
+                          used_at TEXT,
+                          FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
+                          FOREIGN KEY (invited_by_username) REFERENCES users(username) ON DELETE CASCADE
+                        )''')
+    except Exception as e:
+        logger.warning(f"Could not ensure community_invitations table: {e}")
 
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
@@ -1077,6 +1111,13 @@ def add_missing_tables():
                 conn.commit()
             except Exception as e:
                 logger.warning(f"Could not ensure pending_signups table: {e}")
+
+            # Ensure community_invitations table exists for email invitations
+            try:
+                ensure_community_invitations_table(c)
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure community_invitations table: {e}")
 
             # Idempotency tokens for post creation (prevent duplicate posts)
             try:
@@ -3562,29 +3603,105 @@ def kling_download_video(video_url: str) -> bytes:
     except requests.exceptions.RequestException as e:
         raise RuntimeError(f'Failed downloading Kling video: {str(e)}')
 
-def fetch_imagine_job(job_id: int) -> Optional[Dict[str, Any]]:
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
+
+def fetch_imagine_job(job_id: int):
+    """Background worker to generate talking avatar video using MuseTalk (local)"""
+    try:
+        logger.info(f'[TalkingAvatar] Starting job {job_id}')
+        
+        # Fetch job details
+        job = fetch_imagine_job(job_id)
+        if not job:
+            logger.error(f'[TalkingAvatar] Job {job_id} not found')
+            return
+        
+        update_imagine_job(job_id, status=IMAGINE_STATUS_PROCESSING, progress=10)
+        
+        # Get paths
+        image_path = job.get('source_path')  # Profile pic or custom image
+        audio_path = job.get('audio_path')    # Voice message
+        
+        if not image_path or not audio_path:
+            raise RuntimeError('Missing image or audio path')
+        
+        # Resolve full paths
+        if not os.path.isabs(image_path):
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], image_path.replace('uploads/', '', 1))
+        if not os.path.isabs(audio_path):
+            audio_path = os.path.join(app.config['UPLOAD_FOLDER'], audio_path.replace('uploads/', '', 1))
+        
+        logger.info(f'[TalkingAvatar] Image: {image_path}, Audio: {audio_path}')
+        
+        # Prepare output path
+        filename = f"avatar_{job_id}_{int(time.time())}.mp4"
+        rel_path = f"uploads/{IMAGINE_OUTPUT_SUBDIR}/{filename}"
+        full_path = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SUBDIR, filename)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        
+        # Generate talking avatar with MuseTalk (local processing)
+        logger.info(f'[TalkingAvatar] Generating video with MuseTalk...')
+        update_imagine_job(job_id, progress=30)
+        
+        from musetalk_integration import generate_talking_avatar
+        
+        update_imagine_job(job_id, progress=50)
+        generate_talking_avatar(
+            image_path=image_path,
+            audio_path=audio_path,
+            output_path=full_path
+        )
+        update_imagine_job(job_id, progress=90)
+        
+        if not os.path.exists(full_path):
+            raise RuntimeError('MuseTalk failed to generate video file')
+        
+        video_size = os.path.getsize(full_path)
+        logger.info(f'[TalkingAvatar] Video generated: {video_size} bytes')
+        
+        # Update job as completed
+        update_imagine_job(
+            job_id,
+            status=IMAGINE_STATUS_COMPLETED,
+            result_path=rel_path,
+            progress=100
+        )
+        
+        # Update post with video (keep audio_summary, remove audio_path)
+        target_type = job.get('target_type')
+        target_id = job.get('target_id')
+        
+        if target_type == 'post':
             with get_db_connection() as conn:
                 c = conn.cursor()
                 ph = get_sql_placeholder()
-                c.execute(f"SELECT * FROM imagine_jobs WHERE id={ph}", (job_id,))
-                row = c.fetchone()
-                if not row:
-                    return None
-                if hasattr(row, 'keys'):
-                    return dict(row)
-                # SQLite tuple fallback
-                columns = [col[0] for col in c.description]
-                return dict(zip(columns, row))
-        except Exception as e:
-            if attempt < max_retries - 1:
-                logger.warning(f"Failed fetching imagine job {job_id} (attempt {attempt+1}): {e}, retrying...")
-                time.sleep(0.5)  # Wait before retry
-                continue
-            logger.error(f"Failed fetching imagine job {job_id} after {max_retries} attempts: {e}")
-            return None
+                c.execute(f"UPDATE posts SET video_path={ph}, audio_path=NULL WHERE id={ph}", (rel_path, target_id))
+                conn.commit()
+            logger.info(f'[TalkingAvatar] Post {target_id} updated with video')
+        
+        logger.info(f'[TalkingAvatar] Job {job_id} completed successfully')
+        
+    except Exception as e:
+        logger.error(f'[TalkingAvatar] Job {job_id} failed: {e}')
+        update_imagine_job(job_id, status=IMAGINE_STATUS_ERROR, error=str(e))
+
+
+def fetch_imagine_job(job_id: int) -> Optional[Dict[str, Any]]:
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT * FROM imagine_jobs WHERE id={ph}", (job_id,))
+            row = c.fetchone()
+            if not row:
+                return None
+            if hasattr(row, 'keys'):
+                return dict(row)
+            # SQLite tuple fallback
+            columns = [col[0] for col in c.description]
+            return dict(zip(columns, row))
+    except Exception as e:
+        logger.error(f"Failed fetching imagine job {job_id}: {e}")
+        return None
 
 
 def update_imagine_job(job_id: int, **fields):
@@ -3598,23 +3715,15 @@ def update_imagine_job(job_id: int, **fields):
         values.append(value)
     values.append(job_id)
     set_clause = ', '.join(assignments)
-    
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                ph = get_sql_placeholder()
-                c.execute(f"UPDATE imagine_jobs SET {set_clause} WHERE id={ph}", tuple(values))
-                if not USE_MYSQL:
-                    conn.commit()
-            return  # Success
-        except Exception as e:
-            if attempt < max_retries - 1:
-                logger.warning(f"Failed updating imagine job {job_id} (attempt {attempt+1}): {e}, retrying...")
-                time.sleep(0.5)
-                continue
-            logger.error(f"Failed updating imagine job {job_id} after {max_retries} attempts: {e}")
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"UPDATE imagine_jobs SET {set_clause} WHERE id={ph}", tuple(values))
+            if not USE_MYSQL:
+                conn.commit()
+    except Exception as e:
+        logger.error(f"Failed updating imagine job {job_id}: {e}")
 
 
 def is_imagine_spicy_allowed(community_id: Optional[int]) -> bool:
@@ -3904,22 +4013,6 @@ def schedule_imagine_job(job_id: int):
     except Exception as e:
         logger.error(f"Failed to schedule imagine job {job_id}: {e}")
 
-def generate_join_code():
-    """Generate a unique 6-character join code for communities"""
-    import random
-    import string
-    
-    while True:
-        # Generate a 6-character code with letters and numbers
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-        
-        # Check if code already exists
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT id FROM communities WHERE join_code = ?", (code,))
-            if not c.fetchone():
-                return code
-
 # --- CSRF helpers ---
 def get_csrf_token():
     """Temporarily disabled CSRF token generation"""
@@ -4061,6 +4154,7 @@ def login():
             return resp
         # POST
         username = (request.form.get('username') or '').strip()
+        invite_token = (request.form.get('invite_token') or '').strip()
         ua = request.headers.get('User-Agent', '')
         is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
         if not username:
@@ -4090,6 +4184,9 @@ def login():
             pass
         session.permanent = False
         session['pending_username'] = username
+        # Preserve invite token if present
+        if invite_token:
+            session['pending_invite_token'] = invite_token
         session.modified = True
         return redirect(url_for('login_password'))
     except Exception as e:
@@ -4167,6 +4264,44 @@ def signup():
     mobile = request.form.get('mobile', '').strip()
     password = request.form.get('password', '')
     confirm_password = request.form.get('confirm_password', '')
+    invite_token = request.form.get('invite_token', '').strip()
+    
+    # Check if this is an invited signup
+    invitation = None
+    if invite_token:
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute("""
+                    SELECT ci.id, ci.community_id, ci.invited_email, ci.used,
+                           c.name as community_name, ci.invited_by_username
+                    FROM community_invitations ci
+                    JOIN communities c ON ci.community_id = c.id
+                    WHERE ci.token = ? AND ci.used = 0
+                """, (invite_token,))
+                invitation = c.fetchone()
+                
+                if invitation:
+                    invited_email = invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[2]
+                    
+                    # Check if this is a QR code invitation (placeholder email)
+                    is_qr_invite = invited_email.startswith('qr-invite-') and invited_email.endswith('@placeholder.local')
+                    
+                    if not is_qr_invite:
+                        # Regular email invitation - email must match
+                        if email and email.lower() != invited_email.lower():
+                            error_msg = 'Email does not match invitation'
+                            if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
+                                return jsonify({'success': False, 'error': error_msg}), 400
+                            else:
+                                return render_template('signup.html', error=error_msg)
+                        # Use email from invitation if not provided
+                        if not email:
+                            email = invited_email
+                    # For QR code invitations, user can use any email (don't pre-fill)
+        except Exception as e:
+            logger.error(f"Error checking invitation: {e}")
+            invitation = None
     
     # Handle both form types
     if not first_name and not last_name and full_name:
@@ -4242,6 +4377,62 @@ def signup():
             
             # Hash the password (store in pending)
             hashed_password = generate_password_hash(password)
+
+            # If invited, directly create user (email pre-verified)
+            if invitation:
+                try:
+                    invitation_id = invitation['id'] if hasattr(invitation, 'keys') else invitation[0]
+                    community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
+                    community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4]
+                    
+                    # Create user directly (email already verified via invitation)
+                    c.execute("""
+                        INSERT INTO users (username, first_name, last_name, email, mobile, password, subscription, email_verified, email_verified_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 'free', 1, ?)
+                    """, (username, first_name, last_name, email, mobile, hashed_password, datetime.now().isoformat()))
+                    
+                    # Get user ID
+                    c.execute("SELECT id FROM users WHERE username = ?", (username,))
+                    user_row = c.fetchone()
+                    user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+                    
+                    # Auto-join the community
+                    c.execute("""
+                        INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                        VALUES (?, ?, 'member', ?)
+                    """, (user_id, community_id, datetime.now().isoformat()))
+                    
+                    # Mark invitation as used
+                    c.execute("""
+                        UPDATE community_invitations 
+                        SET used = 1, used_at = ?
+                        WHERE id = ?
+                    """, (datetime.now().isoformat(), invitation_id))
+                    
+                    conn.commit()
+                    
+                    # Log the user in
+                    session['username'] = username
+                    session.permanent = True
+                    
+                    # Return success with community info
+                    ua = request.headers.get('User-Agent', '')
+                    is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+                    if is_mobile:
+                        return jsonify({
+                            'success': True, 
+                            'redirect': '/premium_dashboard',
+                            'invited_to_community': community_name,
+                            'needs_email_verification': False
+                        })
+                    else:
+                        flash(f'Welcome! You have been added to {community_name}', 'success')
+                        return redirect(url_for('premium_dashboard'))
+                        
+                except Exception as invite_err:
+                    logger.error(f"Error processing invitation signup: {invite_err}")
+                    # Fall back to normal signup flow
+                    invitation = None
 
             # Ensure pending table exists
             try:
@@ -4411,6 +4602,66 @@ def login_password():
                         session.pop('pending_username', None)
                     except Exception:
                         pass
+                    
+                    # Check for pending invite token
+                    invite_token = session.pop('pending_invite_token', None)
+                    if invite_token:
+                        # Auto-join user to community from invitation
+                        try:
+                            with get_db_connection() as conn:
+                                c = conn.cursor()
+                                placeholder = get_sql_placeholder()
+                                
+                                # Get user ID
+                                c.execute(f"SELECT id FROM users WHERE username={placeholder}", (username,))
+                                user_row = c.fetchone()
+                                if user_row:
+                                    user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+                                    
+                                    # Get invitation details
+                                    c.execute(f"""
+                                        SELECT ci.id, ci.community_id, ci.used
+                                        FROM community_invitations ci
+                                        WHERE ci.token={placeholder}
+                                    """, (invite_token,))
+                                    
+                                    invitation = c.fetchone()
+                                    if invitation:
+                                        community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
+                                        already_used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
+                                        
+                                        # Check if already a member
+                                        c.execute(f"""
+                                            SELECT 1 FROM user_communities 
+                                            WHERE user_id={placeholder} AND community_id={placeholder}
+                                        """, (user_id, community_id))
+                                        already_member = c.fetchone() is not None
+                                        
+                                        if not already_member:
+                                            # Add user to community
+                                            c.execute(f"""
+                                                INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                                                VALUES ({placeholder}, {placeholder}, 'member', {placeholder})
+                                            """, (user_id, community_id, datetime.now().isoformat()))
+                                            
+                                            # Mark invitation as used if not already
+                                            if not already_used:
+                                                c.execute(f"""
+                                                    UPDATE community_invitations 
+                                                    SET used = 1, used_at = {placeholder}
+                                                    WHERE token = {placeholder}
+                                                """, (datetime.now().isoformat(), invite_token))
+                                            
+                                            conn.commit()
+                                        
+                                        # Issue remember-me token and redirect to community
+                                        from flask import make_response
+                                        resp = make_response(redirect(f'/community_feed_react/{community_id}'))
+                                        _issue_remember_token(resp, username)
+                                        return resp
+                        except Exception as e:
+                            logger.error(f"Error auto-joining via invite token: {e}")
+                    
                     # Issue remember-me token
                     from flask import make_response
                     resp = make_response(redirect(url_for('communities')))
@@ -6068,11 +6319,11 @@ def admin_dashboard_api():
             
             # Get all communities with parent information
             c.execute("""
-                SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                SELECT c.id, c.name, c.type, c.creator_username,
                        c.parent_community_id, COUNT(uc.user_id) as member_count
                 FROM communities c
                 LEFT JOIN user_communities uc ON c.id = uc.community_id
-                GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.parent_community_id
+                GROUP BY c.id, c.name, c.type, c.creator_username, c.parent_community_id
                 ORDER BY c.name
             """)
             communities_raw = c.fetchall()
@@ -6086,7 +6337,6 @@ def admin_dashboard_api():
                     cname = comm['name']
                     ctype = comm['type']
                     ccreator = comm['creator_username']
-                    cjoin = comm['join_code']
                     cparent = comm['parent_community_id']
                     cmembers = comm['member_count']
                 else:
@@ -6094,16 +6344,14 @@ def admin_dashboard_api():
                     cname = comm[1]
                     ctype = comm[2]
                     ccreator = comm[3]
-                    cjoin = comm[4]
-                    cparent = comm[5]
-                    cmembers = comm[6]
+                    cparent = comm[4]
+                    cmembers = comm[5]
 
                 community_data = {
                     'id': cid,
                     'name': cname,
                     'type': ctype,
                     'creator_username': ccreator,
-                    'join_code': cjoin,
                     'parent_community_id': cparent,
                     'member_count': cmembers,
                     'is_active': True,
@@ -6624,23 +6872,23 @@ def admin():
                 # Prefer query including is_active; fallback if column missing
                 try:
                     c.execute("""
-                        SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                        SELECT c.id, c.name, c.type, c.creator_username,
                                SUM(CASE WHEN u.username IS NOT NULL AND LOWER(u.username) <> 'admin' THEN 1 ELSE 0 END) as member_count,
                                c.is_active
                         FROM communities c
                         LEFT JOIN user_communities uc ON c.id = uc.community_id
                         LEFT JOIN users u ON uc.user_id = u.id
-                        GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.is_active
+                        GROUP BY c.id, c.name, c.type, c.creator_username, c.is_active
                         ORDER BY c.name
                     """)
                 except Exception:
                     c.execute("""
-                        SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                        SELECT c.id, c.name, c.type, c.creator_username,
                                SUM(CASE WHEN u.username IS NOT NULL AND LOWER(u.username) <> 'admin' THEN 1 ELSE 0 END) as member_count
                         FROM communities c
                         LEFT JOIN user_communities uc ON c.id = uc.community_id
                         LEFT JOIN users u ON uc.user_id = u.id
-                        GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
+                        GROUP BY c.id, c.name, c.type, c.creator_username
                         ORDER BY c.name
                     """)
                 communities_raw = c.fetchall() or []
@@ -6652,9 +6900,8 @@ def admin():
                         'name': community[1],
                         'type': community[2],
                         'creator_username': community[3],
-                        'join_code': community[4],
-                        'member_count': community[5] if len(community) > 5 else 0,
-                        'is_active': (community[6] if len(community) > 6 else True)
+                        'member_count': community[4] if len(community) > 4 else 0,
+                        'is_active': (community[5] if len(community) > 5 else True)
                     })
             except Exception as communities_error:
                 logger.error(f"Error getting communities list: {communities_error}")
@@ -6783,11 +7030,11 @@ def admin():
                         
                         # Refresh communities list
                         c.execute("""
-                            SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                            SELECT c.id, c.name, c.type, c.creator_username,
                                    COUNT(uc.user_id) as member_count
                             FROM communities c
                             LEFT JOIN user_communities uc ON c.id = uc.community_id
-                            GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
+                            GROUP BY c.id, c.name, c.type, c.creator_username
                             ORDER BY c.name
                         """)
                         communities_raw = c.fetchall()
@@ -6800,8 +7047,7 @@ def admin():
                                 'name': community[1],
                                 'type': community[2],
                                 'creator_username': community[3],
-                                'join_code': community[4],
-                                'member_count': community[5]
+                                'member_count': community[4]
                             })
                         
                     except Exception as delete_error:
@@ -9133,6 +9379,150 @@ def send_photo_message():
         return jsonify({'success': False, 'error': 'Failed to send photo'})
 
 # Message photos served by web server static mapping (/uploads/message_photos -> uploads/message_photos)
+
+@app.route('/api/create_talking_avatar', methods=['POST'])
+@login_required
+def api_create_talking_avatar():
+    """Create talking avatar video from audio + image"""
+    try:
+        audio_file = request.files.get('audio')
+        image_file = request.files.get('image')  # Custom uploaded image
+        use_profile_pic = request.form.get('use_profile_pic') == 'true'
+        community_id = request.form.get('community_id')
+        content = request.form.get('content', '')
+        
+        if not audio_file:
+            return jsonify({'success': False, 'error': 'Audio file required'}), 400
+        
+        if not community_id:
+            return jsonify({'success': False, 'error': 'Community ID required'}), 400
+        
+        username = session.get('username')
+        if not username:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+        
+        # Determine which image to use
+        if use_profile_pic:
+            # Use user's profile picture
+            profile_pic_path = get_profile_picture(username)
+            if not profile_pic_path:
+                return jsonify({'success': False, 'error': 'No profile picture set'}), 400
+            image_path = profile_pic_path
+        else:
+            # Use uploaded custom image
+            if not image_file:
+                return jsonify({'success': False, 'error': 'Image file required'}), 400
+            
+            # Save uploaded image temporarily
+            image_filename = secure_filename(f"avatar_{username}_{int(time.time())}_{image_file.filename}")
+            image_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'avatar_sources')
+            os.makedirs(image_dir, exist_ok=True)
+            image_full_path = os.path.join(image_dir, image_filename)
+            image_file.save(image_full_path)
+            image_path = f"uploads/avatar_sources/{image_filename}"
+        
+        # Save audio file
+        audio_filename = secure_filename(f"audio_{username}_{int(time.time())}.webm")
+        audio_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'audio')
+        os.makedirs(audio_dir, exist_ok=True)
+        audio_full_path = os.path.join(audio_dir, audio_filename)
+        audio_file.save(audio_full_path)
+        audio_path = f"uploads/audio/{audio_filename}"
+        
+        # Generate AI summary from audio
+        logger.info(f'[TalkingAvatar] Generating AI summary for audio: {audio_full_path}')
+        audio_summary = process_audio_for_summary(audio_full_path, username)
+        if audio_summary:
+            logger.info(f'[TalkingAvatar] AI summary generated: {audio_summary[:100]}...')
+        else:
+            logger.warning(f'[TalkingAvatar] AI summary generation failed')
+        
+        # Create post first (with pending video and audio summary)
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"""
+                INSERT INTO posts (community_id, username, content, video_path, audio_summary, timestamp)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (
+                community_id,
+                username,
+                content,
+                'pending',  # Placeholder until video is ready
+                audio_summary,  # Store AI summary
+                datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            ))
+            post_id = c.lastrowid
+            conn.commit()
+        
+        # Create job in imagine_jobs table
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"""
+                INSERT INTO imagine_jobs 
+                (created_by, source_path, source_type, audio_path, target_type, target_id,
+                 status, provider, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (
+                username,
+                image_path,
+                'talking_avatar',
+                audio_path,
+                'post',
+                post_id,
+                IMAGINE_STATUS_PENDING,
+                'did',
+                datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            ))
+            job_id = c.lastrowid
+            conn.commit()
+        
+        # Queue background job
+        logger.info(f'[TalkingAvatar] Queuing job {job_id} for post {post_id}')
+        imagine_executor.submit(process_talking_avatar_job, job_id)
+        
+        return jsonify({
+            'success': True,
+            'job_id': job_id,
+            'post_id': post_id,
+            'message': 'Talking avatar video is being generated'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error creating talking avatar: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/talking_avatar_status/<int:job_id>', methods=['GET'])
+@login_required
+def api_talking_avatar_status(job_id: int):
+    """Check talking avatar generation progress"""
+    try:
+        job = fetch_imagine_job(job_id)
+        if not job:
+            return jsonify({'success': False, 'error': 'Job not found'}), 404
+        
+        # Check if user owns this job
+        username = session.get('username')
+        if job.get('created_by') != username and username != 'admin':
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        
+        status = job.get('status')
+        progress = job.get('progress', 0)
+        
+        return jsonify({
+            'success': True,
+            'status': status,
+            'progress': progress,
+            'completed': status == IMAGINE_STATUS_COMPLETED,
+            'failed': status == IMAGINE_STATUS_ERROR,
+            'post_id': job.get('target_id')
+        })
+        
+    except Exception as e:
+        logger.error(f"Error checking talking avatar status: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/send_audio_message', methods=['POST'])
 @login_required
@@ -15491,17 +15881,11 @@ def get_community_members_list(community_id):
                     'is_current_user': username_val == username
                 })
             
-            # Fetch community join code
-            c.execute("SELECT join_code FROM communities WHERE id = ?", (community_id,))
-            code_row = c.fetchone()
-            join_code = code_row['join_code'] if code_row and 'join_code' in code_row.keys() else None
-
             return jsonify({
                 'success': True,
                 'members': members,
                 'total': len(members),
-                'community_name': community['name'],
-                'community_code': join_code
+                'community_name': community['name']
             })
             
     except Exception as e:
@@ -17457,22 +17841,22 @@ def admin_communities_list():
             try:
                 c.execute(
                     """
-                    SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                    SELECT c.id, c.name, c.type, c.creator_username,
                            COUNT(uc.user_id) as member_count, c.is_active
                     FROM communities c
                     LEFT JOIN user_communities uc ON c.id = uc.community_id
-                    GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.is_active
+                    GROUP BY c.id, c.name, c.type, c.creator_username, c.is_active
                     ORDER BY c.name
                     """
                 )
             except Exception:
                 c.execute(
                     """
-                    SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                    SELECT c.id, c.name, c.type, c.creator_username,
                            COUNT(uc.user_id) as member_count
                     FROM communities c
                     LEFT JOIN user_communities uc ON c.id = uc.community_id
-                    GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
+                    GROUP BY c.id, c.name, c.type, c.creator_username
                     ORDER BY c.name
                     """
                 )
@@ -17482,9 +17866,8 @@ def admin_communities_list():
                     'name': r['name'] if hasattr(r,'keys') else r[1],
                     'type': r['type'] if hasattr(r,'keys') else r[2],
                     'creator_username': r['creator_username'] if hasattr(r,'keys') else r[3],
-                    'join_code': r['join_code'] if hasattr(r,'keys') else r[4],
-                    'member_count': (r['member_count'] if hasattr(r,'keys') else (r[5] if len(r) > 5 else 0)),
-                    'is_active': (r['is_active'] if hasattr(r,'keys') and 'is_active' in r.keys() else (r[6] if (isinstance(r, (list,tuple)) and len(r) > 6) else 1)) in (1,'1',True)
+                    'member_count': (r['member_count'] if hasattr(r,'keys') else (r[4] if len(r) > 4 else 0)),
+                    'is_active': (r['is_active'] if hasattr(r,'keys') and 'is_active' in r.keys() else (r[5] if (isinstance(r, (list,tuple)) and len(r) > 5) else 1)) in (1,'1',True)
                 })
         return jsonify({'success': True, 'communities': out})
     except Exception as e:
@@ -17874,16 +18257,13 @@ def create_community():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Generate unique join code
-            join_code = generate_join_code()
-            
             # If creating a sub-community, enforce premium-only for creators as well
             # (Already enforced above for community creation, but keep guard explicit)
-            placeholders = ', '.join([get_sql_placeholder()] * 14)
+            placeholders = ', '.join([get_sql_placeholder()] * 13)
             c.execute(f"""
-                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
+                INSERT INTO communities (name, type, creator_username, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
                 VALUES ({placeholders})
-            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id if parent_community_id and parent_community_id != 'none' else None))
+            """, (name, community_type, username, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id if parent_community_id and parent_community_id != 'none' else None))
             
             community_id = c.lastrowid
             
@@ -17916,7 +18296,6 @@ def create_community():
             return jsonify({
                 'success': True, 
                 'community_id': community_id,
-                'join_code': join_code,
                 'message': f'Community "{name}" created successfully!'
             })
             
@@ -18074,8 +18453,8 @@ def get_user_communities():
             # Check if user is admin
             if is_app_admin(username):
                 # Admin sees all communities
-                c.execute("""
-                    SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
+                c.execute(                    """
+                    SELECT c.id, c.name, c.type, c.created_at, c.creator_username, c.is_active
                     FROM communities c
                     ORDER BY c.created_at DESC
                 """)
@@ -18084,7 +18463,7 @@ def get_user_communities():
                 # Use correct placeholder based on database type
                 placeholder = '%s' if USE_MYSQL else '?'
                 c.execute(f"""
-                    SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
+                    SELECT c.id, c.name, c.type, c.created_at, c.creator_username, c.is_active
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
                     JOIN users u ON uc.user_id = u.id
@@ -18098,7 +18477,6 @@ def get_user_communities():
                     'id': row['id'],
                     'name': row['name'],
                     'type': row['type'],
-                    'join_code': row['join_code'],
                     'created_at': row['created_at'],
                     'is_creator': row['creator_username'] == username,
                     'is_active': row['is_active'] if row['is_active'] is not None else True
@@ -18786,203 +19164,465 @@ def debug_posts():
         logger.error(f"Error in debug_posts: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/join_community', methods=['POST'])
-@login_required
-def join_community():
-    """Join a community using a community code"""
-    username = session.get('username')
-    # Enforce verified email
+@app.route('/api/invitation/verify', methods=['GET'])
+def verify_invitation():
+    """Verify invitation token and return invitation details"""
+    token = request.args.get('token', '').strip()
+    
+    if not token:
+        return jsonify({'success': False, 'error': 'Token required'}), 400
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
-            r = c.fetchone()
-            ver = False
-            if r is not None:
-                ver = bool(r['email_verified'] if hasattr(r, 'keys') else r[0])
-            if not ver:
-                return jsonify({'success': False, 'error': 'please verify your email'}), 403
-    except Exception as _e:
-        pass
-    community_code = request.form.get('community_code', '').strip()
+            c.execute("""
+                SELECT ci.id, ci.community_id, ci.invited_email, ci.used,
+                       c.name as community_name, ci.invited_by_username
+                FROM community_invitations ci
+                JOIN communities c ON ci.community_id = c.id
+                WHERE ci.token = ?
+            """, (token,))
+            
+            invitation = c.fetchone()
+            
+            if not invitation:
+                return jsonify({'success': False, 'error': 'Invalid invitation'}), 404
+            
+            used = invitation['used'] if hasattr(invitation, 'keys') else invitation[3]
+            if used:
+                return jsonify({'success': False, 'error': 'Invitation already used'}), 400
+            
+            return jsonify({
+                'success': True,
+                'email': invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[2],
+                'community_name': invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4],
+                'invited_by': invitation['invited_by_username'] if hasattr(invitation, 'keys') else invitation[5]
+            })
+            
+    except Exception as e:
+        logger.error(f"Error verifying invitation: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/community/invite_link', methods=['POST'])
+@login_required
+def generate_invite_link():
+    """Generate an invitation link for QR code sharing (admin only)"""
+    username = session.get('username')
+    data = request.get_json() or {}
     
-    logger.info(f"Join community request from {username} with code: {community_code}")
+    community_id = data.get('community_id')
     
-    if not community_code:
-        return jsonify({'success': False, 'error': 'Community code is required'})
+    if not community_id:
+        return jsonify({'success': False, 'error': 'Community ID required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user is admin of this community
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            user_row = c.fetchone()
+            if not user_row:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+            
+            c.execute("""
+                SELECT c.name, c.creator_username, uc.role
+                FROM communities c
+                LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = ?
+                WHERE c.id = ?
+            """, (user_id, community_id))
+            
+            community = c.fetchone()
+            if not community:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            
+            community_name = community['name'] if hasattr(community, 'keys') else community[0]
+            creator = community['creator_username'] if hasattr(community, 'keys') else community[1]
+            role = community['role'] if hasattr(community, 'keys') else community[2]
+            
+            # Check if user is admin or creator
+            is_admin = (username == creator) or (role == 'admin')
+            if not is_admin:
+                return jsonify({'success': False, 'error': 'Only community admins can generate invite links'}), 403
+            
+            # Generate unique token (use generic email for QR code invites)
+            import secrets
+            token = secrets.token_urlsafe(32)
+            
+            # Store invitation with placeholder email
+            c.execute("""
+                INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
+                VALUES (?, ?, ?, ?)
+            """, (community_id, f'qr-invite-{token[:8]}@placeholder.local', username, token))
+            conn.commit()
+            
+            # Generate invitation URL (to login page for both existing and new users)
+            base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
+            invite_url = f"{base_url}/login?invite={token}"
+            
+            return jsonify({
+                'success': True, 
+                'invite_url': invite_url,
+                'community_name': community_name
+            })
+            
+    except Exception as e:
+        logger.error(f"Error generating invite link: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/join_with_invite', methods=['POST'])
+@login_required
+def join_with_invite():
+    """Join a community using an invitation token (for existing users)"""
+    username = session.get('username')
+    data = request.get_json() or {}
+    invite_token = data.get('invite_token', '').strip()
+    
+    if not invite_token:
+        return jsonify({'success': False, 'error': 'Invitation token required'}), 400
     
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             
             # Get user ID
-            c.execute(f"SELECT id FROM users WHERE username = {get_sql_placeholder()}", (username,))
-            user = c.fetchone()
-            if not user:
-                return jsonify({'success': False, 'error': 'User not found'})
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            user_row = c.fetchone()
+            if not user_row:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
             
-            user_id = user['id'] if hasattr(user, 'keys') else user[0]
+            # Get invitation
+            c.execute("""
+                SELECT ci.id, ci.community_id, ci.used, c.name as community_name
+                FROM community_invitations ci
+                JOIN communities c ON ci.community_id = c.id
+                WHERE ci.token = ?
+            """, (invite_token,))
             
-            # Find community by join code
-            c.execute(f"""
-                SELECT id, name, join_code FROM communities 
-                WHERE join_code = {get_sql_placeholder()}
-            """, (community_code,))
+            invitation = c.fetchone()
+            if not invitation:
+                return jsonify({'success': False, 'error': 'Invalid invitation'}), 404
             
-            community = c.fetchone()
-            logger.info(f"Community lookup result: {community}")
-            if not community:
-                return jsonify({'success': False, 'error': 'Invalid community code'})
+            invitation_id = invitation['id'] if hasattr(invitation, 'keys') else invitation[0]
+            community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
+            used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
+            community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[3]
             
-            community_id = community['id']
-            community_name = community['name']
+            if used:
+                return jsonify({'success': False, 'error': 'Invitation already used'}), 400
             
-            # Get community type
-            c.execute(f"SELECT type FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
-            community_type_result = c.fetchone()
-            community_type = community_type_result['type'] if community_type_result else 'public'
+            # Check if already a member
+            c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", 
+                     (user_id, community_id))
+            if c.fetchone():
+                return jsonify({'success': False, 'error': 'You are already a member of this community'}), 400
             
-            # Check member limit (if any)
-            try:
-                c.execute("SELECT max_members FROM communities WHERE id = ?", (community_id,))
-                row_lim = c.fetchone()
-                max_members = None
-                if row_lim is not None:
-                    max_members = (row_lim['max_members'] if hasattr(row_lim,'keys') else row_lim[0]) or None
-                if max_members:
-                    # Count current members
-                    c.execute("""
-                        SELECT COUNT(*) FROM user_communities uc
-                        WHERE uc.community_id = ?
-                    """, (community_id,))
-                    cnt_row = c.fetchone()
-                    current_cnt = (cnt_row[0] if isinstance(cnt_row, (list, tuple)) else cnt_row['COUNT(*)'] if hasattr(cnt_row,'keys') and 'COUNT(*)' in cnt_row.keys() else list(cnt_row.values())[0]) if cnt_row is not None else 0
-                    if current_cnt >= int(max_members):
-                        return jsonify({'success': False, 'error': 'This community has reached its member limit'}), 403
-            except Exception as e:
-                logger.warning(f"member limit check failed for community {community_id}: {e}")
-
-            # Check if user is already a member
-            c.execute(f"""
-                SELECT id FROM user_communities 
-                WHERE user_id = {get_sql_placeholder()} AND community_id = {get_sql_placeholder()}
-            """, (user_id, community_id))
+            # Add user to community
+            c.execute("""
+                INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                VALUES (?, ?, 'member', ?)
+            """, (user_id, community_id, datetime.now().isoformat()))
             
-            existing_membership = c.fetchone()
-            if existing_membership:
-                return jsonify({'success': False, 'error': 'You are already a member of this community'})
+            # Mark invitation as used
+            c.execute("""
+                UPDATE community_invitations 
+                SET used = 1, used_at = ?
+                WHERE id = ?
+            """, (datetime.now().isoformat(), invitation_id))
             
-            # Add user to community as a member
-            c.execute(f"""
-                INSERT INTO user_communities (user_id, community_id, joined_at)
-                VALUES ({get_sql_placeholder()}, {get_sql_placeholder()}, { 'NOW()' if USE_MYSQL else get_sql_placeholder() })
-            """, (user_id, community_id) if USE_MYSQL else (user_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
-
-            # If the community has a parent, auto-add membership to the parent community as well
-            try:
-                c.execute(f"SELECT parent_community_id FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
-                parent_row = c.fetchone()
-                parent_id = parent_row['parent_community_id'] if parent_row else None
-                if parent_id:
-                    # Check if already a member of the parent
-                    c.execute(f"SELECT 1 FROM user_communities WHERE user_id = {get_sql_placeholder()} AND community_id = {get_sql_placeholder()} ", (user_id, parent_id))
-                    if not c.fetchone():
-                        c.execute(f"""
-                            INSERT INTO user_communities (user_id, community_id, joined_at)
-                            VALUES ({get_sql_placeholder()}, {get_sql_placeholder()}, { 'NOW()' if USE_MYSQL else get_sql_placeholder() })
-                        """, (user_id, parent_id) if USE_MYSQL else (user_id, parent_id, datetime.now().strftime('%m.%d.%y %H:%M')))
-
-                        # Notify user about parent membership
-                        try:
-                            c.execute(f"SELECT name FROM communities WHERE id = {get_sql_placeholder()} ", (parent_id,))
-                            parent_name_row = c.fetchone()
-                            parent_name = parent_name_row['name'] if parent_name_row else 'Parent Community'
-                            notif_ph = ', '.join([get_sql_placeholder()] * 6)
-                            c.execute(f"""
-                                INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
-                                VALUES ({notif_ph})
-                            """, (
-                                username,
-                                'system',
-                                'community_join',
-                                parent_id,
-                                f'Access granted to parent community "{parent_name}".',
-                                f'/community_feed/{parent_id}'
-                            ))
-                        except Exception as parent_notify_err:
-                            logger.warning(f"Failed to create parent join notification for {username}: {parent_notify_err}")
-            except Exception as parent_err:
-                logger.warning(f"Parent community auto-join failed for user {username} on child {community_id}: {parent_err}")
-
-            # Create a notification for the user with a link to the community page
-            try:
-                c.execute("""
-                    INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (
-                    username,
-                    'system',
-                    'community_join',
-                    community_id,
-                    f'Successfully joined "{community_name}". Click to visit the community.',
-                    f'/community_feed/{community_id}'
-                ))
-            except Exception as notify_err:
-                logger.warning(f"Failed to create join notification for {username}: {notify_err}")
-
-            # Check if community has notify_on_new_member enabled
-            try:
-                c.execute(f"SELECT notify_on_new_member FROM communities WHERE id = {get_sql_placeholder()}", (community_id,))
-                notify_setting = c.fetchone()
-                should_notify = notify_setting and (notify_setting['notify_on_new_member'] if hasattr(notify_setting, 'keys') else notify_setting[0])
-                
-                if should_notify:
-                    # Get all existing members of the community (excluding the new joiner)
-                    c.execute(f"""
-                        SELECT DISTINCT u.username
-                        FROM user_communities uc
-                        JOIN users u ON uc.user_id = u.id
-                        WHERE uc.community_id = {get_sql_placeholder()} AND u.username != {get_sql_placeholder()}
-                    """, (community_id, username))
-                    
-                    existing_members = c.fetchall()
-                    
-                    # Send notification to each existing member
-                    notif_ph = ', '.join([get_sql_placeholder()] * 6)
-                    for member in existing_members:
-                        member_username = member['username'] if hasattr(member, 'keys') else member[0]
-                        try:
-                            c.execute(f"""
-                                INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
-                                VALUES ({notif_ph})
-                            """, (
-                                member_username,
-                                username,
-                                'new_member',
-                                community_id,
-                                f'{username} just joined "{community_name}". Say hi! 👋',
-                                f'/community_feed/{community_id}'
-                            ))
-                        except Exception as member_notify_err:
-                            logger.warning(f"Failed to notify {member_username} about new member: {member_notify_err}")
-                    
-                    logger.info(f"Sent new member notifications to {len(existing_members)} members in {community_name}")
-            except Exception as notify_members_err:
-                logger.warning(f"Failed to send new member notifications: {notify_members_err}")
-
             conn.commit()
             
-        return jsonify({
-            'success': True, 
-            'community_id': community_id,
-            'community_name': community_name,
-            'community_type': community_type,
-            'message': f'Successfully joined "{community_name}"!'
-        })
-        
+            return jsonify({
+                'success': True, 
+                'community_id': community_id,
+                'community_name': community_name,
+                'message': f'Successfully joined {community_name}'
+            })
+            
     except Exception as e:
-        logger.error(f"Error joining community: {str(e)}")
-        return jsonify({'success': False, 'error': 'An error occurred while joining the community'})
+        logger.error(f"Error joining with invite: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/community/invite', methods=['POST'])
+@login_required
+def invite_to_community():
+    """Send email invitation to join a community (admin only)"""
+    username = session.get('username')
+    data = request.get_json() or {}
+    
+    community_id = data.get('community_id')
+    invited_email = data.get('email', '').strip().lower()
+    
+    if not community_id or not invited_email:
+        return jsonify({'success': False, 'error': 'Community ID and email are required'}), 400
+    
+    # Validate email format
+    import re
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_pattern, invited_email):
+        return jsonify({'success': False, 'error': 'Invalid email format'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user is admin of this community
+            # First get user_id
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            user_row = c.fetchone()
+            if not user_row:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+            
+            c.execute("""
+                SELECT c.name, c.creator_username, uc.role
+                FROM communities c
+                LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = ?
+                WHERE c.id = ?
+            """, (user_id, community_id))
+            
+            community = c.fetchone()
+            if not community:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            
+            community_name = community['name'] if hasattr(community, 'keys') else community[0]
+            creator = community['creator_username'] if hasattr(community, 'keys') else community[1]
+            role = community['role'] if hasattr(community, 'keys') else community[2]
+            
+            # Check if user is admin or creator
+            is_admin = (username == creator) or (role == 'admin')
+            if not is_admin:
+                return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
+            
+            # Check if user already exists
+            c.execute("SELECT id, username FROM users WHERE email = ?", (invited_email,))
+            existing_user = c.fetchone()
+            
+            if existing_user:
+                # User exists - add them directly to the community
+                existing_user_id = existing_user['id'] if hasattr(existing_user, 'keys') else existing_user[0]
+                existing_username = existing_user['username'] if hasattr(existing_user, 'keys') else existing_user[1]
+                
+                # Check if already a member
+                c.execute("SELECT 1 FROM user_communities WHERE community_id = ? AND user_id = ?", 
+                         (community_id, existing_user_id))
+                if c.fetchone():
+                    return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
+                
+                # Add user to community directly
+                c.execute("""
+                    INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                    VALUES (?, ?, 'member', ?)
+                """, (existing_user_id, community_id, datetime.now().isoformat()))
+                conn.commit()
+                
+                # Send notification email (not signup invitation)
+                html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                </head>
+                <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #000000;">
+                    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #000000;">
+                        <tr>
+                            <td align="center" style="padding: 40px 20px;">
+                                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 12px; overflow: hidden; max-width: 100%;">
+                                    <tr>
+                                        <td style="background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%); padding: 30px; text-align: center;">
+                                            <h1 style="margin: 0; color: #000000; font-size: 28px; font-weight: 700;">
+                                                You've Been Added!
+                                            </h1>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 40px 30px; color: #ffffff;">
+                                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6;">
+                                                <strong>{username}</strong> has added you to <strong style="color: #4db6ac;">{community_name}</strong> on C.Point.
+                                            </p>
+                                            <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #b0b0b0;">
+                                                You can now access this community and start connecting with other members.
+                                            </p>
+                                            <table width="100%" cellpadding="0" cellspacing="0">
+                                                <tr>
+                                                    <td align="center" style="padding: 10px 0;">
+                                                        <a href="https://www.c-point.co/login" style="display: inline-block; padding: 16px 40px; background-color: #4db6ac; color: #000000; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 8px;">
+                                                            Go to C.Point
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 20px 30px; border-top: 1px solid #2a2a2a; text-align: center;">
+                                            <p style="margin: 0; font-size: 12px; color: #808080;">
+                                                © 2025 C.Point. All rights reserved.
+                                            </p>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                </body>
+                </html>
+                """
+                
+                text = f"""
+You've Been Added to {community_name}
+
+{username} has added you to {community_name} on C.Point.
+
+You can now access this community and start connecting with other members.
+
+Go to C.Point: https://www.c-point.co/login
+
+© 2025 C.Point. All rights reserved.
+                """
+                
+                # Send notification email
+                success = _send_email_via_resend(
+                    to_email=invited_email,
+                    subject=f"You've been added to {community_name} on C.Point",
+                    html=html,
+                    text=text
+                )
+                
+                if not success:
+                    return jsonify({'success': False, 'error': 'Failed to send notification email'}), 500
+                
+                return jsonify({'success': True, 'message': f'User added to {community_name} and notified'})
+            
+            else:
+                # User doesn't exist - send signup invitation
+                # Clean up any old unused invitations for this email (from deleted accounts)
+                c.execute("""
+                    DELETE FROM community_invitations 
+                    WHERE community_id = ? AND invited_email = ? AND used = 0
+                """, (community_id, invited_email))
+                conn.commit()
+                
+                # Generate unique token
+                import secrets
+                token = secrets.token_urlsafe(32)
+                
+                # Store invitation
+                c.execute("""
+                    INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
+                    VALUES (?, ?, ?, ?)
+                """, (community_id, invited_email, username, token))
+                conn.commit()
+                
+                # Send invitation email with signup link
+                # Use current domain or configured base URL
+                base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
+                invite_url = f"{base_url}/signup?invite={token}"
+            
+            html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            </head>
+            <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #000000;">
+                <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #000000;">
+                    <tr>
+                        <td align="center" style="padding: 40px 20px;">
+                            <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 12px; overflow: hidden; max-width: 100%;">
+                                <!-- Header -->
+                                <tr>
+                                    <td style="background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%); padding: 30px; text-align: center;">
+                                        <h1 style="margin: 0; color: #000000; font-size: 28px; font-weight: 700;">
+                                            Welcome to C.Point
+                                        </h1>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Body -->
+                                <tr>
+                                    <td style="padding: 40px 30px; color: #ffffff;">
+                                        <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6;">
+                                            You have been invited to join <strong style="color: #4db6ac;">{community_name}</strong> by <strong>{username}</strong>.
+                                        </p>
+                                        
+                                        <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #b0b0b0;">
+                                            C.Point is a community network where you can connect, share ideas, and engage in meaningful conversations.
+                                        </p>
+                                        
+                                        <!-- Button -->
+                                        <table width="100%" cellpadding="0" cellspacing="0">
+                                            <tr>
+                                                <td align="center" style="padding: 10px 0;">
+                                                    <a href="{invite_url}" style="display: inline-block; padding: 16px 40px; background-color: #4db6ac; color: #000000; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 8px;">
+                                                        Join {community_name}
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                        
+                                        <p style="margin: 30px 0 0 0; font-size: 14px; line-height: 1.6; color: #808080;">
+                                            If the button doesn't work, copy and paste this link into your browser:
+                                        </p>
+                                        <p style="margin: 10px 0 0 0; font-size: 13px; word-break: break-all; color: #4db6ac;">
+                                            {invite_url}
+                                        </p>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Footer -->
+                                <tr>
+                                    <td style="padding: 20px 30px; border-top: 1px solid #2a2a2a; text-align: center;">
+                                        <p style="margin: 0; font-size: 12px; color: #808080;">
+                                            This invitation was sent by {username} from C.Point
+                                        </p>
+                                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #606060;">
+                                            © 2025 C.Point. All rights reserved.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+            </body>
+            </html>
+            """
+            
+            text = f"""
+Welcome to C.Point
+
+You have been invited to join {community_name} by {username}.
+
+C.Point is a community network where you can connect, share ideas, and engage in meaningful conversations.
+
+Click here to join: {invite_url}
+
+Or copy and paste this link into your browser: {invite_url}
+
+This invitation was sent by {username} from C.Point.
+            """
+            
+            # Send email
+            success = _send_email_via_resend(
+                to_email=invited_email,
+                subject=f"You're invited to join {community_name} on C.Point",
+                html=html,
+                text=text
+            )
+            
+            if not success:
+                return jsonify({'success': False, 'error': 'Failed to send invitation email'}), 500
+            
+            return jsonify({'success': True, 'message': 'Invitation sent successfully'})
+            
+    except Exception as e:
+        logger.error(f"Error sending invitation: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/leave_community', methods=['POST'])
 @login_required

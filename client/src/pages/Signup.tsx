@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 export default function Signup(){
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const inviteToken = searchParams.get('invite')
+  
   const [formData, setFormData] = useState({
     username: '',
     first_name: '',
@@ -17,6 +20,34 @@ export default function Signup(){
   const [debugInfo, setDebugInfo] = useState<string[]>([])
   const [showVerify, setShowVerify] = useState(false)
   const [pendingEmail, setPendingEmail] = useState('')
+  const [invitationInfo, setInvitationInfo] = useState<{email: string, community_name: string, invited_by: string} | null>(null)
+  const [emailLocked, setEmailLocked] = useState(false)
+  
+  // Check invitation token on mount
+  useEffect(() => {
+    if (inviteToken) {
+      fetch(`/api/invitation/verify?token=${inviteToken}`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(j => {
+          if (j?.success) {
+            setInvitationInfo(j)
+            // Only pre-fill email if it's not a QR code placeholder
+            const isQRInvite = j.email?.startsWith('qr-invite-') && j.email?.endsWith('@placeholder.local')
+            if (!isQRInvite) {
+              setFormData(prev => ({ ...prev, email: j.email }))
+              setEmailLocked(true)
+            }
+          } else {
+            setError(j?.error || 'Invalid invitation link')
+          }
+        })
+        .catch(err => {
+          console.error('Error verifying invitation:', err)
+          setError('Failed to verify invitation')
+        })
+    }
+  }, [inviteToken])
+  
   // Lock body scroll when modals are shown
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -78,6 +109,7 @@ export default function Signup(){
     submitData.append('mobile', formData.mobile)
     submitData.append('password', formData.password)
     submitData.append('confirm_password', formData.confirm_password)
+    if (inviteToken) submitData.append('invite_token', inviteToken)
 
     console.log('Sending signup request to /signup')
     console.log('FormData contents:', Array.from(submitData.entries()))
@@ -104,6 +136,7 @@ export default function Signup(){
               setPendingEmail(formData.email)
               setShowVerify(true)
             } else {
+              // Navigate to dashboard - onboarding will show automatically
               navigate(dest)
             }
           } else {
@@ -135,7 +168,18 @@ export default function Signup(){
         {/* Header */}
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold mb-2">Create Account</h1>
-          <p className="text-white/60 text-sm">Join C.Point today</p>
+          {invitationInfo ? (
+            <div className="bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg p-3 mt-3">
+              <p className="text-white text-sm font-medium">
+                You've been invited to join <span className="text-[#4db6ac]">{invitationInfo.community_name}</span>
+              </p>
+              <p className="text-white/60 text-xs mt-1">
+                by {invitationInfo.invited_by}
+              </p>
+            </div>
+          ) : (
+            <p className="text-white/60 text-sm">Join C.Point today</p>
+          )}
         </div>
 
         {/* Error Message */}
@@ -150,7 +194,7 @@ export default function Signup(){
           <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-blue-400 text-xs">
             <div className="font-medium mb-1">Debug Info:</div>
             {debugInfo.map((info, i) => (
-              <div key={i}>• {info}</div>
+              <div key={i}>� {info}</div>
             ))}
           </div>
         )}
@@ -203,8 +247,12 @@ export default function Signup(){
               onChange={e => handleInputChange('email', e.target.value)}
               placeholder="your@email.com"
               required
-              className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
+              disabled={emailLocked}
+              className={`w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors ${emailLocked ? 'opacity-60 cursor-not-allowed' : ''}`}
             />
+            {emailLocked && (
+              <p className="text-xs text-white/50 mt-1">Email is pre-filled from your invitation</p>
+            )}
           </div>
 
           {/* Mobile (Optional) */}
@@ -226,7 +274,7 @@ export default function Signup(){
               type="password"
               value={formData.password}
               onChange={e => handleInputChange('password', e.target.value)}
-              placeholder="••••••••"
+              placeholder="********"
               required
               className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
             />
@@ -239,7 +287,7 @@ export default function Signup(){
               type="password"
               value={formData.confirm_password}
               onChange={e => handleInputChange('confirm_password', e.target.value)}
-              placeholder="••••••••"
+              placeholder="********"
               required
               className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
             />
