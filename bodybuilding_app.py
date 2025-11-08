@@ -4404,9 +4404,9 @@ def signup():
                     
                     # Auto-join the community
                     c.execute("""
-                        INSERT INTO user_communities (user_id, community_id, username, role, joined_at)
-                        VALUES (?, ?, ?, 'member', ?)
-                    """, (user_id, community_id, username, datetime.now().isoformat()))
+                        INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                        VALUES (?, ?, 'member', ?)
+                    """, (user_id, community_id, datetime.now().isoformat()))
                     
                     # Mark invitation as used
                     c.execute("""
