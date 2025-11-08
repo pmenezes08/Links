@@ -753,13 +753,6 @@ export default function CommunityFeed() {
               <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/tasks_react`) }}>Tasks</button>
             )}
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/photos_react`) }}>Photos</button>
-            {/* Manage Sub-Communities option for admins */}
-            {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
-              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/communities?parent_id=${community_id}`) }}>
-                <i className="fa-solid fa-sitemap mr-2" />
-                Manage Sub-Communities
-              </button>
-            )}
             {/* Hide Forum/Useful Links for General communities */}
             {((data?.community?.type||'').toLowerCase() !== 'general') && (
               <>
