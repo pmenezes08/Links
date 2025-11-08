@@ -361,7 +361,7 @@ export default function Communities(){
                       <label className="block text-xs text-[#9fb0b5] mb-1">Sub-Community Name</label>
                       <input value={newSubName}
                              onChange={e=> setNewSubName(e.target.value)}
-                             placeholder="e.g., Powerlifting Club"
+                             placeholder="e.g., Engineering Team"
                              className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm" />
                     </div>
                     <div>
