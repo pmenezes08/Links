@@ -276,7 +276,7 @@ export default function Signup(){
               type="password"
               value={formData.password}
               onChange={e => handleInputChange('password', e.target.value)}
-              placeholder="••••••••"
+              placeholder="********"
               required
               className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
             />
@@ -289,7 +289,7 @@ export default function Signup(){
               type="password"
               value={formData.confirm_password}
               onChange={e => handleInputChange('confirm_password', e.target.value)}
-              placeholder="••••••••"
+              placeholder="********"
               required
               className="w-full px-3 py-2.5 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none transition-colors"
             />
