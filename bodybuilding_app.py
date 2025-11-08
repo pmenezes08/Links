@@ -4612,15 +4612,16 @@ def login_password():
                                 c = conn.cursor()
                                 placeholder = get_sql_placeholder()
                                 
-                                # Get user ID
-                                c.execute(f"SELECT id FROM users WHERE username={placeholder}", (username,))
+                                # Get user ID and email
+                                c.execute(f"SELECT id, email FROM users WHERE username={placeholder}", (username,))
                                 user_row = c.fetchone()
                                 if user_row:
                                     user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+                                    user_email = user_row['email'] if hasattr(user_row, 'keys') else user_row[1]
                                     
-                                    # Get invitation details
+                                    # Get invitation details with invited email
                                     c.execute(f"""
-                                        SELECT ci.id, ci.community_id, ci.used
+                                        SELECT ci.id, ci.community_id, ci.used, ci.invited_email
                                         FROM community_invitations ci
                                         WHERE ci.token={placeholder}
                                     """, (invite_token,))
@@ -4629,6 +4630,18 @@ def login_password():
                                     if invitation:
                                         community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
                                         already_used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
+                                        invited_email = invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[3]
+                                        
+                                        # Security check: verify the logged-in user's email matches the invited email
+                                        # Skip check for QR code invitations (placeholder emails)
+                                        is_qr_invite = invited_email and invited_email.startswith('qr-invite-') and invited_email.endswith('@placeholder.local')
+                                        if not is_qr_invite and user_email.lower() != invited_email.lower():
+                                            # Email doesn't match - redirect to error page
+                                            from flask import make_response
+                                            from urllib.parse import quote
+                                            resp = make_response(redirect('/login?error=' + quote('This invitation was sent to a different email address')))
+                                            _issue_remember_token(resp, username)
+                                            return resp
                                         
                                         # Check if already a member
                                         c.execute(f"""
@@ -19286,16 +19299,17 @@ def join_with_invite():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get user ID
-            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            # Get user ID and email
+            c.execute("SELECT id, email FROM users WHERE username = ?", (username,))
             user_row = c.fetchone()
             if not user_row:
                 return jsonify({'success': False, 'error': 'User not found'}), 404
             user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+            user_email = user_row['email'] if hasattr(user_row, 'keys') else user_row[1]
             
-            # Get invitation
+            # Get invitation with invited email
             c.execute("""
-                SELECT ci.id, ci.community_id, ci.used, c.name as community_name
+                SELECT ci.id, ci.community_id, ci.used, ci.invited_email, c.name as community_name
                 FROM community_invitations ci
                 JOIN communities c ON ci.community_id = c.id
                 WHERE ci.token = ?
@@ -19308,10 +19322,18 @@ def join_with_invite():
             invitation_id = invitation['id'] if hasattr(invitation, 'keys') else invitation[0]
             community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
             used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
-            community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[3]
+            invited_email = invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[3]
+            community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4]
             
             if used:
                 return jsonify({'success': False, 'error': 'Invitation already used'}), 400
+            
+            # Security check: verify the logged-in user's email matches the invited email
+            # Skip check for QR code invitations (placeholder emails)
+            is_qr_invite = invited_email and invited_email.startswith('qr-invite-') and invited_email.endswith('@placeholder.local')
+            if not is_qr_invite:
+                if user_email.lower() != invited_email.lower():
+                    return jsonify({'success': False, 'error': 'This invitation was sent to a different email address'}), 403
             
             # Check if already a member
             c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", 

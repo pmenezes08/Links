@@ -56,6 +56,9 @@ export default function MobileLogin() {
                   // Redirect to the community
                   navigate(`/community_feed_react/${joinData.community_id}`, { replace: true })
                   return
+                } else if (joinResponse.status === 403) {
+                  // Email mismatch - show error
+                  setError(joinData?.error || 'This invitation was sent to a different email address')
                 }
               } catch (err) {
                 console.error('Error joining via invite:', err)
