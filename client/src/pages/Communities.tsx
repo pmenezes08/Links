@@ -274,17 +274,8 @@ export default function Communities(){
                         isSwipedOpen={swipedCommunity === c.id}
                         onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
                         onEnter={() => {
-                          const ua = navigator.userAgent || ''
-                          const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                          // If community has children or can have them, go to management view
-                          // Otherwise go to feed
-                          if (c.children && c.children.length > 0) {
-                            navigate(`/communities?parent_id=${c.id}`)
-                          } else if (isMobile) {
-                            navigate(`/community_feed_react/${c.id}`)
-                          } else {
-                            window.location.href = `/community_feed/${c.id}`
-                          }
+                          // Always go to management view for parent communities (they can have subs)
+                          navigate(`/communities?parent_id=${c.id}`)
                         }}
                         onDeleteOrLeave={async (asDelete:boolean) => {
                           const fd = new URLSearchParams({ community_id: String(c.id) })
@@ -1140,16 +1131,8 @@ function NestedCommunities({
             isSwipedOpen={swipedCommunity === child.id}
             onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
             onEnter={() => {
-              const ua = navigator.userAgent || ''
-              const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-              // If has children, go to management view
-              if (child.children && child.children.length > 0) {
-                navigate(`/communities?parent_id=${child.id}`)
-              } else if (isMobile) {
-                navigate(`/community_feed_react/${child.id}`)
-              } else {
-                window.location.href = `/community_feed/${child.id}`
-              }
+              // Always go to management view to allow creating sub-communities at any level
+              navigate(`/communities?parent_id=${child.id}`)
             }}
             onDeleteOrLeave={async (asDelete: boolean) => {
               const fd = new URLSearchParams({ community_id: String(child.id) })
