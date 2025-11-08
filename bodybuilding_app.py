@@ -10087,16 +10087,18 @@ def update_member_role():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Get community info
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            # Get community info including type and parent
+            c.execute("SELECT creator_username, type, parent_community_id FROM communities WHERE id = ?", (community_id,))
             community = c.fetchone()
             if not community:
                 return jsonify({'success': False, 'error': 'Community not found'})
             
-            current_owner = community['creator_username']
+            current_owner = community['creator_username'] if hasattr(community, 'keys') else community[0]
+            community_type = community['type'] if hasattr(community, 'keys') else community[1]
+            parent_community_id = community['parent_community_id'] if hasattr(community, 'keys') else community[2]
             
             # Check permissions
-            is_app_admin = username == 'admin'
+            is_app_admin_user = is_app_admin(username)
             is_owner = username == current_owner
             
             # Get current user's role in user_communities table
@@ -10107,10 +10109,25 @@ def update_member_role():
             current_user_role_row = c.fetchone()
             is_community_admin = current_user_role_row and (current_user_role_row['role'] == 'admin' if hasattr(current_user_role_row, 'keys') else current_user_role_row[0] == 'admin')
             
+            # For Business communities: check if user is admin of parent community (for sub-communities)
+            is_parent_admin = False
+            if community_type and community_type.lower() == 'business' and parent_community_id:
+                c.execute("""
+                    SELECT c.creator_username, uc.role
+                    FROM communities c
+                    LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = (SELECT id FROM users WHERE username = ?)
+                    WHERE c.id = ?
+                """, (username, parent_community_id))
+                parent_info = c.fetchone()
+                if parent_info:
+                    parent_owner = parent_info['creator_username'] if hasattr(parent_info, 'keys') else parent_info[0]
+                    parent_user_role = parent_info['role'] if hasattr(parent_info, 'keys') else parent_info[1]
+                    is_parent_admin = (username == parent_owner or parent_user_role == 'admin')
+            
             # Permission checks based on action
             if new_role == 'owner':
                 # Only app admin can transfer ownership
-                if not is_app_admin:
+                if not is_app_admin_user:
                     return jsonify({'success': False, 'error': 'Only app admin can transfer ownership'})
                 
                 # Update community owner
@@ -10133,9 +10150,9 @@ def update_member_role():
                     """, (current_owner, community_id))
                 
             elif new_role == 'admin':
-                # Owner or app admin can make admins
-                if not (is_owner or is_app_admin):
-                    return jsonify({'success': False, 'error': 'Only owner or app admin can appoint admins'})
+                # Owner, app admin, or parent community admin (for Business sub-communities) can make admins
+                if not (is_owner or is_app_admin_user or is_parent_admin):
+                    return jsonify({'success': False, 'error': 'Only owner, app admin, or parent community admin can appoint admins'})
 
                 # Can't make owner an admin
                 if target_username == current_owner:
@@ -10150,9 +10167,9 @@ def update_member_role():
                 
             elif new_role == 'member':
                 # Remove admin role
-                # Owner or app admin can remove admins
-                if not (is_owner or is_app_admin):
-                    return jsonify({'success': False, 'error': 'Only owner or app admin can remove admins'})
+                # Owner, app admin, or parent community admin (for Business sub-communities) can remove admins
+                if not (is_owner or is_app_admin_user or is_parent_admin):
+                    return jsonify({'success': False, 'error': 'Only owner, app admin, or parent community admin can remove admins'})
 
                 # Update user's role to member
                 c.execute("""
@@ -18250,6 +18267,42 @@ def create_community():
     
     if not name or not community_type:
         return jsonify({'success': False, 'error': 'Name and type are required'}), 400
+    
+    # Business communities can only be created by app admin (parent) or parent community admins (sub-communities)
+    if community_type.lower() == 'business':
+        if parent_community_id and parent_community_id != 'none':
+            # Check if user is admin of parent Business community
+            try:
+                with get_db_connection() as conn:
+                    c_check = conn.cursor()
+                    # Check parent community type and user's role
+                    c_check.execute("""
+                        SELECT c.type, uc.role, c.creator_username
+                        FROM communities c
+                        LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = (SELECT id FROM users WHERE username = ?)
+                        WHERE c.id = ?
+                    """, (username, parent_community_id))
+                    parent_info = c_check.fetchone()
+                    if not parent_info:
+                        return jsonify({'success': False, 'error': 'Parent community not found'}), 404
+                    
+                    parent_type = parent_info['type'] if hasattr(parent_info, 'keys') else parent_info[0]
+                    user_role = parent_info['role'] if hasattr(parent_info, 'keys') else parent_info[1]
+                    parent_creator = parent_info['creator_username'] if hasattr(parent_info, 'keys') else parent_info[2]
+                    
+                    if parent_type.lower() != 'business':
+                        return jsonify({'success': False, 'error': 'Business sub-communities can only be created under Business parent communities'}), 403
+                    
+                    is_parent_admin = user_role == 'admin' or username == parent_creator or is_app_admin(username)
+                    if not is_parent_admin:
+                        return jsonify({'success': False, 'error': 'Only parent community admins can create Business sub-communities'}), 403
+            except Exception as e:
+                logger.error(f"Error checking parent community permissions: {e}")
+                return jsonify({'success': False, 'error': 'Permission check failed'}), 500
+        else:
+            # Creating parent Business community - only app admin
+            if not is_app_admin(username):
+                return jsonify({'success': False, 'error': 'Only app admin can create Business communities'}), 403
     
     # Handle background image
     background_path = None
