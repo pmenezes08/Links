@@ -19217,39 +19217,132 @@ def invite_to_community():
             if not is_admin:
                 return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
             
-            # Check if user is already a member
+            # Check if user already exists
             c.execute("SELECT id, username FROM users WHERE email = ?", (invited_email,))
             existing_user = c.fetchone()
+            
             if existing_user:
+                # User exists - add them directly to the community
                 existing_user_id = existing_user['id'] if hasattr(existing_user, 'keys') else existing_user[0]
+                existing_username = existing_user['username'] if hasattr(existing_user, 'keys') else existing_user[1]
+                
+                # Check if already a member
                 c.execute("SELECT 1 FROM user_communities WHERE community_id = ? AND user_id = ?", 
                          (community_id, existing_user_id))
                 if c.fetchone():
                     return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
+                
+                # Add user to community directly
+                c.execute("""
+                    INSERT INTO user_communities (user_id, community_id, username, role, joined_at)
+                    VALUES (?, ?, ?, 'member', ?)
+                """, (existing_user_id, community_id, existing_username, datetime.now().isoformat()))
+                conn.commit()
+                
+                # Send notification email (not signup invitation)
+                html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                </head>
+                <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #000000;">
+                    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #000000;">
+                        <tr>
+                            <td align="center" style="padding: 40px 20px;">
+                                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 12px; overflow: hidden; max-width: 100%;">
+                                    <tr>
+                                        <td style="background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%); padding: 30px; text-align: center;">
+                                            <h1 style="margin: 0; color: #000000; font-size: 28px; font-weight: 700;">
+                                                You've Been Added!
+                                            </h1>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 40px 30px; color: #ffffff;">
+                                            <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6;">
+                                                <strong>{username}</strong> has added you to <strong style="color: #4db6ac;">{community_name}</strong> on C.Point.
+                                            </p>
+                                            <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #b0b0b0;">
+                                                You can now access this community and start connecting with other members.
+                                            </p>
+                                            <table width="100%" cellpadding="0" cellspacing="0">
+                                                <tr>
+                                                    <td align="center" style="padding: 10px 0;">
+                                                        <a href="https://www.c-point.co/login" style="display: inline-block; padding: 16px 40px; background-color: #4db6ac; color: #000000; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 8px;">
+                                                            Go to C.Point
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 20px 30px; border-top: 1px solid #2a2a2a; text-align: center;">
+                                            <p style="margin: 0; font-size: 12px; color: #808080;">
+                                                © 2025 C.Point. All rights reserved.
+                                            </p>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                </body>
+                </html>
+                """
+                
+                text = f"""
+You've Been Added to {community_name}
+
+{username} has added you to {community_name} on C.Point.
+
+You can now access this community and start connecting with other members.
+
+Go to C.Point: https://www.c-point.co/login
+
+© 2025 C.Point. All rights reserved.
+                """
+                
+                # Send notification email
+                success = _send_email_via_resend(
+                    to_email=invited_email,
+                    subject=f"You've been added to {community_name} on C.Point",
+                    html=html,
+                    text=text
+                )
+                
+                if not success:
+                    return jsonify({'success': False, 'error': 'Failed to send notification email'}), 500
+                
+                return jsonify({'success': True, 'message': f'User added to {community_name} and notified'})
             
-            # Check if invitation already sent
-            c.execute("""
-                SELECT id, used FROM community_invitations 
-                WHERE community_id = ? AND invited_email = ? AND used = 0
-            """, (community_id, invited_email))
-            existing_invite = c.fetchone()
-            
-            if existing_invite:
-                return jsonify({'success': False, 'error': 'An invitation has already been sent to this email'}), 400
-            
-            # Generate unique token
-            import secrets
-            token = secrets.token_urlsafe(32)
-            
-            # Store invitation
-            c.execute("""
-                INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
-                VALUES (?, ?, ?, ?)
-            """, (community_id, invited_email, username, token))
-            conn.commit()
-            
-            # Send invitation email
-            invite_url = f"https://www.c-point.co/signup?invite={token}"
+            else:
+                # User doesn't exist - send signup invitation
+                # Check if invitation already sent
+                c.execute("""
+                    SELECT id, used FROM community_invitations 
+                    WHERE community_id = ? AND invited_email = ? AND used = 0
+                """, (community_id, invited_email))
+                existing_invite = c.fetchone()
+                
+                if existing_invite:
+                    return jsonify({'success': False, 'error': 'An invitation has already been sent to this email'}), 400
+                
+                # Generate unique token
+                import secrets
+                token = secrets.token_urlsafe(32)
+                
+                # Store invitation
+                c.execute("""
+                    INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
+                    VALUES (?, ?, ?, ?)
+                """, (community_id, invited_email, username, token))
+                conn.commit()
+                
+                # Send invitation email with signup link
+                invite_url = f"https://www.c-point.co/signup?invite={token}"
             
             html = f"""
             <!DOCTYPE html>
@@ -19336,18 +19429,18 @@ Or copy and paste this link into your browser: {invite_url}
 This invitation was sent by {username} from C.Point.
             """
             
-            # Send email
-            success = _send_email_via_resend(
-                to_email=invited_email,
-                subject=f"You're invited to join {community_name} on C.Point",
-                html=html,
-                text=text
-            )
-            
-            if not success:
-                return jsonify({'success': False, 'error': 'Failed to send invitation email'}), 500
-            
-            return jsonify({'success': True, 'message': 'Invitation sent successfully'})
+                # Send email
+                success = _send_email_via_resend(
+                    to_email=invited_email,
+                    subject=f"You're invited to join {community_name} on C.Point",
+                    html=html,
+                    text=text
+                )
+                
+                if not success:
+                    return jsonify({'success': False, 'error': 'Failed to send invitation email'}), 500
+                
+                return jsonify({'success': True, 'message': 'Invitation sent successfully'})
             
     except Exception as e:
         logger.error(f"Error sending invitation: {str(e)}", exc_info=True)
