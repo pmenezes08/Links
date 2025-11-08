@@ -18330,9 +18330,10 @@ def create_community():
                     # Check if user is owner
                     if username == parent_creator or is_app_admin(username):
                         # Owner or app admin - allowed
-                        pass
+                        logger.info(f"Business sub-community creation allowed: {username} is owner/admin of parent {parent_community_id}")
                     else:
                         # Check if user is admin of parent community
+                        logger.info(f"Checking if {username} is admin of parent community {parent_community_id}")
                         c_check.execute(f"""
                             SELECT role FROM user_communities
                             WHERE user_id = (SELECT id FROM users WHERE username = {placeholder})
@@ -18341,8 +18342,13 @@ def create_community():
                         user_role_row = c_check.fetchone()
                         user_role = user_role_row['role'] if (user_role_row and hasattr(user_role_row, 'keys')) else (user_role_row[0] if user_role_row else None)
                         
+                        logger.info(f"User {username} role in parent {parent_community_id}: {user_role}")
+                        
                         if user_role != 'admin':
-                            return jsonify({'success': False, 'error': 'Only parent community admins can create Business sub-communities'}), 403
+                            logger.warning(f"Permission denied: {username} has role '{user_role}' (not 'admin') in parent {parent_community_id}")
+                            return jsonify({'success': False, 'error': f'Only parent community admins can create Business sub-communities. Your role: {user_role}'}), 403
+                        
+                        logger.info(f"Business sub-community creation allowed: {username} is admin of parent {parent_community_id}")
             except Exception as e:
                 logger.error(f"Error checking parent community permissions: {e}")
                 return jsonify({'success': False, 'error': f'Permission check failed: {str(e)}'}), 500
