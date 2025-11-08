@@ -4013,22 +4013,6 @@ def schedule_imagine_job(job_id: int):
     except Exception as e:
         logger.error(f"Failed to schedule imagine job {job_id}: {e}")
 
-def generate_join_code():
-    """Generate a unique 6-character join code for communities"""
-    import random
-    import string
-    
-    while True:
-        # Generate a 6-character code with letters and numbers
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-        
-        # Check if code already exists
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT id FROM communities WHERE join_code = ?", (code,))
-            if not c.fetchone():
-                return code
-
 # --- CSRF helpers ---
 def get_csrf_token():
     """Temporarily disabled CSRF token generation"""
@@ -6335,11 +6319,11 @@ def admin_dashboard_api():
             
             # Get all communities with parent information
             c.execute("""
-                SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                SELECT c.id, c.name, c.type, c.creator_username,
                        c.parent_community_id, COUNT(uc.user_id) as member_count
                 FROM communities c
                 LEFT JOIN user_communities uc ON c.id = uc.community_id
-                GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.parent_community_id
+                GROUP BY c.id, c.name, c.type, c.creator_username, c.parent_community_id
                 ORDER BY c.name
             """)
             communities_raw = c.fetchall()
@@ -6353,7 +6337,6 @@ def admin_dashboard_api():
                     cname = comm['name']
                     ctype = comm['type']
                     ccreator = comm['creator_username']
-                    cjoin = comm['join_code']
                     cparent = comm['parent_community_id']
                     cmembers = comm['member_count']
                 else:
@@ -6361,16 +6344,14 @@ def admin_dashboard_api():
                     cname = comm[1]
                     ctype = comm[2]
                     ccreator = comm[3]
-                    cjoin = comm[4]
-                    cparent = comm[5]
-                    cmembers = comm[6]
+                    cparent = comm[4]
+                    cmembers = comm[5]
 
                 community_data = {
                     'id': cid,
                     'name': cname,
                     'type': ctype,
                     'creator_username': ccreator,
-                    'join_code': cjoin,
                     'parent_community_id': cparent,
                     'member_count': cmembers,
                     'is_active': True,
@@ -6891,23 +6872,23 @@ def admin():
                 # Prefer query including is_active; fallback if column missing
                 try:
                     c.execute("""
-                        SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                        SELECT c.id, c.name, c.type, c.creator_username,
                                SUM(CASE WHEN u.username IS NOT NULL AND LOWER(u.username) <> 'admin' THEN 1 ELSE 0 END) as member_count,
                                c.is_active
                         FROM communities c
                         LEFT JOIN user_communities uc ON c.id = uc.community_id
                         LEFT JOIN users u ON uc.user_id = u.id
-                        GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.is_active
+                        GROUP BY c.id, c.name, c.type, c.creator_username, c.is_active
                         ORDER BY c.name
                     """)
                 except Exception:
                     c.execute("""
-                        SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                        SELECT c.id, c.name, c.type, c.creator_username,
                                SUM(CASE WHEN u.username IS NOT NULL AND LOWER(u.username) <> 'admin' THEN 1 ELSE 0 END) as member_count
                         FROM communities c
                         LEFT JOIN user_communities uc ON c.id = uc.community_id
                         LEFT JOIN users u ON uc.user_id = u.id
-                        GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
+                        GROUP BY c.id, c.name, c.type, c.creator_username
                         ORDER BY c.name
                     """)
                 communities_raw = c.fetchall() or []
@@ -6919,9 +6900,8 @@ def admin():
                         'name': community[1],
                         'type': community[2],
                         'creator_username': community[3],
-                        'join_code': community[4],
-                        'member_count': community[5] if len(community) > 5 else 0,
-                        'is_active': (community[6] if len(community) > 6 else True)
+                        'member_count': community[4] if len(community) > 4 else 0,
+                        'is_active': (community[5] if len(community) > 5 else True)
                     })
             except Exception as communities_error:
                 logger.error(f"Error getting communities list: {communities_error}")
@@ -7050,11 +7030,11 @@ def admin():
                         
                         # Refresh communities list
                         c.execute("""
-                            SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                            SELECT c.id, c.name, c.type, c.creator_username,
                                    COUNT(uc.user_id) as member_count
                             FROM communities c
                             LEFT JOIN user_communities uc ON c.id = uc.community_id
-                            GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
+                            GROUP BY c.id, c.name, c.type, c.creator_username
                             ORDER BY c.name
                         """)
                         communities_raw = c.fetchall()
@@ -7067,8 +7047,7 @@ def admin():
                                 'name': community[1],
                                 'type': community[2],
                                 'creator_username': community[3],
-                                'join_code': community[4],
-                                'member_count': community[5]
+                                'member_count': community[4]
                             })
                         
                     except Exception as delete_error:
@@ -15902,17 +15881,11 @@ def get_community_members_list(community_id):
                     'is_current_user': username_val == username
                 })
             
-            # Fetch community join code
-            c.execute("SELECT join_code FROM communities WHERE id = ?", (community_id,))
-            code_row = c.fetchone()
-            join_code = code_row['join_code'] if code_row and 'join_code' in code_row.keys() else None
-
             return jsonify({
                 'success': True,
                 'members': members,
                 'total': len(members),
-                'community_name': community['name'],
-                'community_code': join_code
+                'community_name': community['name']
             })
             
     except Exception as e:
@@ -17868,22 +17841,22 @@ def admin_communities_list():
             try:
                 c.execute(
                     """
-                    SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                    SELECT c.id, c.name, c.type, c.creator_username,
                            COUNT(uc.user_id) as member_count, c.is_active
                     FROM communities c
                     LEFT JOIN user_communities uc ON c.id = uc.community_id
-                    GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code, c.is_active
+                    GROUP BY c.id, c.name, c.type, c.creator_username, c.is_active
                     ORDER BY c.name
                     """
                 )
             except Exception:
                 c.execute(
                     """
-                    SELECT c.id, c.name, c.type, c.creator_username, c.join_code,
+                    SELECT c.id, c.name, c.type, c.creator_username,
                            COUNT(uc.user_id) as member_count
                     FROM communities c
                     LEFT JOIN user_communities uc ON c.id = uc.community_id
-                    GROUP BY c.id, c.name, c.type, c.creator_username, c.join_code
+                    GROUP BY c.id, c.name, c.type, c.creator_username
                     ORDER BY c.name
                     """
                 )
@@ -17893,9 +17866,8 @@ def admin_communities_list():
                     'name': r['name'] if hasattr(r,'keys') else r[1],
                     'type': r['type'] if hasattr(r,'keys') else r[2],
                     'creator_username': r['creator_username'] if hasattr(r,'keys') else r[3],
-                    'join_code': r['join_code'] if hasattr(r,'keys') else r[4],
-                    'member_count': (r['member_count'] if hasattr(r,'keys') else (r[5] if len(r) > 5 else 0)),
-                    'is_active': (r['is_active'] if hasattr(r,'keys') and 'is_active' in r.keys() else (r[6] if (isinstance(r, (list,tuple)) and len(r) > 6) else 1)) in (1,'1',True)
+                    'member_count': (r['member_count'] if hasattr(r,'keys') else (r[4] if len(r) > 4 else 0)),
+                    'is_active': (r['is_active'] if hasattr(r,'keys') and 'is_active' in r.keys() else (r[5] if (isinstance(r, (list,tuple)) and len(r) > 5) else 1)) in (1,'1',True)
                 })
         return jsonify({'success': True, 'communities': out})
     except Exception as e:
@@ -18285,16 +18257,13 @@ def create_community():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Generate unique join code
-            join_code = generate_join_code()
-            
             # If creating a sub-community, enforce premium-only for creators as well
             # (Already enforced above for community creation, but keep guard explicit)
-            placeholders = ', '.join([get_sql_placeholder()] * 14)
+            placeholders = ', '.join([get_sql_placeholder()] * 13)
             c.execute(f"""
-                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
+                INSERT INTO communities (name, type, creator_username, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
                 VALUES ({placeholders})
-            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id if parent_community_id and parent_community_id != 'none' else None))
+            """, (name, community_type, username, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id if parent_community_id and parent_community_id != 'none' else None))
             
             community_id = c.lastrowid
             
@@ -18327,7 +18296,6 @@ def create_community():
             return jsonify({
                 'success': True, 
                 'community_id': community_id,
-                'join_code': join_code,
                 'message': f'Community "{name}" created successfully!'
             })
             
@@ -18485,8 +18453,8 @@ def get_user_communities():
             # Check if user is admin
             if is_app_admin(username):
                 # Admin sees all communities
-                c.execute("""
-                    SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
+                c.execute(                    """
+                    SELECT c.id, c.name, c.type, c.created_at, c.creator_username, c.is_active
                     FROM communities c
                     ORDER BY c.created_at DESC
                 """)
@@ -18495,7 +18463,7 @@ def get_user_communities():
                 # Use correct placeholder based on database type
                 placeholder = '%s' if USE_MYSQL else '?'
                 c.execute(f"""
-                    SELECT c.id, c.name, c.type, c.join_code, c.created_at, c.creator_username, c.is_active
+                    SELECT c.id, c.name, c.type, c.created_at, c.creator_username, c.is_active
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
                     JOIN users u ON uc.user_id = u.id
@@ -18509,7 +18477,6 @@ def get_user_communities():
                     'id': row['id'],
                     'name': row['name'],
                     'type': row['type'],
-                    'join_code': row['join_code'],
                     'created_at': row['created_at'],
                     'is_creator': row['creator_username'] == username,
                     'is_active': row['is_active'] if row['is_active'] is not None else True
@@ -19656,204 +19623,6 @@ This invitation was sent by {username} from C.Point.
     except Exception as e:
         logger.error(f"Error sending invitation: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': 'Server error'}), 500
-
-@app.route('/join_community', methods=['POST'])
-@login_required
-def join_community():
-    """Join a community using a community code"""
-    username = session.get('username')
-    # Enforce verified email
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
-            r = c.fetchone()
-            ver = False
-            if r is not None:
-                ver = bool(r['email_verified'] if hasattr(r, 'keys') else r[0])
-            if not ver:
-                return jsonify({'success': False, 'error': 'please verify your email'}), 403
-    except Exception as _e:
-        pass
-    community_code = request.form.get('community_code', '').strip()
-    
-    logger.info(f"Join community request from {username} with code: {community_code}")
-    
-    if not community_code:
-        return jsonify({'success': False, 'error': 'Community code is required'})
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get user ID
-            c.execute(f"SELECT id FROM users WHERE username = {get_sql_placeholder()}", (username,))
-            user = c.fetchone()
-            if not user:
-                return jsonify({'success': False, 'error': 'User not found'})
-            
-            user_id = user['id'] if hasattr(user, 'keys') else user[0]
-            
-            # Find community by join code
-            c.execute(f"""
-                SELECT id, name, join_code FROM communities 
-                WHERE join_code = {get_sql_placeholder()}
-            """, (community_code,))
-            
-            community = c.fetchone()
-            logger.info(f"Community lookup result: {community}")
-            if not community:
-                return jsonify({'success': False, 'error': 'Invalid community code'})
-            
-            community_id = community['id']
-            community_name = community['name']
-            
-            # Get community type
-            c.execute(f"SELECT type FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
-            community_type_result = c.fetchone()
-            community_type = community_type_result['type'] if community_type_result else 'public'
-            
-            # Check member limit (if any)
-            try:
-                c.execute("SELECT max_members FROM communities WHERE id = ?", (community_id,))
-                row_lim = c.fetchone()
-                max_members = None
-                if row_lim is not None:
-                    max_members = (row_lim['max_members'] if hasattr(row_lim,'keys') else row_lim[0]) or None
-                if max_members:
-                    # Count current members
-                    c.execute("""
-                        SELECT COUNT(*) FROM user_communities uc
-                        WHERE uc.community_id = ?
-                    """, (community_id,))
-                    cnt_row = c.fetchone()
-                    current_cnt = (cnt_row[0] if isinstance(cnt_row, (list, tuple)) else cnt_row['COUNT(*)'] if hasattr(cnt_row,'keys') and 'COUNT(*)' in cnt_row.keys() else list(cnt_row.values())[0]) if cnt_row is not None else 0
-                    if current_cnt >= int(max_members):
-                        return jsonify({'success': False, 'error': 'This community has reached its member limit'}), 403
-            except Exception as e:
-                logger.warning(f"member limit check failed for community {community_id}: {e}")
-
-            # Check if user is already a member
-            c.execute(f"""
-                SELECT id FROM user_communities 
-                WHERE user_id = {get_sql_placeholder()} AND community_id = {get_sql_placeholder()}
-            """, (user_id, community_id))
-            
-            existing_membership = c.fetchone()
-            if existing_membership:
-                return jsonify({'success': False, 'error': 'You are already a member of this community'})
-            
-            # Add user to community as a member
-            c.execute(f"""
-                INSERT INTO user_communities (user_id, community_id, joined_at)
-                VALUES ({get_sql_placeholder()}, {get_sql_placeholder()}, { 'NOW()' if USE_MYSQL else get_sql_placeholder() })
-            """, (user_id, community_id) if USE_MYSQL else (user_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
-
-            # If the community has a parent, auto-add membership to the parent community as well
-            try:
-                c.execute(f"SELECT parent_community_id FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
-                parent_row = c.fetchone()
-                parent_id = parent_row['parent_community_id'] if parent_row else None
-                if parent_id:
-                    # Check if already a member of the parent
-                    c.execute(f"SELECT 1 FROM user_communities WHERE user_id = {get_sql_placeholder()} AND community_id = {get_sql_placeholder()} ", (user_id, parent_id))
-                    if not c.fetchone():
-                        c.execute(f"""
-                            INSERT INTO user_communities (user_id, community_id, joined_at)
-                            VALUES ({get_sql_placeholder()}, {get_sql_placeholder()}, { 'NOW()' if USE_MYSQL else get_sql_placeholder() })
-                        """, (user_id, parent_id) if USE_MYSQL else (user_id, parent_id, datetime.now().strftime('%m.%d.%y %H:%M')))
-
-                        # Notify user about parent membership
-                        try:
-                            c.execute(f"SELECT name FROM communities WHERE id = {get_sql_placeholder()} ", (parent_id,))
-                            parent_name_row = c.fetchone()
-                            parent_name = parent_name_row['name'] if parent_name_row else 'Parent Community'
-                            notif_ph = ', '.join([get_sql_placeholder()] * 6)
-                            c.execute(f"""
-                                INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
-                                VALUES ({notif_ph})
-                            """, (
-                                username,
-                                'system',
-                                'community_join',
-                                parent_id,
-                                f'Access granted to parent community "{parent_name}".',
-                                f'/community_feed/{parent_id}'
-                            ))
-                        except Exception as parent_notify_err:
-                            logger.warning(f"Failed to create parent join notification for {username}: {parent_notify_err}")
-            except Exception as parent_err:
-                logger.warning(f"Parent community auto-join failed for user {username} on child {community_id}: {parent_err}")
-
-            # Create a notification for the user with a link to the community page
-            try:
-                c.execute("""
-                    INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (
-                    username,
-                    'system',
-                    'community_join',
-                    community_id,
-                    f'Successfully joined "{community_name}". Click to visit the community.',
-                    f'/community_feed/{community_id}'
-                ))
-            except Exception as notify_err:
-                logger.warning(f"Failed to create join notification for {username}: {notify_err}")
-
-            # Check if community has notify_on_new_member enabled
-            try:
-                c.execute(f"SELECT notify_on_new_member FROM communities WHERE id = {get_sql_placeholder()}", (community_id,))
-                notify_setting = c.fetchone()
-                should_notify = notify_setting and (notify_setting['notify_on_new_member'] if hasattr(notify_setting, 'keys') else notify_setting[0])
-                
-                if should_notify:
-                    # Get all existing members of the community (excluding the new joiner)
-                    c.execute(f"""
-                        SELECT DISTINCT u.username
-                        FROM user_communities uc
-                        JOIN users u ON uc.user_id = u.id
-                        WHERE uc.community_id = {get_sql_placeholder()} AND u.username != {get_sql_placeholder()}
-                    """, (community_id, username))
-                    
-                    existing_members = c.fetchall()
-                    
-                    # Send notification to each existing member
-                    notif_ph = ', '.join([get_sql_placeholder()] * 6)
-                    for member in existing_members:
-                        member_username = member['username'] if hasattr(member, 'keys') else member[0]
-                        try:
-                            c.execute(f"""
-                                INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
-                                VALUES ({notif_ph})
-                            """, (
-                                member_username,
-                                username,
-                                'new_member',
-                                community_id,
-                                f'{username} just joined "{community_name}". Say hi! 👋',
-                                f'/community_feed/{community_id}'
-                            ))
-                        except Exception as member_notify_err:
-                            logger.warning(f"Failed to notify {member_username} about new member: {member_notify_err}")
-                    
-                    logger.info(f"Sent new member notifications to {len(existing_members)} members in {community_name}")
-            except Exception as notify_members_err:
-                logger.warning(f"Failed to send new member notifications: {notify_members_err}")
-
-            conn.commit()
-            
-        return jsonify({
-            'success': True, 
-            'community_id': community_id,
-            'community_name': community_name,
-            'community_type': community_type,
-            'message': f'Successfully joined "{community_name}"!'
-        })
-        
-    except Exception as e:
-        logger.error(f"Error joining community: {str(e)}")
-        return jsonify({'success': False, 'error': 'An error occurred while joining the community'})
 
 @app.route('/leave_community', methods=['POST'])
 @login_required
