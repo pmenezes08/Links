@@ -18275,30 +18275,39 @@ def create_community():
             try:
                 with get_db_connection() as conn:
                     c_check = conn.cursor()
-                    # Check parent community type and user's role
-                    c_check.execute("""
-                        SELECT c.type, uc.role, c.creator_username
-                        FROM communities c
-                        LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = (SELECT id FROM users WHERE username = ?)
-                        WHERE c.id = ?
-                    """, (username, parent_community_id))
+                    placeholder = get_sql_placeholder()
+                    
+                    # Check parent community type
+                    c_check.execute(f"SELECT type, creator_username FROM communities WHERE id = {placeholder}", (parent_community_id,))
                     parent_info = c_check.fetchone()
                     if not parent_info:
                         return jsonify({'success': False, 'error': 'Parent community not found'}), 404
                     
                     parent_type = parent_info['type'] if hasattr(parent_info, 'keys') else parent_info[0]
-                    user_role = parent_info['role'] if hasattr(parent_info, 'keys') else parent_info[1]
-                    parent_creator = parent_info['creator_username'] if hasattr(parent_info, 'keys') else parent_info[2]
+                    parent_creator = parent_info['creator_username'] if hasattr(parent_info, 'keys') else parent_info[1]
                     
                     if parent_type.lower() != 'business':
                         return jsonify({'success': False, 'error': 'Business sub-communities can only be created under Business parent communities'}), 403
                     
-                    is_parent_admin = user_role == 'admin' or username == parent_creator or is_app_admin(username)
-                    if not is_parent_admin:
-                        return jsonify({'success': False, 'error': 'Only parent community admins can create Business sub-communities'}), 403
+                    # Check if user is owner
+                    if username == parent_creator or is_app_admin(username):
+                        # Owner or app admin - allowed
+                        pass
+                    else:
+                        # Check if user is admin of parent community
+                        c_check.execute(f"""
+                            SELECT role FROM user_communities
+                            WHERE user_id = (SELECT id FROM users WHERE username = {placeholder})
+                            AND community_id = {placeholder}
+                        """, (username, parent_community_id))
+                        user_role_row = c_check.fetchone()
+                        user_role = user_role_row['role'] if (user_role_row and hasattr(user_role_row, 'keys')) else (user_role_row[0] if user_role_row else None)
+                        
+                        if user_role != 'admin':
+                            return jsonify({'success': False, 'error': 'Only parent community admins can create Business sub-communities'}), 403
             except Exception as e:
                 logger.error(f"Error checking parent community permissions: {e}")
-                return jsonify({'success': False, 'error': 'Permission check failed'}), 500
+                return jsonify({'success': False, 'error': f'Permission check failed: {str(e)}'}), 500
         else:
             # Creating parent Business community - only app admin
             if not is_app_admin(username):
