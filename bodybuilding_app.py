@@ -18419,6 +18419,12 @@ def create_community():
                 if not is_app_admin(username):
                     return jsonify({'success': False, 'error': 'Only app admin can create Business communities'}), 403
         
+        # Generate a dummy join_code to satisfy database UNIQUE constraint
+        # (Not used for joining anymore, but column still exists)
+        import random
+        import string
+        join_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        
         # Handle background image
         background_path = None
         if 'background_file' in request.files:
@@ -18439,11 +18445,11 @@ def create_community():
             
             # If creating a sub-community, enforce premium-only for creators as well
             # (Already enforced above for community creation, but keep guard explicit)
-            placeholders = ', '.join([get_sql_placeholder()] * 13)
+            placeholders = ', '.join([get_sql_placeholder()] * 14)
             c.execute(f"""
-                INSERT INTO communities (name, type, creator_username, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
+                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
                 VALUES ({placeholders})
-            """, (name, community_type, username, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id if parent_community_id and parent_community_id != 'none' else None))
+            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id if parent_community_id and parent_community_id != 'none' else None))
             
             community_id = c.lastrowid
             
