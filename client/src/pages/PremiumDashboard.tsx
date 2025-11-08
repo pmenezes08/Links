@@ -201,14 +201,15 @@ export default function PremiumDashboard() {
       return
     }}catch{}
     
-    const hasNoCommunities = (communities || []).length === 0
-    if (!hasNoCommunities || hasProfilePic){
-      console.log('Onboarding not triggered:', { hasNoCommunities, hasProfilePic })
+    // Trigger onboarding for first-time users (no profile pic yet) who were recently verified
+    // NOTE: Invited users may already have communities, so we check profile pic instead
+    if (hasProfilePic){
+      console.log('Onboarding not triggered: user already has profile pic')
       return
     }
     
-    // Trigger onboarding for verified users with no communities/profile who:
-    // 1. Recently verified (within 24 hours) - primary path
+    // Trigger onboarding for verified users without profile who:
+    // 1. Recently verified (within 24 hours) - primary path (includes invited users)
     // 2. OR have no verification timestamp yet (legacy users or edge cases) - fallback
     if (isRecentlyVerified || !emailVerifiedAt) {
       console.log('🎉 Triggering onboarding flow!', isRecentlyVerified ? '(recently verified)' : '(no timestamp - legacy user)')
