@@ -333,11 +333,28 @@ export default function Communities(){
                   </div>
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs text-[#9fb0b5] mb-1">Parent Community</label>
-                      <input value={parentName || `ID ${parentIdNum}`}
-                             disabled
-                             className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm text-white/70 disabled:opacity-70"
-                      />
+                      <label className="block text-xs text-[#9fb0b5] mb-1">Create Under</label>
+                      <select 
+                        value={selectedSubCommunityId === 'none' ? parentIdNum : selectedSubCommunityId}
+                        onChange={e=> {
+                          const val = e.target.value
+                          if (val === String(parentIdNum)) {
+                            setSelectedSubCommunityId('none')
+                          } else {
+                            setSelectedSubCommunityId(Number(val))
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm"
+                      >
+                        <option value={parentIdNum}>{parentName || `Parent Community`} (Parent)</option>
+                        {(() => {
+                          const parent = communities.find(c => c.id === parentIdNum)
+                          const subs = parent?.children || []
+                          return subs.map(sub => (
+                            <option key={sub.id} value={sub.id}>└─ {sub.name} (Sub)</option>
+                          ))
+                        })()}
+                      </select>
                     </div>
                     <div>
                       <label className="block text-xs text-[#9fb0b5] mb-1">Sub-Community Name</label>
@@ -351,7 +368,7 @@ export default function Communities(){
                       <select value={newSubType || parentTypeLabel}
                               onChange={e=> setNewSubType(e.target.value)}
                               className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm">
-                        <option value={parentTypeLabel}>Parent Community Type ({parentTypeLabel || 'General'})</option>
+                        <option value={parentTypeLabel}>Same as Parent ({parentTypeLabel || 'General'})</option>
                         <option value="General">General</option>
                       </select>
                     </div>
@@ -359,14 +376,16 @@ export default function Communities(){
                       <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateSubModal(false)}>Cancel</button>
                       <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=>{
                         if (!newSubName.trim()) { alert('Please provide a sub-community name'); return }
+                        const targetParentId = selectedSubCommunityId === 'none' ? parentIdNum : Number(selectedSubCommunityId)
                         try{
                           const fd = new URLSearchParams({ name: newSubName.trim(), type: (newSubType || parentTypeLabel || 'General') })
-                          fd.append('parent_community_id', String(parentIdNum))
+                          fd.append('parent_community_id', String(targetParentId))
                           const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
                           const j = await r.json().catch(()=>null)
                           if (j?.success){
                             setShowCreateSubModal(false)
                             setNewSubName('')
+                            setSelectedSubCommunityId('none')
                             // Refresh current view to show the new child
                             window.location.reload()
                           } else {
