@@ -19339,7 +19339,9 @@ Go to C.Point: https://www.c-point.co/login
                 conn.commit()
                 
                 # Send invitation email with signup link
-                invite_url = f"https://www.c-point.co/signup?invite={token}"
+                # Use current domain or configured base URL
+                base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
+                invite_url = f"{base_url}/signup?invite={token}"
             
             html = f"""
             <!DOCTYPE html>
