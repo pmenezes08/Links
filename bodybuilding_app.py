@@ -4295,16 +4295,22 @@ def signup():
                 
                 if invitation:
                     invited_email = invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[2]
-                    # Email from invitation must match signup email
-                    if email and email.lower() != invited_email.lower():
-                        error_msg = 'Email does not match invitation'
-                        if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-                            return jsonify({'success': False, 'error': error_msg}), 400
-                        else:
-                            return render_template('signup.html', error=error_msg)
-                    # Use email from invitation if not provided
-                    if not email:
-                        email = invited_email
+                    
+                    # Check if this is a QR code invitation (placeholder email)
+                    is_qr_invite = invited_email.startswith('qr-invite-') and invited_email.endswith('@placeholder.local')
+                    
+                    if not is_qr_invite:
+                        # Regular email invitation - email must match
+                        if email and email.lower() != invited_email.lower():
+                            error_msg = 'Email does not match invitation'
+                            if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
+                                return jsonify({'success': False, 'error': error_msg}), 400
+                            else:
+                                return render_template('signup.html', error=error_msg)
+                        # Use email from invitation if not provided
+                        if not email:
+                            email = invited_email
+                    # For QR code invitations, user can use any email (don't pre-fill)
         except Exception as e:
             logger.error(f"Error checking invitation: {e}")
             invitation = None
@@ -19164,6 +19170,74 @@ def verify_invitation():
             
     except Exception as e:
         logger.error(f"Error verifying invitation: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/community/invite_link', methods=['POST'])
+@login_required
+def generate_invite_link():
+    """Generate an invitation link for QR code sharing (admin only)"""
+    username = session.get('username')
+    data = request.get_json() or {}
+    
+    community_id = data.get('community_id')
+    
+    if not community_id:
+        return jsonify({'success': False, 'error': 'Community ID required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if user is admin of this community
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            user_row = c.fetchone()
+            if not user_row:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+            
+            c.execute("""
+                SELECT c.name, c.creator_username, uc.role
+                FROM communities c
+                LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = ?
+                WHERE c.id = ?
+            """, (user_id, community_id))
+            
+            community = c.fetchone()
+            if not community:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            
+            community_name = community['name'] if hasattr(community, 'keys') else community[0]
+            creator = community['creator_username'] if hasattr(community, 'keys') else community[1]
+            role = community['role'] if hasattr(community, 'keys') else community[2]
+            
+            # Check if user is admin or creator
+            is_admin = (username == creator) or (role == 'admin')
+            if not is_admin:
+                return jsonify({'success': False, 'error': 'Only community admins can generate invite links'}), 403
+            
+            # Generate unique token (use generic email for QR code invites)
+            import secrets
+            token = secrets.token_urlsafe(32)
+            
+            # Store invitation with placeholder email
+            c.execute("""
+                INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
+                VALUES (?, ?, ?, ?)
+            """, (community_id, f'qr-invite-{token[:8]}@placeholder.local', username, token))
+            conn.commit()
+            
+            # Generate invitation URL
+            base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
+            invite_url = f"{base_url}/signup?invite={token}"
+            
+            return jsonify({
+                'success': True, 
+                'invite_url': invite_url,
+                'community_name': community_name
+            })
+            
+    except Exception as e:
+        logger.error(f"Error generating invite link: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/api/community/invite', methods=['POST'])

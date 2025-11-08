@@ -31,8 +31,12 @@ export default function Signup(){
         .then(j => {
           if (j?.success) {
             setInvitationInfo(j)
-            setFormData(prev => ({ ...prev, email: j.email }))
-            setEmailLocked(true)
+            // Only pre-fill email if it's not a QR code placeholder
+            const isQRInvite = j.email?.startsWith('qr-invite-') && j.email?.endsWith('@placeholder.local')
+            if (!isQRInvite) {
+              setFormData(prev => ({ ...prev, email: j.email }))
+              setEmailLocked(true)
+            }
           } else {
             setError(j?.error || 'Invalid invitation link')
           }

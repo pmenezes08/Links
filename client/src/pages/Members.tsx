@@ -24,6 +24,8 @@ export default function Members(){
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState(false)
+  const [showQRCode, setShowQRCode] = useState(false)
+  const [qrCodeUrl, setQRCodeUrl] = useState('')
 
   useEffect(() => {
     let mounted = true
@@ -145,6 +147,34 @@ export default function Members(){
     }
   }
 
+  async function handleGenerateQR() {
+    setInviteLoading(true)
+    setInviteError('')
+    
+    try {
+      const response = await fetch('/api/community/invite_link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ community_id: Number(community_id) })
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setQRCodeUrl(data.invite_url)
+        setShowQRCode(true)
+      } else {
+        setInviteError(data.error || 'Failed to generate QR code')
+      }
+    } catch (error) {
+      console.error('Error generating QR code:', error)
+      setInviteError('Failed to generate QR code')
+    } finally {
+      setInviteLoading(false)
+    }
+  }
+
   function getRoleBadge(member: Member){
     // Debug logging to see what data we're getting
     console.log('Member data:', member)
@@ -216,11 +246,11 @@ export default function Members(){
       </div>
 
       {/* Invite Modal */}
-      {showInviteModal && (
+      {showInviteModal && !showQRCode && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-white/10">
             <h2 className="text-lg font-semibold mb-2">Invite to {communityName || 'Community'}</h2>
-            <p className="text-sm text-white/60 mb-4">Enter the email address of the person you want to invite</p>
+            <p className="text-sm text-white/60 mb-4">Choose how you want to invite members</p>
 
             {inviteSuccess && (
               <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-sm">
@@ -234,29 +264,100 @@ export default function Members(){
               </div>
             )}
 
-            <input
-              type="email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              placeholder="email@example.com"
-              className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none mb-4"
-              disabled={inviteLoading || inviteSuccess}
-            />
+            <div className="space-y-3">
+              {/* Email Invitation */}
+              <div>
+                <label className="block text-xs text-white/60 mb-2">Send invitation via email</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="email@example.com"
+                  className="w-full px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-sm text-white placeholder-white/50 focus:border-[#4db6ac] focus:outline-none"
+                  disabled={inviteLoading || inviteSuccess}
+                />
+                <button
+                  onClick={handleSendInvite}
+                  className="w-full mt-2 px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099] disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={inviteLoading || inviteSuccess || !inviteEmail.trim()}
+                >
+                  {inviteLoading ? 'Sending...' : 'Send Email Invite'}
+                </button>
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-white/10"></div>
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="px-2 bg-[#1a1a1a] text-white/40">OR</span>
+                </div>
+              </div>
+
+              {/* QR Code */}
+              <div>
+                <label className="block text-xs text-white/60 mb-2">Share via QR code</label>
+                <button
+                  onClick={handleGenerateQR}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-sm font-medium hover:bg-white/10 disabled:opacity-50"
+                  disabled={inviteLoading}
+                >
+                  <i className="fa-solid fa-qrcode mr-2" />
+                  Generate QR Code
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <button
+                onClick={() => setShowInviteModal(false)}
+                className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-medium hover:bg-white/10"
+                disabled={inviteLoading}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Modal */}
+      {showQRCode && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-white/10">
+            <h2 className="text-lg font-semibold mb-2">QR Code Invitation</h2>
+            <p className="text-sm text-white/60 mb-4">Scan this QR code to join {communityName || 'the community'}</p>
+
+            <div className="bg-white p-6 rounded-xl mb-4 flex justify-center">
+              <img 
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrCodeUrl)}`}
+                alt="Invitation QR Code"
+                className="w-64 h-64"
+              />
+            </div>
+
+            <div className="text-xs text-white/40 mb-4 text-center break-all">
+              {qrCodeUrl}
+            </div>
 
             <div className="flex gap-2">
               <button
-                onClick={() => setShowInviteModal(false)}
+                onClick={() => {
+                  setShowQRCode(false)
+                  setShowInviteModal(true)
+                }}
                 className="flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-medium hover:bg-white/10"
-                disabled={inviteLoading}
               >
-                Cancel
+                Back
               </button>
               <button
-                onClick={handleSendInvite}
-                className="flex-1 px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099] disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={inviteLoading || inviteSuccess}
+                onClick={() => {
+                  navigator.clipboard.writeText(qrCodeUrl)
+                  alert('Link copied to clipboard!')
+                }}
+                className="flex-1 px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099]"
               >
-                {inviteLoading ? 'Sending...' : 'Send Invite'}
+                Copy Link
               </button>
             </div>
           </div>
