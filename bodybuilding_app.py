@@ -492,8 +492,10 @@ def ensure_community_invitations_table(c):
                           token VARCHAR(191) NOT NULL UNIQUE,
                           used TINYINT(1) DEFAULT 0,
                           used_at TIMESTAMP NULL,
-                          FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
-                          FOREIGN KEY (invited_by_username) REFERENCES users(username) ON DELETE CASCADE
+                          INDEX idx_community_id (community_id),
+                          INDEX idx_invited_email (invited_email),
+                          INDEX idx_token (token),
+                          FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE
                         )''')
         else:
             c.execute('''CREATE TABLE IF NOT EXISTS community_invitations (
