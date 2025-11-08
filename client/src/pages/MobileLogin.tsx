@@ -1,15 +1,36 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 export default function MobileLogin() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const inviteToken = searchParams.get('invite')
   const [showForgot, setShowForgot] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [invitationInfo, setInvitationInfo] = useState<{community_name: string, invited_by: string} | null>(null)
   // PWA install state (removed install UI)
 
-  // If already authenticated, skip login
+  // Check invitation token
+  useEffect(() => {
+    if (inviteToken) {
+      fetch(`/api/invitation/verify?token=${inviteToken}`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(j => {
+          if (j?.success) {
+            // Check if it's a QR code invite (not email-specific)
+            const isQRInvite = j.email?.startsWith('qr-invite-') && j.email?.endsWith('@placeholder.local')
+            if (isQRInvite) {
+              setInvitationInfo({ community_name: j.community_name, invited_by: j.invited_by })
+            }
+          }
+        })
+        .catch(err => console.error('Error verifying invitation:', err))
+    }
+  }, [inviteToken])
+
+  // If already authenticated, auto-join community if invited
   useEffect(() => {
     async function check(){
       try{
@@ -21,7 +42,27 @@ export default function MobileLogin() {
         if (r.ok){
           const j = await r.json()
           if (j && j.username){
-            // Try to infer onboarding state: if user has no communities, send to /onboarding
+            // If user has invite token, auto-join them
+            if (inviteToken) {
+              try {
+                const joinResponse = await fetch('/api/join_with_invite', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({ invite_token: inviteToken })
+                })
+                const joinData = await joinResponse.json()
+                if (joinData?.success) {
+                  // Redirect to the community
+                  navigate(`/community_feed_react/${joinData.community_id}`, { replace: true })
+                  return
+                }
+              } catch (err) {
+                console.error('Error joining via invite:', err)
+              }
+            }
+            
+            // Normal flow
             try{
               const ht = await fetch('/api/home_timeline', { credentials:'include' })
               const hj = await ht.json().catch(()=>null)
@@ -38,7 +79,7 @@ export default function MobileLogin() {
       }catch{}
     }
     check()
-  }, [navigate])
+  }, [navigate, inviteToken])
 
   // Read error from query string (e.g., /?error=...)
   useEffect(() => {
@@ -70,7 +111,21 @@ export default function MobileLogin() {
       <div className="w-full max-w-xs border border-white/10 rounded-xl p-6 bg-white/5 backdrop-blur relative z-10">
         <div className="text-center mb-5">
           <h1 className="text-lg font-semibold">C.Point</h1>
-          <p className="text-xs text-white/60 mt-1">Sign in to your account</p>
+          {invitationInfo ? (
+            <div className="mt-3 p-3 bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg">
+              <p className="text-xs text-white font-medium">
+                You've been invited to join
+              </p>
+              <p className="text-sm text-[#4db6ac] font-semibold mt-1">
+                {invitationInfo.community_name}
+              </p>
+              <p className="text-xs text-white/60 mt-1">
+                by {invitationInfo.invited_by}
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-white/60 mt-1">Sign in to your account</p>
+          )}
         </div>
 
         {error && (
@@ -107,7 +162,7 @@ export default function MobileLogin() {
           <div className="flex-1 h-px bg-white/10" />
         </div>
 
-        <a href="/signup" className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm">Create Account</a>
+        <a href={inviteToken ? `/signup?invite=${inviteToken}` : '/signup'} className="block w-full text-center rounded-lg border border-white/10 bg-white/5 py-2 text-sm">Create Account</a>
 
         {/* Install app UI removed */}
       </div>

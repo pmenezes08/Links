@@ -19226,9 +19226,9 @@ def generate_invite_link():
             """, (community_id, f'qr-invite-{token[:8]}@placeholder.local', username, token))
             conn.commit()
             
-            # Generate invitation URL
+            # Generate invitation URL (to login page for both existing and new users)
             base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-            invite_url = f"{base_url}/signup?invite={token}"
+            invite_url = f"{base_url}/login?invite={token}"
             
             return jsonify({
                 'success': True, 
@@ -19238,6 +19238,80 @@ def generate_invite_link():
             
     except Exception as e:
         logger.error(f"Error generating invite link: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/join_with_invite', methods=['POST'])
+@login_required
+def join_with_invite():
+    """Join a community using an invitation token (for existing users)"""
+    username = session.get('username')
+    data = request.get_json() or {}
+    invite_token = data.get('invite_token', '').strip()
+    
+    if not invite_token:
+        return jsonify({'success': False, 'error': 'Invitation token required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get user ID
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            user_row = c.fetchone()
+            if not user_row:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+            
+            # Get invitation
+            c.execute("""
+                SELECT ci.id, ci.community_id, ci.used, c.name as community_name
+                FROM community_invitations ci
+                JOIN communities c ON ci.community_id = c.id
+                WHERE ci.token = ?
+            """, (invite_token,))
+            
+            invitation = c.fetchone()
+            if not invitation:
+                return jsonify({'success': False, 'error': 'Invalid invitation'}), 404
+            
+            invitation_id = invitation['id'] if hasattr(invitation, 'keys') else invitation[0]
+            community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
+            used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
+            community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[3]
+            
+            if used:
+                return jsonify({'success': False, 'error': 'Invitation already used'}), 400
+            
+            # Check if already a member
+            c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", 
+                     (user_id, community_id))
+            if c.fetchone():
+                return jsonify({'success': False, 'error': 'You are already a member of this community'}), 400
+            
+            # Add user to community
+            c.execute("""
+                INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                VALUES (?, ?, 'member', ?)
+            """, (user_id, community_id, datetime.now().isoformat()))
+            
+            # Mark invitation as used
+            c.execute("""
+                UPDATE community_invitations 
+                SET used = 1, used_at = ?
+                WHERE id = ?
+            """, (datetime.now().isoformat(), invitation_id))
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True, 
+                'community_id': community_id,
+                'community_name': community_name,
+                'message': f'Successfully joined {community_name}'
+            })
+            
+    except Exception as e:
+        logger.error(f"Error joining with invite: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/api/community/invite', methods=['POST'])
