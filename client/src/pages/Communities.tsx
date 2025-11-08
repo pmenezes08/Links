@@ -269,14 +269,22 @@ export default function Communities(){
                     <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
                   ) : communities.map(c => (
                     <div key={c.id} className="space-y-2">
-                  <CommunityItem 
+                      <CommunityItem 
                         community={c} 
                         isSwipedOpen={swipedCommunity === c.id}
                         onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
                         onEnter={() => {
                           const ua = navigator.userAgent || ''
                           const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                          if (isMobile) navigate(`/community_feed_react/${c.id}`); else window.location.href = `/community_feed/${c.id}`
+                          // If community has children or can have them, go to management view
+                          // Otherwise go to feed
+                          if (c.children && c.children.length > 0) {
+                            navigate(`/communities?parent_id=${c.id}`)
+                          } else if (isMobile) {
+                            navigate(`/community_feed_react/${c.id}`)
+                          } else {
+                            window.location.href = `/community_feed/${c.id}`
+                          }
                         }}
                         onDeleteOrLeave={async (asDelete:boolean) => {
                           const fd = new URLSearchParams({ community_id: String(c.id) })
@@ -290,32 +298,15 @@ export default function Communities(){
                         onOpenGroups={openGroups}
                       />
                       {c.children && c.children.length > 0 && (
-                        <div className="ml-6 space-y-2">
-                          {c.children.map(child => (
-                            <CommunityItem 
-                              key={child.id}
-                              community={child} 
-                              isSwipedOpen={swipedCommunity === child.id}
-                              onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
-                              onEnter={() => {
-                                const ua = navigator.userAgent || ''
-                                const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                                if (isMobile) navigate(`/community_feed_react/${child.id}`); else window.location.href = `/community_feed/${child.id}`
-                              }}
-                              onDeleteOrLeave={async (asDelete:boolean) => {
-                                const fd = new URLSearchParams({ community_id: String(child.id) })
-                                const url = asDelete ? '/delete_community' : '/leave_community'
-                                const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                                const j = await r.json().catch(()=>null)
-                                if (j?.success) window.location.reload()
-                                else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
-                              }}
-                              isChild={true}
-                              currentUsername={_data?.username || ''}
-                              onOpenGroups={openGroups}
-                            />
-                          ))}
-                        </div>
+                        <NestedCommunities 
+                          communities={c.children}
+                          level={1}
+                          swipedCommunity={swipedCommunity}
+                          setSwipedCommunity={setSwipedCommunity}
+                          currentUsername={_data?.username || ''}
+                          onOpenGroups={openGroups}
+                          navigate={navigate}
+                        />
                       )}
                     </div>
                   ))}
@@ -1120,4 +1111,71 @@ function CommunityItem({
     const el = document.getElementById('groups-modal-root') as any
     if (el && el.__open){ el.__open(communityId) }
   }catch{}
+}
+
+// Recursive component for nested sub-communities
+function NestedCommunities({ 
+  communities, 
+  level, 
+  swipedCommunity, 
+  setSwipedCommunity, 
+  currentUsername, 
+  onOpenGroups,
+  navigate
+}: { 
+  communities: Community[]
+  level: number
+  swipedCommunity: number | null
+  setSwipedCommunity: (id: number | null) => void
+  currentUsername: string
+  onOpenGroups: (id: number) => void
+  navigate: any
+}) {
+  return (
+    <div className={`ml-${level * 6} space-y-2`} style={{ marginLeft: `${level * 1.5}rem` }}>
+      {communities.map(child => (
+        <div key={child.id} className="space-y-2">
+          <CommunityItem 
+            community={child} 
+            isSwipedOpen={swipedCommunity === child.id}
+            onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
+            onEnter={() => {
+              const ua = navigator.userAgent || ''
+              const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+              // If has children, go to management view
+              if (child.children && child.children.length > 0) {
+                navigate(`/communities?parent_id=${child.id}`)
+              } else if (isMobile) {
+                navigate(`/community_feed_react/${child.id}`)
+              } else {
+                window.location.href = `/community_feed/${child.id}`
+              }
+            }}
+            onDeleteOrLeave={async (asDelete: boolean) => {
+              const fd = new URLSearchParams({ community_id: String(child.id) })
+              const url = asDelete ? '/delete_community' : '/leave_community'
+              const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+              const j = await r.json().catch(()=>null)
+              if (j?.success) window.location.reload()
+              else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
+            }}
+            isChild={true}
+            currentUsername={currentUsername}
+            onOpenGroups={onOpenGroups}
+          />
+          {child.children && child.children.length > 0 && (
+            <NestedCommunities 
+              communities={child.children}
+              level={level + 1}
+              swipedCommunity={swipedCommunity}
+              setSwipedCommunity={setSwipedCommunity}
+              currentUsername={currentUsername}
+              onOpenGroups={onOpenGroups}
+              navigate={navigate}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  )
 }
