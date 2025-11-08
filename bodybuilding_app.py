@@ -19429,18 +19429,18 @@ Or copy and paste this link into your browser: {invite_url}
 This invitation was sent by {username} from C.Point.
             """
             
-                # Send email
-                success = _send_email_via_resend(
-                    to_email=invited_email,
-                    subject=f"You're invited to join {community_name} on C.Point",
-                    html=html,
-                    text=text
-                )
-                
-                if not success:
-                    return jsonify({'success': False, 'error': 'Failed to send invitation email'}), 500
-                
-                return jsonify({'success': True, 'message': 'Invitation sent successfully'})
+            # Send email
+            success = _send_email_via_resend(
+                to_email=invited_email,
+                subject=f"You're invited to join {community_name} on C.Point",
+                html=html,
+                text=text
+            )
+            
+            if not success:
+                return jsonify({'success': False, 'error': 'Failed to send invitation email'}), 500
+            
+            return jsonify({'success': True, 'message': 'Invitation sent successfully'})
             
     except Exception as e:
         logger.error(f"Error sending invitation: {str(e)}", exc_info=True)
