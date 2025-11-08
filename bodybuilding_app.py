@@ -19320,15 +19320,12 @@ Go to C.Point: https://www.c-point.co/login
             
             else:
                 # User doesn't exist - send signup invitation
-                # Check if invitation already sent
+                # Clean up any old unused invitations for this email (from deleted accounts)
                 c.execute("""
-                    SELECT id, used FROM community_invitations 
+                    DELETE FROM community_invitations 
                     WHERE community_id = ? AND invited_email = ? AND used = 0
                 """, (community_id, invited_email))
-                existing_invite = c.fetchone()
-                
-                if existing_invite:
-                    return jsonify({'success': False, 'error': 'An invitation has already been sent to this email'}), 400
+                conn.commit()
                 
                 # Generate unique token
                 import secrets
