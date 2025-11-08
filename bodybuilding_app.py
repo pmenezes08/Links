@@ -18258,7 +18258,7 @@ def create_community():
             community_type_check = request.form.get('type', '')
             
             if parent_community_id_check and parent_community_id_check != 'none' and community_type_check.lower() == 'business':
-                # Check if user is admin of parent Business community
+                # Check if user is admin of parent Business community (using same connection/cursor)
                 try:
                     placeholder_check = get_sql_placeholder()
                     c.execute(f"SELECT type, creator_username FROM communities WHERE id = {placeholder_check}", (parent_community_id_check,))
@@ -18283,15 +18283,16 @@ def create_community():
                                     user_role_check = role_check['role'] if hasattr(role_check, 'keys') else role_check[0]
                                     if user_role_check == 'admin':
                                         is_business_admin_creating_sub = True
-                except Exception:
-                    pass
+                except Exception as bypass_err:
+                    logger.warning(f"Error checking Business admin bypass: {bypass_err}")
             
             # Only enforce premium if not admin and not Business admin creating sub
             if not is_business_admin_creating_sub and username.lower() != 'admin':
                 if not subscription or str(subscription).lower() != 'premium':
                     return jsonify({'success': False, 'error': 'only premium users can create communities'}), 403
-    except Exception as _e:
-        pass
+    except Exception as verification_err:
+        logger.error(f"Error in create_community verification: {verification_err}")
+        return jsonify({'success': False, 'error': 'Verification failed'}), 500
     name = request.form.get('name')
     community_type = request.form.get('type')
     description = request.form.get('description', '')
