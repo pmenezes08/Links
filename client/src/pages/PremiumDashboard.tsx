@@ -13,7 +13,8 @@ export default function PremiumDashboard() {
   const [joinCode, setJoinCode] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCommName, setNewCommName] = useState('')
-  const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'>('Gym')
+  const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'|'Business'>('Gym')
+  const [isAppAdmin, setIsAppAdmin] = useState(false)
   // Parent-only creation; no parent selection
   // Removed parentsWithChildren usage in desktop since cards now route to unified communities page
   const [emailVerified, setEmailVerified] = useState<boolean|null>(null)
@@ -90,6 +91,14 @@ export default function PremiumDashboard() {
         // Check gym membership
         const gymData = await fetchJson('/api/check_gym_membership')
         setHasGymAccess(gymData.hasGymAccess || false)
+        
+        // Check if user is app admin
+        try {
+          const adminCheck = await fetchJson('/api/check_admin')
+          setIsAppAdmin(adminCheck?.is_admin || false)
+        } catch {
+          setIsAppAdmin(false)
+        }
 
         // Get all user communities and decide using the fetched value (avoid stale state)
         const parentData = await fetchJson('/api/user_parent_community')
@@ -495,6 +504,7 @@ export default function PremiumDashboard() {
                   <option value="Gym">Gym</option>
                   <option value="University">University</option>
                   <option value="General">General</option>
+                  {isAppAdmin && <option value="Business">Business</option>}
                 </select>
               </div>
               {/* For parent-only creation: remove parent selector and always create top-level */}
