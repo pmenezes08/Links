@@ -19234,9 +19234,9 @@ def invite_to_community():
                 
                 # Add user to community directly
                 c.execute("""
-                    INSERT INTO user_communities (user_id, community_id, username, role, joined_at)
-                    VALUES (?, ?, ?, 'member', ?)
-                """, (existing_user_id, community_id, existing_username, datetime.now().isoformat()))
+                    INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                    VALUES (?, ?, 'member', ?)
+                """, (existing_user_id, community_id, datetime.now().isoformat()))
                 conn.commit()
                 
                 # Send notification email (not signup invitation)
