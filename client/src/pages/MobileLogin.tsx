@@ -135,6 +135,7 @@ export default function MobileLogin() {
         )}
 
         <form method="POST" action="/login" className="space-y-3">
+          {inviteToken && <input type="hidden" name="invite_token" value={inviteToken} />}
           <div>
             <input
               type="text"

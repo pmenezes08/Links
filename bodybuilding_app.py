@@ -4170,6 +4170,7 @@ def login():
             return resp
         # POST
         username = (request.form.get('username') or '').strip()
+        invite_token = (request.form.get('invite_token') or '').strip()
         ua = request.headers.get('User-Agent', '')
         is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
         if not username:
@@ -4199,6 +4200,9 @@ def login():
             pass
         session.permanent = False
         session['pending_username'] = username
+        # Preserve invite token if present
+        if invite_token:
+            session['pending_invite_token'] = invite_token
         session.modified = True
         return redirect(url_for('login_password'))
     except Exception as e:
@@ -4614,6 +4618,66 @@ def login_password():
                         session.pop('pending_username', None)
                     except Exception:
                         pass
+                    
+                    # Check for pending invite token
+                    invite_token = session.pop('pending_invite_token', None)
+                    if invite_token:
+                        # Auto-join user to community from invitation
+                        try:
+                            with get_db_connection() as conn:
+                                c = conn.cursor()
+                                placeholder = get_sql_placeholder()
+                                
+                                # Get user ID
+                                c.execute(f"SELECT id FROM users WHERE username={placeholder}", (username,))
+                                user_row = c.fetchone()
+                                if user_row:
+                                    user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+                                    
+                                    # Get invitation details
+                                    c.execute(f"""
+                                        SELECT ci.id, ci.community_id, ci.used
+                                        FROM community_invitations ci
+                                        WHERE ci.token={placeholder}
+                                    """, (invite_token,))
+                                    
+                                    invitation = c.fetchone()
+                                    if invitation:
+                                        community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
+                                        already_used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
+                                        
+                                        # Check if already a member
+                                        c.execute(f"""
+                                            SELECT 1 FROM user_communities 
+                                            WHERE user_id={placeholder} AND community_id={placeholder}
+                                        """, (user_id, community_id))
+                                        already_member = c.fetchone() is not None
+                                        
+                                        if not already_member:
+                                            # Add user to community
+                                            c.execute(f"""
+                                                INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                                                VALUES ({placeholder}, {placeholder}, 'member', {placeholder})
+                                            """, (user_id, community_id, datetime.now().isoformat()))
+                                            
+                                            # Mark invitation as used if not already
+                                            if not already_used:
+                                                c.execute(f"""
+                                                    UPDATE community_invitations 
+                                                    SET used = 1, used_at = {placeholder}
+                                                    WHERE token = {placeholder}
+                                                """, (datetime.now().isoformat(), invite_token))
+                                            
+                                            conn.commit()
+                                        
+                                        # Issue remember-me token and redirect to community
+                                        from flask import make_response
+                                        resp = make_response(redirect(f'/community_feed_react/{community_id}'))
+                                        _issue_remember_token(resp, username)
+                                        return resp
+                        except Exception as e:
+                            logger.error(f"Error auto-joining via invite token: {e}")
+                    
                     # Issue remember-me token
                     from flask import make_response
                     resp = make_response(redirect(url_for('communities')))
