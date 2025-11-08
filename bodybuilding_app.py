@@ -19188,12 +19188,19 @@ def invite_to_community():
             c = conn.cursor()
             
             # Check if user is admin of this community
+            # First get user_id
+            c.execute("SELECT id FROM users WHERE username = ?", (username,))
+            user_row = c.fetchone()
+            if not user_row:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+            
             c.execute("""
                 SELECT c.name, c.creator_username, uc.role
                 FROM communities c
-                LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.username = ?
+                LEFT JOIN user_communities uc ON c.id = uc.community_id AND uc.user_id = ?
                 WHERE c.id = ?
-            """, (username, community_id))
+            """, (user_id, community_id))
             
             community = c.fetchone()
             if not community:
