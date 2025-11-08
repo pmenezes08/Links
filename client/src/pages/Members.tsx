@@ -106,6 +106,19 @@ export default function Members(){
     }
   }
 
+  async function leaveCommunity(){
+    const ok = confirm(`Are you sure you want to leave ${communityName || 'this community'}?`)
+    if (!ok) return
+    const fd = new URLSearchParams({ community_id: String(community_id) })
+    const r = await fetch('/leave_community', { method:'POST', credentials:'include', body: fd })
+    const j = await r.json().catch(()=>null)
+    if (j?.success){
+      navigate('/communities')
+    } else {
+      alert(j?.error || 'Unable to leave community')
+    }
+  }
+
   async function handleSendInvite() {
     if (!inviteEmail.trim()) {
       setInviteError('Email is required')
@@ -197,7 +210,16 @@ export default function Members(){
         <div className="ml-2 text-xs text-[#9fb0b5]">
           {members.length} {members.length === 1 ? 'Member' : 'Members'}
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {!canManage && (
+            <button
+              onClick={leaveCommunity}
+              className="px-3 py-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-medium hover:bg-red-500/30"
+            >
+              <i className="fa-solid fa-arrow-right-from-bracket mr-1.5" />
+              Leave
+            </button>
+          )}
           {canManage && (
             <button
               onClick={() => setShowInviteModal(true)}
@@ -232,6 +254,7 @@ export default function Members(){
                 <div className="ml-auto flex items-center gap-1">
                   {canManage && m.username !== ownerUsername ? (
                     <MemberActions
+                      memberRole={m.role || 'member'}
                       onPromote={()=> updateRole(m.username, 'admin')}
                       onDemote={()=> updateRole(m.username, 'member')}
                       onTransfer={currentUserRole === 'app_admin' ? ()=> updateRole(m.username, 'owner') : undefined}
@@ -368,8 +391,11 @@ export default function Members(){
 }
 
 
-function MemberActions({ onPromote, onDemote, onTransfer, onRemove }:{ onPromote: ()=>void, onDemote: ()=>void, onTransfer?: ()=>void, onRemove: ()=>void }){
+function MemberActions({ memberRole, onPromote, onDemote, onTransfer, onRemove }:{ memberRole: string, onPromote: ()=>void, onDemote: ()=>void, onTransfer?: ()=>void, onRemove: ()=>void }){
   const [open, setOpen] = useState(false)
+  const isAdmin = memberRole === 'admin'
+  const isMember = memberRole === 'member'
+  
   return (
     <div className="relative" onClick={(e)=> e.stopPropagation()}>
       <button className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#cfd8dc] hover:bg-white/5" onClick={()=> setOpen(v=>!v)} aria-expanded={open} aria-haspopup="menu">
@@ -377,8 +403,12 @@ function MemberActions({ onPromote, onDemote, onTransfer, onRemove }:{ onPromote
       </button>
       {open && (
         <div className="absolute right-0 mt-1 w-40 rounded-md border border-white/10 bg-black shadow-lg z-20">
-          <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onPromote() }}>Make admin</button>
-          <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onDemote() }}>Remove admin</button>
+          {isMember && (
+            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onPromote() }}>Make admin</button>
+          )}
+          {isAdmin && (
+            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onDemote() }}>Remove admin</button>
+          )}
           {onTransfer ? (
             <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onTransfer() }}>Transfer ownership</button>
           ) : null}
