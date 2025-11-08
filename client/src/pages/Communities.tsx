@@ -274,7 +274,7 @@ export default function Communities(){
                         isSwipedOpen={swipedCommunity === c.id}
                         onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
                         onEnter={() => {
-                          // Always go to management view for parent communities (they can have subs)
+                          // Parent communities go to management view (to see/create subs)
                           navigate(`/communities?parent_id=${c.id}`)
                         }}
                         onDeleteOrLeave={async (asDelete:boolean) => {
@@ -1131,8 +1131,14 @@ function NestedCommunities({
             isSwipedOpen={swipedCommunity === child.id}
             onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
             onEnter={() => {
-              // Always go to management view to allow creating sub-communities at any level
-              navigate(`/communities?parent_id=${child.id}`)
+              const ua = navigator.userAgent || ''
+              const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+              // Sub-communities go to their feed (normal behavior)
+              if (isMobile) {
+                navigate(`/community_feed_react/${child.id}`)
+              } else {
+                window.location.href = `/community_feed/${child.id}`
+              }
             }}
             onDeleteOrLeave={async (asDelete: boolean) => {
               const fd = new URLSearchParams({ community_id: String(child.id) })
