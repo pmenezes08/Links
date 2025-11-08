@@ -132,13 +132,7 @@ export default function Signup(){
               setPendingEmail(formData.email)
               setShowVerify(true)
             } else {
-              // If invited, skip onboarding by marking it as done
-              if (j.invited_to_community) {
-                try {
-                  // Mark onboarding as complete so user goes directly to their community
-                  localStorage.setItem('onboarding_done', '1')
-                } catch {}
-              }
+              // Navigate to dashboard - onboarding will show automatically
               navigate(dest)
             }
           } else {
