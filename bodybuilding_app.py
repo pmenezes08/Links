@@ -19216,12 +19216,12 @@ def invite_to_community():
                 return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
             
             # Check if user is already a member
-            c.execute("SELECT username FROM users WHERE email = ?", (invited_email,))
+            c.execute("SELECT id, username FROM users WHERE email = ?", (invited_email,))
             existing_user = c.fetchone()
             if existing_user:
-                existing_username = existing_user['username'] if hasattr(existing_user, 'keys') else existing_user[0]
-                c.execute("SELECT 1 FROM user_communities WHERE community_id = ? AND username = ?", 
-                         (community_id, existing_username))
+                existing_user_id = existing_user['id'] if hasattr(existing_user, 'keys') else existing_user[0]
+                c.execute("SELECT 1 FROM user_communities WHERE community_id = ? AND user_id = ?", 
+                         (community_id, existing_user_id))
                 if c.fetchone():
                     return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
             
