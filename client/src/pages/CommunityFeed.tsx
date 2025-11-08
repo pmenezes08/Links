@@ -496,7 +496,27 @@ export default function CommunityFeed() {
           ) : null}
 
           {/* Feed items */}
-          {postsOnly.map((p: Post, idx: number) => (
+          {postsOnly.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 px-4">
+              <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                <i className="fa-regular fa-comment-dots text-3xl text-white/30" />
+              </div>
+              <h3 className="text-lg font-medium text-white/80 mb-2">No posts yet</h3>
+              <p className="text-sm text-white/50 text-center max-w-xs mb-6">
+                Be the first to share something with this community!
+              </p>
+              <button
+                onClick={() => {
+                  const createBtn = document.getElementById('create-post-button')
+                  if (createBtn) createBtn.click()
+                }}
+                className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:brightness-110"
+              >
+                <i className="fa-solid fa-plus mr-2" />
+                Create First Post
+              </button>
+            </div>
+          ) : postsOnly.map((p: Post, idx: number) => (
             <div key={p.id} className="relative">
               <PostCard
                 post={p}

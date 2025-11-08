@@ -18244,14 +18244,52 @@ def create_community():
             if not verified:
                 return jsonify({'success': False, 'error': 'please verify your email'}), 403
             # Enforce subscription: only premium users (or admin) can create communities
+            # Exception: Business community admins can create sub-communities without premium
             try:
                 c.execute("SELECT subscription FROM users WHERE username=?", (username,))
                 sub_row = c.fetchone()
                 subscription = (sub_row['subscription'] if hasattr(sub_row,'keys') else (sub_row[0] if sub_row else 'free'))
             except Exception:
                 subscription = 'free'
-            if username.lower() != 'admin' and (not subscription or str(subscription).lower() != 'premium'):
-                return jsonify({'success': False, 'error': 'only premium users can create communities'}), 403
+            
+            # Check if this is a Business sub-community creation by a parent admin
+            is_business_admin_creating_sub = False
+            parent_community_id_check = request.form.get('parent_community_id', None)
+            community_type_check = request.form.get('type', '')
+            
+            if parent_community_id_check and parent_community_id_check != 'none' and community_type_check.lower() == 'business':
+                # Check if user is admin of parent Business community
+                try:
+                    placeholder_check = get_sql_placeholder()
+                    c.execute(f"SELECT type, creator_username FROM communities WHERE id = {placeholder_check}", (parent_community_id_check,))
+                    parent_check = c.fetchone()
+                    if parent_check:
+                        parent_type_check = parent_check['type'] if hasattr(parent_check, 'keys') else parent_check[0]
+                        parent_creator_check = parent_check['creator_username'] if hasattr(parent_check, 'keys') else parent_check[1]
+                        
+                        if parent_type_check.lower() == 'business':
+                            # Check if owner
+                            if username == parent_creator_check:
+                                is_business_admin_creating_sub = True
+                            else:
+                                # Check if admin
+                                c.execute(f"""
+                                    SELECT role FROM user_communities
+                                    WHERE user_id = (SELECT id FROM users WHERE username = {placeholder_check})
+                                    AND community_id = {placeholder_check}
+                                """, (username, parent_community_id_check))
+                                role_check = c.fetchone()
+                                if role_check:
+                                    user_role_check = role_check['role'] if hasattr(role_check, 'keys') else role_check[0]
+                                    if user_role_check == 'admin':
+                                        is_business_admin_creating_sub = True
+                except Exception:
+                    pass
+            
+            # Only enforce premium if not admin and not Business admin creating sub
+            if not is_business_admin_creating_sub and username.lower() != 'admin':
+                if not subscription or str(subscription).lower() != 'premium':
+                    return jsonify({'success': False, 'error': 'only premium users can create communities'}), 403
     except Exception as _e:
         pass
     name = request.form.get('name')

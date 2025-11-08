@@ -694,7 +694,15 @@ function ParentTimeline({ parentId }:{ parentId:number }){
   return (
     <div>
       {posts.length === 0 ? (
-        <div className="text-[#9fb0b5] text-sm">No posts created in the past 48h</div>
+        <div className="flex flex-col items-center justify-center py-12 px-4">
+          <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-3">
+            <i className="fa-regular fa-comment-dots text-2xl text-white/30" />
+          </div>
+          <h3 className="text-base font-medium text-white/70 mb-1">No recent posts</h3>
+          <p className="text-xs text-white/40 text-center max-w-xs">
+            No posts have been created in the past 48 hours
+          </p>
+        </div>
       ) : (
         <div className="space-y-3">
           {posts.map((p:any) => (
