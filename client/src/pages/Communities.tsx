@@ -53,7 +53,6 @@ export default function Communities(){
   const [approvalRequired, setApprovalRequired] = useState(false)
   const [selectedSubCommunityId, setSelectedSubCommunityId] = useState<number | 'none'>('none')
   const [isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
-  const [isPremium, setIsPremium] = useState(false)
   // Groups modal (list & join)
   const [showGroupsModal, setShowGroupsModal] = useState(false)
   const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
@@ -74,7 +73,6 @@ export default function Communities(){
         if (mounted && j?.success && j.profile){
           const u = String(j.profile.username || '')
           setIsAdminOrPaulo(['admin','paulo'].includes(u.toLowerCase()))
-          setIsPremium(String(j.profile.subscription || '').toLowerCase() === 'premium')
         }
       }catch{}
     }
@@ -337,7 +335,7 @@ export default function Communities(){
         return (
           <>
             <PlusActions
-              onCreateSub={() => { if (!isPremium) { alert('Only premium users can create sub-communities'); return } setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
+              onCreateSub={() => { setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
               onCreateGroup={() => { if (!isAdminOrPaulo) { alert('Only admin or Paulo can create groups'); return } setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false) }}
             />
 
