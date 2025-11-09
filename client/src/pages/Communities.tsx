@@ -341,7 +341,7 @@ export default function Communities(){
                                 currentUsername={_data?.username || ''}
                                 onOpenGroups={openGroups}
                               />
-                              {showNested && c.children && c.children.length > 0 && (
+                              {c.children && c.children.length > 0 && (
                                 <NestedCommunities 
                                   communities={c.children}
                                   level={1}
@@ -350,6 +350,7 @@ export default function Communities(){
                                   currentUsername={_data?.username || ''}
                                   onOpenGroups={openGroups}
                                   navigate={navigate}
+                                  showNested={showNested}
                                 />
                               )}
                             </div>
@@ -1215,15 +1216,20 @@ function NestedCommunities({
   currentUsername, 
   onOpenGroups,
   navigate
-}: { 
+    showNested,
+  }: { 
   communities: Community[]
   level: number
   swipedCommunity: number | null
   setSwipedCommunity: (id: number | null) => void
   currentUsername: string
   onOpenGroups: (id: number) => void
-  navigate: any
+    navigate: any
+    showNested: boolean
 }) {
+    if (!showNested && level >= 2) {
+      return null
+    }
   return (
     <div className={`ml-${level * 6} space-y-2`} style={{ marginLeft: `${level * 1.5}rem` }}>
       {communities.map(child => (
@@ -1263,6 +1269,7 @@ function NestedCommunities({
               currentUsername={currentUsername}
               onOpenGroups={onOpenGroups}
               navigate={navigate}
+                showNested={showNested}
             />
           )}
         </div>
