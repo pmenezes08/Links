@@ -274,8 +274,14 @@ export default function Communities(){
                         isSwipedOpen={swipedCommunity === c.id}
                         onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
                         onEnter={() => {
-                          // Parent communities go to management view (to see/create subs)
-                          navigate(`/communities?parent_id=${c.id}`)
+                          const ua = navigator.userAgent || ''
+                          const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                          // Parent communities - go to their feed
+                          if (isMobile) {
+                            navigate(`/community_feed_react/${c.id}`)
+                          } else {
+                            window.location.href = `/community_feed/${c.id}`
+                          }
                         }}
                         onDeleteOrLeave={async (asDelete:boolean) => {
                           const fd = new URLSearchParams({ community_id: String(c.id) })

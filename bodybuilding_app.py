@@ -4396,11 +4396,30 @@ def signup():
                     user_row = c.fetchone()
                     user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
                     
-                    # Auto-join the community
-                    c.execute("""
-                        INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                        VALUES (?, ?, 'member', ?)
-                    """, (user_id, community_id, datetime.now().isoformat()))
+                    # Auto-join the community and all parent communities
+                    communities_to_join = [community_id]
+                    
+                    # Get all parent communities up to root
+                    current_parent_id = community_id
+                    while current_parent_id:
+                        c.execute("SELECT parent_community_id FROM communities WHERE id = ?", (current_parent_id,))
+                        parent_row = c.fetchone()
+                        parent_id = parent_row['parent_community_id'] if (parent_row and hasattr(parent_row, 'keys')) else (parent_row[0] if parent_row else None)
+                        if parent_id:
+                            communities_to_join.append(parent_id)
+                            current_parent_id = parent_id
+                        else:
+                            break
+                    
+                    # Join all communities (invited community + all ancestors)
+                    for comm_id in communities_to_join:
+                        # Check if already a member
+                        c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
+                        if not c.fetchone():
+                            c.execute("""
+                                INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                                VALUES (?, ?, 'member', ?)
+                            """, (user_id, comm_id, datetime.now().isoformat()))
                     
                     # Mark invitation as used
                     c.execute("""
@@ -4651,11 +4670,30 @@ def login_password():
                                         already_member = c.fetchone() is not None
                                         
                                         if not already_member:
-                                            # Add user to community
-                                            c.execute(f"""
-                                                INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                                                VALUES ({placeholder}, {placeholder}, 'member', {placeholder})
-                                            """, (user_id, community_id, datetime.now().isoformat()))
+                                            # Add user to community and all parent communities
+                                            communities_to_join = [community_id]
+                                            
+                                            # Get all parent communities up to root
+                                            current_parent_id_temp = community_id
+                                            while current_parent_id_temp:
+                                                c.execute(f"SELECT parent_community_id FROM communities WHERE id = {placeholder}", (current_parent_id_temp,))
+                                                parent_row_temp = c.fetchone()
+                                                parent_id_temp = parent_row_temp['parent_community_id'] if (parent_row_temp and hasattr(parent_row_temp, 'keys')) else (parent_row_temp[0] if parent_row_temp else None)
+                                                if parent_id_temp:
+                                                    communities_to_join.append(parent_id_temp)
+                                                    current_parent_id_temp = parent_id_temp
+                                                else:
+                                                    break
+                                            
+                                            # Join all communities (invited community + all ancestors)
+                                            for comm_id_join in communities_to_join:
+                                                # Check if already a member
+                                                c.execute(f"SELECT 1 FROM user_communities WHERE user_id = {placeholder} AND community_id = {placeholder}", (user_id, comm_id_join))
+                                                if not c.fetchone():
+                                                    c.execute(f"""
+                                                        INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                                                        VALUES ({placeholder}, {placeholder}, 'member', {placeholder})
+                                                    """, (user_id, comm_id_join, datetime.now().isoformat()))
                                             
                                             # Mark invitation as used if not already
                                             if not already_used:
@@ -19521,11 +19559,30 @@ def join_with_invite():
             if c.fetchone():
                 return jsonify({'success': False, 'error': 'You are already a member of this community'}), 400
             
-            # Add user to community
-            c.execute("""
-                INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                VALUES (?, ?, 'member', ?)
-            """, (user_id, community_id, datetime.now().isoformat()))
+            # Add user to community and all parent communities
+            communities_to_join = [community_id]
+            
+            # Get all parent communities up to root
+            current_parent_id = community_id
+            while current_parent_id:
+                c.execute("SELECT parent_community_id FROM communities WHERE id = ?", (current_parent_id,))
+                parent_row = c.fetchone()
+                parent_id = parent_row['parent_community_id'] if (parent_row and hasattr(parent_row, 'keys')) else (parent_row[0] if parent_row else None)
+                if parent_id:
+                    communities_to_join.append(parent_id)
+                    current_parent_id = parent_id
+                else:
+                    break
+            
+            # Join all communities (invited community + all ancestors)
+            for comm_id in communities_to_join:
+                # Check if already a member
+                c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
+                if not c.fetchone():
+                    c.execute("""
+                        INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                        VALUES (?, ?, 'member', ?)
+                    """, (user_id, comm_id, datetime.now().isoformat()))
             
             # Mark invitation as used
             c.execute("""
@@ -19613,11 +19670,31 @@ def invite_to_community():
                 if c.fetchone():
                     return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
                 
-                # Add user to community directly
-                c.execute("""
-                    INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                    VALUES (?, ?, 'member', ?)
-                """, (existing_user_id, community_id, datetime.now().isoformat()))
+                # Add user to community and all parent communities
+                communities_to_join = [community_id]
+                
+                # Get all parent communities up to root
+                current_parent_id = community_id
+                while current_parent_id:
+                    c.execute("SELECT parent_community_id FROM communities WHERE id = ?", (current_parent_id,))
+                    parent_row = c.fetchone()
+                    parent_id = parent_row['parent_community_id'] if (parent_row and hasattr(parent_row, 'keys')) else (parent_row[0] if parent_row else None)
+                    if parent_id:
+                        communities_to_join.append(parent_id)
+                        current_parent_id = parent_id
+                    else:
+                        break
+                
+                # Join all communities (invited community + all ancestors)
+                for comm_id in communities_to_join:
+                    # Check if already a member
+                    c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (existing_user_id, comm_id))
+                    if not c.fetchone():
+                        c.execute("""
+                            INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                            VALUES (?, ?, 'member', ?)
+                        """, (existing_user_id, comm_id, datetime.now().isoformat()))
+                
                 conn.commit()
                 
                 # Send notification email (not signup invitation)
