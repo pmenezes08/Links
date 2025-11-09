@@ -18491,16 +18491,16 @@ def create_community():
             
             community_id = c.lastrowid
             
-            # Get user's ID and add creator as member
+            # Get user's ID and add creator as owner
             c.execute(f"SELECT id FROM users WHERE username = {get_sql_placeholder()}", (username,))
             user_row = c.fetchone()
             if user_row:
                 user_id = user_row[0] if not hasattr(user_row, 'keys') else user_row['id']
-                uc_ph = ', '.join([get_sql_placeholder()] * 3)
+                uc_ph = ', '.join([get_sql_placeholder()] * 4)
                 c.execute(f"""
-                    INSERT INTO user_communities (user_id, community_id, joined_at)
+                    INSERT INTO user_communities (user_id, community_id, role, joined_at)
                     VALUES ({uc_ph})
-                """, (user_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
+                """, (user_id, community_id, 'owner', datetime.now().strftime('%m.%d.%y %H:%M')))
             
             # Ensure admin is also a member of every community
             c.execute("SELECT id FROM users WHERE username = 'admin'")
