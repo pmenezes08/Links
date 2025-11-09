@@ -53,6 +53,15 @@ export default function Communities(){
   const [approvalRequired, setApprovalRequired] = useState(false)
   const [selectedSubCommunityId, setSelectedSubCommunityId] = useState<number | 'none'>('none')
   const [isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
+  const [showNested, setShowNested] = useState<boolean>(() => {
+    try{
+      if (typeof window === 'undefined') return true
+      const stored = window.localStorage.getItem('communityManagementShowNested')
+      return stored !== 'hidden'
+    }catch{
+      return true
+    }
+  })
   // Groups modal (list & join)
   const [showGroupsModal, setShowGroupsModal] = useState(false)
   const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
@@ -62,6 +71,25 @@ export default function Communities(){
     const parentTypeLower = ((parent as any)?.community_type || parent?.type || parentType || '').toLowerCase()
     return parentTypeLower === 'gym'
   }, [communities, parentType])
+  const hasNestedCommunities = useMemo(() => {
+    const checkChildren = (list: Community[] | undefined): boolean => {
+      if (!list) return false
+      for (const item of list){
+        if (item.children && item.children.length > 0) return true
+        if (checkChildren(item.children)) return true
+      }
+      return false
+    }
+    return checkChildren(communities)
+  }, [communities])
+
+  useEffect(() => {
+    try{
+      if (typeof window !== 'undefined'){
+        window.localStorage.setItem('communityManagementShowNested', showNested ? 'visible' : 'hidden')
+      }
+    }catch{}
+  }, [showNested])
   
   // Load current user to drive UI permissions for creating sub-communities and groups
   useEffect(() => {
@@ -251,64 +279,86 @@ export default function Communities(){
                    </div>
                  )
                }
-              return (
-                <>
-                  {activeTab === 'training' && showTrainingTab ? (
-                    <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
-                      <button
-                        className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
-                        onClick={()=> {
-                          const pidNext = new URLSearchParams(location.search).get('parent_id')
-                          window.location.href = pidNext ? `/workout_tracking?parent_id=${pidNext}` : '/workout_tracking'
-                        }}
-                      >
-                        Go to Workout Tracking
-                      </button>
-                    </div>
-                  ) : communities.length === 0 ? (
-                    <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
-                  ) : communities.map(c => (
-                    <div key={c.id} className="space-y-2">
-                      <CommunityItem 
-                        community={c} 
-                        isSwipedOpen={swipedCommunity === c.id}
-                        onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
-                        onEnter={() => {
-                          const ua = navigator.userAgent || ''
-                          const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                          // Parent communities - go to their feed
-                          if (isMobile) {
-                            navigate(`/community_feed_react/${c.id}`)
-                          } else {
-                            window.location.href = `/community_feed/${c.id}`
-                          }
-                        }}
-                        onDeleteOrLeave={async (asDelete:boolean) => {
-                          const fd = new URLSearchParams({ community_id: String(c.id) })
-                          const url = asDelete ? '/delete_community' : '/leave_community'
-                          const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                          const j = await r.json().catch(()=>null)
-                          if (j?.success) window.location.reload()
-                          else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
-                        }}
-                        currentUsername={_data?.username || ''}
-                        onOpenGroups={openGroups}
-                      />
-                      {c.children && c.children.length > 0 && (
-                        <NestedCommunities 
-                          communities={c.children}
-                          level={1}
-                          swipedCommunity={swipedCommunity}
-                          setSwipedCommunity={setSwipedCommunity}
-                          currentUsername={_data?.username || ''}
-                          onOpenGroups={openGroups}
-                          navigate={navigate}
-                        />
-                      )}
-                    </div>
-                  ))}
-                </>
-              )
+                return (
+                  <>
+                    {activeTab === 'training' && showTrainingTab ? (
+                      <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                        <button
+                          className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
+                          onClick={()=> {
+                            const pidNext = new URLSearchParams(location.search).get('parent_id')
+                            window.location.href = pidNext ? `/workout_tracking?parent_id=${pidNext}` : '/workout_tracking'
+                          }}
+                        >
+                          Go to Workout Tracking
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {activeTab === 'management' && hasNestedCommunities ? (
+                          <div className="flex items-center justify-end gap-3 text-xs text-[#9fb0b5] px-1">
+                            <span>Show nested communities</span>
+                            <button
+                              type="button"
+                              onClick={()=> setShowNested(value => !value)}
+                              aria-pressed={showNested}
+                              aria-label={showNested ? 'Hide nested communities' : 'Show nested communities'}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4db6ac]/60 ${showNested ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                            >
+                              <span
+                                className={`inline-block h-5 w-5 transform rounded-full bg-black transition duration-200 ease-out ${showNested ? 'translate-x-5' : 'translate-x-1'}`}
+                              />
+                            </button>
+                          </div>
+                        ) : null}
+                        {communities.length === 0 ? (
+                          <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
+                        ) : (
+                          communities.map(c => (
+                            <div key={c.id} className="space-y-2">
+                              <CommunityItem 
+                                community={c} 
+                                isSwipedOpen={swipedCommunity === c.id}
+                                onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
+                                onEnter={() => {
+                                  const ua = navigator.userAgent || ''
+                                  const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                                  // Parent communities - go to their feed
+                                  if (isMobile) {
+                                    navigate(`/community_feed_react/${c.id}`)
+                                  } else {
+                                    window.location.href = `/community_feed/${c.id}`
+                                  }
+                                }}
+                                onDeleteOrLeave={async (asDelete:boolean) => {
+                                  const fd = new URLSearchParams({ community_id: String(c.id) })
+                                  const url = asDelete ? '/delete_community' : '/leave_community'
+                                  const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                                  const j = await r.json().catch(()=>null)
+                                  if (j?.success) window.location.reload()
+                                  else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
+                                }}
+                                currentUsername={_data?.username || ''}
+                                onOpenGroups={openGroups}
+                              />
+                              {showNested && c.children && c.children.length > 0 && (
+                                <NestedCommunities 
+                                  communities={c.children}
+                                  level={1}
+                                  swipedCommunity={swipedCommunity}
+                                  setSwipedCommunity={setSwipedCommunity}
+                                  currentUsername={_data?.username || ''}
+                                  onOpenGroups={openGroups}
+                                  navigate={navigate}
+                                />
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </>
+                    )}
+                  </>
+                )
             })()}
           </div>
         )}
