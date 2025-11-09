@@ -10215,6 +10215,29 @@ def update_member_role():
                     VALUES ((SELECT id FROM users WHERE username = ?), ?, 'member', NOW())
                     ON DUPLICATE KEY UPDATE role = 'member'
                 """, (target_username, community_id))
+                
+                # Check if target user owns any sub-communities under this community
+                # If yes, demote them from owner to admin (so they can still be managed)
+                c.execute("""
+                    SELECT c.id, c.name
+                    FROM communities c
+                    WHERE c.creator_username = ? AND c.parent_community_id = ?
+                """, (target_username, community_id))
+                owned_subs = c.fetchall()
+                
+                if owned_subs:
+                    # User owns sub-communities under this parent
+                    # Demote from owner to admin in those sub-communities
+                    for sub in owned_subs:
+                        sub_id = sub['id'] if hasattr(sub, 'keys') else sub[0]
+                        c.execute("""
+                            UPDATE user_communities
+                            SET role = 'admin'
+                            WHERE user_id = (SELECT id FROM users WHERE username = ?)
+                            AND community_id = ?
+                            AND role = 'owner'
+                        """, (target_username, sub_id))
+                        logger.info(f"Demoted {target_username} from owner to admin in sub-community {sub_id} (parent admin removed)")
             
             else:
                 return jsonify({'success': False, 'error': 'Invalid role specified'})
@@ -22079,8 +22102,7 @@ def get_user_communities_hierarchical():
                         c.name
                 """)
             else:
-                # Regular users see ONLY communities they are direct members of
-                # Sub-communities are exclusive to members
+                # Get communities user is directly a member of
                 c.execute(f"""
                     SELECT DISTINCT 
                         c.id,
@@ -22088,7 +22110,8 @@ def get_user_communities_hierarchical():
                         c.type,
                         c.parent_community_id,
                         c.creator_username,
-                        pc.name as parent_name
+                        pc.name as parent_name,
+                        uc.role
                     FROM communities c
                     JOIN user_communities uc ON c.id = uc.community_id
                     JOIN users u ON uc.user_id = u.id
@@ -22099,6 +22122,72 @@ def get_user_communities_hierarchical():
                         COALESCE(pc.name, c.name),
                         c.name
                 """, (username,))
+                
+                user_communities = c.fetchall()
+                
+                # Find communities where user is owner or admin (can see descendants)
+                admin_community_ids = []
+                for comm in user_communities:
+                    comm_id = comm['id'] if hasattr(comm, 'keys') else comm[0]
+                    creator = comm['creator_username'] if hasattr(comm, 'keys') else comm[4]
+                    role = comm['role'] if hasattr(comm, 'keys') else comm[6]
+                    
+                    # If user is owner or admin of this community, they can see all descendants
+                    if username == creator or role == 'admin' or role == 'owner':
+                        admin_community_ids.append(comm_id)
+                
+                # Start with communities user is a member of
+                all_accessible_ids = set()
+                for comm in user_communities:
+                    all_accessible_ids.add(comm['id'] if hasattr(comm, 'keys') else comm[0])
+                
+                # Add ALL descendant communities where user is admin/owner
+                if admin_community_ids:
+                    # Get all communities
+                    c.execute("""
+                        SELECT id, name, type, parent_community_id, creator_username
+                        FROM communities
+                    """)
+                    all_comms = c.fetchall()
+                    
+                    # Recursively get all descendants
+                    def get_all_descendants(comm_id, all_comms_list):
+                        descendants = []
+                        for comm in all_comms_list:
+                            parent_id = comm['parent_community_id'] if hasattr(comm, 'keys') else comm[3]
+                            if parent_id == comm_id:
+                                child_id = comm['id'] if hasattr(comm, 'keys') else comm[0]
+                                descendants.append(child_id)
+                                # Recursively get this child's descendants
+                                descendants.extend(get_all_descendants(child_id, all_comms_list))
+                        return descendants
+                    
+                    # For each admin community, get ALL its descendants
+                    for admin_id in admin_community_ids:
+                        descendants = get_all_descendants(admin_id, all_comms)
+                        all_accessible_ids.update(descendants)
+                
+                # Get full details of accessible communities
+                if all_accessible_ids:
+                    id_list = ','.join([str(x) for x in all_accessible_ids])
+                    c.execute(f"""
+                        SELECT DISTINCT 
+                            c.id,
+                            c.name,
+                            c.type,
+                            c.parent_community_id,
+                            c.creator_username,
+                            pc.name as parent_name
+                        FROM communities c
+                        LEFT JOIN communities pc ON c.parent_community_id = pc.id
+                        WHERE c.id IN ({id_list})
+                        ORDER BY 
+                            CASE WHEN c.parent_community_id IS NULL THEN 0 ELSE 1 END,
+                            COALESCE(pc.name, c.name),
+                            c.name
+                    """)
+                else:
+                    return jsonify({'success': True, 'communities': []})
             
             communities = c.fetchall()
             
