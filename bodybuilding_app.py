@@ -22040,27 +22040,20 @@ def get_user_communities_hierarchical():
                 }
                 all_communities_dict[community['id']] = community_data
             
-            # Second pass: build hierarchy recursively
-            def add_to_hierarchy(comm_id, comm_data, visited=None):
-                if visited is None:
-                    visited = set()
-                if comm_id in visited:
-                    return  # Prevent infinite loops
-                visited.add(comm_id)
-                
-                # Find all children of this community
+            # Second pass: build hierarchy recursively for ALL communities
+            # First, ensure every community has its children populated
+            for comm_id, comm_data in all_communities_dict.items():
                 for other_id, other_data in all_communities_dict.items():
-                    if other_data['parent_community_id'] == comm_id and other_id not in visited:
+                    if other_data['parent_community_id'] == comm_id:
+                        # This other_data is a child of comm_data
                         comm_data['children'].append(other_data)
-                        add_to_hierarchy(other_id, other_data, visited)
             
-            # Find root communities and build their trees
+            # Find root communities (their trees are already built above)
             parent_communities = {}
             for comm_id, comm_data in all_communities_dict.items():
                 if not comm_data['parent_community_id']:
                     # This is a root community
                     parent_communities[comm_id] = comm_data
-                    add_to_hierarchy(comm_id, comm_data)
                 elif comm_data['parent_community_id'] not in all_communities_dict:
                     # Parent not in user's communities, but child is
                     # Get parent info and add it
