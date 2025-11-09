@@ -155,20 +155,11 @@ export default function CommunityFeed() {
         if (!isMounted) return; 
         if (json?.success){ setData(json) }
         else {
-          setError(json?.error || 'Error')
-          const ua = navigator.userAgent || ''
-          const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-          if (isMobile && community_id){
-            // Fallback to HTML feed to avoid blank screen
-            window.location.href = `/community_feed/${community_id}`
-          }
+          setError(json?.error || 'Error loading feed')
         }
       })
       .catch(() => { if (isMounted){
         setError('Error loading feed')
-        const ua = navigator.userAgent || ''
-        const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-        if (isMobile && community_id){ window.location.href = `/community_feed/${community_id}` }
       }})
       .finally(() => isMounted && setLoading(false))
     return () => { isMounted = false }
