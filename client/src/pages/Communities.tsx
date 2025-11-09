@@ -351,10 +351,15 @@ export default function Communities(){
                           const parent = communities.find(c => c.id === parentIdNum)
                           const options: any[] = []
                           
+                          // Debug: log the parent structure
+                          console.log('Parent community:', parent)
+                          console.log('Parent children:', parent?.children)
+                          
                           // Recursively add all sub-communities with indentation
                           function addChildren(children: Community[], depth: number) {
                             for (const child of children) {
                               const indent = '  '.repeat(depth) + '└─ '
+                              console.log(`Adding option at depth ${depth}:`, child.name, 'Children:', child.children?.length || 0)
                               options.push(
                                 <option key={child.id} value={child.id}>
                                   {indent}{child.name}
@@ -366,10 +371,14 @@ export default function Communities(){
                             }
                           }
                           
-                          if (parent?.children) {
+                          if (parent?.children && parent.children.length > 0) {
+                            console.log('Starting to add children, total:', parent.children.length)
                             addChildren(parent.children, 1)
+                          } else {
+                            console.log('No children found for parent')
                           }
                           
+                          console.log('Total options to render:', options.length)
                           return options
                         })()}
                       </select>
