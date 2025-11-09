@@ -20292,19 +20292,53 @@ def api_community_feed(community_id):
                 current_user_profile_picture = None
                 current_user_display_name = username
 
-            # Enforce membership to view this community (admin or owner bypass)
+            # Enforce membership to view this community
+            # Allow: app admin, community creator, direct members, or admins of parent/ancestor communities
             try:
                 if username != 'admin' and username != community.get('creator_username'):
+                    # Check if direct member
                     c.execute("""
                         SELECT 1 FROM user_communities uc
                         JOIN users u ON uc.user_id = u.id
                         WHERE u.username = ? AND uc.community_id = ?
                         LIMIT 1
                     """, (username, community_id))
-                    if not c.fetchone():
-                        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+                    is_member = c.fetchone() is not None
+                    
+                    if not is_member:
+                        # Not a direct member - check if admin of any ancestor community
+                        has_ancestor_access = False
+                        current_parent = community.get('parent_community_id')
+                        
+                        while current_parent:
+                            # Check if user is admin or owner of this ancestor
+                            c.execute("""
+                                SELECT uc.role, c.creator_username
+                                FROM user_communities uc
+                                JOIN communities c ON uc.community_id = c.id
+                                JOIN users u ON uc.user_id = u.id
+                                WHERE u.username = ? AND c.id = ?
+                            """, (username, current_parent))
+                            ancestor_membership = c.fetchone()
+                            
+                            if ancestor_membership:
+                                role = ancestor_membership['role'] if hasattr(ancestor_membership, 'keys') else ancestor_membership[0]
+                                creator = ancestor_membership['creator_username'] if hasattr(ancestor_membership, 'keys') else ancestor_membership[1]
+                                
+                                if role in ('admin', 'owner') or username == creator:
+                                    has_ancestor_access = True
+                                    break
+                            
+                            # Move to next ancestor
+                            c.execute("SELECT parent_community_id FROM communities WHERE id = ?", (current_parent,))
+                            parent_row = c.fetchone()
+                            current_parent = parent_row['parent_community_id'] if (parent_row and hasattr(parent_row, 'keys')) else (parent_row[0] if parent_row else None)
+                        
+                        if not has_ancestor_access:
+                            return jsonify({'success': False, 'error': 'Forbidden'}), 403
             except Exception as me:
-                logger.warning(f"membership check failed on api_community_feed: {me}")
+                logger.error(f"membership check failed on api_community_feed: {me}")
+                return jsonify({'success': False, 'error': 'Access check failed'}), 500
 
             # Track visit as an activity (counts towards DAU/MAU)
             try:
