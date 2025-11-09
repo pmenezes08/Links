@@ -10216,28 +10216,40 @@ def update_member_role():
                     ON DUPLICATE KEY UPDATE role = 'member'
                 """, (target_username, community_id))
                 
-                # Check if target user owns any sub-communities under this community
-                # If yes, demote them from owner to admin (so they can still be managed)
+                # Check if target user owns any sub-communities under this community (recursively)
+                # If yes, demote them from owner to admin (so parent admins can still manage them)
                 c.execute("""
-                    SELECT c.id, c.name
-                    FROM communities c
-                    WHERE c.creator_username = ? AND c.parent_community_id = ?
-                """, (target_username, community_id))
-                owned_subs = c.fetchall()
+                    SELECT id, parent_community_id
+                    FROM communities
+                    WHERE creator_username = ?
+                """, (target_username,))
+                all_owned = c.fetchall()
                 
-                if owned_subs:
-                    # User owns sub-communities under this parent
-                    # Demote from owner to admin in those sub-communities
-                    for sub in owned_subs:
-                        sub_id = sub['id'] if hasattr(sub, 'keys') else sub[0]
-                        c.execute("""
-                            UPDATE user_communities
-                            SET role = 'admin'
-                            WHERE user_id = (SELECT id FROM users WHERE username = ?)
-                            AND community_id = ?
-                            AND role = 'owner'
-                        """, (target_username, sub_id))
-                        logger.info(f"Demoted {target_username} from owner to admin in sub-community {sub_id} (parent admin removed)")
+                # Find all descendants of this community
+                def get_all_descendant_ids(parent_id, all_comms_list):
+                    descendants = []
+                    for comm in all_comms_list:
+                        pid = comm['parent_community_id'] if hasattr(comm, 'keys') else comm[1]
+                        if pid == parent_id:
+                            cid = comm['id'] if hasattr(comm, 'keys') else comm[0]
+                            descendants.append(cid)
+                            # Recursively get descendants
+                            descendants.extend(get_all_descendant_ids(cid, all_comms_list))
+                    return descendants
+                
+                descendant_ids = get_all_descendant_ids(community_id, all_owned)
+                
+                # Demote user in all sub-communities they own under this parent
+                for sub_id in descendant_ids:
+                    c.execute("""
+                        UPDATE user_communities
+                        SET role = 'admin'
+                        WHERE user_id = (SELECT id FROM users WHERE username = ?)
+                        AND community_id = ?
+                        AND role = 'owner'
+                    """, (target_username, sub_id))
+                    if c.rowcount > 0:
+                        logger.info(f"Demoted {target_username} from owner to admin in sub-community {sub_id} (lost parent admin rights)")
             
             else:
                 return jsonify({'success': False, 'error': 'Invalid role specified'})
