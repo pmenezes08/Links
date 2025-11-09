@@ -62,6 +62,7 @@ export default function Communities(){
       return true
     }
   })
+  const [expandedNestedParentId, setExpandedNestedParentId] = useState<number | null>(null)
   // Groups modal (list & join)
   const [showGroupsModal, setShowGroupsModal] = useState(false)
   const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
@@ -72,15 +73,15 @@ export default function Communities(){
     return parentTypeLower === 'gym'
   }, [communities, parentType])
   const hasNestedCommunities = useMemo(() => {
-    const checkChildren = (list: Community[] | undefined): boolean => {
+    const checkChildren = (list: Community[] | undefined, depth: number): boolean => {
       if (!list) return false
       for (const item of list){
-        if (item.children && item.children.length > 0) return true
-        if (checkChildren(item.children)) return true
+        if (depth >= 1 && item.children && item.children.length > 0) return true
+        if (checkChildren(item.children, depth + 1)) return true
       }
       return false
     }
-    return checkChildren(communities)
+    return checkChildren(communities, 0)
   }, [communities])
 
   useEffect(() => {
@@ -90,6 +91,14 @@ export default function Communities(){
       }
     }catch{}
   }, [showNested])
+  useEffect(() => {
+    if (!showNested) setExpandedNestedParentId(null)
+  }, [showNested])
+  useEffect(() => {
+    if (!expandedNestedParentId) return
+    const exists = communities.some(parent => parent.children?.some(child => child.id === expandedNestedParentId))
+    if (!exists) setExpandedNestedParentId(null)
+  }, [communities, expandedNestedParentId])
   
   // Load current user to drive UI permissions for creating sub-communities and groups
   useEffect(() => {
@@ -351,6 +360,8 @@ export default function Communities(){
                                   onOpenGroups={openGroups}
                                   navigate={navigate}
                                   showNested={showNested}
+                                  expandedNestedParentId={expandedNestedParentId}
+                                  setExpandedNestedParentId={setExpandedNestedParentId}
                                 />
                               )}
                             </div>
@@ -1039,7 +1050,10 @@ function CommunityItem({
   onDeleteOrLeave,
   isChild = false,
   currentUsername,
-  onOpenGroups
+  onOpenGroups,
+  expandable = false,
+  isExpanded = false,
+  onToggleExpand,
 }: { 
   community: Community
   isSwipedOpen: boolean
@@ -1049,6 +1063,9 @@ function CommunityItem({
   isChild?: boolean
   currentUsername: string
   onOpenGroups: (communityId:number)=>void
+  expandable?: boolean
+  isExpanded?: boolean
+  onToggleExpand?: () => void
 }) {
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -1175,24 +1192,37 @@ function CommunityItem({
           transform: `translateX(${isDragging ? dragX : (isSwipedOpen ? -ACTIONS_WIDTH : 0)}px)`,
           transition: isDragging ? 'none' : 'transform 0.2s ease-out'
         }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
-        onClick={handleClick}
-      >
-        <div className="flex-1 flex items-center">
-          {isChild && <div className="w-4 h-4 mr-2 flex items-center justify-center">
-            <div className="w-2 h-2 rounded-full bg-[#4db6ac]" />
-          </div>}
-          <div className="flex-1">
-            <div className="font-medium text-white">{community.name}</div>
-            <div className="text-xs text-[#9fb0b5]">{community.type || 'Community'}</div>
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          onClick={handleClick}
+        >
+          <div className="flex-1 flex items-center">
+            {isChild && (
+              <div className="w-4 h-4 mr-2 flex items-center justify-center">
+                <div className="w-2 h-2 rounded-full bg-[#4db6ac]" />
+              </div>
+            )}
+            <div className="flex-1">
+              <div className="font-medium text-white">{community.name}</div>
+              <div className="text-xs text-[#9fb0b5]">{community.type || 'Community'}</div>
+            </div>
           </div>
-        </div>
-        <div className="text-[#4db6ac]">
-          <i className="fa-solid fa-chevron-right" />
-        </div>
+          <div className="flex items-center gap-2 text-[#4db6ac]">
+            {expandable ? (
+              <button
+                type="button"
+                className="p-1 rounded-full hover:bg-[#4db6ac]/20 transition-colors"
+                onClick={(e)=> { e.stopPropagation(); onToggleExpand?.() }}
+                aria-label={isExpanded ? `Collapse sub-communities for ${community.name}` : `Expand sub-communities for ${community.name}`}
+                aria-pressed={isExpanded}
+              >
+                <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} />
+              </button>
+            ) : null}
+            <i className="fa-solid fa-chevron-right" />
+          </div>
       </div>
       {/* FAB removed pending proper state wiring */}
     </div>
@@ -1215,65 +1245,86 @@ function NestedCommunities({
   setSwipedCommunity, 
   currentUsername, 
   onOpenGroups,
-  navigate
-    showNested,
-  }: { 
+  navigate,
+  showNested,
+  expandedNestedParentId,
+  setExpandedNestedParentId,
+}: { 
   communities: Community[]
   level: number
   swipedCommunity: number | null
   setSwipedCommunity: (id: number | null) => void
   currentUsername: string
   onOpenGroups: (id: number) => void
-    navigate: any
-    showNested: boolean
+  navigate: any
+  showNested: boolean
+  expandedNestedParentId: number | null
+  setExpandedNestedParentId: (id: number | null) => void
 }) {
-    if (!showNested && level >= 2) {
-      return null
-    }
+  if (!showNested && level >= 2) {
+    return null
+  }
   return (
     <div className={`ml-${level * 6} space-y-2`} style={{ marginLeft: `${level * 1.5}rem` }}>
-      {communities.map(child => (
-        <div key={child.id} className="space-y-2">
-          <CommunityItem 
-            community={child} 
-            isSwipedOpen={swipedCommunity === child.id}
-            onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
-            onEnter={() => {
-              const ua = navigator.userAgent || ''
-              const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-              // Sub-communities go to their feed (normal behavior)
-              if (isMobile) {
-                navigate(`/community_feed_react/${child.id}`)
-              } else {
-                window.location.href = `/community_feed/${child.id}`
-              }
-            }}
-            onDeleteOrLeave={async (asDelete: boolean) => {
-              const fd = new URLSearchParams({ community_id: String(child.id) })
-              const url = asDelete ? '/delete_community' : '/leave_community'
-              const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-              const j = await r.json().catch(()=>null)
-              if (j?.success) window.location.reload()
-              else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
-            }}
-            isChild={true}
-            currentUsername={currentUsername}
-            onOpenGroups={onOpenGroups}
-          />
-          {child.children && child.children.length > 0 && (
-            <NestedCommunities 
-              communities={child.children}
-              level={level + 1}
-              swipedCommunity={swipedCommunity}
-              setSwipedCommunity={setSwipedCommunity}
+      {communities.map(child => {
+        const hasChildren = !!(child.children && child.children.length > 0)
+        const isFirstLevelChild = level === 1
+        const canExpand = isFirstLevelChild && hasChildren && showNested
+        const isExpanded = expandedNestedParentId === child.id
+        const shouldRenderChildren = (() => {
+          if (!hasChildren) return false
+          if (!showNested) return false
+          if (isFirstLevelChild) return isExpanded
+          return true
+        })()
+        return (
+          <div key={child.id} className="space-y-2">
+            <CommunityItem 
+              community={child} 
+              isSwipedOpen={swipedCommunity === child.id}
+              onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
+              onEnter={() => {
+                const ua = navigator.userAgent || ''
+                const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                // Sub-communities go to their feed (normal behavior)
+                if (isMobile) {
+                  navigate(`/community_feed_react/${child.id}`)
+                } else {
+                  window.location.href = `/community_feed/${child.id}`
+                }
+              }}
+              onDeleteOrLeave={async (asDelete: boolean) => {
+                const fd = new URLSearchParams({ community_id: String(child.id) })
+                const url = asDelete ? '/delete_community' : '/leave_community'
+                const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                const j = await r.json().catch(()=>null)
+                if (j?.success) window.location.reload()
+                else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
+              }}
+              isChild={level >= 1}
               currentUsername={currentUsername}
               onOpenGroups={onOpenGroups}
-              navigate={navigate}
-                showNested={showNested}
+              expandable={canExpand}
+              isExpanded={canExpand ? isExpanded : undefined}
+              onToggleExpand={canExpand ? () => setExpandedNestedParentId(isExpanded ? null : child.id) : undefined}
             />
-          )}
-        </div>
-      ))}
+            {shouldRenderChildren && (
+              <NestedCommunities 
+                communities={child.children || []}
+                level={level + 1}
+                swipedCommunity={swipedCommunity}
+                setSwipedCommunity={setSwipedCommunity}
+                currentUsername={currentUsername}
+                onOpenGroups={onOpenGroups}
+                navigate={navigate}
+                showNested={showNested}
+                expandedNestedParentId={expandedNestedParentId}
+                setExpandedNestedParentId={setExpandedNestedParentId}
+              />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
