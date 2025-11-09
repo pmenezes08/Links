@@ -19541,64 +19541,53 @@ def generate_invite_link():
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 def notify_community_new_member(community_id, new_username, conn):
-    """Send notifications to community admins/owners when a new member joins"""
+    """Send notifications to all community members when a new member joins (if enabled)"""
     try:
         c = conn.cursor()
         
-        # Get community name
-        c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+        # Check if community has notify_on_new_member enabled
+        c.execute(f"SELECT name, notify_on_new_member FROM communities WHERE id = {get_sql_placeholder()}", (community_id,))
         comm_row = c.fetchone()
         if not comm_row:
             return
-        community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
         
-        # Get all admins and owners of this community
-        c.execute("""
-            SELECT u.id as user_id, u.username
+        community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+        should_notify = comm_row['notify_on_new_member'] if hasattr(comm_row, 'keys') else comm_row[1]
+        
+        if not should_notify:
+            logger.info(f"Notifications disabled for community {community_id}, skipping new member notification")
+            return
+        
+        # Get all existing members of the community (excluding the new joiner)
+        c.execute(f"""
+            SELECT DISTINCT u.username
             FROM user_communities uc
             JOIN users u ON uc.user_id = u.id
-            WHERE uc.community_id = ?
-            AND uc.role IN ('admin', 'owner')
-            AND u.username != ?
+            WHERE uc.community_id = {get_sql_placeholder()} AND u.username != {get_sql_placeholder()}
         """, (community_id, new_username))
         
-        admins = c.fetchall()
+        existing_members = c.fetchall()
         
-        # Create notification for each admin/owner
-        for admin in admins:
-            admin_user_id = admin['user_id'] if hasattr(admin, 'keys') else admin[0]
-            
+        # Send notification to each existing member
+        notif_ph = ', '.join([get_sql_placeholder()] * 6)
+        for member in existing_members:
+            member_username = member['username'] if hasattr(member, 'keys') else member[0]
             try:
-                # Try SQLite syntax first
-                c.execute("""
-                    INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
-                    VALUES (?, ?, 'new_member', ?, ?, ?, 0, ?)
+                c.execute(f"""
+                    INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
+                    VALUES ({notif_ph})
                 """, (
-                    admin_user_id,
+                    member_username,
                     new_username,
+                    'new_member',
                     community_id,
-                    f"{new_username} joined {community_name}",
-                    datetime.now().isoformat(),
-                    f"/community/{community_id}/members"
+                    f'{new_username} just joined "{community_name}". Say hi! 👋',
+                    f'/community_feed/{community_id}'
                 ))
-            except Exception:
-                # Try MySQL syntax
-                try:
-                    c.execute("""
-                        INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
-                        VALUES (%s, %s, 'new_member', %s, %s, NOW(), 0, %s)
-                    """, (
-                        admin_user_id,
-                        new_username,
-                        community_id,
-                        f"{new_username} joined {community_name}",
-                        f"/community/{community_id}/members"
-                    ))
-                except Exception as e:
-                    logger.warning(f"Failed to create notification for admin {admin_user_id}: {e}")
+            except Exception as member_notify_err:
+                logger.warning(f"Failed to notify {member_username} about new member: {member_notify_err}")
         
-        conn.commit()
-        logger.info(f"Sent new member notifications to {len(admins)} admins for community {community_id}")
+        logger.info(f"Sent new member notifications to {len(existing_members)} members in {community_name}")
         
     except Exception as e:
         logger.error(f"Error sending new member notifications: {e}", exc_info=True)
