@@ -1263,22 +1263,23 @@ function CommunityItem({
           {expandable ? (
             <button
               type="button"
-              className={`p-1.5 rounded-full border border-white/15 transition-colors ${expandDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-white/10'}`}
-              onClick={(e)=> { e.stopPropagation(); if (!expandDisabled) onToggleExpand?.() }}
+              className={`h-6 w-6 grid place-items-center transition-colors duration-150 ${isExpanded ? 'text-[#4db6ac]' : 'text-[#9fb0b5]'} ${expandDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:text-white'}`}
+              onClick={(e)=> { 
+                e.stopPropagation(); 
+                if (!expandDisabled) onToggleExpand?.() 
+              }}
               aria-label={isExpanded ? `Collapse sub-communities for ${community.name}` : `Expand sub-communities for ${community.name}`}
               aria-pressed={isExpanded}
               aria-disabled={expandDisabled}
               disabled={expandDisabled}
             >
-              <i className={`fa-solid ${isExpanded ? 'fa-caret-down' : 'fa-caret-right'}`} />
+              <i className={`fa-solid ${isExpanded ? 'fa-angle-down' : 'fa-angle-right'}`} />
             </button>
           ) : (
-            <span className="w-7" />
+            <span className="w-6" />
           )}
           {isChild && (
-            <div className="w-4 h-4 flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-[#4db6ac]" />
-            </div>
+            <span className="block w-[6px] h-[6px] rounded-full bg-[#4db6ac]" />
           )}
           <div className="flex-1 min-w-0">
             <div className="font-medium text-white truncate">{community.name}</div>
