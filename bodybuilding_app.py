@@ -4428,6 +4428,9 @@ def signup():
                         WHERE id = ?
                     """, (datetime.now().isoformat(), invitation_id))
                     
+                    # Send notifications to community admins/owners
+                    notify_community_new_member(community_id, username, conn)
+                    
                     conn.commit()
                     
                     # Log the user in
@@ -19537,6 +19540,70 @@ def generate_invite_link():
         logger.error(f"Error generating invite link: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+def notify_community_new_member(community_id, new_username, conn):
+    """Send notifications to community admins/owners when a new member joins"""
+    try:
+        c = conn.cursor()
+        
+        # Get community name
+        c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+        comm_row = c.fetchone()
+        if not comm_row:
+            return
+        community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+        
+        # Get all admins and owners of this community
+        c.execute("""
+            SELECT u.id as user_id, u.username
+            FROM user_communities uc
+            JOIN users u ON uc.user_id = u.id
+            WHERE uc.community_id = ?
+            AND uc.role IN ('admin', 'owner')
+            AND u.username != ?
+        """, (community_id, new_username))
+        
+        admins = c.fetchall()
+        
+        # Create notification for each admin/owner
+        for admin in admins:
+            admin_user_id = admin['user_id'] if hasattr(admin, 'keys') else admin[0]
+            
+            try:
+                # Try SQLite syntax first
+                c.execute("""
+                    INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
+                    VALUES (?, ?, 'new_member', ?, ?, ?, 0, ?)
+                """, (
+                    admin_user_id,
+                    new_username,
+                    community_id,
+                    f"{new_username} joined {community_name}",
+                    datetime.now().isoformat(),
+                    f"/community/{community_id}/members"
+                ))
+            except Exception:
+                # Try MySQL syntax
+                try:
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, community_id, message, created_at, is_read, link)
+                        VALUES (%s, %s, 'new_member', %s, %s, NOW(), 0, %s)
+                    """, (
+                        admin_user_id,
+                        new_username,
+                        community_id,
+                        f"{new_username} joined {community_name}",
+                        f"/community/{community_id}/members"
+                    ))
+                except Exception as e:
+                    logger.warning(f"Failed to create notification for admin {admin_user_id}: {e}")
+        
+        conn.commit()
+        logger.info(f"Sent new member notifications to {len(admins)} admins for community {community_id}")
+        
+    except Exception as e:
+        logger.error(f"Error sending new member notifications: {e}", exc_info=True)
+
+
 @app.route('/api/join_with_invite', methods=['POST'])
 @login_required
 def join_with_invite():
@@ -19625,6 +19692,9 @@ def join_with_invite():
                 SET used = 1, used_at = ?
                 WHERE id = ?
             """, (datetime.now().isoformat(), invitation_id))
+            
+            # Send notifications to community admins/owners
+            notify_community_new_member(community_id, username, conn)
             
             conn.commit()
             
