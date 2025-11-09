@@ -1,39 +1,63 @@
--- Fix Mary's Project Management Team ownership
--- She should be admin (not owner) since she lost parent ACME admin rights
+-- Fix Mary's and Paulo's roles for proper hierarchy access
+-- Run this in MySQL console
 
--- Step 1: Check current status
-SELECT 'Before fix:' as status;
-SELECT u.username, c.name as community, uc.role, c.creator_username
-FROM user_communities uc
-JOIN users u ON uc.user_id = u.id
-JOIN communities c ON uc.community_id = c.id
-WHERE u.username = 'mary' 
-AND c.id IN (85, 56)  -- Project Management Team and ACME Corporation
-ORDER BY c.id;
+-- ========================================
+-- STEP 1: Fix NULL roles for creators
+-- ========================================
+SELECT '=== Fixing NULL roles for creators ===' as step;
 
--- Step 2: Demote Mary from owner to admin in Project Management
--- (Since she's not an admin of the parent ACME anymore)
+-- Fix Mary's NULL roles (she owns Project Management and Girly girls)
 UPDATE user_communities
-SET role = 'admin'
+SET role = 'admin'  -- Set to admin, not owner (she lost parent ACME admin)
 WHERE user_id = (SELECT id FROM users WHERE username = 'mary')
 AND community_id = 85  -- Project Management Team
-AND role = 'owner';
+AND role IS NULL;
 
--- Step 3: Verify the fix
-SELECT 'After fix:' as status;
-SELECT u.username, c.name as community, uc.role, c.creator_username
-FROM user_communities uc
-JOIN users u ON uc.user_id = u.id  
-JOIN communities c ON uc.community_id = c.id
-WHERE u.username = 'mary'
-AND c.id IN (85, 56)
-ORDER BY c.id;
+UPDATE user_communities
+SET role = 'owner'
+WHERE user_id = (SELECT id FROM users WHERE username = 'mary')
+AND community_id = 37  -- Girly girls (she can be owner of this one)
+AND role IS NULL;
 
--- Step 4: Also check Paulo's status in ACME (should be admin)
-SELECT 'Paulo status:' as status;
-SELECT u.username, c.name as community, uc.role
+-- Fix Pingo Doce role (if Mary needs access)
+UPDATE user_communities
+SET role = 'member'
+WHERE user_id = (SELECT id FROM users WHERE username = 'mary')
+AND community_id = 89  -- Pingo Doce
+AND role IS NULL;
+
+-- ========================================
+-- STEP 2: Ensure Paulo is admin of ACME
+-- ========================================
+SELECT '=== Checking Paulo ACME admin status ===' as step;
+
+-- Check if Paulo is admin of ACME Corporation
+SELECT u.username, c.name, uc.role
 FROM user_communities uc
 JOIN users u ON uc.user_id = u.id
-JOIN communities c ON uc.community_id = c.id  
-WHERE u.username = 'Paulo'
-AND c.id = 56;  -- ACME Corporation
+JOIN communities c ON uc.community_id = c.id
+WHERE u.username = 'Paulo' AND c.id = 56;
+
+-- If Paulo is not admin, run this:
+-- UPDATE user_communities
+-- SET role = 'admin'
+-- WHERE user_id = (SELECT id FROM users WHERE username = 'Paulo')
+-- AND community_id = 56;
+
+-- ========================================
+-- STEP 3: Verify the fixes
+-- ========================================
+SELECT '=== Verification Results ===' as step;
+
+SELECT 
+    u.username, 
+    c.name as community,
+    c.id,
+    uc.role,
+    c.creator_username,
+    c.parent_community_id
+FROM user_communities uc
+JOIN users u ON uc.user_id = u.id
+JOIN communities c ON uc.community_id = c.id
+WHERE u.username IN ('mary', 'Paulo')
+ORDER BY u.username, c.parent_community_id, c.id;
