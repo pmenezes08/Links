@@ -428,9 +428,14 @@ export default function CommunityFeed() {
           <div className="flex items-center gap-2">
             <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
               onClick={()=> {
-                const pid = (data?.parent_community?.id || data?.community?.parent_community_id || data?.community?.id)
-                if (pid) window.location.href = `/communities?parent_id=${pid}`
-                else window.location.href = '/communities'
+                // For sub-communities, go to parent's management page
+                const parentId = data?.community?.parent_community_id
+                if (parentId) {
+                  window.location.href = `/communities?parent_id=${parentId}`
+                } else {
+                  // For parent communities, go to their management page
+                  window.location.href = `/communities?parent_id=${community_id}`
+                }
               }}
             >
               <i className="fa-solid fa-arrow-left mr-1" /> Back to Communities
