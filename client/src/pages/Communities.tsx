@@ -346,13 +346,31 @@ export default function Communities(){
                         }}
                         className="w-full px-3 py-2 rounded-md bg-black border border-white/15 text-sm"
                       >
-                        <option value={parentIdNum}>{parentName || `Parent Community`} (Parent)</option>
+                        <option value={parentIdNum}>{parentName || `Parent Community`}</option>
                         {(() => {
                           const parent = communities.find(c => c.id === parentIdNum)
-                          const subs = parent?.children || []
-                          return subs.map(sub => (
-                            <option key={sub.id} value={sub.id}>└─ {sub.name} (Sub)</option>
-                          ))
+                          const options: any[] = []
+                          
+                          // Recursively add all sub-communities with indentation
+                          function addChildren(children: Community[], depth: number) {
+                            for (const child of children) {
+                              const indent = '  '.repeat(depth) + '└─ '
+                              options.push(
+                                <option key={child.id} value={child.id}>
+                                  {indent}{child.name}
+                                </option>
+                              )
+                              if (child.children && child.children.length > 0) {
+                                addChildren(child.children, depth + 1)
+                              }
+                            }
+                          }
+                          
+                          if (parent?.children) {
+                            addChildren(parent.children, 1)
+                          }
+                          
+                          return options
                         })()}
                       </select>
                     </div>
