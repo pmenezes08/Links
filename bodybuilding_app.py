@@ -22171,6 +22171,7 @@ def get_user_communities_hierarchical():
             
             # Organize into N-level hierarchy
             all_communities_dict = {}
+            already_added_as_child = set()  # Track which communities are already children to prevent duplicates
             
             # First pass: create all community objects
             for community in communities:
@@ -22184,40 +22185,72 @@ def get_user_communities_hierarchical():
                 }
                 all_communities_dict[community['id']] = community_data
             
-            # Second pass: build hierarchy recursively for ALL communities
-            # First, ensure every community has its children populated
-            for comm_id, comm_data in all_communities_dict.items():
-                for other_id, other_data in all_communities_dict.items():
-                    if other_data['parent_community_id'] == comm_id:
-                        # This other_data is a child of comm_data
-                        comm_data['children'].append(other_data)
+            # Second pass: build hierarchy - only add each community as a child once
+            for comm_id, comm_data in list(all_communities_dict.items()):
+                parent_id = comm_data['parent_community_id']
+                if parent_id and parent_id in all_communities_dict:
+                    # Parent exists in our dict, add this as a child
+                    # Check if this child is not already in the parent's children list (prevent duplicates)
+                    parent_children_ids = [ch['id'] for ch in all_communities_dict[parent_id]['children']]
+                    if comm_id not in parent_children_ids and comm_id not in already_added_as_child:
+                        all_communities_dict[parent_id]['children'].append(comm_data)
+                        already_added_as_child.add(comm_id)
             
-            # Find root communities (their trees are already built above)
+            # Find root communities
             parent_communities = {}
             for comm_id, comm_data in all_communities_dict.items():
                 if not comm_data['parent_community_id']:
                     # This is a root community
                     parent_communities[comm_id] = comm_data
                 elif comm_data['parent_community_id'] not in all_communities_dict:
-                    # Parent not in user's communities, but child is
-                    # Get parent info and add it
+                    # Edge case: User owns a sub-community but doesn't have access to parent
+                    # Get parent info and create a placeholder parent
                     placeholder_parent = '%s' if USE_MYSQL else '?'
                     c.execute(f"SELECT id, name, type, creator_username FROM communities WHERE id = {placeholder_parent}", (comm_data['parent_community_id'],))
                     parent_info = c.fetchone()
-                    if parent_info and parent_info['id'] not in parent_communities:
-                        parent_data = {
-                            'id': parent_info['id'],
-                            'name': parent_info['name'],
-                            'type': parent_info['type'],
-                            'creator_username': parent_info.get('creator_username') if hasattr(parent_info, 'get') else parent_info['creator_username'],
-                            'parent_community_id': None,
-                            'children': [comm_data],
-                            'is_parent_only': True  # User is not directly member of parent
-                        }
-                        parent_communities[parent_info['id']] = parent_data
+                    if parent_info:
+                        parent_id = parent_info['id'] if hasattr(parent_info, 'keys') else parent_info[0]
+                        if parent_id not in parent_communities:
+                            parent_data = {
+                                'id': parent_id,
+                                'name': parent_info['name'] if hasattr(parent_info, 'keys') else parent_info[1],
+                                'type': parent_info['type'] if hasattr(parent_info, 'keys') else parent_info[2],
+                                'creator_username': parent_info.get('creator_username') if hasattr(parent_info, 'get') else (parent_info['creator_username'] if hasattr(parent_info, 'keys') else parent_info[3]),
+                                'parent_community_id': None,
+                                'children': [],
+                                'is_parent_only': True  # User is not directly member of parent
+                            }
+                            # Add this sub-community as a child only if not already added
+                            if comm_id not in already_added_as_child:
+                                parent_data['children'].append(comm_data)
+                                already_added_as_child.add(comm_id)
+                            parent_communities[parent_id] = parent_data
             
-            # Convert to list
+            # Convert to list and validate no circular references
             result = list(parent_communities.values())
+            
+            # Safety check: ensure no community appears multiple times in the tree
+            def validate_no_duplicates(communities, seen_ids=None):
+                if seen_ids is None:
+                    seen_ids = set()
+                for comm in communities:
+                    if comm['id'] in seen_ids:
+                        logger.warning(f"Duplicate community detected in hierarchy: {comm['id']} - {comm['name']}")
+                        return False
+                    seen_ids.add(comm['id'])
+                    if comm.get('children'):
+                        if not validate_no_duplicates(comm['children'], seen_ids):
+                            return False
+                return True
+            
+            if not validate_no_duplicates(result):
+                logger.error(f"Circular reference detected in hierarchy for user {username}")
+                # Fallback: just return flat list without hierarchy
+                return jsonify({
+                    'success': True,
+                    'communities': [{'id': c['id'], 'name': c['name'], 'type': c['type'], 'children': []} 
+                                   for c in all_communities_dict.values()]
+                })
             
             return jsonify({
                 'success': True,
