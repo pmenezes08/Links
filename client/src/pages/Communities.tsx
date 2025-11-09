@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
@@ -17,6 +18,20 @@ type Community = {
   parent_community_id?: number;
   children?: Community[];
   creator_username?: string;
+}
+
+function collectDescendantIds(nodes?: Community[]): number[] {
+  if (!nodes) return []
+  const stack = [...nodes]
+  const ids: number[] = []
+  while (stack.length){
+    const node = stack.pop()!
+    ids.push(node.id)
+    if (node.children && node.children.length > 0){
+      stack.push(...node.children)
+    }
+  }
+  return ids
 }
 
 function normalizeMediaPath(path?: string | null){
@@ -53,6 +68,18 @@ export default function Communities(){
   const [approvalRequired, setApprovalRequired] = useState(false)
   const [selectedSubCommunityId, setSelectedSubCommunityId] = useState<number | 'none'>('none')
   const [isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
+  const [showNested, setShowNested] = useState<boolean>(() => {
+    try{
+      if (typeof window === 'undefined') return true
+      const stored = window.localStorage.getItem('communityManagementShowNested')
+      return stored !== 'hidden'
+    }catch{
+      return true
+    }
+  })
+  const [expandedParentIds, setExpandedParentIds] = useState<Record<number, boolean>>({})
+  const [expandedNestedParentId, setExpandedNestedParentId] = useState<number | null>(null)
+  const [expandedDeepCommunityIds, setExpandedDeepCommunityIds] = useState<Record<number, boolean>>({})
   // Groups modal (list & join)
   const [showGroupsModal, setShowGroupsModal] = useState(false)
   const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
@@ -62,7 +89,37 @@ export default function Communities(){
     const parentTypeLower = ((parent as any)?.community_type || parent?.type || parentType || '').toLowerCase()
     return parentTypeLower === 'gym'
   }, [communities, parentType])
-  
+  const hasNestedCommunities = useMemo(() => {
+    const checkChildren = (list: Community[] | undefined, depth: number): boolean => {
+      if (!list) return false
+      for (const item of list){
+        if (depth >= 1 && item.children && item.children.length > 0) return true
+        if (checkChildren(item.children, depth + 1)) return true
+      }
+      return false
+    }
+    return checkChildren(communities, 0)
+  }, [communities])
+
+  useEffect(() => {
+    try{
+      if (typeof window !== 'undefined'){
+        window.localStorage.setItem('communityManagementShowNested', showNested ? 'visible' : 'hidden')
+      }
+    }catch{}
+  }, [showNested])
+  useEffect(() => {
+    if (!showNested){
+      setExpandedNestedParentId(null)
+      setExpandedDeepCommunityIds({})
+    }
+  }, [showNested])
+  useEffect(() => {
+    if (!expandedNestedParentId) return
+    const exists = communities.some(parent => parent.children?.some(child => child.id === expandedNestedParentId))
+    if (!exists) setExpandedNestedParentId(null)
+  }, [communities, expandedNestedParentId])
+
   // Load current user to drive UI permissions for creating sub-communities and groups
   useEffect(() => {
     let mounted = true
@@ -251,64 +308,128 @@ export default function Communities(){
                    </div>
                  )
                }
-              return (
-                <>
-                  {activeTab === 'training' && showTrainingTab ? (
-                    <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
-                      <button
-                        className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
-                        onClick={()=> {
-                          const pidNext = new URLSearchParams(location.search).get('parent_id')
-                          window.location.href = pidNext ? `/workout_tracking?parent_id=${pidNext}` : '/workout_tracking'
-                        }}
-                      >
-                        Go to Workout Tracking
-                      </button>
-                    </div>
-                  ) : communities.length === 0 ? (
-                    <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
-                  ) : communities.map(c => (
-                    <div key={c.id} className="space-y-2">
-                      <CommunityItem 
-                        community={c} 
-                        isSwipedOpen={swipedCommunity === c.id}
-                        onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
-                        onEnter={() => {
-                          const ua = navigator.userAgent || ''
-                          const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-                          // Parent communities - go to their feed
-                          if (isMobile) {
-                            navigate(`/community_feed_react/${c.id}`)
-                          } else {
-                            window.location.href = `/community_feed/${c.id}`
-                          }
-                        }}
-                        onDeleteOrLeave={async (asDelete:boolean) => {
-                          const fd = new URLSearchParams({ community_id: String(c.id) })
-                          const url = asDelete ? '/delete_community' : '/leave_community'
-                          const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                          const j = await r.json().catch(()=>null)
-                          if (j?.success) window.location.reload()
-                          else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
-                        }}
-                        currentUsername={_data?.username || ''}
-                        onOpenGroups={openGroups}
-                      />
-                      {c.children && c.children.length > 0 && (
-                        <NestedCommunities 
-                          communities={c.children}
-                          level={1}
-                          swipedCommunity={swipedCommunity}
-                          setSwipedCommunity={setSwipedCommunity}
-                          currentUsername={_data?.username || ''}
-                          onOpenGroups={openGroups}
-                          navigate={navigate}
-                        />
-                      )}
-                    </div>
-                  ))}
-                </>
-              )
+                return (
+                  <>
+                    {activeTab === 'training' && showTrainingTab ? (
+                      <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                        <button
+                          className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"
+                          onClick={()=> {
+                            const pidNext = new URLSearchParams(location.search).get('parent_id')
+                            window.location.href = pidNext ? `/workout_tracking?parent_id=${pidNext}` : '/workout_tracking'
+                          }}
+                        >
+                          Go to Workout Tracking
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {activeTab === 'management' && hasNestedCommunities ? (
+                          <div className="flex items-center justify-end gap-3 text-xs text-[#9fb0b5] px-1">
+                            <span>Show nested communities</span>
+                            <button
+                              type="button"
+                              onClick={()=> setShowNested(value => !value)}
+                              aria-pressed={showNested}
+                              aria-label={showNested ? 'Hide nested communities' : 'Show nested communities'}
+                              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4db6ac]/60 ${showNested ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                            >
+                              <span
+                                className={`inline-block h-5 w-5 transform rounded-full bg-black transition duration-200 ease-out ${showNested ? 'translate-x-5' : 'translate-x-1'}`}
+                              />
+                            </button>
+                          </div>
+                        ) : null}
+                        {communities.length === 0 ? (
+                          <div className="text-[#9fb0b5]">You are not a member of any communities.</div>
+                        ) : (
+                          communities.map(c => {
+                            const hasChildren = !!(c.children && c.children.length > 0)
+                            const parentExpanded = hasChildren ? (expandedParentIds[c.id] ?? true) : true
+                            return (
+                              <div key={c.id} className="space-y-2">
+                                <CommunityItem 
+                                  community={c} 
+                                  isSwipedOpen={swipedCommunity === c.id}
+                                  onSwipe={(isOpen) => setSwipedCommunity(isOpen ? c.id : null)}
+                                  onEnter={() => {
+                                    const ua = navigator.userAgent || ''
+                                    const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                                    // Parent communities - go to their feed
+                                    if (isMobile) {
+                                      navigate(`/community_feed_react/${c.id}`)
+                                    } else {
+                                      window.location.href = `/community_feed/${c.id}`
+                                    }
+                                  }}
+                                  onDeleteOrLeave={async (asDelete:boolean) => {
+                                    const fd = new URLSearchParams({ community_id: String(c.id) })
+                                    const url = asDelete ? '/delete_community' : '/leave_community'
+                                    const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                                    const j = await r.json().catch(()=>null)
+                                    if (j?.success) window.location.reload()
+                                    else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
+                                  }}
+                                  currentUsername={_data?.username || ''}
+                                  onOpenGroups={openGroups}
+                                  expandable={hasChildren}
+                                  isExpanded={parentExpanded}
+                                  onToggleExpand={hasChildren ? () => {
+                                    const currentlyExpanded = parentExpanded
+                                    setExpandedParentIds(prev => {
+                                      const next = { ...prev }
+                                      if (currentlyExpanded){
+                                        next[c.id] = false
+                                      } else {
+                                        delete next[c.id]
+                                      }
+                                      return next
+                                    })
+                                    if (currentlyExpanded && c.children){
+                                      const descendants = collectDescendantIds(c.children)
+                                      if (expandedNestedParentId && descendants.includes(expandedNestedParentId)){
+                                        setExpandedNestedParentId(null)
+                                      }
+                                      if (descendants.length){
+                                        setExpandedDeepCommunityIds(prev => {
+                                          let changed = false
+                                          const next = { ...prev }
+                                          for (const id of descendants){
+                                            if (next[id] !== undefined){
+                                              delete next[id]
+                                              changed = true
+                                            }
+                                          }
+                                          return changed ? next : prev
+                                        })
+                                      }
+                                    }
+                                  } : undefined}
+                                />
+                                {hasChildren && parentExpanded && (
+                                  <NestedCommunities 
+                                    communities={c.children ?? []}
+                                    level={1}
+                                    swipedCommunity={swipedCommunity}
+                                    setSwipedCommunity={setSwipedCommunity}
+                                    currentUsername={_data?.username || ''}
+                                    onOpenGroups={openGroups}
+                                    navigate={navigate}
+                                    showNested={showNested}
+                                    expandedNestedParentId={expandedNestedParentId}
+                                    setExpandedNestedParentId={setExpandedNestedParentId}
+                                    expandedDeepCommunityIds={expandedDeepCommunityIds}
+                                    setExpandedDeepCommunityIds={setExpandedDeepCommunityIds}
+                                  />
+                                )}
+                              </div>
+                            )
+                          })
+                        )}
+                      </>
+                    )}
+                  </>
+                )
             })()}
           </div>
         )}
@@ -988,7 +1109,11 @@ function CommunityItem({
   onDeleteOrLeave,
   isChild = false,
   currentUsername,
-  onOpenGroups
+  onOpenGroups,
+  expandable = false,
+  isExpanded = false,
+  onToggleExpand,
+  expandDisabled = false,
 }: { 
   community: Community
   isSwipedOpen: boolean
@@ -998,6 +1123,10 @@ function CommunityItem({
   isChild?: boolean
   currentUsername: string
   onOpenGroups: (communityId:number)=>void
+  expandable?: boolean
+  isExpanded?: boolean
+  onToggleExpand?: () => void
+  expandDisabled?: boolean
 }) {
   const [dragX, setDragX] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -1130,16 +1259,34 @@ function CommunityItem({
         onTouchCancel={handleTouchEnd}
         onClick={handleClick}
       >
-        <div className="flex-1 flex items-center">
-          {isChild && <div className="w-4 h-4 mr-2 flex items-center justify-center">
-            <div className="w-2 h-2 rounded-full bg-[#4db6ac]" />
-          </div>}
-          <div className="flex-1">
-            <div className="font-medium text-white">{community.name}</div>
-            <div className="text-xs text-[#9fb0b5]">{community.type || 'Community'}</div>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          {expandable ? (
+            <button
+              type="button"
+              className={`h-6 w-6 grid place-items-center transition-colors duration-150 ${isExpanded ? 'text-[#4db6ac]' : 'text-[#9fb0b5]'} ${expandDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:text-white'}`}
+              onClick={(e)=> { 
+                e.stopPropagation(); 
+                if (!expandDisabled) onToggleExpand?.() 
+              }}
+              aria-label={isExpanded ? `Collapse sub-communities for ${community.name}` : `Expand sub-communities for ${community.name}`}
+              aria-pressed={isExpanded}
+              aria-disabled={expandDisabled}
+              disabled={expandDisabled}
+            >
+              <i className={`fa-solid ${isExpanded ? 'fa-angle-down' : 'fa-angle-right'}`} />
+            </button>
+          ) : (
+            <span className="w-6" />
+          )}
+          {isChild && (
+            <span className="block w-[6px] h-[6px] rounded-full bg-[#4db6ac]" />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-white truncate">{community.name}</div>
+            <div className="text-xs text-[#9fb0b5] truncate">{community.type || 'Community'}</div>
           </div>
         </div>
-        <div className="text-[#4db6ac]">
+        <div className="text-[#4db6ac] ml-3">
           <i className="fa-solid fa-chevron-right" />
         </div>
       </div>
@@ -1164,7 +1311,12 @@ function NestedCommunities({
   setSwipedCommunity, 
   currentUsername, 
   onOpenGroups,
-  navigate
+  navigate,
+  showNested,
+  expandedNestedParentId,
+  setExpandedNestedParentId,
+  expandedDeepCommunityIds,
+  setExpandedDeepCommunityIds,
 }: { 
   communities: Community[]
   level: number
@@ -1173,50 +1325,120 @@ function NestedCommunities({
   currentUsername: string
   onOpenGroups: (id: number) => void
   navigate: any
+  showNested: boolean
+  expandedNestedParentId: number | null
+  setExpandedNestedParentId: (id: number | null) => void
+  expandedDeepCommunityIds: Record<number, boolean>
+  setExpandedDeepCommunityIds: Dispatch<SetStateAction<Record<number, boolean>>>
 }) {
   return (
     <div className={`ml-${level * 6} space-y-2`} style={{ marginLeft: `${level * 1.5}rem` }}>
-      {communities.map(child => (
-        <div key={child.id} className="space-y-2">
-          <CommunityItem 
-            community={child} 
-            isSwipedOpen={swipedCommunity === child.id}
-            onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
-            onEnter={() => {
-              const ua = navigator.userAgent || ''
-              const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
-              // Sub-communities go to their feed (normal behavior)
-              if (isMobile) {
-                navigate(`/community_feed_react/${child.id}`)
-              } else {
-                window.location.href = `/community_feed/${child.id}`
+      {communities.map(child => {
+        const hasChildren = !!(child.children && child.children.length > 0)
+        const isFirstLevelChild = level === 1
+        const isExpanded = isFirstLevelChild
+          ? expandedNestedParentId === child.id
+          : (expandedDeepCommunityIds[child.id] ?? true)
+        const shouldRenderChildren = (() => {
+          if (!hasChildren) return false
+          if (!showNested && level >= 1) return false
+          if (isFirstLevelChild) return showNested && isExpanded
+          return showNested && isExpanded
+        })()
+        const expandDisabled = level >= 1 && !showNested
+        const onToggleExpand = hasChildren ? () => {
+          if (isFirstLevelChild){
+            const currentlyExpanded = expandedNestedParentId === child.id
+            setExpandedNestedParentId(currentlyExpanded ? null : child.id)
+            if (currentlyExpanded && child.children){
+              const descendants = collectDescendantIds(child.children)
+              if (descendants.length){
+                setExpandedDeepCommunityIds(prev => {
+                  let changed = false
+                  const next = { ...prev }
+                  for (const id of descendants){
+                    if (next[id] !== undefined){
+                      delete next[id]
+                      changed = true
+                    }
+                  }
+                  return changed ? next : prev
+                })
               }
-            }}
-            onDeleteOrLeave={async (asDelete: boolean) => {
-              const fd = new URLSearchParams({ community_id: String(child.id) })
-              const url = asDelete ? '/delete_community' : '/leave_community'
-              const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-              const j = await r.json().catch(()=>null)
-              if (j?.success) window.location.reload()
-              else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
-            }}
-            isChild={true}
-            currentUsername={currentUsername}
-            onOpenGroups={onOpenGroups}
-          />
-          {child.children && child.children.length > 0 && (
-            <NestedCommunities 
-              communities={child.children}
-              level={level + 1}
-              swipedCommunity={swipedCommunity}
-              setSwipedCommunity={setSwipedCommunity}
+            }
+          } else {
+            const current = expandedDeepCommunityIds[child.id] ?? true
+            const nextExpanded = !current
+            setExpandedDeepCommunityIds(prev => {
+              const next = { ...prev }
+              if (nextExpanded){
+                delete next[child.id]
+              } else {
+                next[child.id] = false
+              }
+              if (!nextExpanded && child.children){
+                const descendants = collectDescendantIds(child.children)
+                for (const id of descendants){
+                  if (next[id] !== undefined){
+                    delete next[id]
+                  }
+                }
+              }
+              return next
+            })
+          }
+        } : undefined
+        return (
+          <div key={child.id} className="space-y-2">
+            <CommunityItem 
+              community={child} 
+              isSwipedOpen={swipedCommunity === child.id}
+              onSwipe={(isOpen) => setSwipedCommunity(isOpen ? child.id : null)}
+              onEnter={() => {
+                const ua = navigator.userAgent || ''
+                const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua) || window.innerWidth < 768
+                // Sub-communities go to their feed (normal behavior)
+                if (isMobile) {
+                  navigate(`/community_feed_react/${child.id}`)
+                } else {
+                  window.location.href = `/community_feed/${child.id}`
+                }
+              }}
+              onDeleteOrLeave={async (asDelete: boolean) => {
+                const fd = new URLSearchParams({ community_id: String(child.id) })
+                const url = asDelete ? '/delete_community' : '/leave_community'
+                const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                const j = await r.json().catch(()=>null)
+                if (j?.success) window.location.reload()
+                else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
+              }}
+              isChild={level >= 1}
               currentUsername={currentUsername}
               onOpenGroups={onOpenGroups}
-              navigate={navigate}
+              expandable={hasChildren}
+              isExpanded={hasChildren ? isExpanded : undefined}
+              onToggleExpand={onToggleExpand}
+              expandDisabled={expandDisabled}
             />
-          )}
-        </div>
-      ))}
+            {shouldRenderChildren && (
+              <NestedCommunities 
+                communities={child.children || []}
+                level={level + 1}
+                swipedCommunity={swipedCommunity}
+                setSwipedCommunity={setSwipedCommunity}
+                currentUsername={currentUsername}
+                onOpenGroups={onOpenGroups}
+                navigate={navigate}
+                showNested={showNested}
+                expandedNestedParentId={expandedNestedParentId}
+                setExpandedNestedParentId={setExpandedNestedParentId}
+                expandedDeepCommunityIds={expandedDeepCommunityIds}
+                setExpandedDeepCommunityIds={setExpandedDeepCommunityIds}
+              />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
