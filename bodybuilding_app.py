@@ -526,6 +526,32 @@ def ensure_community_invitations_table(c):
     except Exception as e:
         logger.warning(f"Could not ensure community_invitations table: {e}")
 
+def ensure_post_views_table(c):
+    """Ensure the post_views table exists for tracking unique post views."""
+    try:
+        if USE_MYSQL:
+            c.execute('''CREATE TABLE IF NOT EXISTS post_views (
+                          id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          post_id INTEGER NOT NULL,
+                          username VARCHAR(191) NOT NULL,
+                          viewed_at DATETIME NOT NULL,
+                          UNIQUE(post_id, username),
+                          FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                        )''')
+        else:
+            c.execute('''CREATE TABLE IF NOT EXISTS post_views (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          post_id INTEGER NOT NULL,
+                          username VARCHAR(191) NOT NULL,
+                          viewed_at TEXT NOT NULL,
+                          UNIQUE(post_id, username),
+                          FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                        )''')
+    except Exception as e:
+        logger.warning(f"Could not ensure post_views table: {e}")
+
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
 CANONICAL_SCHEME = os.getenv('CANONICAL_SCHEME', 'https')
@@ -1187,6 +1213,13 @@ def add_missing_tables():
                 conn.commit()
             except Exception as e:
                 logger.warning(f"Could not ensure community_invitations table: {e}")
+
+            # Ensure post_views table exists for tracking unique views
+            try:
+                ensure_post_views_table(c)
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure post_views table: {e}")
 
             # Idempotency tokens for post creation (prevent duplicate posts)
             try:
@@ -20800,6 +20833,10 @@ def api_post_view():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            try:
+                ensure_post_views_table(c)
+            except Exception as ensure_err:
+                logger.warning(f"Failed to ensure post_views table before insert: {ensure_err}")
             c.execute("SELECT community_id, username FROM posts WHERE id = ?", (post_id,))
             row = c.fetchone()
             if not row:
