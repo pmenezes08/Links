@@ -48,6 +48,7 @@ export default function Members(){
   const [inviteParentOptions, setInviteParentOptions] = useState<SimpleCommunityOption[]>([])
   const [inviteSelectedNestedIds, setInviteSelectedNestedIds] = useState<number[]>([])
   const [inviteSelectedParentIds, setInviteSelectedParentIds] = useState<number[]>([])
+  const [inviteNestedDropdownOpen, setInviteNestedDropdownOpen] = useState(false)
   const [communityTree, setCommunityTree] = useState<CommunityNode[]>([])
 
   useEffect(() => {
@@ -206,13 +207,16 @@ export default function Members(){
   )
 
   useEffect(() => {
-    if (inviteNestedOptions.length === 0) {
-      setInviteSelectedNestedIds([])
+    if (inviteNestedOptions.length === 0 && inviteScope === 'selected-nested') {
       setInviteScope('parent-only')
-    } else {
-      setInviteSelectedNestedIds(inviteNestedOptions.map(option => option.id))
     }
-  }, [inviteNestedOptions])
+  }, [inviteNestedOptions, inviteScope])
+
+  useEffect(() => {
+    if (inviteScope !== 'selected-nested') {
+      setInviteNestedDropdownOpen(false)
+    }
+  }, [inviteScope])
 
   const resetInviteSelections = () => {
     setInviteCommunityId(numericCommunityId)
@@ -226,6 +230,7 @@ export default function Members(){
     setInviteSelectedParentIds([])
     setShowQRCode(false)
     setQRCodeUrl('')
+    setInviteNestedDropdownOpen(false)
   }
 
   const handleCloseInviteModal = () => {
@@ -267,6 +272,8 @@ export default function Members(){
 
     const nestedOptions = getNestedOptions(numericCommunityId)
     setInviteNestedOptions(nestedOptions)
+    setInviteSelectedNestedIds([])
+    setInviteNestedDropdownOpen(false)
 
     const parentChain = getParentChain(numericCommunityId)
     const parentOptions = parentChain.map<SimpleCommunityOption>((parent) => ({
@@ -547,38 +554,54 @@ export default function Members(){
                   </div>
 
                   {inviteScope === 'selected-nested' && (
-                    <div className="space-y-1 pt-2">
-                      {inviteNestedOptions.map(option => {
-                        const selected = inviteSelectedNestedIds.includes(option.id)
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() =>
-                              setInviteSelectedNestedIds(prev =>
-                                prev.includes(option.id)
-                                  ? prev.filter(id => id !== option.id)
-                                  : [...prev, option.id]
-                              )
-                            }
-                            className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
-                              selected
-                                ? 'border-[#4db6ac]/60 bg-[#4db6ac]/15 text-white shadow-lg shadow-[#4db6ac]/10'
-                                : 'border-white/10 bg-black/30 text-white/70 hover:border-white/20 hover:bg-black/40'
-                            }`}
-                            style={{ paddingLeft: `${(option.depth + 1) * 16}px` }}
-                          >
-                            <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/20 bg-black/40 text-[10px] text-white/70">
-                              {selected ? (
-                                <i className="fa-solid fa-check text-[#4db6ac]" />
-                              ) : (
-                                <span className="h-1 w-1 rounded-full bg-white/30" />
-                              )}
-                            </span>
-                            <span className="ml-2">{option.name}</span>
-                          </button>
-                        )
-                      })}
+                    <div className="space-y-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setInviteNestedDropdownOpen(prev => !prev)}
+                        className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/80 hover:border-white/20 hover:bg-black/40"
+                      >
+                        <span>
+                          {inviteSelectedNestedIds.length === 0
+                            ? 'No nested communities selected'
+                            : `${inviteSelectedNestedIds.length} nested ${inviteSelectedNestedIds.length === 1 ? 'community' : 'communities'} selected`}
+                        </span>
+                        <i className={`fa-solid fa-chevron-${inviteNestedDropdownOpen ? 'up' : 'down'} text-xs text-white/60`} />
+                      </button>
+                      {inviteNestedDropdownOpen && (
+                        <div className="max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-black/40 p-2 space-y-1">
+                          {inviteNestedOptions.map(option => {
+                            const selected = inviteSelectedNestedIds.includes(option.id)
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() =>
+                                  setInviteSelectedNestedIds(prev =>
+                                    prev.includes(option.id)
+                                      ? prev.filter(id => id !== option.id)
+                                      : [...prev, option.id]
+                                  )
+                                }
+                                className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
+                                  selected
+                                    ? 'border-[#4db6ac]/60 bg-[#4db6ac]/15 text-white shadow-lg shadow-[#4db6ac]/10'
+                                    : 'border-white/10 bg-black/30 text-white/70 hover:border-white/20 hover:bg-black/40'
+                                }`}
+                                style={{ paddingLeft: `${(option.depth + 1) * 16}px` }}
+                              >
+                                <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/20 bg-black/40 text-[10px] text-white/70">
+                                  {selected ? (
+                                    <i className="fa-solid fa-check text-[#4db6ac]" />
+                                  ) : (
+                                    <span className="h-1 w-1 rounded-full bg-white/30" />
+                                  )}
+                                </span>
+                                <span className="ml-2">{option.name}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
                       {inviteSelectedNestedIds.length === 0 && (
                         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                           Select at least one nested community or change the invite scope.
