@@ -77,7 +77,7 @@ export default function KeyPosts(){
               {communityPosts.map(p => (
                 <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> navigate(`/post/${p.id}`)}>
                   <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-                    <Avatar username={p.username} url={p.profile_picture || undefined} size={28} />
+                    <Avatar username={p.username} url={p.profile_picture || undefined} size={28} linkToProfile />
                     <div className="font-medium">{p.username}</div>
                     <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((p as any).display_timestamp || p.timestamp)}</div>
                     <i className="fa-solid fa-star" style={{ color:'#ffd54f' }} />
@@ -110,7 +110,7 @@ export default function KeyPosts(){
               {yourPosts.map(p => (
                 <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={()=> navigate(`/post/${p.id}`)}>
                   <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-                    <Avatar username={p.username} url={p.profile_picture || undefined} size={28} />
+                    <Avatar username={p.username} url={p.profile_picture || undefined} size={28} linkToProfile />
                     <div className="font-medium">{p.username}</div>
                     <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((p as any).display_timestamp || p.timestamp)}</div>
                     <i className="fa-solid fa-star" style={{ color:'#4db6ac' }} />

@@ -1115,11 +1115,12 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           >
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
-          <Avatar 
-            username={username || ''} 
-            url={otherProfile?.profile_picture || undefined} 
-            size={36} 
-          />
+            <Avatar 
+              username={username || ''} 
+              url={otherProfile?.profile_picture || undefined} 
+              size={36}
+              linkToProfile
+            />
           <div className="flex-1 min-w-0">
             <div className="font-semibold truncate text-white text-sm">
               {otherProfile?.display_name || username || 'Chat'}

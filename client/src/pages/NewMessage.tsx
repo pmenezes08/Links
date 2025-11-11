@@ -59,7 +59,7 @@ export default function NewMessage(){
                   <div className="px-3 py-2 space-y-1">
                     {(membersByCommunity[c.id]||[]).map((m, idx) => (
                       <a key={idx} className="block px-3 py-2 rounded-md hover:bg-white/5 flex items-center gap-2" href={`/user_chat/chat/${encodeURIComponent(m.username)}`}>
-                        <Avatar username={m.username} url={resolveAvatar(m.profile_picture)} size={32} />
+                        <Avatar username={m.username} url={resolveAvatar(m.profile_picture)} size={32} linkToProfile />
                         <span className="truncate">{m.username}</span>
                       </a>
                     ))}

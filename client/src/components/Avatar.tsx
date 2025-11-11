@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 type AvatarProps = {
   username: string
   url?: string | null
   size?: number
   className?: string
+  linkToProfile?: boolean
+  onClick?: (event: MouseEvent<HTMLDivElement>) => void
 }
 
 function ImageWithLoader({ src, alt, style, fallbacks = [] as string[] }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[] }) {
@@ -54,7 +57,8 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[] }: { src:
   )
 }
 
-export default function Avatar({ username, url, size = 40, className = '' }: AvatarProps){
+export default function Avatar({ username, url, size = 40, className = '', linkToProfile = false, onClick }: AvatarProps){
+  const navigate = useNavigate()
   const resolved = (() => {
     const p = (url || '').trim()
     if (!p) return null
@@ -65,9 +69,31 @@ export default function Avatar({ username, url, size = 40, className = '' }: Ava
     return `/uploads/${p}`
   })()
   const initials = (username || '?').slice(0, 1).toUpperCase()
+  const interactive = linkToProfile || typeof onClick === 'function'
+
+  function handleActivate(event: MouseEvent<HTMLDivElement> | KeyboardEvent<HTMLDivElement>){
+    if (linkToProfile) event.stopPropagation()
+    if (onClick) onClick(event as any)
+    if (!event.defaultPrevented && linkToProfile && username){
+      navigate(`/profile/${encodeURIComponent(username)}`)
+    }
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>){
+    if (!interactive) return
+    if (event.key === 'Enter' || event.key === ' '){
+      event.preventDefault()
+      handleActivate(event)
+    }
+  }
+
   return (
     <div
-      className={`rounded-full overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center ${className}`}
+      onClick={interactive ? handleActivate : undefined}
+      onKeyDown={interactive ? handleKeyDown : undefined}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      className={`rounded-full overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center ${interactive ? 'cursor-pointer transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4db6ac]/70' : ''} ${className}`}
       style={{ width: size, height: size }}
       aria-label={`Avatar for ${username}`}
     >

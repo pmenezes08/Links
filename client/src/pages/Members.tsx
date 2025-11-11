@@ -476,7 +476,7 @@ export default function Members(){
               <button key={i} className="flex items-center gap-3 p-2 rounded-xl bg-white/[0.03] w-full text-left hover:bg-white/[0.06]"
                 onClick={()=> { window.location.href = `/profile/${encodeURIComponent(m.username)}` }}
                 aria-label={`View @${m.username} profile`}>
-                <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
+                  <Avatar username={m.username} url={m.profile_picture || undefined} size={36} linkToProfile />
                 <div className="flex-1">
                   <div className="font-medium">{m.username}</div>
                   <div className="mt-1">

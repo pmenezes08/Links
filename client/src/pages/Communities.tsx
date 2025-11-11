@@ -862,8 +862,8 @@ function ParentTimeline({ parentId }:{ parentId:number }){
             <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer"
               onClick={() => { if (!p.poll) navigate(`/post/${p.id}`) }}
             >
-              <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
-                <Avatar username={p.username || ''} url={p.profile_picture || undefined} size={28} />
+                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
+                  <Avatar username={p.username || ''} url={p.profile_picture || undefined} size={28} linkToProfile />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2 min-w-0">
                     <div className="font-medium truncate">{p.username}</div>
