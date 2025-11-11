@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAudioRecorder } from '../components/useAudioRecorder'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import MessageImage from '../components/MessageImage'
@@ -1174,21 +1174,14 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
               onClick={(event)=> event.stopPropagation()}
             >
               <div className="rounded-xl border border-white/10 bg-[#111111] shadow-lg shadow-black/40 py-1">
-                <button
-                  type="button"
+                <Link
+                  to={profilePath || '/profile'}
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
-                  onClick={() => {
-                    setHeaderMenuOpen(false)
-                    if (profilePath) {
-                      navigate(profilePath)
-                    } else {
-                      navigate('/profile')
-                    }
-                  }}
+                  onClick={() => setHeaderMenuOpen(false)}
                 >
                   <i className="fa-solid fa-user text-xs text-[#4db6ac]" />
                   <span>View Profile</span>
-                </button>
+                </Link>
               </div>
             </div>
           )}
