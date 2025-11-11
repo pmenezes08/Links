@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -49,49 +49,93 @@ interface Community {
 type SimpleCommunityOption = { id: number; name: string }
 type NestedCommunityOption = { id: number; name: string; depth: number }
 
-function findCommunityWithParents(
-  nodes: Community[],
-  targetId: number,
-  ancestors: Community[] = []
-): { node: Community; parents: Community[] } | null {
-  for (const node of nodes) {
-    if (node.id === targetId) {
-      return { node, parents: ancestors }
-    }
-    if (node.children && node.children.length > 0) {
-      const result = findCommunityWithParents(node.children, targetId, [...ancestors, node])
-      if (result) return result
-    }
-  }
-  return null
-}
-
-function collectNestedCommunityOptions(community: Community, depth = 0): NestedCommunityOption[] {
-  if (!community.children || community.children.length === 0) return []
-  const options: NestedCommunityOption[] = []
-  for (const child of community.children) {
-    options.push({ id: child.id, name: child.name, depth })
-    options.push(...collectNestedCommunityOptions(child, depth + 1))
-  }
-  return options
-}
-
 export default function AdminDashboard() {
   const { setTitle } = useHeader()
   const navigate = useNavigate()
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [communities, setCommunities] = useState<Community[]>([])
-  const flatCommunities: Community[] = (() => {
+  const flatCommunities: Community[] = useMemo(() => {
     const flat: Community[] = []
-    for (const parent of communities) {
-      flat.push(parent)
-      if (parent.children && parent.children.length) {
-        for (const child of parent.children) flat.push(child)
+    const visited = new Set<number>()
+
+    const traverse = (community: Community) => {
+      if (visited.has(community.id)) return
+      visited.add(community.id)
+      flat.push(community)
+      if (community.children && community.children.length > 0) {
+        for (const child of community.children) traverse(child)
       }
     }
+
+    for (const entry of communities) {
+      traverse(entry)
+    }
     return flat
-  })()
+  }, [communities])
+  const flatCommunityMap = useMemo(() => {
+    const map = new Map<number, Community>()
+    for (const community of flatCommunities) {
+      map.set(community.id, community)
+    }
+    return map
+  }, [flatCommunities])
+
+  const communityChildrenMap = useMemo(() => {
+    const map = new Map<number, Community[]>()
+    for (const community of flatCommunities) {
+      const parentId = community.parent_community_id
+      if (parentId === null || parentId === undefined) continue
+      const siblings = map.get(parentId) || []
+      siblings.push(community)
+      map.set(parentId, siblings)
+    }
+    return map
+  }, [flatCommunities])
+
+  const getParentChain = useCallback(
+    (communityId: number) => {
+      const chain: Community[] = []
+      const visited = new Set<number>()
+      let current = flatCommunityMap.get(communityId)
+
+      while (current) {
+        const parentId = current.parent_community_id
+        if (parentId === null || parentId === undefined) break
+        if (visited.has(parentId)) break
+        visited.add(parentId)
+        const parent = flatCommunityMap.get(parentId)
+        if (!parent) break
+        chain.push(parent)
+        current = parent
+      }
+
+      return chain
+    },
+    [flatCommunityMap]
+  )
+
+  const getNestedOptions = useCallback(
+    (communityId: number) => {
+      const options: NestedCommunityOption[] = []
+      const visited = new Set<number>()
+
+      const traverse = (currentId: number, depth: number) => {
+        const children = communityChildrenMap.get(currentId) || []
+        for (const child of children) {
+          if (visited.has(child.id)) continue
+          visited.add(child.id)
+          options.push({ id: child.id, name: child.name, depth })
+          traverse(child.id, depth + 1)
+        }
+      }
+
+      traverse(communityId, 0)
+      return options
+    },
+    [communityChildrenMap]
+  )
+
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics'>('overview')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -350,23 +394,16 @@ export default function AdminDashboard() {
     setInviteScope('parent-only')
     setShowQRCode(false)
 
-    const info = findCommunityWithParents(communities, communityId)
-    if (info) {
-      const nestedOptions = collectNestedCommunityOptions(info.node)
-      setInviteNestedOptions(nestedOptions)
+    const nestedOptions = getNestedOptions(communityId)
+    setInviteNestedOptions(nestedOptions)
 
-      const parentOptions = info.parents
-        .slice()
-        .reverse()
-        .map<SimpleCommunityOption>((parent) => ({ id: parent.id, name: parent.name }))
-
-      setInviteParentOptions(parentOptions)
-      setInviteSelectedParentIds(parentOptions.map((option) => option.id))
-    } else {
-      setInviteNestedOptions([])
-      setInviteParentOptions([])
-      setInviteSelectedParentIds([])
-    }
+    const parentChain = getParentChain(communityId)
+    const parentOptions = parentChain.map<SimpleCommunityOption>((parent) => ({
+      id: parent.id,
+      name: parent.name
+    }))
+    setInviteParentOptions(parentOptions)
+    setInviteSelectedParentIds(parentOptions.map((option) => option.id))
 
     setShowInviteModal(true)
   }
