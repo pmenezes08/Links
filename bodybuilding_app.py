@@ -1869,14 +1869,40 @@ def init_db():
                 score_numeric REAL,
                 created_at TEXT NOT NULL
             )''')
-            c.execute('''CREATE TABLE IF NOT EXISTS posts
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username VARCHAR(191) NOT NULL,
-                          content TEXT NOT NULL,
-                          image_path TEXT,
-                          timestamp TEXT NOT NULL,
-                          community_id INTEGER,
-                          FOREIGN KEY (username) REFERENCES users(username))''')
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS posts
+                               (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                username VARCHAR(191) NOT NULL,
+                                content TEXT NOT NULL,
+                                image_path TEXT,
+                                timestamp TEXT NOT NULL,
+                                community_id INTEGER,
+                                FOREIGN KEY (username) REFERENCES users(username))''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS post_views
+                               (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                post_id INTEGER NOT NULL,
+                                username VARCHAR(191) NOT NULL,
+                                viewed_at DATETIME NOT NULL,
+                                UNIQUE(post_id, username),
+                                FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                                FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE)''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS posts
+                               (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                username VARCHAR(191) NOT NULL,
+                                content TEXT NOT NULL,
+                                image_path TEXT,
+                                timestamp TEXT NOT NULL,
+                                community_id INTEGER,
+                                FOREIGN KEY (username) REFERENCES users(username))''')
+                    c.execute('''CREATE TABLE IF NOT EXISTS post_views
+                               (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                post_id INTEGER NOT NULL,
+                                username VARCHAR(191) NOT NULL,
+                                viewed_at TEXT NOT NULL,
+                                UNIQUE(post_id, username),
+                                FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                                FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE)''')
 
             # Create replies table
             logger.info("Creating replies table...")
@@ -6917,6 +6943,7 @@ def admin_delete_community():
             
             # Delete community and related data
             c.execute("DELETE FROM user_communities WHERE community_id = ?", (community_id,))
+            c.execute("DELETE FROM post_views WHERE post_id IN (SELECT id FROM posts WHERE community_id = ?)", (community_id,))
             c.execute("DELETE FROM posts WHERE community_id = ?", (community_id,))
             c.execute("DELETE FROM communities WHERE id = ?", (community_id,))
             
@@ -7156,6 +7183,7 @@ def admin():
                     
                     try:
                         # Delete all posts in this community
+                        c.execute("DELETE FROM post_views WHERE post_id IN (SELECT id FROM posts WHERE community_id=?)", (community_id,))
                         c.execute("DELETE FROM posts WHERE community_id=?", (community_id,))
                         
                         # Delete all user_community entries for this community
@@ -17847,6 +17875,7 @@ def delete_post():
                     logger.warning(f"Could not delete video file {video_path_val}: {e}")
             
             c.execute("DELETE FROM replies WHERE post_id= ?", (post_id,))
+            c.execute("DELETE FROM post_views WHERE post_id = ?", (post_id,))
             c.execute("DELETE FROM posts WHERE id= ?", (post_id,))
             conn.commit()
         logger.info(f"Post {post_id} deleted successfully by {username}")
@@ -19045,6 +19074,7 @@ def delete_community():
                 return jsonify({'success': False, 'error': 'Only the community creator can delete the community'}), 403
             
             # Delete all posts in the community
+            c.execute(f"DELETE FROM post_views WHERE post_id IN (SELECT id FROM posts WHERE community_id = {get_sql_placeholder()} )", (community_id,))
             c.execute(f"DELETE FROM posts WHERE community_id = {get_sql_placeholder()} ", (community_id,))
             
             # Delete all user_communities entries for this community
@@ -20571,8 +20601,31 @@ def api_community_feed(community_id):
                 """,
                 (community_id,)
             )
-            posts_raw = c.fetchall()
-            posts = [dict(row) for row in posts_raw]
+              posts_raw = c.fetchall()
+              posts = [dict(row) for row in posts_raw]
+              post_ids = [post['id'] for post in posts]
+              view_counts: Dict[int, int] = {}
+              user_viewed: Set[int] = set()
+              if post_ids:
+                  placeholders = ','.join([get_sql_placeholder()] * len(post_ids))
+                  try:
+                      c.execute(f"SELECT post_id, COUNT(*) as cnt FROM post_views WHERE post_id IN ({placeholders}) GROUP BY post_id", tuple(post_ids))
+                      for row in c.fetchall() or []:
+                          pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                          cnt = row['cnt'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else 0)
+                          view_counts[int(pid)] = int(cnt or 0)
+                  except Exception as e:
+                      logger.warning(f"Failed to fetch post view counts: {e}")
+                  try:
+                      placeholders_user = ','.join([get_sql_placeholder()] * len(post_ids))
+                      params = list(post_ids)
+                      params.append(username)
+                      c.execute(f"SELECT post_id FROM post_views WHERE post_id IN ({placeholders_user}) AND username = {get_sql_placeholder()}", tuple(params))
+                      for row in c.fetchall() or []:
+                          pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                          user_viewed.add(int(pid))
+                  except Exception as e:
+                      logger.warning(f"Failed to fetch user viewed posts: {e}")
 
             # Enrich posts
             for post in posts:
@@ -20634,6 +20687,9 @@ def api_community_feed(community_id):
                     post['is_community_starred'] = True if c.fetchone() else False
                 except Exception:
                     post['is_community_starred'] = False
+
+                post['view_count'] = int(view_counts.get(post_id, 0))
+                post['has_viewed'] = post_id in user_viewed
 
                 # Active poll on this post (if any)
                 c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post_id,))
@@ -20723,6 +20779,59 @@ def api_community_feed(community_id):
             })
     except Exception as e:
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/post_view', methods=['POST'])
+@login_required
+def api_post_view():
+    username = session.get('username')
+    try:
+        payload = request.get_json(silent=True) or {}
+    except Exception:
+        payload = {}
+    post_id = payload.get('post_id')
+    if not post_id:
+        post_id = request.form.get('post_id', type=int)
+    try:
+        post_id = int(post_id)
+    except Exception:
+        return jsonify({'success': False, 'error': 'post_id required'}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT community_id, username FROM posts WHERE id = ?", (post_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
+            post_owner = row['username'] if hasattr(row, 'keys') else row[1]
+            if community_id:
+                if username not in ('admin', post_owner):
+                    placeholder = get_sql_placeholder()
+                    c.execute(f"""
+                        SELECT 1 FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE u.username = {placeholder} AND uc.community_id = {placeholder}
+                        LIMIT 1
+                    """, (username, community_id))
+                    if not c.fetchone():
+                        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            try:
+                if USE_MYSQL:
+                    c.execute("INSERT IGNORE INTO post_views (post_id, username, viewed_at) VALUES (%s,%s,%s)", (post_id, username, now))
+                else:
+                    c.execute("INSERT OR IGNORE INTO post_views (post_id, username, viewed_at) VALUES (?,?,?)", (post_id, username, now))
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Failed to record post view for {post_id}: {e}")
+            c.execute("SELECT COUNT(*) as cnt FROM post_views WHERE post_id = ?", (post_id,))
+            row = c.fetchone()
+            count = row['cnt'] if hasattr(row, 'keys') else (row[0] if row else 0)
+            return jsonify({'success': True, 'view_count': int(count or 0), 'post_id': post_id})
+    except Exception as e:
+        logger.error(f"Error saving post view for {post_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/api/community_member_suggest')

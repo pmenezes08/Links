@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
@@ -19,7 +19,7 @@ import { useImagineJobs, type ImagineJobState } from '../hooks/useImagineJobs'
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean }
+type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean }
 
 function normalizeMediaPath(p?: string | null){
   if (!p) return ''
@@ -854,7 +854,55 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [gifPickerTarget, setGifPickerTarget] = useState<'main' | number | null>(null)
   const [carouselItems, setCarouselItems] = useState<Array<{type: 'original' | 'ai_video', image_path?: string | null, image_url?: string | null, video_path?: string | null, video_url?: string | null, created_by?: string | null, style?: string | null}>>([])
   const [carouselLoading, setCarouselLoading] = useState(false)
+  const [viewCount, setViewCount] = useState<number>(() => Number(post.view_count ?? 0))
+  const hasRecordedViewRef = useRef<boolean>(Boolean(post.has_viewed))
   const imagine = useImagineJobs()
+
+  useEffect(() => {
+    setViewCount(Number(post.view_count ?? 0))
+    hasRecordedViewRef.current = Boolean(post.has_viewed)
+  }, [post.id, post.view_count, post.has_viewed])
+
+  const recordView = useCallback(async () => {
+    try {
+      const res = await fetch('/api/post_view', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: post.id })
+      })
+      const j = await res.json().catch(() => null)
+      if (j?.success && typeof j.view_count === 'number') {
+        const next = Number(j.view_count) || 0
+        setViewCount(next)
+        ;(post as any).view_count = next
+        ;(post as any).has_viewed = true
+      }
+    } catch (err) {
+      console.error('Failed to record post view', err)
+      hasRecordedViewRef.current = false
+    }
+  }, [post.id])
+
+  useEffect(() => {
+    const el = cardRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+            if (!hasRecordedViewRef.current) {
+              hasRecordedViewRef.current = true
+              recordView()
+            }
+          }
+        }
+      },
+      { threshold: [0.25, 0.6, 0.9] }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [recordView])
 
   // Detect links when editing
   useEffect(() => {
@@ -1029,31 +1077,41 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     <div id={`post-${post.id}`} ref={cardRef} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
       {!post.poll && (
         <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-            <Avatar username={post.username} url={post.profile_picture || undefined} size={32} linkToProfile />
+          <Avatar username={post.username} url={post.profile_picture || undefined} size={32} linkToProfile />
           <div className="font-medium tracking-[-0.01em]">{post.username}</div>
-          <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
-          {/* Personal star (turquoise when selected) */}
-          <button className="ml-2 px-2 py-1 rounded-full" title={post.is_starred ? 'Unstar (yours)' : 'Star (yours)'} onClick={toggleStar} aria-label="Star post (yours)">
-            <i className={`${post.is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_starred ? '#4db6ac' : '#6c757d' }} />
-          </button>
-          {/* Community star (yellow) for owner/admins */}
-          {(isAdmin || currentUser === 'admin') && (
-            <button className="ml-1 px-2 py-1 rounded-full" title={post.is_community_starred ? 'Unfeature (community)' : 'Feature (community)'} onClick={toggleCommunityStar} aria-label="Star post (community)">
-              <i className={`${post.is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_community_starred ? '#ffd54f' : '#6c757d' }} />
-            </button>
-          )}
-          {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
-            <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
-              onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>
-              <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
-            </button>
-          )}
-          {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
-            <button className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Edit"
-              onClick={(e)=> { e.stopPropagation(); setIsEditing(true) }}>
-              <i className="fa-regular fa-pen-to-square" />
-            </button>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            <div className="flex items-center gap-3 text-xs text-[#9fb0b5]">
+              <div className="tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
+              <div className="flex items-center gap-1 text-[11px]" title="Unique viewers">
+                <i className="fa-regular fa-eye" />
+                <span className="tabular-nums">{viewCount}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Personal star (turquoise when selected) */}
+              <button className="px-2 py-1 rounded-full" title={post.is_starred ? 'Unstar (yours)' : 'Star (yours)'} onClick={toggleStar} aria-label="Star post (yours)">
+                <i className={`${post.is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_starred ? '#4db6ac' : '#6c757d' }} />
+              </button>
+              {/* Community star (yellow) for owner/admins */}
+              {(isAdmin || currentUser === 'admin') && (
+                <button className="px-2 py-1 rounded-full" title={post.is_community_starred ? 'Unfeature (community)' : 'Feature (community)'} onClick={toggleCommunityStar} aria-label="Star post (community)">
+                  <i className={`${post.is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: post.is_community_starred ? '#ffd54f' : '#6c757d' }} />
+                </button>
+              )}
+              {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
+                <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
+                  onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>
+                  <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
+                </button>
+              )}
+              {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
+                <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Edit"
+                  onClick={(e)=> { e.stopPropagation(); setIsEditing(true) }}>
+                  <i className="fa-regular fa-pen-to-square" />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
       <div className="py-2 space-y-2">
@@ -1180,17 +1238,21 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   <span className="ml-2 text-[11px] text-[#9fb0b5]">? closes {(() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(post.poll.expires_at) })()}</span>
                 ) : null}
               </div>
+              <div className="flex items-center gap-1 text-[11px] text-[#9fb0b5]" title="Unique viewers">
+                <i className="fa-regular fa-eye" />
+                <span className="tabular-nums">{viewCount}</span>
+              </div>
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
                 <>
                   <button 
-                    className="ml-auto px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
+                    className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
                     title="Edit poll"
                     onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (navigate && communityId) navigate(`/community/${communityId}/polls_react?edit=${post.poll?.id}`) }}
                   >
                     <i className="fa-regular fa-pen-to-square" />
                   </button>
                   <button 
-                    className="ml-1 px-2 py-1 rounded-full text-red-400 hover:text-red-300" 
+                    className="px-2 py-1 rounded-full text-red-400 hover:text-red-300" 
                     title="Delete poll"
                     onClick={async (e)=> { 
                       e.preventDefault()
