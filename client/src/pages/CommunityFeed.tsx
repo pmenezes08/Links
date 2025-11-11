@@ -905,7 +905,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.35) {
             if (!hasRecordedViewRef.current) {
               hasRecordedViewRef.current = true
               recordView()
@@ -913,7 +913,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           }
         }
       },
-      { threshold: [0.25, 0.6, 0.9] }
+      { threshold: [0.1, 0.35, 0.6, 0.9] }
     )
     observer.observe(el)
     return () => observer.disconnect()
