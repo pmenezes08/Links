@@ -159,6 +159,11 @@ export default function AdminDashboard() {
   const [inviteSelectedNestedIds, setInviteSelectedNestedIds] = useState<number[]>([])
   const [inviteSelectedParentIds, setInviteSelectedParentIds] = useState<number[]>([])
   const [inviteNestedDropdownOpen, setInviteNestedDropdownOpen] = useState(false)
+  const [welcomeCards, setWelcomeCards] = useState<string[]>(['', '', ''])
+  const [welcomeStatus, setWelcomeStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const [welcomeUploadingIndex, setWelcomeUploadingIndex] = useState<number | null>(null)
+  const [welcomeError, setWelcomeError] = useState<string>('')
+  const [welcomeMessage, setWelcomeMessage] = useState<string>('')
 
   // New user form
   const [newUser, setNewUser] = useState({
@@ -166,13 +171,6 @@ export default function AdminDashboard() {
     password: '',
     subscription: 'free'
   })
-
-  useEffect(() => {
-    setTitle('Admin Dashboard')
-    checkAdminAccess()
-    loadAdminData()
-    loadCurrentLogo()
-  }, [setTitle])
 
   useEffect(() => {
     if (inviteNestedOptions.length === 0 && inviteScope === 'selected-nested') {
@@ -235,6 +233,65 @@ export default function AdminDashboard() {
       setLogoStatus('error')
     }
   }
+
+  const loadWelcomeCards = useCallback(async () => {
+    setWelcomeStatus('loading')
+    try {
+      const response = await fetch('/welcome_cards', { credentials: 'include' })
+      const data = await response.json()
+      if (data?.success && Array.isArray(data.cards)) {
+        setWelcomeCards(data.cards)
+        setWelcomeStatus('success')
+        setWelcomeError('')
+      } else {
+        setWelcomeCards(['', '', ''])
+        setWelcomeStatus('error')
+        setWelcomeError(data?.error || 'Failed to load welcome images')
+      }
+    } catch (error) {
+      console.error('Error loading welcome cards:', error)
+      setWelcomeCards(['', '', ''])
+      setWelcomeStatus('error')
+      setWelcomeError('Failed to load welcome images')
+    }
+  }, [])
+
+  const handleWelcomeCardUpload = async (cardIndex: number, file: File) => {
+    setWelcomeUploadingIndex(cardIndex)
+    setWelcomeError('')
+    setWelcomeMessage('')
+    const formData = new FormData()
+    formData.append('index', String(cardIndex + 1))
+    formData.append('image', file)
+    try {
+      const response = await fetch('/admin/upload_welcome_card', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setWelcomeMessage(`Card ${cardIndex + 1} updated successfully`)
+        loadWelcomeCards()
+        window.setTimeout(() => setWelcomeMessage(''), 4000)
+      } else {
+        setWelcomeError(data?.error || 'Failed to upload image')
+      }
+    } catch (error) {
+      console.error('Error uploading welcome image:', error)
+      setWelcomeError('Server error while uploading image')
+    } finally {
+      setWelcomeUploadingIndex(null)
+    }
+  }
+
+  useEffect(() => {
+    setTitle('Admin Dashboard')
+    checkAdminAccess()
+    loadAdminData()
+    loadCurrentLogo()
+    loadWelcomeCards()
+  }, [setTitle, loadWelcomeCards])
 
   const handleLogoUpload = async (file: File) => {
     const formData = new FormData()
@@ -665,6 +722,106 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
+
+              {/* Welcome Cards Management */}
+              <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-[#4db6ac]">Welcome Page Cards</h3>
+                    <p className="text-xs text-white/60 mt-1">
+                      These three images appear on the public welcome page carousel. Use square or wide images (recommended 1920×1080).
+                    </p>
+                  </div>
+                  <div className="text-xs text-white/50">
+                    {welcomeStatus === 'loading' && <span className="text-white/60">Loading…</span>}
+                    {welcomeStatus === 'success' && <span className="text-[#4db6ac]">Up to date</span>}
+                    {welcomeStatus === 'error' && <span className="text-red-400">Failed to load</span>}
+                  </div>
+                </div>
+
+                {welcomeMessage && (
+                  <div className="mb-3 rounded-lg border border-[#4db6ac]/40 bg-[#4db6ac]/10 px-3 py-2 text-xs text-[#7fe7df]">
+                    {welcomeMessage}
+                  </div>
+                )}
+                {welcomeError && (
+                  <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                    {welcomeError}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[0, 1, 2].map((index) => {
+                    const cardUrl = welcomeCards[index]
+                    const inputId = `welcome-card-input-${index}`
+                    return (
+                      <div key={index} className="bg-black/30 border border-white/10 rounded-xl p-3 flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-semibold text-white/80">Card {index + 1}</div>
+                          {cardUrl ? (
+                            <a
+                              href={cardUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-[#4db6ac] hover:text-[#7fe7df]"
+                            >
+                              Open
+                            </a>
+                          ) : (
+                            <span className="text-xs text-white/40">Using default</span>
+                          )}
+                        </div>
+
+                        <div className="aspect-video rounded-lg overflow-hidden border border-white/10 bg-black/30 flex items-center justify-center">
+                          {welcomeStatus === 'loading' && !cardUrl ? (
+                            <div className="flex flex-col items-center gap-2 text-white/50 text-xs">
+                              <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                              Loading…
+                            </div>
+                          ) : cardUrl ? (
+                            <img
+                              src={cardUrl}
+                              alt={`Welcome card ${index + 1}`}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="text-xs text-white/50 px-4 text-center">
+                              No image uploaded yet.
+                            </div>
+                          )}
+                        </div>
+
+                        <input
+                          id={inputId}
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          onChange={(event) => {
+                            const file = event.target.files?.[0]
+                            if (file) {
+                              handleWelcomeCardUpload(index, file)
+                            }
+                            event.target.value = ''
+                          }}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const el = document.getElementById(inputId) as HTMLInputElement | null
+                            el?.click()
+                          }}
+                          className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm text-white/80 hover:bg-white/15 disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={welcomeUploadingIndex === index}
+                        >
+                          {welcomeUploadingIndex === index ? 'Uploading…' : cardUrl ? 'Replace image' : 'Upload image'}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
 
             {/* Key Metrics removed from overview; available in Metrics tab */}
 
