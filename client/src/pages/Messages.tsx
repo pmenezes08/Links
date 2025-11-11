@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import Avatar from '../components/Avatar'
@@ -11,6 +11,12 @@ type Thread = {
   last_activity_time: string | null
   last_sender?: string | null
   unread_count?: number
+}
+
+type CommunityWithMembers = {
+  id: number
+  name: string
+  members: string[]
 }
 
 export default function Messages(){
@@ -39,6 +45,10 @@ export default function Messages(){
   const [dragX, setDragX] = useState(0)
   const startXRef = useRef(0)
   const draggingIdRef = useRef<string|null>(null)
+  const [communities, setCommunities] = useState<CommunityWithMembers[]>([])
+  const [communitiesLoading, setCommunitiesLoading] = useState(true)
+  const [communityFilter, setCommunityFilter] = useState<number | 'all'>('all')
+  const [communityError, setCommunityError] = useState<string | null>(null)
 
   function load(silent:boolean=false){
     if (!silent) setLoading(true)
@@ -68,6 +78,55 @@ export default function Messages(){
     return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(t) }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    setCommunitiesLoading(true)
+    setCommunityError(null)
+    fetch('/get_user_communities_with_members', { credentials: 'include' })
+      .then(r => r.json())
+      .then(j => {
+        if (cancelled) return
+        if (j?.success && Array.isArray(j.communities)) {
+          const formatted = j.communities.map((c:any) => ({
+            id: Number(c.id),
+            name: String(c.name || ''),
+            members: Array.isArray(c.members) ? c.members.map((m:any) => String(m.username || '')).filter(Boolean) : [],
+          })) as CommunityWithMembers[]
+          setCommunities(formatted)
+        } else {
+          setCommunities([])
+          setCommunityError(j?.error || 'Failed to load communities')
+        }
+      })
+      .catch(() => {
+        if (cancelled) return
+        setCommunities([])
+        setCommunityError('Failed to load communities')
+      })
+      .finally(() => {
+        if (cancelled) return
+        setCommunitiesLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  const communityMembership = useMemo(() => {
+    const map = new Map<number, Set<string>>()
+    communities.forEach(comm => {
+      map.set(comm.id, new Set(comm.members))
+    })
+    return map
+  }, [communities])
+
+  const filteredThreads = useMemo(() => {
+    if (communityFilter === 'all') return threads
+    const members = communityMembership.get(communityFilter)
+    if (!members) return []
+    return threads.filter(t => members.has(t.other_username))
+  }, [threads, communityFilter, communityMembership])
+
+  const visibleThreads = filteredThreads
+
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
       {/* Secondary header (match Polls) */}
@@ -91,13 +150,66 @@ export default function Messages(){
 
       <div className="max-w-3xl mx-auto pt-[70px] h-[calc(100vh-70px)] px-1 sm:px-3 pb-2 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' as any }}>
         {activeTab === 'chats' ? (
-          <div className="rounded-xl border border-white/10 bg-black divide-y divide-white/10">
-            {loading ? (
-              <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
-            ) : threads.length === 0 ? (
-              <div className="px-4 py-4 text-sm text-[#9fb0b5]">No chats yet. Start a new one from the New Message tab.</div>
-            ) : (
-              threads.map((t) => {
+          <div className="space-y-3">
+            <div className="bg-black border border-white/10 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-semibold text-white/80">Filter by Community</div>
+                {communitiesLoading ? (
+                  <span className="text-xs text-white/50">Loading…</span>
+                ) : communityError ? (
+                  <span className="text-xs text-red-400">{communityError}</span>
+                ) : (
+                  <span className="text-xs text-white/40">
+                    {communityFilter === 'all'
+                      ? `Showing ${threads.length} chats`
+                      : `Filtered to ${visibleThreads.length} chat${visibleThreads.length === 1 ? '' : 's'}`}
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                <button
+                  type="button"
+                  onClick={() => setCommunityFilter('all')}
+                  className={`px-3 py-1.5 text-xs rounded-full border transition ${
+                    communityFilter === 'all'
+                      ? 'border-[#4db6ac]/70 bg-[#4db6ac]/20 text-[#4db6ac]'
+                      : 'border-white/15 bg-black/60 text-white/70 hover:border-white/25'
+                  }`}
+                >
+                  All
+                </button>
+                {communities.map(comm => {
+                  const selected = communityFilter === comm.id
+                  return (
+                    <button
+                      key={comm.id}
+                      type="button"
+                      onClick={() => setCommunityFilter(selected ? 'all' : comm.id)}
+                      className={`px-3 py-1.5 text-xs rounded-full border transition whitespace-nowrap ${
+                        selected
+                          ? 'border-[#4db6ac]/70 bg-[#4db6ac]/20 text-[#4db6ac]'
+                          : 'border-white/15 bg-black/60 text-white/70 hover:border-white/25'
+                      }`}
+                      title={comm.members.length ? `${comm.members.length} members` : undefined}
+                    >
+                      {comm.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-black divide-y divide-white/10">
+              {loading ? (
+                <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
+              ) : visibleThreads.length === 0 ? (
+                <div className="px-4 py-4 text-sm text-[#9fb0b5]">
+                  {communityFilter === 'all'
+                    ? 'No chats yet. Start a new one from the New Message tab.'
+                    : 'No chats match this community filter.'}
+                </div>
+              ) : (
+                visibleThreads.map((t) => {
               const isDragging = draggingIdRef.current === t.other_username
               const tx = isDragging ? Math.min(0, dragX) : (swipeId === t.other_username ? -72 : 0)
               const transition = isDragging ? 'none' : 'transform 150ms ease-out'
@@ -190,6 +302,7 @@ export default function Messages(){
                 )
               })
             )}
+            </div>
           </div>
         ) : (
           <NewMessageInline />
