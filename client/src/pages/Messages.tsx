@@ -82,33 +82,64 @@ export default function Messages(){
     let cancelled = false
     setCommunitiesLoading(true)
     setCommunityError(null)
-    fetch('/get_user_communities_with_members', { credentials: 'include' })
-      .then(r => r.json())
-      .then(j => {
+
+    async function fetchCommunities(){
+      try{
+        const [membersRes, hierarchyRes] = await Promise.all([
+          fetch('/get_user_communities_with_members', { credentials: 'include' }).then(r => r.json()).catch(() => null),
+          fetch('/api/user_communities_hierarchical', { credentials: 'include' }).then(r => r.json()).catch(() => null),
+        ])
         if (cancelled) return
-        if (j?.success && Array.isArray(j.communities)) {
-          const formatted = j.communities.map((c:any) => ({
+
+        if (membersRes?.success && Array.isArray(membersRes.communities)) {
+          const formatted = membersRes.communities.map((c:any) => ({
             id: Number(c.id),
             name: String(c.name || ''),
             members: Array.isArray(c.members) ? c.members.map((m:any) => String(m.username || '')).filter(Boolean) : [],
           })) as CommunityWithMembers[]
-          setCommunities(formatted)
+
+          let filtered = formatted
+          if (hierarchyRes?.success && Array.isArray(hierarchyRes.communities)) {
+            const parentMap = new Map<number, number | null>()
+            const traverse = (nodes:any[], parentId:number|null) => {
+              nodes.forEach(node => {
+                const nodeId = Number(node.id)
+                parentMap.set(nodeId, parentId)
+                if (Array.isArray(node.children) && node.children.length){
+                  traverse(node.children, nodeId)
+                }
+              })
+            }
+            traverse(hierarchyRes.communities, null)
+            const subOnly = formatted.filter(comm => parentMap.get(comm.id) != null)
+            if (subOnly.length > 0) {
+              filtered = subOnly
+            }
+          }
+          setCommunities(filtered)
         } else {
           setCommunities([])
-          setCommunityError(j?.error || 'Failed to load communities')
+          setCommunityError(membersRes?.error || 'Failed to load communities')
         }
-      })
-      .catch(() => {
+      }catch{
         if (cancelled) return
         setCommunities([])
         setCommunityError('Failed to load communities')
-      })
-      .finally(() => {
+      }finally{
         if (cancelled) return
         setCommunitiesLoading(false)
-      })
+      }
+    }
+
+    fetchCommunities()
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (communityFilter !== 'all' && !communities.some(c => c.id === communityFilter)){
+      setCommunityFilter('all')
+    }
+  }, [communities, communityFilter])
 
   const communityMembership = useMemo(() => {
     const map = new Map<number, Set<string>>()
@@ -153,11 +184,13 @@ export default function Messages(){
           <div className="space-y-3">
             <div className="bg-black border border-white/10 rounded-xl p-3">
               <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-semibold text-white/80">Filter by Community</div>
+                <div className="text-sm font-semibold text-white/80">Filter by Sub-community</div>
                 {communitiesLoading ? (
                   <span className="text-xs text-white/50">Loading…</span>
                 ) : communityError ? (
                   <span className="text-xs text-red-400">{communityError}</span>
+                ) : communities.length === 0 ? (
+                  <span className="text-xs text-white/40">No sub-communities available</span>
                 ) : (
                   <span className="text-xs text-white/40">
                     {communityFilter === 'all'
@@ -166,7 +199,7 @@ export default function Messages(){
                   </span>
                 )}
               </div>
-              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
                 <button
                   type="button"
                   onClick={() => setCommunityFilter('all')}
@@ -196,7 +229,7 @@ export default function Messages(){
                     </button>
                   )
                 })}
-              </div>
+                </div>
             </div>
 
             <div className="rounded-xl border border-white/10 bg-black divide-y divide-white/10">
