@@ -420,7 +420,7 @@ export default function CommunityPolls(){
                         <div className="space-y-2">
                           {opt.voters.map((voter: any, idx: number) => (
                             <div key={idx} className="flex items-center gap-2 text-sm">
-                              <Avatar username={voter.username} url={voter.profile_picture} size={24} />
+                              <Avatar username={voter.username} url={voter.profile_picture} size={24} linkToProfile />
                               <span>{voter.username}</span>
                             </div>
                           ))}

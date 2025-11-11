@@ -25,7 +25,7 @@ from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode, urljoin, quote_plus
-from typing import Optional, Dict, Any, List, Iterable, Tuple
+from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
 try:
@@ -492,6 +492,8 @@ def ensure_community_invitations_table(c):
                           token VARCHAR(191) NOT NULL UNIQUE,
                           used TINYINT(1) DEFAULT 0,
                           used_at TIMESTAMP NULL,
+                          include_nested_ids TEXT,
+                          include_parent_ids TEXT,
                           INDEX idx_community_id (community_id),
                           INDEX idx_invited_email (invited_email),
                           INDEX idx_token (token),
@@ -507,9 +509,20 @@ def ensure_community_invitations_table(c):
                           token TEXT NOT NULL UNIQUE,
                           used INTEGER DEFAULT 0,
                           used_at TEXT,
+                          include_nested_ids TEXT,
+                          include_parent_ids TEXT,
                           FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
                           FOREIGN KEY (invited_by_username) REFERENCES users(username) ON DELETE CASCADE
                         )''')
+
+        try:
+            c.execute("ALTER TABLE community_invitations ADD COLUMN include_nested_ids TEXT")
+        except Exception:
+            pass
+        try:
+            c.execute("ALTER TABLE community_invitations ADD COLUMN include_parent_ids TEXT")
+        except Exception:
+            pass
     except Exception as e:
         logger.warning(f"Could not ensure community_invitations table: {e}")
 
@@ -666,6 +679,62 @@ MENTIONS_ENABLED = os.getenv('MENTIONS_ENABLED', 'false').lower() == 'true'
 def get_sql_placeholder():
     """Get the correct SQL placeholder based on database type"""
     return '%s' if USE_MYSQL else '?'
+
+def normalize_id_list(raw) -> List[int]:
+    """Normalize incoming payload (list or JSON string) into a unique list of ints preserving order."""
+    result: List[int] = []
+    if isinstance(raw, list):
+        for value in raw:
+            try:
+                iv = int(value)
+            except (TypeError, ValueError):
+                continue
+            if iv not in result:
+                result.append(iv)
+    elif isinstance(raw, str):
+        stripped = raw.strip()
+        if stripped:
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, list):
+                    return normalize_id_list(parsed)
+            except Exception:
+                pass
+    return result
+
+def get_parent_chain_ids(cursor, community_id: int) -> List[int]:
+    """Return ordered list of parent community IDs (direct parent first) up to root."""
+    parents: List[int] = []
+    visited: set[int] = set()
+    current = community_id
+    placeholder = get_sql_placeholder()
+    while current:
+        cursor.execute(f"SELECT parent_community_id FROM communities WHERE id = {placeholder}", (current,))
+        row = cursor.fetchone()
+        if not row:
+            break
+        parent_id = row['parent_community_id'] if hasattr(row, 'keys') else row[0]
+        if not parent_id or parent_id in visited:
+            break
+        visited.add(parent_id)
+        parents.append(parent_id)
+        current = parent_id
+    return parents
+
+def fetch_community_names(cursor, community_ids: List[int]) -> List[str]:
+    """Fetch community names preserving order of provided IDs."""
+    ids = [cid for cid in community_ids if cid is not None]
+    if not ids:
+        return []
+    placeholders = ','.join([get_sql_placeholder()] * len(ids))
+    cursor.execute(f"SELECT id, name FROM communities WHERE id IN ({placeholders})", tuple(ids))
+    rows = cursor.fetchall()
+    id_to_name: Dict[int, str] = {}
+    for row in rows:
+        cid = row['id'] if hasattr(row, 'keys') else row[0]
+        name = row['name'] if hasattr(row, 'keys') else row[1]
+        id_to_name[cid] = name
+    return [id_to_name[cid] for cid in ids if cid in id_to_name]
 
 def get_scalar_result(row, column_index=0, column_name=None):
     """Helper to get a scalar value from a database row that could be dict or tuple"""
@@ -4274,7 +4343,8 @@ def signup():
                 c = conn.cursor()
                 c.execute("""
                     SELECT ci.id, ci.community_id, ci.invited_email, ci.used,
-                           c.name as community_name, ci.invited_by_username
+                           c.name as community_name, ci.invited_by_username,
+                           ci.include_nested_ids, ci.include_parent_ids
                     FROM community_invitations ci
                     JOIN communities c ON ci.community_id = c.id
                     WHERE ci.token = ? AND ci.used = 0
@@ -4384,6 +4454,10 @@ def signup():
                     invitation_id = invitation['id'] if hasattr(invitation, 'keys') else invitation[0]
                     community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
                     community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4]
+                    raw_nested_values = invitation['include_nested_ids'] if hasattr(invitation, 'keys') else (invitation[6] if len(invitation) > 6 else None)
+                    raw_parent_values = invitation['include_parent_ids'] if hasattr(invitation, 'keys') else (invitation[7] if len(invitation) > 7 else None)
+                    nested_ids = normalize_id_list(raw_nested_values) if raw_nested_values else []
+                    parent_ids_to_join = normalize_id_list(raw_parent_values) if raw_parent_values is not None else get_parent_chain_ids(c, community_id)
                     
                     # Create user directly (email already verified via invitation)
                     c.execute("""
@@ -4397,21 +4471,25 @@ def signup():
                     user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
                     
                     # Auto-join the community and all parent communities
-                    communities_to_join = [community_id]
+                    communities_to_join: List[int] = []
+                    seen: Set[int] = set()
+
+                    def add_community(target_id: Optional[int]):
+                        if not target_id:
+                            return
+                        if target_id not in seen:
+                            seen.add(target_id)
+                            communities_to_join.append(target_id)
+
+                    add_community(community_id)
+                    for pid in parent_ids_to_join:
+                        add_community(pid)
+                    for nid in nested_ids:
+                        add_community(nid)
+                        for ancestor_id in get_parent_chain_ids(c, nid):
+                            add_community(ancestor_id)
                     
-                    # Get all parent communities up to root
-                    current_parent_id = community_id
-                    while current_parent_id:
-                        c.execute("SELECT parent_community_id FROM communities WHERE id = ?", (current_parent_id,))
-                        parent_row = c.fetchone()
-                        parent_id = parent_row['parent_community_id'] if (parent_row and hasattr(parent_row, 'keys')) else (parent_row[0] if parent_row else None)
-                        if parent_id:
-                            communities_to_join.append(parent_id)
-                            current_parent_id = parent_id
-                        else:
-                            break
-                    
-                    # Join all communities (invited community + all ancestors)
+                    # Join all communities (invited community + selected extras)
                     for comm_id in communities_to_join:
                         # Check if already a member
                         c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
@@ -4643,7 +4721,8 @@ def login_password():
                                     
                                     # Get invitation details with invited email
                                     c.execute(f"""
-                                        SELECT ci.id, ci.community_id, ci.used, ci.invited_email
+                                        SELECT ci.id, ci.community_id, ci.used, ci.invited_email,
+                                               ci.include_nested_ids, ci.include_parent_ids
                                         FROM community_invitations ci
                                         WHERE ci.token={placeholder}
                                     """, (invite_token,))
@@ -4653,12 +4732,13 @@ def login_password():
                                         community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
                                         already_used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
                                         invited_email = invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[3]
+                                        raw_nested_values = invitation['include_nested_ids'] if hasattr(invitation, 'keys') else (invitation[4] if len(invitation) > 4 else None)
+                                        raw_parent_values = invitation['include_parent_ids'] if hasattr(invitation, 'keys') else (invitation[5] if len(invitation) > 5 else None)
                                         
                                         # Security check: verify the logged-in user's email matches the invited email
                                         # Skip check for QR code invitations (placeholder emails)
                                         is_qr_invite = invited_email and invited_email.startswith('qr-invite-') and invited_email.endswith('@placeholder.local')
                                         if not is_qr_invite and user_email.lower() != invited_email.lower():
-                                            # Email doesn't match - redirect to error page
                                             from flask import make_response
                                             from urllib.parse import quote
                                             resp = make_response(redirect('/login?error=' + quote('This invitation was sent to a different email address')))
@@ -4673,24 +4753,29 @@ def login_password():
                                         already_member = c.fetchone() is not None
                                         
                                         if not already_member:
-                                            # Add user to community and all parent communities
-                                            communities_to_join = [community_id]
-                                            
-                                            # Get all parent communities up to root
-                                            current_parent_id_temp = community_id
-                                            while current_parent_id_temp:
-                                                c.execute(f"SELECT parent_community_id FROM communities WHERE id = {placeholder}", (current_parent_id_temp,))
-                                                parent_row_temp = c.fetchone()
-                                                parent_id_temp = parent_row_temp['parent_community_id'] if (parent_row_temp and hasattr(parent_row_temp, 'keys')) else (parent_row_temp[0] if parent_row_temp else None)
-                                                if parent_id_temp:
-                                                    communities_to_join.append(parent_id_temp)
-                                                    current_parent_id_temp = parent_id_temp
-                                                else:
-                                                    break
-                                            
-                                            # Join all communities (invited community + all ancestors)
+                                            nested_ids = normalize_id_list(raw_nested_values) if raw_nested_values else []
+                                            parent_ids_to_join = normalize_id_list(raw_parent_values) if raw_parent_values is not None else get_parent_chain_ids(c, community_id)
+
+                                            communities_to_join: List[int] = []
+                                            seen: Set[int] = set()
+
+                                            def add_community(target_id: Optional[int]):
+                                                if not target_id:
+                                                    return
+                                                if target_id not in seen:
+                                                    seen.add(target_id)
+                                                    communities_to_join.append(target_id)
+
+                                            add_community(community_id)
+                                            for pid in parent_ids_to_join:
+                                                add_community(pid)
+                                            for nid in nested_ids:
+                                                add_community(nid)
+                                                for ancestor_id in get_parent_chain_ids(c, nid):
+                                                    add_community(ancestor_id)
+
+                                            # Join all communities (primary + selected extras)
                                             for comm_id_join in communities_to_join:
-                                                # Check if already a member
                                                 c.execute(f"SELECT 1 FROM user_communities WHERE user_id = {placeholder} AND community_id = {placeholder}", (user_id, comm_id_join))
                                                 if not c.fetchone():
                                                     c.execute(f"""
@@ -4698,7 +4783,6 @@ def login_password():
                                                         VALUES ({placeholder}, {placeholder}, 'member', {placeholder})
                                                     """, (user_id, comm_id_join, datetime.now().isoformat()))
                                             
-                                            # Mark invitation as used if not already
                                             if not already_used:
                                                 c.execute(f"""
                                                     UPDATE community_invitations 
@@ -4708,7 +4792,6 @@ def login_password():
                                             
                                             conn.commit()
                                         
-                                        # Issue remember-me token and redirect to community
                                         from flask import make_response
                                         resp = make_response(redirect(f'/community_feed_react/{community_id}'))
                                         _issue_remember_token(resp, username)
@@ -19519,11 +19602,23 @@ def generate_invite_link():
             import secrets
             token = secrets.token_urlsafe(32)
             
+            include_nested_ids = normalize_id_list(data.get('include_nested_ids', []))
+            raw_parent_payload = data.get('include_parent_ids', None)
+            include_parent_ids = None if raw_parent_payload is None else normalize_id_list(raw_parent_payload)
+            parent_ids_to_join = include_parent_ids if include_parent_ids is not None else get_parent_chain_ids(c, community_id)
+            
             # Store invitation with placeholder email
             c.execute("""
-                INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
-                VALUES (?, ?, ?, ?)
-            """, (community_id, f'qr-invite-{token[:8]}@placeholder.local', username, token))
+                INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token, include_nested_ids, include_parent_ids)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                community_id,
+                f'qr-invite-{token[:8]}@placeholder.local',
+                username,
+                token,
+                json.dumps(include_nested_ids),
+                json.dumps(parent_ids_to_join)
+            ))
             conn.commit()
             
             # Generate invitation URL (to login page for both existing and new users)
@@ -19618,7 +19713,8 @@ def join_with_invite():
             
             # Get invitation with invited email
             c.execute("""
-                SELECT ci.id, ci.community_id, ci.used, ci.invited_email, c.name as community_name
+                SELECT ci.id, ci.community_id, ci.used, ci.invited_email, c.name as community_name,
+                       ci.include_nested_ids, ci.include_parent_ids
                 FROM community_invitations ci
                 JOIN communities c ON ci.community_id = c.id
                 WHERE ci.token = ?
@@ -19633,6 +19729,8 @@ def join_with_invite():
             used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
             invited_email = invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[3]
             community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4]
+            raw_nested_values = invitation['include_nested_ids'] if hasattr(invitation, 'keys') else (invitation[5] if len(invitation) > 5 else None)
+            raw_parent_values = invitation['include_parent_ids'] if hasattr(invitation, 'keys') else (invitation[6] if len(invitation) > 6 else None)
             
             if used:
                 return jsonify({'success': False, 'error': 'Invitation already used'}), 400
@@ -19650,22 +19748,28 @@ def join_with_invite():
             if c.fetchone():
                 return jsonify({'success': False, 'error': 'You are already a member of this community'}), 400
             
-            # Add user to community and all parent communities
-            communities_to_join = [community_id]
-            
-            # Get all parent communities up to root
-            current_parent_id = community_id
-            while current_parent_id:
-                c.execute("SELECT parent_community_id FROM communities WHERE id = ?", (current_parent_id,))
-                parent_row = c.fetchone()
-                parent_id = parent_row['parent_community_id'] if (parent_row and hasattr(parent_row, 'keys')) else (parent_row[0] if parent_row else None)
-                if parent_id:
-                    communities_to_join.append(parent_id)
-                    current_parent_id = parent_id
-                else:
-                    break
-            
-            # Join all communities (invited community + all ancestors)
+            nested_ids = normalize_id_list(raw_nested_values) if raw_nested_values else []
+            parent_ids_to_join = normalize_id_list(raw_parent_values) if raw_parent_values is not None else get_parent_chain_ids(c, community_id)
+
+            communities_to_join: List[int] = []
+            seen: Set[int] = set()
+
+            def add_community(target_id: Optional[int]):
+                if not target_id:
+                    return
+                if target_id not in seen:
+                    seen.add(target_id)
+                    communities_to_join.append(target_id)
+
+            add_community(community_id)
+            for pid in parent_ids_to_join:
+                add_community(pid)
+            for nid in nested_ids:
+                add_community(nid)
+                for ancestor_id in get_parent_chain_ids(c, nid):
+                    add_community(ancestor_id)
+
+            # Join all communities (primary + selected extras)
             for comm_id in communities_to_join:
                 # Check if already a member
                 c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
@@ -19749,6 +19853,11 @@ def invite_to_community():
             if not is_admin:
                 return jsonify({'success': False, 'error': 'Only community admins can send invitations'}), 403
             
+            # Extract nested/parent selections from payload
+            include_nested_ids = normalize_id_list(data.get('include_nested_ids', []))
+            raw_parent_payload = data.get('include_parent_ids', None)
+            include_parent_ids = None if raw_parent_payload is None else normalize_id_list(raw_parent_payload)
+
             # Check if user already exists
             c.execute("SELECT id, username FROM users WHERE email = ?", (invited_email,))
             existing_user = c.fetchone()
@@ -19764,22 +19873,29 @@ def invite_to_community():
                 if c.fetchone():
                     return jsonify({'success': False, 'error': 'User is already a member of this community'}), 400
                 
-                # Add user to community and all parent communities
-                communities_to_join = [community_id]
-                
-                # Get all parent communities up to root
-                current_parent_id = community_id
-                while current_parent_id:
-                    c.execute("SELECT parent_community_id FROM communities WHERE id = ?", (current_parent_id,))
-                    parent_row = c.fetchone()
-                    parent_id = parent_row['parent_community_id'] if (parent_row and hasattr(parent_row, 'keys')) else (parent_row[0] if parent_row else None)
-                    if parent_id:
-                        communities_to_join.append(parent_id)
-                        current_parent_id = parent_id
-                    else:
-                        break
-                
-                # Join all communities (invited community + all ancestors)
+                # Determine parent communities to include
+                parent_ids_to_join = include_parent_ids if include_parent_ids is not None else get_parent_chain_ids(c, community_id)
+
+                # Build complete membership list (primary, selected parents, nested + their ancestors)
+                communities_to_join: List[int] = []
+                seen: Set[int] = set()
+
+                def add_community(target_id: Optional[int]):
+                    if not target_id:
+                        return
+                    if target_id not in seen:
+                        seen.add(target_id)
+                        communities_to_join.append(target_id)
+
+                add_community(community_id)
+                for pid in parent_ids_to_join:
+                    add_community(pid)
+                for nid in include_nested_ids:
+                    add_community(nid)
+                    for ancestor_id in get_parent_chain_ids(c, nid):
+                        add_community(ancestor_id)
+
+                # Join all communities (primary + selected extras)
                 for comm_id in communities_to_join:
                     # Check if already a member
                     c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (existing_user_id, comm_id))
@@ -19791,6 +19907,21 @@ def invite_to_community():
                 
                 conn.commit()
                 
+                nested_names = fetch_community_names(c, include_nested_ids)
+                nested_html_section = ""
+                nested_text_section = ""
+                if nested_names:
+                    nested_items = ''.join(f"<li style='margin-bottom: 6px;'>{name}</li>" for name in nested_names)
+                    nested_html_section = (
+                        "<div style=\"margin: 24px 0; padding: 18px; background-color: rgba(77, 182, 172, 0.08); "
+                        "border: 1px solid rgba(77, 182, 172, 0.35); border-radius: 12px;\">"
+                        "<div style=\"font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; "
+                        "color: #4db6ac; margin-bottom: 10px;\">You're also joining</div>"
+                        f"<ul style=\"margin: 0; padding-left: 20px; color: #d0d0d0; font-size: 14px; line-height: 1.55;\">{nested_items}</ul>"
+                        "</div>"
+                    )
+                    nested_text_section = "\nYou're also joining:\n" + ''.join(f"- {name}\n" for name in nested_names)
+
                 # Send notification email (not signup invitation)
                 html = f"""
                 <!DOCTYPE html>
@@ -19816,7 +19947,8 @@ def invite_to_community():
                                             <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6;">
                                                 <strong>{username}</strong> has added you to <strong style="color: #4db6ac;">{community_name}</strong> on C.Point.
                                             </p>
-                                            <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #b0b0b0;">
+                                             {nested_html_section}
+                                             <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #b0b0b0;">
                                                 You can now access this community and start connecting with other members.
                                             </p>
                                             <table width="100%" cellpadding="0" cellspacing="0">
@@ -19848,8 +19980,8 @@ def invite_to_community():
                 text = f"""
 You've Been Added to {community_name}
 
-{username} has added you to {community_name} on C.Point.
-
+  {username} has added you to {community_name} on C.Point.{nested_text_section}
+ 
 You can now access this community and start connecting with other members.
 
 Go to C.Point: https://www.c-point.co/login
@@ -19883,11 +20015,27 @@ Go to C.Point: https://www.c-point.co/login
                 import secrets
                 token = secrets.token_urlsafe(32)
                 
+                parent_ids_to_join = include_parent_ids if include_parent_ids is not None else get_parent_chain_ids(c, community_id)
+                nested_names = fetch_community_names(c, include_nested_ids)
+                nested_html_section = ""
+                nested_text_section = ""
+                if nested_names:
+                    nested_items = ''.join(f"<li style='margin-bottom: 6px;'>{name}</li>" for name in nested_names)
+                    nested_html_section = (
+                        "<div style=\"margin: 24px 0; padding: 18px; background-color: rgba(77, 182, 172, 0.08); "
+                        "border: 1px solid rgba(77, 182, 172, 0.35); border-radius: 12px;\">"
+                        "<div style=\"font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; "
+                        "color: #4db6ac; margin-bottom: 10px;\">You'll also join</div>"
+                        f"<ul style=\"margin: 0; padding-left: 20px; color: #d0d0d0; font-size: 14px; line-height: 1.55;\">{nested_items}</ul>"
+                        "</div>"
+                    )
+                    nested_text_section = "\nYou'll also join:\n" + ''.join(f"- {name}\n" for name in nested_names)
+                
                 # Store invitation
                 c.execute("""
-                    INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
-                    VALUES (?, ?, ?, ?)
-                """, (community_id, invited_email, username, token))
+                    INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token, include_nested_ids, include_parent_ids)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (community_id, invited_email, username, token, json.dumps(include_nested_ids), json.dumps(parent_ids_to_join)))
                 conn.commit()
                 
                 # Send invitation email with signup link
@@ -19923,6 +20071,7 @@ Go to C.Point: https://www.c-point.co/login
                                             You have been invited to join <strong style="color: #4db6ac;">{community_name}</strong> by <strong>{username}</strong>.
                                         </p>
                                         
+                                        {nested_html_section}
                                         <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #b0b0b0;">
                                             C.Point is a community network where you can connect, share ideas, and engage in meaningful conversations.
                                         </p>
@@ -19969,8 +20118,8 @@ Go to C.Point: https://www.c-point.co/login
             text = f"""
 Welcome to C.Point
 
-You have been invited to join {community_name} by {username}.
-
+  You have been invited to join {community_name} by {username}.{nested_text_section}
+ 
 C.Point is a community network where you can connect, share ideas, and engage in meaningful conversations.
 
 Click here to join: {invite_url}

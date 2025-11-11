@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 type AvatarProps = {
   username: string
   url?: string | null
   size?: number
   className?: string
+  linkToProfile?: boolean
+  onClick?: (event: MouseEvent<HTMLDivElement | HTMLAnchorElement>) => void
 }
 
 function ImageWithLoader({ src, alt, style, fallbacks = [] as string[] }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[] }) {
@@ -54,7 +57,8 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[] }: { src:
   )
 }
 
-export default function Avatar({ username, url, size = 40, className = '' }: AvatarProps){
+export default function Avatar({ username, url, size = 40, className = '', linkToProfile = false, onClick }: AvatarProps){
+  const navigate = useNavigate()
   const resolved = (() => {
     const p = (url || '').trim()
     if (!p) return null
@@ -65,38 +69,89 @@ export default function Avatar({ username, url, size = 40, className = '' }: Ava
     return `/uploads/${p}`
   })()
   const initials = (username || '?').slice(0, 1).toUpperCase()
+  const profileHref = linkToProfile ? `/profile/${encodeURIComponent(username)}` : null
+  const interactive = linkToProfile || typeof onClick === 'function'
+
+  function renderImage(){
+    return resolved ? (
+      <ImageWithLoader
+        src={resolved}
+        alt=""
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        fallbacks={(() => {
+          const p = (url || '').trim()
+          const opts: string[] = []
+          if (!p) return opts
+          if (p.startsWith('http')) return opts
+          if (p.startsWith('/uploads')) opts.push(`/static${p}`)
+          if (p.startsWith('uploads/')) opts.push(`/static/${p}`)
+          if (!p.startsWith('/uploads') && !p.startsWith('uploads/') && !p.startsWith('/static') && !p.startsWith('static/')){
+            opts.push(`/uploads/${p}`)
+            opts.push(`/static/uploads/${p}`)
+          }
+          return opts
+        })()}
+      />
+    ) : (
+      <span style={{ fontSize: Math.max(12, Math.floor(size * 0.45)) }} className="text-white/80">
+        {initials}
+      </span>
+    )
+  }
+
+  if (linkToProfile && profileHref){
+    const handleAnchorClick = (event: MouseEvent<HTMLAnchorElement>) => {
+      event.stopPropagation()
+      if (onClick) onClick(event)
+      if (event.defaultPrevented) return
+      if (!username) return
+      event.preventDefault()
+      try{
+        navigate(profileHref)
+      }catch{
+        window.location.assign(profileHref)
+      }
+    }
+
+    return (
+      <a
+        href={profileHref}
+        onClick={handleAnchorClick}
+        className={`rounded-full overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center cursor-pointer transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4db6ac]/70 ${className}`}
+        style={{ width: size, height: size }}
+        aria-label={`Avatar for ${username}`}
+      >
+        {renderImage()}
+      </a>
+    )
+  }
+
+  function handleDivClick(event: MouseEvent<HTMLDivElement>){
+    if (linkToProfile) event.stopPropagation()
+    if (onClick) onClick(event)
+    if (event.defaultPrevented || !linkToProfile || !profileHref) return
+    navigate(profileHref)
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>){
+    if (!interactive) return
+    if (event.key === 'Enter' || event.key === ' '){
+      event.preventDefault()
+      handleDivClick(event as unknown as MouseEvent<HTMLDivElement>)
+    }
+  }
+
   return (
     <div
-      className={`rounded-full overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center ${className}`}
+      onClick={interactive ? handleDivClick : undefined}
+      onKeyDown={interactive ? handleKeyDown : undefined}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      className={`rounded-full overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center ${interactive ? 'cursor-pointer transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4db6ac]/70' : ''} ${className}`}
       style={{ width: size, height: size }}
       aria-label={`Avatar for ${username}`}
     >
-      {resolved ? (
-        <ImageWithLoader
-          src={resolved}
-          alt=""
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          fallbacks={(() => {
-            const p = (url || '').trim()
-            const opts: string[] = []
-            if (!p) return opts
-            if (p.startsWith('http')) return opts
-            // Try /static mirror if original is /uploads
-            if (p.startsWith('/uploads')) opts.push(`/static${p}`)
-            if (p.startsWith('uploads/')) opts.push(`/static/${p}`)
-            // Try uploads/plain filename
-            if (!p.startsWith('/uploads') && !p.startsWith('uploads/') && !p.startsWith('/static') && !p.startsWith('static/')){
-              opts.push(`/uploads/${p}`)
-              opts.push(`/static/uploads/${p}`)
-            }
-            return opts
-          })()}
-        />
-      ) : (
-        <span style={{ fontSize: Math.max(12, Math.floor(size * 0.45)) }} className="text-white/80">
-          {initials}
-        </span>
-      )}
+      {renderImage()}
     </div>
   )
 }

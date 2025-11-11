@@ -154,7 +154,7 @@ export default function HomeTimeline(){
             {posts.map(p => (
               <div key={p.id} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20 cursor-pointer" onClick={p.poll ? undefined : () => navigate(`/post/${p.id}`)}>
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2" onClick={(e)=> e.stopPropagation()}>
-                  <Avatar username={p.username} url={p.profile_picture || undefined} size={32} />
+                  <Avatar username={p.username} url={p.profile_picture || undefined} size={32} linkToProfile />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2 min-w-0">
                       <div className="font-medium tracking-[-0.01em] truncate">{p.username}</div>

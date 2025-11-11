@@ -166,7 +166,7 @@ export default function Messages(){
                     className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
                     style={{ transform: `translateX(${tx}px)`, transition }}
                   >
-                    <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={48} />
+                    <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={48} linkToProfile />
                     <div className="flex-1 min-w-0 text-left">
                       <div className="flex items-center justify-between">
                         <div className="font-medium truncate">{t.display_name}</div>
@@ -249,7 +249,7 @@ function NewMessageInline(){
               <div className="px-3 py-2 space-y-1">
                 {(membersByCommunity[c.id]||[]).map((m, idx) => (
                   <a key={idx} className="block px-3 py-2 rounded-md hover:bg-white/5 flex items-center gap-2 text-[14px]" href={`/user_chat/chat/${encodeURIComponent(m.username)}`}>
-                    <Avatar username={m.username} url={resolveAvatar(m.profile_picture) || undefined} size={32} />
+                    <Avatar username={m.username} url={resolveAvatar(m.profile_picture) || undefined} size={32} linkToProfile />
                     <span className="truncate">{m.username}</span>
                   </a>
                 ))}

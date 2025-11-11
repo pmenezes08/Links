@@ -136,7 +136,7 @@ export default function CommunityResources(){
             ) : posts.map(p => (
               <div key={p.id} className="rounded-2xl border border-white/10 bg-white/[0.035]">
                 <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-                  <Avatar username={p.username} url={resolveAvatar(p.profile_picture) || undefined} size={32} />
+                  <Avatar username={p.username} url={resolveAvatar(p.profile_picture) || undefined} size={32} linkToProfile />
                   <div className="font-medium">{p.title}</div>
                   <div className="text-xs text-[#9fb0b5] ml-auto">{new Date(p.created_at).toLocaleDateString()}</div>
                 </div>

@@ -781,7 +781,7 @@ export default function CommunityFeed() {
                     <div className="flex flex-col gap-1">
                       {(opt.voters||[]).map(v => (
                         <div key={`${opt.id}-${v.username}-${v.voted_at||''}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
-                          <Avatar username={v.username} url={v.profile_picture || undefined} size={18} />
+                          <Avatar username={v.username} url={v.profile_picture || undefined} size={18} linkToProfile />
                           <div className="flex-1 truncate">@{v.username}</div>
                           {/* remove timestamp in feed voters modal */}
                           <div className="tabular-nums" />
@@ -816,7 +816,7 @@ export default function CommunityFeed() {
                     <div className="flex flex-col gap-1">
                       {(group.users||[]).map(u => (
                         <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
-                          <Avatar username={u.username} url={u.profile_picture || undefined} size={18} />
+                          <Avatar username={u.username} url={u.profile_picture || undefined} size={18} linkToProfile />
                           <div className="flex-1 truncate">@{u.username}</div>
                         </div>
                       ))}
@@ -1029,7 +1029,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     <div id={`post-${post.id}`} ref={cardRef} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
       {!post.poll && (
         <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-          <Avatar username={post.username} url={post.profile_picture || undefined} size={32} />
+            <Avatar username={post.username} url={post.profile_picture || undefined} size={32} linkToProfile />
           <div className="font-medium tracking-[-0.01em]">{post.username}</div>
           <div className="text-xs text-[#9fb0b5] ml-auto tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
           {/* Personal star (turquoise when selected) */}
@@ -1308,7 +1308,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             })()
             return ordered.map(r => (
               <div key={r.id} className="flex items-start gap-2 text-sm">
-                <Avatar username={r.username} url={r.profile_picture || undefined} size={22} />
+                <Avatar username={r.username} url={r.profile_picture || undefined} size={22} linkToProfile />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{r.username}</span>

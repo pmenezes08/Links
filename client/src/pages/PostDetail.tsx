@@ -734,7 +734,7 @@ export default function PostDetail(){
         </div>
         <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
           <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-            <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} />
+            <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} linkToProfile />
             <div className="font-medium">{post.username}</div>
             <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
           </div>
@@ -1086,7 +1086,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
     <div className={`relative py-2 ${depth === 0 ? 'border-b border-white/10' : ''}`}>
       <div className="relative flex items-start gap-2 px-3">
         <div className="relative w-10 flex-shrink-0 self-stretch" style={{ zIndex: 1 }}>
-          <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} />
+          <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} linkToProfile />
           {/* Vertical connector line from avatar to children */}
           {hasChildren && (
             <div 
