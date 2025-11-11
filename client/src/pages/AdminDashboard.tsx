@@ -1094,7 +1094,8 @@ export default function AdminDashboard() {
         {/* Invite User Modal */}
         {showInviteModal && !showQRCode && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-white/10">
+            <div className="max-h-[85vh] w-full max-w-md overflow-hidden rounded-xl border border-white/10 bg-[#1a1a1a] shadow-xl shadow-black/40">
+              <div className="max-h-[85vh] overflow-y-auto px-6 py-6">
               <h2 className="text-lg font-semibold mb-2">Invite to {inviteCommunityName}</h2>
               <p className="text-sm text-white/60 mb-4">Choose how you want to invite members</p>
 
@@ -1298,6 +1299,7 @@ export default function AdminDashboard() {
                   Close
                 </button>
               </div>
+            </div>
             </div>
           </div>
         )}
