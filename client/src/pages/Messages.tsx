@@ -91,7 +91,7 @@ export default function Messages(){
         ])
         if (cancelled) return
 
-        if (membersRes?.success && Array.isArray(membersRes.communities)) {
+          if (membersRes?.success && Array.isArray(membersRes.communities)) {
           const formatted = membersRes.communities.map((c:any) => ({
             id: Number(c.id),
             name: String(c.name || ''),
@@ -100,20 +100,25 @@ export default function Messages(){
 
           let filtered = formatted
           if (hierarchyRes?.success && Array.isArray(hierarchyRes.communities)) {
-            const parentMap = new Map<number, number | null>()
-            const traverse = (nodes:any[], parentId:number|null) => {
+              const hierarchyInfo = new Map<number, { parentId: number | null; depth: number }>()
+              const traverse = (nodes:any[], parentId:number|null, depth:number) => {
               nodes.forEach(node => {
                 const nodeId = Number(node.id)
-                parentMap.set(nodeId, parentId)
+                  hierarchyInfo.set(nodeId, { parentId, depth })
                 if (Array.isArray(node.children) && node.children.length){
-                  traverse(node.children, nodeId)
+                    traverse(node.children, nodeId, depth + 1)
                 }
               })
             }
-            traverse(hierarchyRes.communities, null)
-            const subOnly = formatted.filter(comm => parentMap.get(comm.id) != null)
-            if (subOnly.length > 0) {
-              filtered = subOnly
+              traverse(hierarchyRes.communities, null, 0)
+              const firstLevelChildren = formatted.filter(comm => {
+                const info = hierarchyInfo.get(comm.id)
+                return info ? info.depth === 1 : false
+              })
+              if (firstLevelChildren.length > 0) {
+                filtered = firstLevelChildren
+              } else {
+                filtered = []
             }
           }
           setCommunities(filtered)
