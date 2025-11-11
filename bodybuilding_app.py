@@ -1869,40 +1869,40 @@ def init_db():
                 score_numeric REAL,
                 created_at TEXT NOT NULL
             )''')
-                if USE_MYSQL:
-                    c.execute('''CREATE TABLE IF NOT EXISTS posts
-                               (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                username VARCHAR(191) NOT NULL,
-                                content TEXT NOT NULL,
-                                image_path TEXT,
-                                timestamp TEXT NOT NULL,
-                                community_id INTEGER,
-                                FOREIGN KEY (username) REFERENCES users(username))''')
-                    c.execute('''CREATE TABLE IF NOT EXISTS post_views
-                               (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                                post_id INTEGER NOT NULL,
-                                username VARCHAR(191) NOT NULL,
-                                viewed_at DATETIME NOT NULL,
-                                UNIQUE(post_id, username),
-                                FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-                                FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE)''')
-                else:
-                    c.execute('''CREATE TABLE IF NOT EXISTS posts
-                               (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                username VARCHAR(191) NOT NULL,
-                                content TEXT NOT NULL,
-                                image_path TEXT,
-                                timestamp TEXT NOT NULL,
-                                community_id INTEGER,
-                                FOREIGN KEY (username) REFERENCES users(username))''')
-                    c.execute('''CREATE TABLE IF NOT EXISTS post_views
-                               (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                post_id INTEGER NOT NULL,
-                                username VARCHAR(191) NOT NULL,
-                                viewed_at TEXT NOT NULL,
-                                UNIQUE(post_id, username),
-                                FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-                                FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE)''')
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS posts
+                           (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                            username VARCHAR(191) NOT NULL,
+                            content TEXT NOT NULL,
+                            image_path TEXT,
+                            timestamp TEXT NOT NULL,
+                            community_id INTEGER,
+                            FOREIGN KEY (username) REFERENCES users(username))''')
+                c.execute('''CREATE TABLE IF NOT EXISTS post_views
+                           (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                            post_id INTEGER NOT NULL,
+                            username VARCHAR(191) NOT NULL,
+                            viewed_at DATETIME NOT NULL,
+                            UNIQUE(post_id, username),
+                            FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                            FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE)''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS posts
+                           (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username VARCHAR(191) NOT NULL,
+                            content TEXT NOT NULL,
+                            image_path TEXT,
+                            timestamp TEXT NOT NULL,
+                            community_id INTEGER,
+                            FOREIGN KEY (username) REFERENCES users(username))''')
+                c.execute('''CREATE TABLE IF NOT EXISTS post_views
+                           (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            post_id INTEGER NOT NULL,
+                            username VARCHAR(191) NOT NULL,
+                            viewed_at TEXT NOT NULL,
+                            UNIQUE(post_id, username),
+                            FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                            FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE)''')
 
             # Create replies table
             logger.info("Creating replies table...")
