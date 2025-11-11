@@ -20601,31 +20601,31 @@ def api_community_feed(community_id):
                 """,
                 (community_id,)
             )
-              posts_raw = c.fetchall()
-              posts = [dict(row) for row in posts_raw]
-              post_ids = [post['id'] for post in posts]
-              view_counts: Dict[int, int] = {}
-              user_viewed: Set[int] = set()
-              if post_ids:
-                  placeholders = ','.join([get_sql_placeholder()] * len(post_ids))
-                  try:
-                      c.execute(f"SELECT post_id, COUNT(*) as cnt FROM post_views WHERE post_id IN ({placeholders}) GROUP BY post_id", tuple(post_ids))
-                      for row in c.fetchall() or []:
-                          pid = row['post_id'] if hasattr(row, 'keys') else row[0]
-                          cnt = row['cnt'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else 0)
-                          view_counts[int(pid)] = int(cnt or 0)
-                  except Exception as e:
-                      logger.warning(f"Failed to fetch post view counts: {e}")
-                  try:
-                      placeholders_user = ','.join([get_sql_placeholder()] * len(post_ids))
-                      params = list(post_ids)
-                      params.append(username)
-                      c.execute(f"SELECT post_id FROM post_views WHERE post_id IN ({placeholders_user}) AND username = {get_sql_placeholder()}", tuple(params))
-                      for row in c.fetchall() or []:
-                          pid = row['post_id'] if hasattr(row, 'keys') else row[0]
-                          user_viewed.add(int(pid))
-                  except Exception as e:
-                      logger.warning(f"Failed to fetch user viewed posts: {e}")
+            posts_raw = c.fetchall()
+            posts = [dict(row) for row in posts_raw]
+            post_ids = [post['id'] for post in posts]
+            view_counts: Dict[int, int] = {}
+            user_viewed: Set[int] = set()
+            if post_ids:
+                placeholders = ','.join([get_sql_placeholder()] * len(post_ids))
+                try:
+                    c.execute(f"SELECT post_id, COUNT(*) as cnt FROM post_views WHERE post_id IN ({placeholders}) GROUP BY post_id", tuple(post_ids))
+                    for row in c.fetchall() or []:
+                        pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                        cnt = row['cnt'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else 0)
+                        view_counts[int(pid)] = int(cnt or 0)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch post view counts: {e}")
+                try:
+                    placeholders_user = ','.join([get_sql_placeholder()] * len(post_ids))
+                    params = list(post_ids)
+                    params.append(username)
+                    c.execute(f"SELECT post_id FROM post_views WHERE post_id IN ({placeholders_user}) AND username = {get_sql_placeholder()}", tuple(params))
+                    for row in c.fetchall() or []:
+                        pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                        user_viewed.add(int(pid))
+                except Exception as e:
+                    logger.warning(f"Failed to fetch user viewed posts: {e}")
 
             # Enrich posts
             for post in posts:
