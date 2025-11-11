@@ -1107,59 +1107,70 @@ export default function AdminDashboard() {
               {inviteNestedOptions.length > 0 && (
                 <div className="mb-4 p-3 bg-white/5 border border-white/10 rounded-lg space-y-3">
                   <div className="text-xs text-white/50 uppercase tracking-wide">Nested communities</div>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-sm text-white/80">
-                      <input
-                        type="radio"
-                        className="text-[#4db6ac]"
-                        checked={inviteScope === 'parent-only'}
-                        onChange={() => setInviteScope('parent-only')}
-                      />
-                      <span>Invite only to {inviteCommunityName}</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm text-white/80">
-                      <input
-                        type="radio"
-                        className="text-[#4db6ac]"
-                        checked={inviteScope === 'all-nested'}
-                        onChange={() => setInviteScope('all-nested')}
-                      />
-                      <span>Invite to {inviteCommunityName} and all nested communities</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm text-white/80">
-                      <input
-                        type="radio"
-                        className="text-[#4db6ac]"
-                        checked={inviteScope === 'selected-nested'}
-                        onChange={() => setInviteScope('selected-nested')}
-                      />
-                      <span>Invite to {inviteCommunityName} and selected nested communities</span>
-                    </label>
-                  </div>
+                    <div className="space-y-2 text-sm text-white/80">
+                      {[
+                        { value: 'parent-only', label: `Invite only to ${inviteCommunityName}` },
+                        { value: 'all-nested', label: `Invite to ${inviteCommunityName} and all nested communities` },
+                        { value: 'selected-nested', label: `Invite to ${inviteCommunityName} and selected nested communities` }
+                      ].map(option => {
+                        const selected = inviteScope === option.value
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                              selected
+                                ? 'border-[#4db6ac]/60 bg-[#4db6ac]/15 text-white shadow-lg shadow-[#4db6ac]/10'
+                                : 'border-white/10 bg-black/40 text-white/70 hover:border-white/20 hover:bg-black/50'
+                            }`}
+                            onClick={() => setInviteScope(option.value as typeof inviteScope)}
+                          >
+                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/20 bg-black/60 text-[10px] text-white/70">
+                              {selected ? (
+                                <span className="h-2 w-2 rounded-full bg-[#4db6ac]" />
+                              ) : (
+                                <span className="h-1 w-1 rounded-full bg-white/25" />
+                              )}
+                            </span>
+                            <span className="ml-2">{option.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
 
                   {inviteScope === 'selected-nested' && (
-                    <div className="pt-2 space-y-1">
-                      {inviteNestedOptions.map((option) => (
-                        <label
-                          key={option.id}
-                          className="flex items-center gap-2 text-sm text-white/70"
-                          style={{ paddingLeft: `${(option.depth + 1) * 12}px` }}
-                        >
-                          <input
-                            type="checkbox"
-                            className="text-[#4db6ac]"
-                            checked={inviteSelectedNestedIds.includes(option.id)}
-                            onChange={() =>
-                              setInviteSelectedNestedIds((prev) =>
-                                prev.includes(option.id)
-                                  ? prev.filter((id) => id !== option.id)
-                                  : [...prev, option.id]
-                              )
-                            }
-                          />
-                          <span>{option.name}</span>
-                        </label>
-                      ))}
+                      <div className="pt-2 space-y-1">
+                        {inviteNestedOptions.map((option) => {
+                          const selected = inviteSelectedNestedIds.includes(option.id)
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() =>
+                                setInviteSelectedNestedIds((prev) =>
+                                  prev.includes(option.id)
+                                    ? prev.filter((id) => id !== option.id)
+                                    : [...prev, option.id]
+                                )
+                              }
+                              className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
+                                selected
+                                  ? 'border-[#4db6ac]/60 bg-[#4db6ac]/15 text-white shadow-lg shadow-[#4db6ac]/10'
+                                  : 'border-white/10 bg-black/30 text-white/70 hover:border-white/20 hover:bg-black/40'
+                              }`}
+                              style={{ paddingLeft: `${(option.depth + 1) * 16}px` }}
+                            >
+                              <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/20 bg-black/40 text-[10px] text-white/70">
+                                {selected ? (
+                                  <i className="fa-solid fa-check text-[#4db6ac]" />
+                                ) : (
+                                  <span className="h-1 w-1 rounded-full bg-white/30" />
+                                )}
+                              </span>
+                              <span className="ml-2">{option.name}</span>
+                            </button>
+                          )
+                        })}
                       {inviteSelectedNestedIds.length === 0 && (
                         <div className="text-xs text-amber-300">
                           Select at least one nested community or change the invite scope.
@@ -1176,24 +1187,37 @@ export default function AdminDashboard() {
                   <p className="text-xs text-white/40">
                     Decide if the invitee should also join parent communities.
                   </p>
-                  <div className="space-y-1">
-                    {inviteParentOptions.map((option) => (
-                      <label key={option.id} className="flex items-center gap-2 text-sm text-white/80">
-                        <input
-                          type="checkbox"
-                          className="text-[#4db6ac]"
-                          checked={inviteSelectedParentIds.includes(option.id)}
-                          onChange={() =>
+                  <div className="space-y-2">
+                    {inviteParentOptions.map((option) => {
+                      const selected = inviteSelectedParentIds.includes(option.id)
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() =>
                             setInviteSelectedParentIds((prev) =>
                               prev.includes(option.id)
                                 ? prev.filter((id) => id !== option.id)
                                 : [...prev, option.id]
                             )
                           }
-                        />
-                        <span>{option.name}</span>
-                      </label>
-                    ))}
+                          className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
+                            selected
+                              ? 'border-[#4db6ac]/60 bg-[#4db6ac]/15 text-white shadow-lg shadow-[#4db6ac]/10'
+                              : 'border-white/10 bg-black/30 text-white/70 hover:border-white/20 hover:bg-black/40'
+                          }`}
+                        >
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/20 bg-black/40 text-[10px] text-white/70">
+                            {selected ? (
+                              <i className="fa-solid fa-check text-[#4db6ac]" />
+                            ) : (
+                              <span className="h-1 w-1 rounded-full bg-white/30" />
+                            )}
+                          </span>
+                          <span className="ml-2">{option.name}</span>
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               )}
