@@ -552,6 +552,27 @@ def ensure_post_views_table(c):
     except Exception as e:
         logger.warning(f"Could not ensure post_views table: {e}")
 
+def upsert_post_view(c, post_id: int, username: str) -> Optional[int]:
+    """Create the post_views table if needed and ensure a unique view for username/post_id."""
+    ensure_post_views_table(c)
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        if USE_MYSQL:
+            c.execute("INSERT IGNORE INTO post_views (post_id, username, viewed_at) VALUES (%s,%s,%s)", (post_id, username, now_str))
+        else:
+            c.execute("INSERT OR IGNORE INTO post_views (post_id, username, viewed_at) VALUES (?,?,?)", (post_id, username, now_str))
+    except Exception as insert_err:
+        logger.warning(f"Failed inserting post_view for post {post_id} and user {username}: {insert_err}")
+    try:
+        placeholder = get_sql_placeholder()
+        c.execute(f"SELECT COUNT(*) as cnt FROM post_views WHERE post_id = {placeholder}", (post_id,))
+        row = c.fetchone()
+        count = row['cnt'] if hasattr(row, 'keys') else (row[0] if row else 0)
+        return int(count or 0)
+    except Exception as count_err:
+        logger.warning(f"Failed counting post views for post {post_id}: {count_err}")
+        return None
+
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
 CANONICAL_SCHEME = os.getenv('CANONICAL_SCHEME', 'https')
@@ -11537,19 +11558,26 @@ def feed():
 @login_required
 def add_reaction():
     username = session['username']
-    post_id = request.form.get('post_id')
+    post_id = request.form.get('post_id', type=int)
     reaction_type = request.form.get('reaction')
 
     if not all([post_id, reaction_type]):
         return jsonify({'success': False, 'error': 'Missing data'}), 400
 
     try:
+        comm_id = None
+        view_count = None
         with get_db_connection() as conn:
             c = conn.cursor()
 
             # Check if the user already reacted to this post
             c.execute("SELECT id, reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
             existing = c.fetchone()
+
+            # Retrieve post metadata upfront (owner + community)
+            c.execute("SELECT username, community_id FROM posts WHERE id = ?", (post_id,))
+            post_data = c.fetchone()
+            comm_id = post_data['community_id'] if post_data and hasattr(post_data, 'keys') else (post_data[1] if post_data and len(post_data) > 1 else None)
 
             if existing:
                 if existing['reaction_type'] == reaction_type:
@@ -11564,52 +11592,47 @@ def add_reaction():
                           (post_id, username, reaction_type))
 
             # Create notification for post owner and other engaged users (only if adding/changing reaction, not removing)
-            if existing is None or (existing and existing['reaction_type'] != reaction_type):
-                # Get post owner and community_id
-                c.execute("SELECT username, community_id FROM posts WHERE id = ?", (post_id,))
-                post_data = c.fetchone()
+            if post_data and (existing is None or (existing and existing['reaction_type'] != reaction_type)):
                 logger.info(f"Reaction notification check - Post owner: {post_data['username'] if post_data else 'None'}, Reactor: {username}")
-                if post_data:
-                    owner = post_data['username']
-                    comm_id = post_data['community_id']
-                    recipients = set()
-                    if owner and owner != username:
-                        recipients.add(owner)
-                    # Prior repliers
+                owner = post_data['username']
+                recipients = set()
+                if owner and owner != username:
+                    recipients.add(owner)
+                # Prior repliers
+                try:
+                    c.execute("SELECT DISTINCT username FROM replies WHERE post_id=?", (post_id,))
+                    for rr in c.fetchall() or []:
+                        u = rr['username'] if hasattr(rr,'keys') else rr[0]
+                        if u and u != username and u != owner:
+                            recipients.add(u)
+                except Exception:
+                    pass
+                # Prior reactors
+                try:
+                    c.execute("SELECT DISTINCT username FROM reactions WHERE post_id=?", (post_id,))
+                    for rv in c.fetchall() or []:
+                        u = rv['username'] if hasattr(rv,'keys') else rv[0]
+                        if u and u != username and u != owner:
+                            recipients.add(u)
+                except Exception:
+                    pass
+                # Insert notifications
+                for target in recipients:
                     try:
-                        c.execute("SELECT DISTINCT username FROM replies WHERE post_id=?", (post_id,))
-                        for rr in c.fetchall() or []:
-                            u = rr['username'] if hasattr(rr,'keys') else rr[0]
-                            if u and u != username and u != owner:
-                                recipients.add(u)
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
+                            VALUES (?, ?, 'reaction', ?, ?, ?)
+                        """, (target, username, post_id, comm_id, f"{username} reacted in a thread you follow"))
                     except Exception:
-                        pass
-                    # Prior reactors
-                    try:
-                        c.execute("SELECT DISTINCT username FROM reactions WHERE post_id=?", (post_id,))
-                        for rv in c.fetchall() or []:
-                            u = rv['username'] if hasattr(rv,'keys') else rv[0]
-                            if u and u != username and u != owner:
-                                recipients.add(u)
-                    except Exception:
-                        pass
-                    # Insert notifications
-                    for target in recipients:
                         try:
                             c.execute("""
-                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
-                                VALUES (?, ?, 'reaction', ?, ?, ?)
+                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                VALUES (?, ?, 'reaction', ?, ?, ?, NOW(), 0)
+                                ON CONFLICT(user_id, from_user, type, post_id, community_id) DO UPDATE SET created_at=excluded.created_at, is_read=0, message=excluded.message
                             """, (target, username, post_id, comm_id, f"{username} reacted in a thread you follow"))
                         except Exception:
-                            try:
-                                c.execute("""
-                                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                                    VALUES (?, ?, 'reaction', ?, ?, ?, NOW(), 0)
-                                    ON CONFLICT(user_id, from_user, type, post_id, community_id) DO UPDATE SET created_at=excluded.created_at, is_read=0, message=excluded.message
-                                """, (target, username, post_id, comm_id, f"{username} reacted in a thread you follow"))
-                            except Exception:
-                                pass
-                    logger.info(f"Created reaction notifications for {len(recipients)} recipients")
+                            pass
+                logger.info(f"Created reaction notifications for {len(recipients)} recipients")
             
             conn.commit()
 
@@ -11628,15 +11651,29 @@ def add_reaction():
             user_reaction_raw = c.fetchone()
             new_user_reaction = user_reaction_raw['reaction_type'] if user_reaction_raw else None
 
+            try:
+                view_count = upsert_post_view(c, int(post_id), username)
+                conn.commit()
+            except Exception as view_err:
+                logger.warning(f"add_reaction view tracking failed for post {post_id}: {view_err}")
+
             return jsonify({
                 'success': True,
                 'counts': new_counts,
-                'user_reaction': new_user_reaction
+                'user_reaction': new_user_reaction,
+                'view_count': int(view_count or 0) if view_count is not None else None
             })
 
     except Exception as e:
         logger.error(f"Error adding reaction: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+    finally:
+        try:
+            if comm_id:
+                invalidate_community_cache(comm_id)
+        except Exception as cache_err:
+            logger.warning(f"Failed to invalidate cache after reaction for community {comm_id}: {cache_err}")
 
 
 def create_notification(user_id, from_user, notification_type, post_id=None, community_id=None, message=None):
@@ -12949,6 +12986,7 @@ def post_reply():
     timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
     timestamp_display = now.strftime('%d-%m-%Y')
 
+    community_id = None
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -13043,7 +13081,19 @@ def post_reply():
             
             conn.commit()
 
+            try:
+                upsert_post_view(c, post_id, username)
+                conn.commit()
+            except Exception as view_err:
+                logger.warning(f"post_reply view tracking failed for post {post_id}: {view_err}")
+
         logger.info(f"Reply added successfully for {username} to post {post_id} with ID: {reply_id}")
+
+        try:
+            if community_id:
+                invalidate_community_cache(community_id)
+        except Exception as cache_err:
+            logger.warning(f"Failed to invalidate cache after reply for community {community_id}: {cache_err}")
 
         return jsonify({
             'success': True,
@@ -20833,10 +20883,6 @@ def api_post_view():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            try:
-                ensure_post_views_table(c)
-            except Exception as ensure_err:
-                logger.warning(f"Failed to ensure post_views table before insert: {ensure_err}")
             c.execute("SELECT community_id, username FROM posts WHERE id = ?", (post_id,))
             row = c.fetchone()
             if not row:
@@ -20854,24 +20900,18 @@ def api_post_view():
                     """, (username, community_id))
                     if not c.fetchone():
                         return jsonify({'success': False, 'error': 'Forbidden'}), 403
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             try:
-                if USE_MYSQL:
-                    c.execute("INSERT IGNORE INTO post_views (post_id, username, viewed_at) VALUES (%s,%s,%s)", (post_id, username, now))
-                else:
-                    c.execute("INSERT OR IGNORE INTO post_views (post_id, username, viewed_at) VALUES (?,?,?)", (post_id, username, now))
+                view_count = upsert_post_view(c, post_id, username)
                 conn.commit()
-            except Exception as e:
-                logger.warning(f"Failed to record post view for {post_id}: {e}")
+            except Exception as view_err:
+                logger.warning(f"Failed to record post view for {post_id}: {view_err}")
+                view_count = None
             try:
                 if community_id:
                     invalidate_community_cache(community_id)
             except Exception as e:
                 logger.warning(f"Failed to invalidate cache for community {community_id}: {e}")
-            c.execute("SELECT COUNT(*) as cnt FROM post_views WHERE post_id = ?", (post_id,))
-            row = c.fetchone()
-            count = row['cnt'] if hasattr(row, 'keys') else (row[0] if row else 0)
-            return jsonify({'success': True, 'view_count': int(count or 0), 'post_id': post_id})
+            return jsonify({'success': True, 'view_count': int(view_count or 0), 'post_id': post_id})
     except Exception as e:
         logger.error(f"Error saving post view for {post_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
