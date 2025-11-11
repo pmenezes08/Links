@@ -33,6 +33,7 @@ export default function ChatThread(){
   const { setTitle } = useHeader()
   const { username } = useParams()
   const navigate = useNavigate()
+  const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
   useEffect(() => { setTitle(username ? `Chat: ${username}` : 'Chat') }, [setTitle, username])
 
   // Detect mobile device
@@ -77,9 +78,11 @@ export default function ChatThread(){
   const [isMobile, setIsMobile] = useState(false)
   const [showMicPermissionModal, setShowMicPermissionModal] = useState(false)
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
+  const headerMenuRef = useRef<HTMLDivElement | null>(null)
   // Bridge between temp ids and server ids to avoid flicker and keep stable keys
   const idBridgeRef = useRef<{ tempToServer: Map<string, string|number>; serverToTemp: Map<string|number, string> }>({
     tempToServer: new Map(),
@@ -89,6 +92,27 @@ export default function ChatThread(){
   const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
+
+  useEffect(() => {
+    if (!headerMenuOpen) return
+    const handleDocumentClick = (event: globalThis.MouseEvent) => {
+      if (!headerMenuRef.current) return
+      if (!headerMenuRef.current.contains(event.target as Node)) {
+        setHeaderMenuOpen(false)
+      }
+    }
+    const handleDocumentKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setHeaderMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleDocumentClick)
+    document.addEventListener('keydown', handleDocumentKey)
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick)
+      document.removeEventListener('keydown', handleDocumentKey)
+    }
+  }, [headerMenuOpen])
 
   // Mic always enabled for audio messages
   const MIC_ENABLED = true
@@ -1107,7 +1131,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           maxHeight: '3.5rem'
         }}
       >
-        <div className="max-w-3xl mx-auto w-full flex items-center gap-3">
+        <div className="max-w-3xl mx-auto w-full flex items-center gap-3 relative">
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             onClick={()=> navigate('/user_chat')} 
@@ -1128,11 +1152,36 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             {/* Online/typing label removed as requested */}
           </div>
           <button 
+            type="button"
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             aria-label="More options"
+            aria-haspopup="true"
+            aria-expanded={headerMenuOpen}
+            onClick={()=> setHeaderMenuOpen(prev => !prev)}
           >
             <i className="fa-solid fa-ellipsis-vertical text-white/70" />
           </button>
+          {headerMenuOpen && (
+            <div ref={headerMenuRef} className="absolute right-0 top-full mt-2 z-[10020] w-48">
+              <div className="rounded-xl border border-white/10 bg-[#111111] shadow-lg shadow-black/40 py-1">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  onClick={() => {
+                    setHeaderMenuOpen(false)
+                    if (profilePath) {
+                      navigate(profilePath)
+                    } else {
+                      navigate('/profile')
+                    }
+                  }}
+                >
+                  <i className="fa-solid fa-user text-xs text-[#4db6ac]" />
+                  <span>View Profile</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       
