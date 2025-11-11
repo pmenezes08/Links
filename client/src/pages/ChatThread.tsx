@@ -95,7 +95,7 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (!headerMenuOpen) return
-    const handleDocumentClick = (event: globalThis.MouseEvent) => {
+    const handleDocumentClick = (event: globalThis.PointerEvent) => {
       if (!headerMenuRef.current) return
       if (!headerMenuRef.current.contains(event.target as Node)) {
         setHeaderMenuOpen(false)
@@ -106,10 +106,11 @@ export default function ChatThread(){
         setHeaderMenuOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleDocumentClick)
+    const captureOptions: AddEventListenerOptions = { capture: true }
+    document.addEventListener('pointerdown', handleDocumentClick, captureOptions)
     document.addEventListener('keydown', handleDocumentKey)
     return () => {
-      document.removeEventListener('mousedown', handleDocumentClick)
+      document.removeEventListener('pointerdown', handleDocumentClick, captureOptions)
       document.removeEventListener('keydown', handleDocumentKey)
     }
   }, [headerMenuOpen])
@@ -1157,12 +1158,21 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             aria-label="More options"
             aria-haspopup="true"
             aria-expanded={headerMenuOpen}
-            onClick={()=> setHeaderMenuOpen(prev => !prev)}
+            onMouseDown={(event)=> event.stopPropagation()}
+            onClick={(event)=> {
+              event.stopPropagation()
+              setHeaderMenuOpen(prev => !prev)
+            }}
           >
             <i className="fa-solid fa-ellipsis-vertical text-white/70" />
           </button>
           {headerMenuOpen && (
-            <div ref={headerMenuRef} className="absolute right-0 top-full mt-2 z-[10020] w-48">
+            <div
+              ref={headerMenuRef}
+              className="absolute right-0 top-full mt-2 z-[10020] w-48"
+              onMouseDown={(event)=> event.stopPropagation()}
+              onClick={(event)=> event.stopPropagation()}
+            >
               <div className="rounded-xl border border-white/10 bg-[#111111] shadow-lg shadow-black/40 py-1">
                 <button
                   type="button"
