@@ -20826,6 +20826,11 @@ def api_post_view():
                 conn.commit()
             except Exception as e:
                 logger.warning(f"Failed to record post view for {post_id}: {e}")
+            try:
+                if community_id:
+                    invalidate_community_cache(community_id)
+            except Exception as e:
+                logger.warning(f"Failed to invalidate cache for community {community_id}: {e}")
             c.execute("SELECT COUNT(*) as cnt FROM post_views WHERE post_id = ?", (post_id,))
             row = c.fetchone()
             count = row['cnt'] if hasattr(row, 'keys') else (row[0] if row else 0)
