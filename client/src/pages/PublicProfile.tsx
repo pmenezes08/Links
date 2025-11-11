@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
@@ -12,7 +12,10 @@ export default function PublicProfile(){
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<any>(null)
 
-  useEffect(() => { setTitle(username ? `@${username}` : 'Profile') }, [setTitle, username])
+  useEffect(() => {
+    const displayLabel = profile?.personal?.display_name || profile?.display_name || (username ? `@${username}` : 'Profile')
+    setTitle(displayLabel)
+  }, [profile, setTitle, username])
 
   useEffect(() => {
     let mounted = true
@@ -36,6 +39,22 @@ export default function PublicProfile(){
   if (error) return <div className="min-h-screen pt-14 bg-black text-white p-3 text-red-400">{error}</div>
   if (!profile) return <div className="min-h-screen pt-14 bg-black text-white p-3">No profile.</div>
 
+  const personal = profile.personal || {}
+  const professional = profile.professional || {}
+  const isSelf = Boolean(profile.is_self)
+
+  const formattedDob = useMemo(() => {
+    const dob = personal.date_of_birth
+    if (!dob) return null
+    try{
+      const date = new Date(dob)
+      if (Number.isNaN(date.getTime())) return null
+      return new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long', day: 'numeric' }).format(date)
+    }catch{
+      return null
+    }
+  }, [personal.date_of_birth])
+
   return (
     <div className="min-h-screen pt-14 bg-black text-white">
       <div className="max-w-2xl mx-auto px-3 py-3">
@@ -57,7 +76,21 @@ export default function PublicProfile(){
               <div className="font-semibold text-lg truncate">{profile.display_name || profile.username}</div>
               <div className="text-sm text-[#9fb0b5] truncate">@{profile.username}</div>
             </div>
-            <button className="ml-auto px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> navigate('/user_chat/new')}>Message</button>
+              {isSelf ? (
+                <button
+                  className="ml-auto px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
+                  onClick={()=> navigate('/profile')}
+                >
+                  <i className="fa-solid fa-pen-to-square mr-2" /> Edit Profile
+                </button>
+              ) : (
+                <button
+                  className="ml-auto px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
+                  onClick={()=> navigate(`/user_chat/new?username=${encodeURIComponent(profile.username)}`)}
+                >
+                  Message
+                </button>
+              )}
           </div>
         </div>
 
@@ -68,12 +101,26 @@ export default function PublicProfile(){
           </div>
         ) : null}
 
-        {/* Location */}
-        {profile.location ? (
-          <div className="mt-3 rounded-2xl border border-white/10 bg-black p-3">
-            <div className="text-sm text-[#9fb0b5]"><i className="fa-solid fa-location-dot mr-2" />{profile.location}</div>
-          </div>
-        ) : null}
+          {/* Personal Info */}
+          {(personal.gender || personal.country || personal.city || formattedDob) ? (
+            <div className="mt-3 rounded-2xl border border-white/10 bg-black p-3">
+              <div className="font-semibold mb-2">Personal Information</div>
+              <div className="space-y-1 text-sm text-white/90">
+                {formattedDob && (
+                  <div><span className="text-[#9fb0b5] mr-1">Date of birth:</span>{formattedDob}</div>
+                )}
+                {personal.gender && (
+                  <div><span className="text-[#9fb0b5] mr-1">Gender:</span>{personal.gender}</div>
+                )}
+                {(personal.city || personal.country) && (
+                  <div>
+                    <span className="text-[#9fb0b5] mr-1">Location:</span>
+                    {[personal.city, personal.country].filter(Boolean).join(', ')}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
 
         {/* Links */}
         {(profile.website || profile.instagram || profile.twitter) ? (
@@ -85,22 +132,24 @@ export default function PublicProfile(){
         ) : null}
 
         {/* Professional Info */}
-        {profile.professional ? (
+          {(professional.role || professional.company || professional.industry || professional.linkedin) ? (
           <div className="mt-3 rounded-2xl border border-white/10 bg-black p-3">
             <div className="font-semibold mb-2">Professional</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-              {profile.professional.role ? (<div><span className="text-[#9fb0b5]">Role: </span>{profile.professional.role}</div>) : null}
-              {profile.professional.company ? (<div><span className="text-[#9fb0b5]">Company: </span>{profile.professional.company}</div>) : null}
-              {profile.professional.industry ? (<div><span className="text-[#9fb0b5]">Industry: </span>{profile.professional.industry}</div>) : null}
-              {profile.professional.degree ? (<div><span className="text-[#9fb0b5]">Degree: </span>{profile.professional.degree}</div>) : null}
-              {profile.professional.school ? (<div><span className="text-[#9fb0b5]">School: </span>{profile.professional.school}</div>) : null}
-              {profile.professional.experience !== undefined && profile.professional.experience !== null && profile.professional.experience !== '' ? (
-                <div><span className="text-[#9fb0b5]">Experience: </span>{profile.professional.experience}</div>
-              ) : null}
-              {profile.professional.skills ? (<div className="sm:col-span-2"><span className="text-[#9fb0b5]">Skills: </span>{profile.professional.skills}</div>) : null}
-              {profile.professional.linkedin ? (
-                <a className="underline text-[#4db6ac] sm:col-span-2" href={profile.professional.linkedin.startsWith('http')?profile.professional.linkedin:`https://${profile.professional.linkedin}`} target="_blank" rel="noreferrer">LinkedIn</a>
-              ) : null}
+              <div className="space-y-1 text-sm text-white/90">
+                {professional.role && (
+                  <div><span className="text-[#9fb0b5] mr-1">Current position:</span>{professional.role}</div>
+                )}
+                {professional.company && (
+                  <div><span className="text-[#9fb0b5] mr-1">Company:</span>{professional.company}</div>
+                )}
+                {professional.industry && (
+                  <div><span className="text-[#9fb0b5] mr-1">Industry:</span>{professional.industry}</div>
+                )}
+                {professional.linkedin && (
+                  <a className="underline text-[#4db6ac]" href={professional.linkedin.startsWith('http') ? professional.linkedin : `https://${professional.linkedin}`} target="_blank" rel="noreferrer">
+                    LinkedIn
+                  </a>
+                )}
             </div>
           </div>
         ) : null}

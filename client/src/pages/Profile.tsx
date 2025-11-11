@@ -1,31 +1,106 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Avatar from '../components/Avatar'
 
-type Profile = {
-  username: string
-  email?: string
-  subscription?: string
-  display_name?: string|null
-  bio?: string|null
-  location?: string|null
-  website?: string|null
-  instagram?: string|null
-  twitter?: string|null
-  profile_picture?: string|null
-  cover_photo?: string|null
+type CountryOption = { name: string; iso2?: string }
+
+type PersonalForm = {
+  display_name: string
+  date_of_birth: string
+  gender: string
+  country: string
+  city: string
 }
 
-export default function Profile(){
-  const [data, setData] = useState<Profile|null>(null)
+type ProfessionalForm = {
+  role: string
+  company: string
+  industry: string
+  linkedin: string
+}
+
+type ToastState = { message: string; type: 'success' | 'error' } | null
+
+type ProfileData = {
+  username: string
+  subscription?: string
+  profile_picture?: string | null
+  cover_photo?: string | null
+  display_name?: string | null
+  location?: string | null
+  personal?: {
+    display_name?: string | null
+    date_of_birth?: string | null
+    gender?: string | null
+    country?: string | null
+    city?: string | null
+  }
+  professional?: {
+    role?: string | null
+    company?: string | null
+    industry?: string | null
+    linkedin?: string | null
+  }
+}
+
+const INDUSTRIES = [
+  'Accounting',
+  'Advertising & Marketing',
+  'Aerospace',
+  'Agriculture',
+  'Automotive',
+  'Biotechnology',
+  'Construction',
+  'Consulting',
+  'Consumer Goods',
+  'Education',
+  'Energy & Utilities',
+  'Financial Services',
+  'Government',
+  'Healthcare',
+  'Hospitality',
+  'Information Technology',
+  'Insurance',
+  'Legal Services',
+  'Manufacturing',
+  'Media & Entertainment',
+  'Nonprofit',
+  'Professional Services',
+  'Real Estate',
+  'Retail',
+  'Telecommunications',
+  'Transportation & Logistics',
+  'Travel & Tourism',
+  'Other',
+]
+
+const GENDERS = ['Female', 'Male', 'Non-binary', 'Prefer not to say', 'Other']
+
+const EMPTY_PERSONAL_FORM: PersonalForm = {
+  display_name: '',
+  date_of_birth: '',
+  gender: '',
+  country: '',
+  city: '',
+}
+
+const EMPTY_PROFESSIONAL_FORM: ProfessionalForm = {
+  role: '',
+  company: '',
+  industry: '',
+  linkedin: '',
+}
+
+export default function Profile() {
+  const [data, setData] = useState<ProfileData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string|null>(null)
-  const [form, setForm] = useState({
-    display_name: '', location: '', is_public: true,
-    role: '', company: '', industry: '', linkedin: '',
-    age: '', gender: '', country: '', city: '',
-    share_community_id: '' as string
-  })
-  const [communities, setCommunities] = useState<Array<{id:number,name:string,type?:string}>>([])
+  const [error, setError] = useState<string | null>(null)
+  const [personalForm, setPersonalForm] = useState<PersonalForm>(EMPTY_PERSONAL_FORM)
+  const [professionalForm, setProfessionalForm] = useState<ProfessionalForm>(EMPTY_PROFESSIONAL_FORM)
+  const [countries, setCountries] = useState<CountryOption[]>([])
+  const [cities, setCities] = useState<string[]>([])
+  const [citiesLoading, setCitiesLoading] = useState(false)
+  const cityCacheRef = useRef<Record<string, string[]>>({})
+  const [toast, setToast] = useState<ToastState>(null)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
@@ -34,118 +109,285 @@ export default function Profile(){
 
   useEffect(() => {
     let mounted = true
-    async function load(){
+    async function loadProfile() {
       setLoading(true)
-      try{
-        const r = await fetch('/api/profile_me', { credentials:'include' })
-        const j = await r.json()
+      try {
+        const response = await fetch('/api/profile_me', { credentials: 'include' })
+        const payload = await response.json().catch(() => null)
         if (!mounted) return
-        if (j?.success){
-          setData(j.profile)
-          setForm(f => ({
-            ...f,
-            display_name: j.profile.display_name || '',
-            location: j.profile.location || ''
-          }))
+        if (payload?.success && payload.profile) {
+          const profile: ProfileData = payload.profile
+          setData(profile)
+          const personal = profile.personal || {}
+          const professional = profile.professional || {}
+          setPersonalForm({
+            display_name: personal.display_name || profile.display_name || '',
+            date_of_birth: personal.date_of_birth ? String(personal.date_of_birth).split('T')[0] : '',
+            gender: personal.gender || '',
+            country: personal.country || '',
+            city: personal.city || '',
+          })
+          setProfessionalForm({
+            role: professional.role || '',
+            company: professional.company || '',
+            industry: professional.industry || '',
+            linkedin: professional.linkedin || '',
+          })
+          setError(null)
+        } else {
+          setError(payload?.error || 'Failed to load profile')
         }
-        else setError(j?.error || 'Error')
-      }catch{
-        if (mounted) setError('Error')
-      } finally { if (mounted) setLoading(false) }
+      } catch {
+        if (mounted) setError('Failed to load profile')
+      } finally {
+        if (mounted) setLoading(false)
+      }
     }
-    load()
-    // Load user's communities for sharing dropdown
-    ;(async () => {
-      try{
-        const rc = await fetch('/api/user_parent_community', { credentials:'include' })
-        const jc = await rc.json().catch(()=>null)
-        if (jc?.success && Array.isArray(jc.communities)){
-          setCommunities(jc.communities)
-        }
-      }catch{}
-    })()
-    return () => { mounted = false }
+    loadProfile()
+    return () => {
+      mounted = false
+    }
   }, [])
 
-  function handlePhotoSelect(event: React.ChangeEvent<HTMLInputElement>){
+  useEffect(() => {
+    let cancelled = false
+    async function loadCountries() {
+      try {
+        const r = await fetch('/api/geo/countries', { credentials: 'include' })
+        const j = await r.json().catch(() => null)
+        if (!cancelled && j?.success && Array.isArray(j.countries)) {
+          setCountries(j.countries)
+        } else if (!cancelled) {
+          setCountries([])
+        }
+      } catch {
+        if (!cancelled) setCountries([])
+      }
+    }
+    loadCountries()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    const rawCountry = personalForm.country.trim()
+    if (!rawCountry) {
+      setCities([])
+      return
+    }
+    const matchName = countries.find(
+      c => c.name.toLowerCase() === rawCountry.toLowerCase()
+    )?.name
+    if (!matchName) {
+      setCities([])
+      return
+    }
+    const resolvedCountry = matchName
+    const cacheKey = resolvedCountry.toLowerCase()
+    const cached = cityCacheRef.current[cacheKey]
+    if (cached) {
+      setCities(cached)
+      return
+    }
+    let cancelled = false
+    async function fetchCities() {
+      setCitiesLoading(true)
+      try {
+          const r = await fetch(`/api/geo/cities?country=${encodeURIComponent(resolvedCountry)}`, { credentials: 'include' })
+        const j = await r.json().catch(() => null)
+        if (!cancelled && j?.success && Array.isArray(j.cities)) {
+          const list = j.cities.map((city: string) => city.trim()).filter(Boolean)
+          cityCacheRef.current[cacheKey] = list
+          setCities(list)
+        } else if (!cancelled) {
+          cityCacheRef.current[cacheKey] = []
+          setCities([])
+        }
+      } catch {
+        if (!cancelled) {
+          cityCacheRef.current[cacheKey] = []
+          setCities([])
+        }
+      } finally {
+        if (!cancelled) setCitiesLoading(false)
+      }
+    }
+    fetchCities()
+    return () => {
+      cancelled = true
+    }
+  }, [personalForm.country, countries])
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = window.setTimeout(() => setToast(null), 3200)
+    return () => window.clearTimeout(timer)
+  }, [toast])
+
+  function showToast(message: string, type: 'success' | 'error' = 'success') {
+    setToast({ message, type })
+  }
+
+  function handlePhotoSelect(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
-    if (file){
+    if (file) {
       setSelectedPhoto(file)
       const reader = new FileReader()
-      reader.onload = (e) => {
+      reader.onload = e => {
         setPhotoPreview(e.target?.result as string)
       }
       reader.readAsDataURL(file)
     }
   }
 
-  async function handleCameraCapture(){
+  async function handleCameraCapture() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true })
       const video = document.createElement('video')
       video.srcObject = stream
-      video.play()
+      await video.play()
 
       const canvas = document.createElement('canvas')
       canvas.width = 300
       canvas.height = 300
       const ctx = canvas.getContext('2d')
 
-      // Wait for video to load
-      await new Promise((resolve) => {
+      await new Promise(resolve => {
         video.onloadeddata = resolve
       })
 
       ctx?.drawImage(video, 0, 0, 300, 300)
-      canvas.toBlob((blob) => {
+      canvas.toBlob(blob => {
         if (blob) {
           const file = new File([blob], 'camera-photo.jpg', { type: 'image/jpeg' })
           setSelectedPhoto(file)
           setPhotoPreview(canvas.toDataURL())
         }
-      }, 'image/jpeg', 0.8)
+      }, 'image/jpeg', 0.85)
 
       stream.getTracks().forEach(track => track.stop())
-    } catch (error) {
-      alert('Camera access denied or not available')
+    } catch {
+      showToast('Camera access denied or not available', 'error')
     }
   }
 
-  async function uploadProfilePicture(){
+  async function uploadProfilePicture() {
     if (!selectedPhoto) return
-
     setUploadingPhoto(true)
     try {
       const fd = new FormData()
       fd.append('profile_picture', selectedPhoto)
-      const r = await fetch('/upload_profile_picture', { method: 'POST', credentials: 'include', body: fd })
-      const j = await r.json()
-      if (j?.success) {
-        setData(d => d ? { ...d, profile_picture: j.profile_picture } : d)
+      const response = await fetch('/upload_profile_picture', { method: 'POST', credentials: 'include', body: fd })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success && payload.profile_picture) {
+        setData(prev => prev ? { ...prev, profile_picture: payload.profile_picture } : prev)
+        showToast('Profile picture updated')
         setShowPhotoModal(false)
         setSelectedPhoto(null)
         setPhotoPreview(null)
       } else {
-        alert(j?.error || 'Upload failed')
+        showToast(payload?.error || 'Upload failed', 'error')
       }
-    } catch (error) {
-      alert('Upload failed')
+    } catch {
+      showToast('Upload failed', 'error')
     } finally {
       setUploadingPhoto(false)
     }
   }
 
+  async function handlePersonalSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    try {
+      const fd = new FormData()
+      fd.append('display_name', personalForm.display_name)
+      if (personalForm.date_of_birth) fd.append('date_of_birth', personalForm.date_of_birth)
+      fd.append('gender', personalForm.gender)
+      fd.append('country', personalForm.country)
+      fd.append('city', personalForm.city)
+      const response = await fetch('/update_personal_info', { method: 'POST', credentials: 'include', body: fd })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        const location = [personalForm.city, personalForm.country].filter(Boolean).join(', ')
+        setData(prev => prev ? {
+          ...prev,
+          display_name: personalForm.display_name || prev.display_name,
+          location,
+          personal: {
+            ...(prev.personal || {}),
+            display_name: personalForm.display_name,
+            date_of_birth: personalForm.date_of_birth,
+            gender: personalForm.gender,
+            country: personalForm.country,
+            city: personalForm.city,
+          }
+        } : prev)
+        showToast('Personal information updated')
+      } else {
+        showToast(payload?.error || 'Failed to update personal information', 'error')
+      }
+    } catch {
+      showToast('Failed to update personal information', 'error')
+    }
+  }
+
+  async function handleProfessionalSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    try {
+      const fd = new FormData()
+      fd.append('role', professionalForm.role)
+      fd.append('company', professionalForm.company)
+      fd.append('industry', professionalForm.industry)
+      fd.append('linkedin', professionalForm.linkedin)
+      const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: fd })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        setData(prev => prev ? {
+          ...prev,
+          professional: {
+            ...(prev.professional || {}),
+            role: professionalForm.role,
+            company: professionalForm.company,
+            industry: professionalForm.industry,
+            linkedin: professionalForm.linkedin,
+          }
+        } : prev)
+        showToast('Professional information updated')
+      } else {
+        showToast(payload?.error || 'Failed to update professional information', 'error')
+      }
+    } catch {
+      showToast('Failed to update professional information', 'error')
+    }
+  }
+
+  const displayName = personalForm.display_name || data?.display_name || data?.username || ''
+  const subscriptionLabel = data?.subscription || 'free'
+  const locationPreview = useMemo(() => {
+    if (personalForm.city || personalForm.country) {
+      return [personalForm.city, personalForm.country].filter(Boolean).join(', ')
+    }
+    return data?.location || ''
+  }, [personalForm.city, personalForm.country, data?.location])
+
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
-  if (error || !data) return <div className="p-4 text-red-400">{error||'Error'}</div>
+  if (error || !data) return <div className="p-4 text-red-400">{error || 'Something went wrong'}</div>
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white overflow-y-auto">
       <div className="max-w-2xl mx-auto p-3 space-y-3">
         {data.cover_photo ? (
           <div className="rounded-xl overflow-hidden border border-white/10">
-            <img src={(data.cover_photo!.startsWith('http') || data.cover_photo!.startsWith('/static')) ? data.cover_photo! : `/static/${data.cover_photo}`} alt="" className="w-full h-auto" />
+            <img
+              src={(data.cover_photo.startsWith('http') || data.cover_photo.startsWith('/static'))
+                ? data.cover_photo
+                : `/static/${data.cover_photo}`}
+              alt="Cover"
+              className="w-full h-auto"
+            />
           </div>
         ) : null}
+
         <div className="flex items-center gap-3">
           <button
             className="relative group cursor-pointer"
@@ -160,129 +402,202 @@ export default function Profile(){
               <i className="fa-solid fa-plus text-xs text-white" />
             </div>
           </button>
-          <div>
-            <div className="text-lg font-semibold">{data.display_name || data.username}</div>
-            <div className="text-sm text-[#9fb0b5]">@{data.username} • {data.subscription||'free'}</div>
+          <div className="min-w-0">
+            <div className="text-lg font-semibold truncate">{displayName}</div>
+            <div className="text-sm text-[#9fb0b5] truncate">@{data.username} • {subscriptionLabel}</div>
+            {locationPreview ? (
+              <div className="text-xs text-[#9fb0b5] truncate mt-1 flex items-center gap-1">
+                <i className="fa-solid fa-location-dot" />
+                <span>{locationPreview}</span>
+              </div>
+            ) : null}
           </div>
+          <a
+            className="ml-auto px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm whitespace-nowrap"
+            href={`/profile/${encodeURIComponent(data.username)}`}
+          >
+            Preview Profile
+          </a>
         </div>
-        {/* Bio display removed */}
-        {/* Public Profile form */}
-        <div className="rounded-xl border border-white/10 p-3">
-          <div className="font-semibold mb-2">Public Profile</div>
-          <form onSubmit={async (e)=>{
-            e.preventDefault()
-            const fd = new FormData()
-            fd.append('display_name', form.display_name)
-            fd.append('location', form.location)
-            fd.append('is_public', form.is_public ? 'on' : '')
-            const r = await fetch('/update_public_profile', { method:'POST', credentials:'include', body: fd })
-            const j = await r.json().catch(()=>null)
-            if (!j?.success) alert(j?.error || 'Error updating')
-          }}>
+
+        {/* Personal Information */}
+        <div className="rounded-xl border border-white/10 p-3 bg-black">
+          <div className="font-semibold mb-2">Personal Information</div>
+          <form className="space-y-3" onSubmit={handlePersonalSubmit}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="text-sm">Display Name
-                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.display_name} onChange={e=> setForm(f=>({...f, display_name: e.target.value}))} />
+              <label className="text-sm">
+                Display Name
+                <input
+                  className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-3 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]"
+                  value={personalForm.display_name}
+                  onChange={e => setPersonalForm(prev => ({ ...prev, display_name: e.target.value }))}
+                  placeholder="Name shown publicly"
+                />
               </label>
-              <label className="text-sm">Location
-                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.location} onChange={e=> setForm(f=>({...f, location: e.target.value}))} />
+              <label className="text-sm">
+                Date of Birth
+                <input
+                  type="date"
+                  className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-3 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]"
+                  value={personalForm.date_of_birth}
+                  onChange={e => setPersonalForm(prev => ({ ...prev, date_of_birth: e.target.value }))}
+                />
+              </label>
+              <label className="text-sm">
+                Gender
+                <select
+                  className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-3 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]"
+                  value={personalForm.gender}
+                  onChange={e => setPersonalForm(prev => ({ ...prev, gender: e.target.value }))}
+                >
+                  <option value="">Select a value</option>
+                  {GENDERS.map(option => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                Country
+                <input
+                  list="country-options"
+                  className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-3 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]"
+                  value={personalForm.country}
+                  onChange={e => setPersonalForm(prev => ({ ...prev, country: e.target.value }))}
+                  placeholder="Search country"
+                  autoComplete="off"
+                />
+              </label>
+              <label className="text-sm">
+                City
+                <input
+                  list="city-options"
+                  className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-3 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]"
+                  value={personalForm.city}
+                  onChange={e => setPersonalForm(prev => ({ ...prev, city: e.target.value }))}
+                  placeholder={personalForm.country ? (citiesLoading ? 'Loading cities…' : 'Search city') : 'Select a country first'}
+                  autoComplete="off"
+                  disabled={!personalForm.country}
+                />
+                {citiesLoading ? <div className="text-xs text-[#9fb0b5] mt-1">Fetching cities…</div> : null}
               </label>
             </div>
-            {/* Bio input removed */}
-            <label className="inline-flex items-center gap-2 mt-2 text-sm">
-              <input type="checkbox" checked={form.is_public} onChange={e=> setForm(f=>({...f, is_public: e.target.checked}))} /> Public
-            </label>
-            <div className="mt-3">
-              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Update Public Profile</button>
-              <a className="ml-3 text-sm text-[#9fb0b5] underline" href={`/profile/${data.username}`}>
-                View Public Profile
-              </a>
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110 transition"
+              >
+                Save Personal Information
+              </button>
+              {locationPreview ? (
+                <span className="text-xs text-[#9fb0b5]">Public location is shown as "{locationPreview}"</span>
+              ) : null}
             </div>
           </form>
         </div>
 
         {/* Professional Information */}
-        <div className="rounded-xl border border-white/10 p-3">
+        <div className="rounded-xl border border-white/10 p-3 bg-black">
           <div className="font-semibold mb-2">Professional Information</div>
-          <form onSubmit={async (e)=>{
-            e.preventDefault()
-            const fd = new FormData()
-            fd.append('role', form.role)
-            fd.append('company', form.company)
-            fd.append('industry', form.industry)
-            fd.append('linkedin', form.linkedin)
-            if (form.share_community_id) fd.append('share_community_id', form.share_community_id)
-            const r = await fetch('/update_professional', { method:'POST', credentials:'include', body: fd })
-            const j = await r.json().catch(()=>null)
-            if (j?.success) {
-              alert('Professional information updated successfully!')
-            } else {
-              alert(j?.error || 'Error updating')
-            }
-          }}>
+          <form className="space-y-3" onSubmit={handleProfessionalSubmit}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Role" value={form.role} onChange={e=> setForm(f=>({...f, role: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Company" value={form.company} onChange={e=> setForm(f=>({...f, company: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Industry" value={form.industry} onChange={e=> setForm(f=>({...f, industry: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="LinkedIn" value={form.linkedin} onChange={e=> setForm(f=>({...f, linkedin: e.target.value}))} />
               <label className="text-sm">
-                Share Professional Info with Community
-                <select className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.share_community_id} onChange={e=> setForm(f=>({...f, share_community_id: e.target.value}))}>
-                  <option value="">Do not share</option>
-                  {communities.map(c => (
-                    <option key={c.id} value={String(c.id)}>{c.name}</option>
+                Current position
+                <input
+                  className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-3 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]"
+                  value={professionalForm.role}
+                  onChange={e => setProfessionalForm(prev => ({ ...prev, role: e.target.value }))}
+                  placeholder="e.g. Product Manager"
+                />
+              </label>
+              <label className="text-sm">
+                Company
+                <input
+                  className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-3 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]"
+                  value={professionalForm.company}
+                  onChange={e => setProfessionalForm(prev => ({ ...prev, company: e.target.value }))}
+                  placeholder="Company name"
+                />
+              </label>
+              <label className="text-sm">
+                Industry
+                <select
+                  className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-3 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]"
+                  value={professionalForm.industry}
+                  onChange={e => setProfessionalForm(prev => ({ ...prev, industry: e.target.value }))}
+                >
+                  <option value="">Select an industry</option>
+                  {INDUSTRIES.map(industry => (
+                    <option key={industry} value={industry}>{industry}</option>
                   ))}
                 </select>
               </label>
+              <label className="text-sm">
+                LinkedIn URL
+                <input
+                  className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-3 py-2 text-[15px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]"
+                  value={professionalForm.linkedin}
+                  onChange={e => setProfessionalForm(prev => ({ ...prev, linkedin: e.target.value }))}
+                  placeholder="https://www.linkedin.com/in/username"
+                />
+              </label>
             </div>
-            <button type="submit" className="mt-3 px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Save Professional Info</button>
+            <button
+              type="submit"
+              className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110 transition"
+            >
+              Save Professional Information
+            </button>
           </form>
-        </div>
-
-        {/* Personal Information */}
-        <div className="rounded-xl border border-white/10 p-3">
-          <div className="font-semibold mb-2">Personal Details</div>
-          <form onSubmit={async (e)=>{
-            e.preventDefault()
-            const fd = new FormData()
-            fd.append('age', form.age)
-            fd.append('gender', form.gender)
-            fd.append('country', form.country)
-            fd.append('city', form.city)
-            const r = await fetch('/update_personal_info', { method:'POST', credentials:'include', body: fd })
-            const j = await r.json().catch(()=>null)
-            if (!j?.success) alert(j?.error || 'Error updating')
-          }}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Age" value={form.age} onChange={e=> setForm(f=>({...f, age: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Gender" value={form.gender} onChange={e=> setForm(f=>({...f, gender: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Country" value={form.country} onChange={e=> setForm(f=>({...f, country: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="City" value={form.city} onChange={e=> setForm(f=>({...f, city: e.target.value}))} />
-            </div>
-            <button className="mt-3 px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Save Personal Details</button>
-          </form>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-          {data.location ? (<div className="text-[#9fb0b5]"><i className="fa-solid fa-location-dot mr-2" />{data.location}</div>) : null}
-          {data.website ? (<a className="text-[#9fb0b5] hover:text-teal-300" href={data.website} target="_blank" rel="noreferrer"><i className="fa-solid fa-link mr-2" />{data.website}</a>) : null}
-          {data.instagram ? (<a className="text-[#9fb0b5] hover:text-teal-300" href={`https://instagram.com/${data.instagram}`} target="_blank" rel="noreferrer"><i className="fa-brands fa-instagram mr-2" />@{data.instagram}</a>) : null}
-          {data.twitter ? (<a className="text-[#9fb0b5] hover:text-teal-300" href={`https://x.com/${data.twitter}`} target="_blank" rel="noreferrer"><i className="fa-brands fa-x-twitter mr-2" />@{data.twitter}</a>) : null}
         </div>
       </div>
 
-      {/* Photo Upload Modal */}
+      <datalist id="country-options">
+        {countries.map(country => (
+          <option key={country.name} value={country.name} />
+        ))}
+      </datalist>
+      <datalist id="city-options">
+        {cities.map(city => (
+          <option key={city} value={city} />
+        ))}
+      </datalist>
+
+      {toast && (
+        <div
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-lg border text-sm z-[120] ${
+            toast.type === 'success'
+              ? 'bg-[#4db6ac] text-black border-[#4db6ac]/50'
+              : 'bg-red-500 text-white border-red-300'
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
+
       {showPhotoModal && (
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowPhotoModal(false)}>
+        <div
+          className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center"
+          onClick={e => e.currentTarget === e.target && setShowPhotoModal(false)}
+        >
           <div className="w-[90%] max-w-md rounded-2xl border border-white/10 bg-black p-4">
             <div className="flex items-center justify-between mb-4">
               <div className="font-semibold">Change Profile Picture</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setShowPhotoModal(false)}>✕</button>
+              <button
+                className="px-2 py-1 rounded-full border border-white/10"
+                onClick={() => setShowPhotoModal(false)}
+              >
+                ✕
+              </button>
             </div>
 
-            {/* Photo Preview */}
             {photoPreview ? (
               <div className="mb-4">
                 <div className="relative w-32 h-32 mx-auto mb-2">
-                  <img src={photoPreview} alt="Preview" className="w-full h-full rounded-full object-cover border-2 border-white/20" />
+                  <img
+                    src={photoPreview}
+                    alt="Preview"
+                    className="w-full h-full rounded-full object-cover border-2 border-white/20"
+                  />
                 </div>
                 <div className="text-center">
                   <button
@@ -290,17 +605,17 @@ export default function Profile(){
                     disabled={uploadingPhoto}
                     className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110 disabled:opacity-50"
                   >
-                    {uploadingPhoto ? 'Uploading...' : 'Update Profile Picture'}
+                    {uploadingPhoto ? 'Uploading…' : 'Update Profile Picture'}
                   </button>
                 </div>
               </div>
             ) : null}
 
-            {/* Photo Selection Options */}
             <div className="space-y-3">
               <button
                 className="w-full flex items-center gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5"
                 onClick={() => fileInputRef.current?.click()}
+                type="button"
               >
                 <i className="fa-solid fa-file-image text-[#4db6ac]" />
                 <span>Choose from gallery</span>
@@ -309,6 +624,7 @@ export default function Profile(){
               <button
                 className="w-full flex items-center gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5"
                 onClick={handleCameraCapture}
+                type="button"
               >
                 <i className="fa-solid fa-camera text-[#4db6ac]" />
                 <span>Take photo</span>
@@ -321,13 +637,13 @@ export default function Profile(){
                   setSelectedPhoto(null)
                   setPhotoPreview(null)
                 }}
+                type="button"
               >
                 <i className="fa-solid fa-times" />
                 <span>Cancel</span>
               </button>
             </div>
 
-            {/* Hidden file input */}
             <input
               ref={fileInputRef}
               type="file"
@@ -341,4 +657,3 @@ export default function Profile(){
     </div>
   )
 }
-

@@ -9,6 +9,8 @@ import random
 import re
 import logging
 import requests
+import urllib.request
+import urllib.error
 import time
 import base64
 from io import BytesIO
@@ -46,6 +48,35 @@ except ImportError as e:
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
+
+COUNTRY_CACHE_TTL = 60 * 60 * 24  # 24 hours
+CITY_CACHE_TTL = 60 * 60 * 24
+COUNTRY_CACHE: Dict[str, Any] = {'timestamp': 0, 'data': []}
+CITY_CACHE: Dict[str, Dict[str, Any]] = {}
+FALLBACK_COUNTRIES = [
+    {'name': 'United States', 'iso2': 'US'},
+    {'name': 'United Kingdom', 'iso2': 'GB'},
+    {'name': 'Canada', 'iso2': 'CA'},
+    {'name': 'Australia', 'iso2': 'AU'},
+    {'name': 'Germany', 'iso2': 'DE'},
+    {'name': 'France', 'iso2': 'FR'},
+    {'name': 'Brazil', 'iso2': 'BR'},
+    {'name': 'India', 'iso2': 'IN'},
+    {'name': 'Japan', 'iso2': 'JP'},
+    {'name': 'Spain', 'iso2': 'ES'},
+]
+FALLBACK_CITY_MAP: Dict[str, List[str]] = {
+    'united states': ['New York', 'Los Angeles', 'Chicago', 'San Francisco', 'Seattle', 'Austin', 'Boston', 'Miami'],
+    'united kingdom': ['London', 'Manchester', 'Birmingham', 'Leeds', 'Glasgow', 'Edinburgh'],
+    'canada': ['Toronto', 'Vancouver', 'Montreal', 'Calgary', 'Ottawa', 'Edmonton'],
+    'australia': ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Canberra'],
+    'germany': ['Berlin', 'Munich', 'Hamburg', 'Frankfurt', 'Cologne', 'Stuttgart'],
+    'france': ['Paris', 'Lyon', 'Marseille', 'Toulouse', 'Nice', 'Bordeaux'],
+    'brazil': ['São Paulo', 'Rio de Janeiro', 'Brasília', 'Salvador', 'Fortaleza', 'Curitiba'],
+    'india': ['Mumbai', 'Delhi', 'Bengaluru', 'Hyderabad', 'Chennai', 'Kolkata'],
+    'japan': ['Tokyo', 'Osaka', 'Kyoto', 'Yokohama', 'Nagoya', 'Sapporo'],
+    'spain': ['Madrid', 'Barcelona', 'Valencia', 'Seville', 'Bilbao', 'Granada'],
+}
 
 # Authentication decorators (defined early so they are in scope for route decorators)
 def login_required(f):
@@ -796,6 +827,63 @@ def get_scalar_result(row, column_index=0, column_name=None):
     else:  # Tuple/list result (SQLite)
         return row[column_index] if len(row) > column_index else None
 
+
+def get_cached_countries() -> List[Dict[str, Any]]:
+    now = time.time()
+    cached = COUNTRY_CACHE
+    if cached['data'] and (now - cached['timestamp']) < COUNTRY_CACHE_TTL:
+        return cached['data']
+    url = 'https://countriesnow.space/api/v0.1/countries/iso'
+    try:
+        req = urllib.request.Request(url, headers={'Accept': 'application/json'})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            payload = json.loads(resp.read().decode('utf-8'))
+        data = []
+        for item in payload.get('data', []):
+            name = item.get('name')
+            iso2 = item.get('Iso2') or item.get('iso2')
+            if name:
+                data.append({'name': name, 'iso2': iso2})
+        if data:
+            COUNTRY_CACHE['data'] = sorted(data, key=lambda x: x['name'])
+            COUNTRY_CACHE['timestamp'] = now
+            return COUNTRY_CACHE['data']
+    except Exception as e:
+        logger.warning(f"Failed to fetch countries remotely: {e}")
+    COUNTRY_CACHE['data'] = FALLBACK_COUNTRIES
+    COUNTRY_CACHE['timestamp'] = now
+    return COUNTRY_CACHE['data']
+
+
+def get_cached_cities(country_name: str) -> List[str]:
+    if not country_name:
+        return []
+    key = country_name.strip().lower()
+    now = time.time()
+    cached = CITY_CACHE.get(key)
+    if cached and (now - cached['timestamp']) < CITY_CACHE_TTL:
+        return cached['data']
+    url = 'https://countriesnow.space/api/v0.1/countries/cities'
+    payload = json.dumps({'country': country_name}).encode('utf-8')
+    try:
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+        data = result.get('data') or []
+        if isinstance(data, list) and data:
+            sorted_data = sorted(dict.fromkeys([str(city) for city in data]))
+            CITY_CACHE[key] = {'data': sorted_data, 'timestamp': now}
+            return sorted_data
+    except Exception as e:
+        logger.warning(f"Failed to fetch cities for {country_name}: {e}")
+    fallback = FALLBACK_CITY_MAP.get(key, [])
+    CITY_CACHE[key] = {'data': fallback, 'timestamp': now}
+    return fallback
+
 def get_db_connection():
     if USE_MYSQL:
         try:
@@ -1512,7 +1600,7 @@ def add_missing_tables():
             # Ensure personal info columns (country, city, age, gender) exist on users
             try:
                 for col, coltype in [
-                    ('country','TEXT'), ('city','TEXT'), ('age','INTEGER'), ('gender','TEXT'), ('mobile','TEXT')
+                    ('country','TEXT'), ('city','TEXT'), ('age','INTEGER'), ('gender','TEXT'), ('mobile','TEXT'), ('date_of_birth','TEXT')
                 ]:
                     exists = False
                     try:
@@ -7308,6 +7396,7 @@ def api_public_profile(username):
             # Profile fields
             c.execute(f"""
                 SELECT u.username, u.subscription,
+                       u.gender, u.country, u.city, u.date_of_birth, u.age,
                        p.display_name, p.bio, p.location, p.website,
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo,
                        COALESCE(p.is_public, 1)
@@ -7335,15 +7424,23 @@ def api_public_profile(username):
             profile = {
                 'username': actual_username,
                 'subscription': get_val(row, 'subscription', 1),
-                'display_name': get_val(row, 'display_name', 2) or actual_username,
-                'bio': get_val(row, 'bio', 3),
-                'location': get_val(row, 'location', 4),
-                'website': get_val(row, 'website', 5),
-                'instagram': get_val(row, 'instagram', 6),
-                'twitter': get_val(row, 'twitter', 7),
-                'profile_picture': get_val(row, 'profile_picture', 8),
-                'cover_photo': get_val(row, 'cover_photo', 9),
-                'is_public': bool(get_val(row, 'is_public', 10)),
+                'display_name': get_val(row, 'display_name', 7) or actual_username,
+                'bio': get_val(row, 'bio', 8),
+                'location': get_val(row, 'location', 9),
+                'website': get_val(row, 'website', 10),
+                'instagram': get_val(row, 'instagram', 11),
+                'twitter': get_val(row, 'twitter', 12),
+                'profile_picture': get_val(row, 'profile_picture', 13),
+                'cover_photo': get_val(row, 'cover_photo', 14),
+                'is_public': bool(get_val(row, 'is_public', 15)),
+                'personal': {
+                    'display_name': (get_val(row, 'display_name', 7) or actual_username),
+                    'gender': get_val(row, 'gender', 2),
+                    'country': get_val(row, 'country', 3),
+                    'city': get_val(row, 'city', 4),
+                    'date_of_birth': get_val(row, 'date_of_birth', 5),
+                    'age': get_val(row, 'age', 6),
+                },
                 'professional': None
             }
 
@@ -7388,6 +7485,8 @@ def api_public_profile(username):
                     'image_path': val(p, 'image_path', 2),
                     'timestamp': val(p, 'timestamp', 3),
                 })
+
+            profile['is_self'] = session.get('username') == actual_username
 
             return jsonify({'success': True, 'profile': profile, 'posts': posts_list})
     except Exception as e:
@@ -7757,7 +7856,7 @@ def api_profile_me():
             c = conn.cursor()
             c.execute("""
                 SELECT u.username, u.email, u.subscription, u.email_verified, u.email_verified_at,
-                       u.first_name, u.last_name,
+                       u.first_name, u.last_name, u.gender, u.country, u.city, u.date_of_birth, u.age,
                        p.display_name, p.bio, p.location, p.website,
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo
                 FROM users u
@@ -7769,25 +7868,42 @@ def api_profile_me():
                 return jsonify({ 'success': False, 'error': 'not found' }), 404
             def get_val(key_or_idx):
                 try:
-                    return row[key_or_idx] if hasattr(row, 'keys') and (isinstance(key_or_idx, str) and key_or_idx in row.keys()) else row[key_or_idx]
+                    if hasattr(row, 'keys'):
+                        if isinstance(key_or_idx, str):
+                            return row.get(key_or_idx)
+                        return row[key_or_idx]
+                    else:
+                        return row[key_or_idx]
                 except Exception:
                     return None
             profile = {
                 'username': username,
-                'email': get_val('email') if isinstance(row, dict) or hasattr(row, 'keys') else row[1],
-                'subscription': get_val('subscription') if isinstance(row, dict) or hasattr(row, 'keys') else row[2],
-                'email_verified': bool(get_val('email_verified') if isinstance(row, dict) or hasattr(row, 'keys') else row[3]),
-                'email_verified_at': get_val('email_verified_at') if isinstance(row, dict) or hasattr(row, 'keys') else row[4],
-                'first_name': get_val('first_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[5],
-                'last_name': get_val('last_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[6],
-                'display_name': get_val('display_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[7],
-                'bio': get_val('bio') if isinstance(row, dict) or hasattr(row, 'keys') else row[8],
-                'location': get_val('location') if isinstance(row, dict) or hasattr(row, 'keys') else row[9],
-                'website': get_val('website') if isinstance(row, dict) or hasattr(row, 'keys') else row[10],
-                'instagram': get_val('instagram') if isinstance(row, dict) or hasattr(row, 'keys') else row[11],
-                'twitter': get_val('twitter') if isinstance(row, dict) or hasattr(row, 'keys') else row[12],
-                'profile_picture': get_val('profile_picture') if isinstance(row, dict) or hasattr(row, 'keys') else row[13],
-                'cover_photo': get_val('cover_photo') if isinstance(row, dict) or hasattr(row, 'keys') else row[14],
+                'email': get_val('email') if hasattr(row, 'keys') else row[1],
+                'subscription': get_val('subscription') if hasattr(row, 'keys') else row[2],
+                'email_verified': bool(get_val('email_verified') if hasattr(row, 'keys') else row[3]),
+                'email_verified_at': get_val('email_verified_at') if hasattr(row, 'keys') else row[4],
+                'first_name': get_val('first_name') if hasattr(row, 'keys') else row[5],
+                'last_name': get_val('last_name') if hasattr(row, 'keys') else row[6],
+                'gender': get_val('gender') if hasattr(row, 'keys') else row[7],
+                'country': get_val('country') if hasattr(row, 'keys') else row[8],
+                'city': get_val('city') if hasattr(row, 'keys') else row[9],
+                'date_of_birth': get_val('date_of_birth') if hasattr(row, 'keys') else row[10],
+                'age': get_val('age') if hasattr(row, 'keys') else row[11],
+                'display_name': get_val('display_name') if hasattr(row, 'keys') else row[12],
+                'bio': get_val('bio') if hasattr(row, 'keys') else row[13],
+                'location': get_val('location') if hasattr(row, 'keys') else row[14],
+                'website': get_val('website') if hasattr(row, 'keys') else row[15],
+                'instagram': get_val('instagram') if hasattr(row, 'keys') else row[16],
+                'twitter': get_val('twitter') if hasattr(row, 'keys') else row[17],
+                'profile_picture': get_val('profile_picture') if hasattr(row, 'keys') else row[18],
+                'cover_photo': get_val('cover_photo') if hasattr(row, 'keys') else row[19],
+                'personal': {
+                    'display_name': (get_val('display_name') if hasattr(row, 'keys') else row[12]) or username,
+                    'date_of_birth': get_val('date_of_birth') if hasattr(row, 'keys') else row[10],
+                    'gender': get_val('gender') if hasattr(row, 'keys') else row[7],
+                    'country': get_val('country') if hasattr(row, 'keys') else row[8],
+                    'city': get_val('city') if hasattr(row, 'keys') else row[9],
+                }
             }
             
             # Cache profile for faster future requests
@@ -7802,6 +7918,31 @@ def api_profile_me():
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+
+@app.route('/api/geo/countries')
+@login_required
+def api_geo_countries():
+    try:
+        countries = get_cached_countries()
+        return jsonify({'success': True, 'countries': countries})
+    except Exception as e:
+        logger.error(f"Failed to load countries: {e}")
+        return jsonify({'success': False, 'error': 'Failed to load countries'}), 500
+
+
+@app.route('/api/geo/cities')
+@login_required
+def api_geo_cities():
+    country = (request.args.get('country') or '').strip()
+    if not country:
+        return jsonify({'success': False, 'error': 'country required'}), 400
+    try:
+        cities = get_cached_cities(country)
+        return jsonify({'success': True, 'country': country, 'cities': cities})
+    except Exception as e:
+        logger.error(f"Failed to load cities for {country}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to load cities'}), 500
 
 @app.route('/debug_onboarding')
 @login_required
@@ -8591,21 +8732,84 @@ def update_professional():
 @login_required
 def update_personal_info():
     username = session['username']
-    age = request.form.get('age')
-    gender = request.form.get('gender')
-    country = request.form.get('country')
-    city = request.form.get('city')
+    display_name = (request.form.get('display_name') or '').strip()
+    date_of_birth = request.form.get('date_of_birth')
+    gender = (request.form.get('gender') or '').strip() or None
+    country = (request.form.get('country') or '').strip() or None
+    city = (request.form.get('city') or '').strip() or None
+    age = request.form.get('age')  # legacy support
     
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             
             # Convert age to appropriate type
-            age = int(age) if age else None
+            age_val = None
+            if date_of_birth:
+                try:
+                    dob_obj = datetime.strptime(date_of_birth, '%Y-%m-%d')
+                    today = datetime.utcnow().date()
+                    age_val = int((today - dob_obj.date()).days / 365.2425)
+                    date_of_birth_iso = dob_obj.strftime('%Y-%m-%d')
+                except Exception:
+                    date_of_birth_iso = None
+            else:
+                date_of_birth_iso = None
+            # Fallback to provided age if DOB not supplied
+            if age and age_val is None:
+                try:
+                    age_val = int(age)
+                except Exception:
+                    age_val = None
+            c.execute("""UPDATE users SET age=?, gender=?, country=?, city=?, date_of_birth=? 
+                        WHERE username=?""", (age_val, gender, country, city, date_of_birth_iso, username))
             
-            c.execute("""UPDATE users SET age=?, gender=?, country=?, city=? 
-                        WHERE username=?""", (age, gender, country, city, username))
+            if display_name:
+                try:
+                    if USE_MYSQL:
+                        c.execute(
+                            "INSERT INTO user_profiles (username, display_name) VALUES (%s, %s) "
+                            "ON DUPLICATE KEY UPDATE display_name=VALUES(display_name)",
+                            (username, display_name)
+                        )
+                    else:
+                        c.execute(
+                            "INSERT INTO user_profiles (username, display_name) VALUES (?, ?) "
+                            "ON CONFLICT(username) DO UPDATE SET display_name=excluded.display_name",
+                            (username, display_name)
+                        )
+                except Exception as profile_err:
+                    logger.warning(f"Failed to upsert display name for {username}: {profile_err}")
+            
+            location_value = None
+            if city and country:
+                location_value = f"{city}, {country}"
+            elif city:
+                location_value = city
+            elif country:
+                location_value = country
+            if location_value is not None:
+                try:
+                    if USE_MYSQL:
+                        c.execute(
+                            "INSERT INTO user_profiles (username, location) VALUES (%s, %s) "
+                            "ON DUPLICATE KEY UPDATE location=VALUES(location)",
+                            (username, location_value)
+                        )
+                    else:
+                        c.execute(
+                            "INSERT INTO user_profiles (username, location) VALUES (?, ?) "
+                            "ON CONFLICT(username) DO UPDATE SET location=excluded.location",
+                            (username, location_value)
+                        )
+                except Exception as location_err:
+                    logger.warning(f"Failed to update profile location for {username}: {location_err}")
+            
             conn.commit()
+            try:
+                invalidate_user_cache(username)
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate user cache for {username}: {cache_err}")
             
             return jsonify({'success': True})
     except Exception as e:
