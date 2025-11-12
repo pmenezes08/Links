@@ -76,6 +76,50 @@ FALLBACK_CITY_MAP: Dict[str, List[str]] = {
     'india': ['Mumbai', 'Delhi', 'Bengaluru', 'Hyderabad', 'Chennai', 'Kolkata'],
     'japan': ['Tokyo', 'Osaka', 'Kyoto', 'Yokohama', 'Nagoya', 'Sapporo'],
     'spain': ['Madrid', 'Barcelona', 'Valencia', 'Seville', 'Bilbao', 'Granada'],
+    'italy': ['Rome', 'Milan', 'Florence', 'Venice', 'Turin', 'Naples'],
+    'mexico': ['Mexico City', 'Guadalajara', 'Monterrey', 'Cancún', 'Tijuana', 'Puebla'],
+    'china': ['Beijing', 'Shanghai', 'Shenzhen', 'Guangzhou', 'Chengdu', 'Hong Kong'],
+    'south korea': ['Seoul', 'Busan', 'Incheon', 'Daegu', 'Daejeon', 'Gwangju'],
+    'russia': ['Moscow', 'Saint Petersburg', 'Novosibirsk', 'Yekaterinburg', 'Kazan', 'Sochi'],
+    'netherlands': ['Amsterdam', 'Rotterdam', 'The Hague', 'Utrecht', 'Eindhoven', 'Maastricht'],
+    'switzerland': ['Zurich', 'Geneva', 'Basel', 'Bern', 'Lausanne', 'Lucerne'],
+    'south africa': ['Johannesburg', 'Cape Town', 'Durban', 'Pretoria', 'Port Elizabeth', 'Bloemfontein'],
+    'united arab emirates': ['Dubai', 'Abu Dhabi', 'Sharjah', 'Al Ain', 'Ajman'],
+    'turkey': ['Istanbul', 'Ankara', 'Izmir', 'Antalya', 'Bursa', 'Gaziantep'],
+    'portugal': ['Lisbon', 'Porto', 'Faro', 'Coimbra', 'Braga', 'Funchal'],
+    'ireland': ['Dublin', 'Cork', 'Galway', 'Limerick', 'Waterford'],
+    'norway': ['Oslo', 'Bergen', 'Trondheim', 'Stavanger', 'Tromsø'],
+    'denmark': ['Copenhagen', 'Aarhus', 'Odense', 'Aalborg'],
+    'sweden': ['Stockholm', 'Gothenburg', 'Malmö', 'Uppsala'],
+    'belgium': ['Brussels', 'Antwerp', 'Ghent', 'Bruges', 'Leuven'],
+    'new zealand': ['Auckland', 'Wellington', 'Christchurch', 'Queenstown', 'Hamilton'],
+    'singapore': ['Singapore'],
+    'saudi arabia': ['Riyadh', 'Jeddah', 'Mecca', 'Medina', 'Dammam'],
+    'thailand': ['Bangkok', 'Chiang Mai', 'Phuket', 'Pattaya', 'Krabi'],
+    'indonesia': ['Jakarta', 'Bali', 'Surabaya', 'Bandung', 'Yogyakarta'],
+    'argentina': ['Buenos Aires', 'Córdoba', 'Rosario', 'Mendoza', 'Bariloche'],
+    'colombia': ['Bogotá', 'Medellín', 'Cartagena', 'Cali', 'Barranquilla'],
+    'chile': ['Santiago', 'Valparaíso', 'Viña del Mar', 'Concepción'],
+    'peru': ['Lima', 'Cusco', 'Arequipa', 'Trujillo'],
+    'egypt': ['Cairo', 'Alexandria', 'Giza', 'Luxor', 'Sharm El-Sheikh'],
+    'nigeria': ['Lagos', 'Abuja', 'Port Harcourt', 'Ibadan', 'Kano'],
+    'ghana': ['Accra', 'Kumasi', 'Takoradi', 'Tamale'],
+    'kenya': ['Nairobi', 'Mombasa', 'Kisumu'],
+    'philippines': ['Manila', 'Cebu', 'Davao City', 'Quezon City', 'Taguig'],
+    'vietnam': ['Hanoi', 'Ho Chi Minh City', 'Da Nang', 'Hoi An'],
+    'malaysia': ['Kuala Lumpur', 'George Town', 'Johor Bahru', 'Kota Kinabalu'],
+    'austria': ['Vienna', 'Salzburg', 'Innsbruck', 'Graz', 'Linz'],
+    'czech republic': ['Prague', 'Brno', 'Ostrava', 'Plzen'],
+    'poland': ['Warsaw', 'Kraków', 'Gdańsk', 'Wrocław', 'Poznań'],
+    'hungary': ['Budapest', 'Debrecen', 'Szeged', 'Pécs'],
+    'greece': ['Athens', 'Thessaloniki', 'Heraklion', 'Patras', 'Santorini'],
+    'romania': ['Bucharest', 'Cluj-Napoca', 'Brasov', 'Timisoara'],
+    'croatia': ['Zagreb', 'Split', 'Dubrovnik', 'Zadar'],
+    'israel': ['Tel Aviv', 'Jerusalem', 'Haifa', 'Eilat'],
+    'finland': ['Helsinki', 'Espoo', 'Tampere', 'Turku'],
+    'iceland': ['Reykjavik', 'Akureyri'],
+    'dominican republic': ['Santo Domingo', 'Punta Cana', 'Santiago De Los Caballeros'],
+    'costa rica': ['San José', 'Liberia', 'Alajuela'],
 }
 
 # Authentication decorators (defined early so they are in scope for route decorators)
@@ -876,13 +920,37 @@ def get_cached_cities(country_name: str) -> List[str]:
         data = result.get('data') or []
         if isinstance(data, list) and data:
             sorted_data = sorted(dict.fromkeys([str(city) for city in data]))
+            filtered = filter_major_cities(country_name, sorted_data)
             CITY_CACHE[key] = {'data': sorted_data, 'timestamp': now}
-            return sorted_data
+            return filtered
     except Exception as e:
         logger.warning(f"Failed to fetch cities for {country_name}: {e}")
-    fallback = FALLBACK_CITY_MAP.get(key, [])
+    fallback = filter_major_cities(country_name, FALLBACK_CITY_MAP.get(key, []))
     CITY_CACHE[key] = {'data': fallback, 'timestamp': now}
     return fallback
+
+
+def filter_major_cities(country_name: str, incoming: List[str]) -> List[str]:
+    key = country_name.strip().lower()
+    override = FALLBACK_CITY_MAP.get(key)
+    if override:
+        return override
+    unique: List[str] = []
+    seen: set[str] = set()
+    for name in incoming:
+        if not name:
+            continue
+        cleaned = str(name).strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        unique.append(cleaned)
+        if len(unique) >= 24:
+            break
+    return unique
 
 def get_db_connection():
     if USE_MYSQL:
