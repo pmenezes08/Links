@@ -40,7 +40,7 @@ const PROFESSIONAL_DEFAULT: ProfessionalForm = {
   linkedin: '',
 }
 
-const GENDERS = ['Female', 'Male', 'Non-binary', 'Prefer not to say', 'Other']
+const GENDERS = ['Female', 'Male', 'Prefer not to say', 'Other']
 
 const INDUSTRIES = [
   'Accounting',
@@ -370,7 +370,7 @@ export default function Profile() {
               <label className="text-sm">
                 Gender
                 <select
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[13px] outline-none focus:border-[#4db6ac]"
                   value={personal.gender}
                   onChange={event => setPersonal(prev => ({ ...prev, gender: event.target.value }))}
                 >
@@ -442,7 +442,7 @@ export default function Profile() {
               <label className="text-sm">
                 Industry
                 <select
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[13px] outline-none focus:border-[#4db6ac]"
                   value={professional.industry}
                   onChange={event => setProfessional(prev => ({ ...prev, industry: event.target.value }))}
                 >
