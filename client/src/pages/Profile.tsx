@@ -557,12 +557,41 @@ export default function Profile() {
           </form>
         </section>
 
-        <section className="rounded-xl border border-white/10 p-4 space-y-3">
-          <header>
-            <div className="font-semibold">Professional information</div>
-            <p className="text-xs text-[#9fb0b5]">Let others know how to collaborate with you.</p>
-          </header>
-          <form className="space-y-3" onSubmit={handleProfessionalSubmit}>
+        {(personalBioText || personalDobLabel || personal.gender || locationPreview) ? (
+          <section className="rounded-xl border border-white/10 p-4 space-y-3">
+            <div className="font-semibold">Personal information</div>
+            <div className="space-y-2 text-sm text-white/90">
+              {personalBioText ? (
+                <div className="whitespace-pre-wrap leading-relaxed text-white/90">{personalBioText}</div>
+              ) : null}
+              {personalDobLabel ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Date of birth:</span>
+                  {personalDobLabel}
+                </div>
+              ) : null}
+              {personal.gender ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Gender:</span>
+                  {personal.gender}
+                </div>
+              ) : null}
+              {locationPreview ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Location:</span>
+                  {locationPreview}
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        <form className="space-y-3" onSubmit={handleProfessionalSubmit}>
+          <section className="rounded-xl border border-white/10 p-4 space-y-3">
+            <header>
+              <div className="font-semibold">Professional information</div>
+              <p className="text-xs text-[#9fb0b5]">Let others know how to collaborate with you.</p>
+            </header>
             <label className="text-sm block">
               About
               <textarea
@@ -614,72 +643,45 @@ export default function Profile() {
                 />
               </label>
             </div>
-            <div className="space-y-2 border-t border-white/10 pt-3">
-              <div className="text-sm font-semibold text-white">Personal Interests</div>
-              <p className="text-xs text-[#9fb0b5]">Press enter after each interest to add it.</p>
-              <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black px-2 py-2">
-                {professional.interests.map((interest, index) => (
-                  <button
-                    key={`${interest}-${index}`}
-                    type="button"
-                    className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs text-white hover:bg-white/25 transition"
-                    onClick={() => removeInterest(index)}
-                    aria-label={`Remove ${interest}`}
-                  >
-                    <span>{interest}</span>
-                    <i className="fa-solid fa-xmark text-[10px]" />
-                  </button>
-                ))}
-                {professional.interests.length < MAX_INTERESTS ? (
-                  <input
-                    value={interestInput}
-                    onChange={event => setInterestInput(event.target.value)}
-                    onKeyDown={handleInterestKeyDown}
-                    onBlur={handleInterestBlur}
-                    placeholder={professional.interests.length ? 'Add another interest' : 'Tap, yoga, AI ethics…'}
-                    className="flex-1 min-w-[140px] bg-transparent text-xs text-white placeholder:text-[#9fb0b5] outline-none"
-                  />
-                ) : null}
-              </div>
-            </div>
-            <button
-              type="submit"
-              className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
-              disabled={savingProfessional}
-            >
-              {savingProfessional ? 'Saving…' : 'Save professional info'}
-            </button>
-          </form>
-        </section>
+          </section>
 
-        {(personalBioText || personalDobLabel || personal.gender || locationPreview) ? (
           <section className="rounded-xl border border-white/10 p-4 space-y-3">
-            <div className="font-semibold">Personal information</div>
-            <div className="space-y-2 text-sm text-white/90">
-              {personalBioText ? (
-                <div className="whitespace-pre-wrap leading-relaxed text-white/90">{personalBioText}</div>
-              ) : null}
-              {personalDobLabel ? (
-                <div>
-                  <span className="text-[#9fb0b5] mr-2">Date of birth:</span>
-                  {personalDobLabel}
-                </div>
-              ) : null}
-              {personal.gender ? (
-                <div>
-                  <span className="text-[#9fb0b5] mr-2">Gender:</span>
-                  {personal.gender}
-                </div>
-              ) : null}
-              {locationPreview ? (
-                <div>
-                  <span className="text-[#9fb0b5] mr-2">Location:</span>
-                  {locationPreview}
-                </div>
+            <div className="text-sm font-semibold text-white">Personal interests</div>
+            <p className="text-xs text-[#9fb0b5]">Press enter after each interest to add it.</p>
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black px-2 py-2">
+              {professional.interests.map((interest, index) => (
+                <button
+                  key={`${interest}-${index}`}
+                  type="button"
+                  className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs text-white hover:bg-white/25 transition"
+                  onClick={() => removeInterest(index)}
+                  aria-label={`Remove ${interest}`}
+                >
+                  <span>{interest}</span>
+                  <i className="fa-solid fa-xmark text-[10px]" />
+                </button>
+              ))}
+              {professional.interests.length < MAX_INTERESTS ? (
+                <input
+                  value={interestInput}
+                  onChange={event => setInterestInput(event.target.value)}
+                  onKeyDown={handleInterestKeyDown}
+                  onBlur={handleInterestBlur}
+                  placeholder={professional.interests.length ? 'Add another interest' : 'Add an interest…'}
+                  className="flex-1 min-w-[140px] bg-transparent text-xs text-white placeholder:text-[#9fb0b5] outline-none"
+                />
               ) : null}
             </div>
           </section>
-        ) : null}
+
+          <button
+            type="submit"
+            className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+            disabled={savingProfessional}
+          >
+            {savingProfessional ? 'Saving…' : 'Save professional info'}
+          </button>
+          </form>
 
         <datalist id="country-options">
           {countries.map(country => (
