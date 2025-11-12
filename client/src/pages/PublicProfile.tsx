@@ -94,7 +94,7 @@ export default function PublicProfile() {
   if (personal.date_of_birth) {
     const date = new Date(personal.date_of_birth)
     if (!Number.isNaN(date.getTime())) {
-      formattedDob = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long', day: 'numeric' }).format(date)
+      formattedDob = new Intl.DateTimeFormat(undefined, { month: 'long', day: 'numeric' }).format(date)
     }
   }
 
