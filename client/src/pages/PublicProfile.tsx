@@ -167,7 +167,7 @@ export default function PublicProfile() {
             </div>
           </section>
 
-        {(bioText || formattedDob || personal.gender || location) ? (
+        {(bioText || formattedDob || location) ? (
           <section className="rounded-xl border border-white/10 p-4 space-y-3">
             <div className="font-semibold">Personal information</div>
             <div className="space-y-2 text-sm text-white/90">
@@ -181,12 +181,6 @@ export default function PublicProfile() {
                 <div>
                   <span className="text-[#9fb0b5] mr-2">Date of birth:</span>
                   {formattedDob}
-                </div>
-              ) : null}
-              {personal.gender ? (
-                <div>
-                  <span className="text-[#9fb0b5] mr-2">Gender:</span>
-                  {personal.gender}
                 </div>
               ) : null}
               {location ? (
