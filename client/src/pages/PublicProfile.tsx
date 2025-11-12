@@ -117,8 +117,8 @@ export default function PublicProfile() {
     professional.skills ||
     professional.experience ||
     professional.about ||
-    interestTags.length ||
     professional.linkedin
+  const hasInterests = interestTags.length > 0
 
   return (
     <div className="min-h-screen bg-black text-white pt-16 pb-10">
@@ -254,18 +254,19 @@ export default function PublicProfile() {
                   LinkedIn
                 </a>
               ) : null}
-              {interestTags.length ? (
-                <div>
-                  <span className="text-[#9fb0b5] mr-2">Personal interests:</span>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {interestTags.map(tag => (
-                      <span key={tag} className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-xs text-white">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {hasInterests ? (
+          <section className="rounded-xl border border-white/10 p-4 space-y-2">
+            <div className="font-semibold">Personal interests</div>
+            <div className="flex flex-wrap gap-2">
+              {interestTags.map(tag => (
+                <span key={tag} className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-xs text-white">
+                  #{tag}
+                </span>
+              ))}
             </div>
           </section>
         ) : null}

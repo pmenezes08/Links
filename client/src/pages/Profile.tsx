@@ -83,6 +83,9 @@ const INDUSTRIES = [
 
 const MAX_INTERESTS = 12
 
+const SELECT_BASE_CLASS =
+  'w-full appearance-none rounded-lg bg-[#0f1115] border border-white/15 px-3 py-2 text-[13px] text-white/90 outline-none transition focus:border-[#4db6ac] focus:shadow-[0_0_0_2px_rgba(77,182,172,0.18)]'
+
 export default function Profile() {
   const [summary, setSummary] = useState<ProfileSummary | null>(null)
   const [personal, setPersonal] = useState<PersonalForm>(PERSONAL_DEFAULT)
@@ -555,63 +558,63 @@ export default function Profile() {
                   onChange={event => setPersonal(prev => ({ ...prev, date_of_birth: event.target.value }))}
                 />
               </label>
-              <label className="text-sm">
-                Gender
-                <div className="relative mt-1">
-                  <select
-                    className="w-full appearance-none rounded-md bg-black border border-white/10 px-3 py-2 pr-9 text-sm outline-none focus:border-[#4db6ac]"
-                    value={personal.gender}
-                    onChange={event => setPersonal(prev => ({ ...prev, gender: event.target.value }))}
-                  >
-                    <option value="">Select a value</option>
-                    {GENDERS.map(option => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
-                  <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9fb0b5]" />
-                </div>
-              </label>
-              <label className="text-sm">
-                Country
-                <div className="relative mt-1">
-                  <select
-                    className="w-full appearance-none rounded-md bg-black border border-white/10 px-3 py-2 pr-9 text-sm outline-none focus:border-[#4db6ac]"
-                    value={personal.country}
-                    onChange={event => setPersonal(prev => ({ ...prev, country: event.target.value, city: '' }))}
-                  >
-                    <option value="">Select a country</option>
-                    {normalizedCountries.map(country => (
-                      <option key={country} value={country}>{country}</option>
-                    ))}
-                  </select>
-                  <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9fb0b5]" />
-                </div>
-              </label>
-              <label className="text-sm">
-                City
-                <div className="relative mt-1">
-                  <select
-                    className="w-full appearance-none rounded-md bg-black border border-white/10 px-3 py-2 pr-9 text-sm outline-none focus:border-[#4db6ac] disabled:opacity-60"
-                    value={citySelectDisabled ? '' : personal.city}
-                    onChange={event => setPersonal(prev => ({ ...prev, city: event.target.value }))}
-                    disabled={citySelectDisabled}
-                  >
-                    <option value="">
-                      {personal.country
-                        ? citiesLoading
-                          ? 'Loading cities…'
-                          : normalizedCities.length
-                            ? 'Select a city'
-                            : 'No cities found'
-                        : 'Select a country first'}
-                    </option>
-                    {(personal.country && !citiesLoading ? normalizedCities : []).map(city => (
-                      <option key={city} value={city}>{city}</option>
-                    ))}
-                  </select>
-                  <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9fb0b5]" />
-                </div>
-              </label>
+                <label className="text-sm">
+                  Gender
+                  <div className="relative mt-1">
+                    <select
+                      className={`${SELECT_BASE_CLASS} pr-8`}
+                      value={personal.gender}
+                      onChange={event => setPersonal(prev => ({ ...prev, gender: event.target.value }))}
+                    >
+                      <option value="">Select a value</option>
+                      {GENDERS.map(option => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                    <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-white/50" />
+                  </div>
+                </label>
+                <label className="text-sm">
+                  Country
+                  <div className="relative mt-1">
+                    <select
+                      className={`${SELECT_BASE_CLASS} pr-8`}
+                      value={personal.country}
+                      onChange={event => setPersonal(prev => ({ ...prev, country: event.target.value, city: '' }))}
+                    >
+                      <option value="">Select a country</option>
+                      {normalizedCountries.map(country => (
+                        <option key={country} value={country}>{country}</option>
+                      ))}
+                    </select>
+                    <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-white/50" />
+                  </div>
+                </label>
+                <label className="text-sm">
+                  City
+                  <div className="relative mt-1">
+                    <select
+                      className={`${SELECT_BASE_CLASS} pr-8 disabled:cursor-not-allowed disabled:opacity-45`}
+                      value={citySelectDisabled ? '' : personal.city}
+                      onChange={event => setPersonal(prev => ({ ...prev, city: event.target.value }))}
+                      disabled={citySelectDisabled}
+                    >
+                      <option value="">
+                        {personal.country
+                          ? citiesLoading
+                            ? 'Loading cities…'
+                            : normalizedCities.length
+                              ? 'Select a city'
+                              : 'No cities found'
+                          : 'Select a country first'}
+                      </option>
+                      {(personal.country && !citiesLoading ? normalizedCities : []).map(city => (
+                        <option key={city} value={city}>{city}</option>
+                      ))}
+                    </select>
+                    <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-white/50" />
+                  </div>
+                </label>
             </div>
             <button
               type="submit"
@@ -661,7 +664,7 @@ export default function Profile() {
                 Industry
                 <div className="relative mt-1">
                   <select
-                    className="w-full appearance-none rounded-md bg-black border border-white/10 px-3 py-2 pr-9 text-sm outline-none focus:border-[#4db6ac]"
+                    className={`${SELECT_BASE_CLASS} pr-8`}
                     value={professional.industry}
                     onChange={event => setProfessional(prev => ({ ...prev, industry: event.target.value }))}
                   >
@@ -670,7 +673,7 @@ export default function Profile() {
                       <option key={industry} value={industry}>{industry}</option>
                     ))}
                   </select>
-                  <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9fb0b5]" />
+                  <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-white/50" />
                 </div>
               </label>
               <label className="text-sm">
