@@ -14,6 +14,7 @@ type ProfessionalForm = {
   company: string
   industry: string
   linkedin: string
+  about: string
 }
 
 type ProfileSummary = {
@@ -38,6 +39,7 @@ const PROFESSIONAL_DEFAULT: ProfessionalForm = {
   company: '',
   industry: '',
   linkedin: '',
+  about: '',
 }
 
 const GENDERS = ['Female', 'Male', 'Prefer not to say', 'Other']
@@ -118,6 +120,7 @@ export default function Profile() {
               company: profile.professional?.company || '',
               industry: profile.professional?.industry || '',
               linkedin: profile.professional?.linkedin || '',
+              about: profile.professional?.about || '',
             })
             setError(null)
           } else {
@@ -252,6 +255,7 @@ export default function Profile() {
       form.append('company', professional.company)
       form.append('industry', professional.industry)
       form.append('linkedin', professional.linkedin)
+      form.append('about', professional.about)
       const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
@@ -420,6 +424,15 @@ export default function Profile() {
             <p className="text-xs text-[#9fb0b5]">Let others know how to collaborate with you.</p>
           </header>
           <form className="space-y-3" onSubmit={handleProfessionalSubmit}>
+            <label className="text-sm block">
+              About
+              <textarea
+                className="mt-1 w-full min-h-[96px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                value={professional.about}
+                onChange={event => setProfessional(prev => ({ ...prev, about: event.target.value }))}
+                placeholder="Share a short summary about your professional background"
+              />
+            </label>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm">
                 Current position

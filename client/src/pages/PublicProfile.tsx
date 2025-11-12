@@ -21,6 +21,7 @@ type ProfessionalInfo = {
   school?: string | null
   skills?: string | null
   experience?: string | null
+  about?: string | null
   share_community_id?: number | null
 }
 
@@ -108,6 +109,7 @@ export default function PublicProfile() {
     professional.school ||
     professional.skills ||
     professional.experience ||
+    professional.about ||
     professional.linkedin
 
   return (
@@ -204,6 +206,11 @@ export default function PublicProfile() {
           <section className="rounded-xl border border-white/10 p-4 space-y-3">
             <div className="font-semibold">Professional</div>
             <div className="space-y-2 text-sm text-white/90">
+              {professional.about ? (
+                <div className="text-white/90 leading-relaxed whitespace-pre-wrap">
+                  {professional.about}
+                </div>
+              ) : null}
               {professional.role ? (
                 <div>
                   <span className="text-[#9fb0b5] mr-2">Current position:</span>

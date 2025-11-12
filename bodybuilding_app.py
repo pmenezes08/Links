@@ -1628,7 +1628,8 @@ def add_missing_tables():
                 # For MySQL, use SHOW COLUMNS to check
                 for col, coltype in [
                     ('role','TEXT'), ('company','TEXT'), ('industry','TEXT'), ('degree','TEXT'),
-                    ('school','TEXT'), ('skills','TEXT'), ('linkedin','TEXT'), ('experience','INTEGER')
+                    ('school','TEXT'), ('skills','TEXT'), ('linkedin','TEXT'), ('experience','INTEGER'),
+                    ('professional_about','TEXT')
                 ]:
                     try:
                         c.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
@@ -7484,7 +7485,7 @@ def api_public_profile(username):
 
             # Fetch user's professional info and share setting
             try:
-                c.execute("SELECT role, company, industry, degree, school, skills, linkedin, experience, professional_share_community_id FROM users WHERE username = ?", (actual_username,))
+                c.execute("SELECT role, company, industry, degree, school, skills, linkedin, experience, professional_about, professional_share_community_id FROM users WHERE username = ?", (actual_username,))
                 urow = c.fetchone()
             except Exception:
                 urow = None
@@ -7528,7 +7529,8 @@ def api_public_profile(username):
                     'skills': uval('skills') if hasattr(urow, 'keys') else uval(5),
                     'linkedin': uval('linkedin') if hasattr(urow, 'keys') else uval(6),
                     'experience': uval('experience') if hasattr(urow, 'keys') else uval(7),
-                    'share_community_id': uval('professional_share_community_id') if hasattr(urow, 'keys') else uval(8)
+                    'about': uval('professional_about') if hasattr(urow, 'keys') else uval(8),
+                    'share_community_id': uval('professional_share_community_id') if hasattr(urow, 'keys') else uval(9)
                 }
 
             # Recent posts (kept for potential future use; frontend may ignore)
@@ -8766,6 +8768,7 @@ def update_professional():
         skills = request.form.get('skills', '').strip()
         linkedin = request.form.get('linkedin', '').strip()
         experience = request.form.get('experience', type=int)
+        professional_about = request.form.get('about', '').strip()
         share_raw = request.form.get('share_community_id')
         professional_share_community_id = None
         try:
@@ -8781,11 +8784,12 @@ def update_professional():
             update_sql = f"""
                 UPDATE users SET 
                     role={ph}, company={ph}, industry={ph}, degree={ph}, school={ph}, 
-                    skills={ph}, linkedin={ph}, experience={ph}, professional_share_community_id={ph}
+                    skills={ph}, linkedin={ph}, experience={ph}, professional_about={ph},
+                    professional_share_community_id={ph}
                 WHERE username={ph}
             """
             c.execute(update_sql, (
-                role, company, industry, degree, school, skills, linkedin, experience,
+                role, company, industry, degree, school, skills, linkedin, experience, professional_about,
                 professional_share_community_id, username
             ))
             conn.commit()
