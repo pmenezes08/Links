@@ -303,6 +303,20 @@ export default function Profile() {
     ? [personal.city, personal.country].filter(Boolean).join(', ')
     : summary?.location || ''
 
+  const normalizedCountries = personal.country
+    ? (countries.some(country => country.toLowerCase() === personal.country.toLowerCase())
+      ? countries
+      : [personal.country, ...countries.filter(country => country.toLowerCase() !== personal.country.toLowerCase())])
+    : countries
+
+  const normalizedCities = personal.city
+    ? (cities.some(city => city.toLowerCase() === personal.city.toLowerCase())
+      ? cities
+      : [personal.city, ...cities.filter(city => city.toLowerCase() !== personal.city.toLowerCase())])
+    : cities
+
+  const citySelectDisabled = !personal.country || citiesLoading || normalizedCities.length === 0
+
   async function handlePersonalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (savingPersonal) return
@@ -543,39 +557,60 @@ export default function Profile() {
               </label>
               <label className="text-sm">
                 Gender
-                <select
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[13px] outline-none focus:border-[#4db6ac]"
-                  value={personal.gender}
-                  onChange={event => setPersonal(prev => ({ ...prev, gender: event.target.value }))}
-                >
-                  <option value="">Select a value</option>
-                  {GENDERS.map(option => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
+                <div className="relative mt-1">
+                  <select
+                    className="w-full appearance-none rounded-md bg-black border border-white/10 px-3 py-2 pr-9 text-sm outline-none focus:border-[#4db6ac]"
+                    value={personal.gender}
+                    onChange={event => setPersonal(prev => ({ ...prev, gender: event.target.value }))}
+                  >
+                    <option value="">Select a value</option>
+                    {GENDERS.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                  <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9fb0b5]" />
+                </div>
               </label>
               <label className="text-sm">
                 Country
-                <input
-                  list="country-options"
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                  value={personal.country}
-                  onChange={event => setPersonal(prev => ({ ...prev, country: event.target.value }))}
-                  placeholder="Type to search"
-                  autoComplete="off"
-                />
+                <div className="relative mt-1">
+                  <select
+                    className="w-full appearance-none rounded-md bg-black border border-white/10 px-3 py-2 pr-9 text-sm outline-none focus:border-[#4db6ac]"
+                    value={personal.country}
+                    onChange={event => setPersonal(prev => ({ ...prev, country: event.target.value, city: '' }))}
+                  >
+                    <option value="">Select a country</option>
+                    {normalizedCountries.map(country => (
+                      <option key={country} value={country}>{country}</option>
+                    ))}
+                  </select>
+                  <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9fb0b5]" />
+                </div>
               </label>
               <label className="text-sm">
                 City
-                <input
-                  list="city-options"
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                  value={personal.city}
-                  onChange={event => setPersonal(prev => ({ ...prev, city: event.target.value }))}
-                  placeholder={personal.country ? (citiesLoading ? 'Loading cities…' : 'Type to search') : 'Select a country first'}
-                  autoComplete="off"
-                  disabled={!personal.country}
-                />
+                <div className="relative mt-1">
+                  <select
+                    className="w-full appearance-none rounded-md bg-black border border-white/10 px-3 py-2 pr-9 text-sm outline-none focus:border-[#4db6ac] disabled:opacity-60"
+                    value={citySelectDisabled ? '' : personal.city}
+                    onChange={event => setPersonal(prev => ({ ...prev, city: event.target.value }))}
+                    disabled={citySelectDisabled}
+                  >
+                    <option value="">
+                      {personal.country
+                        ? citiesLoading
+                          ? 'Loading cities…'
+                          : normalizedCities.length
+                            ? 'Select a city'
+                            : 'No cities found'
+                        : 'Select a country first'}
+                    </option>
+                    {(personal.country && !citiesLoading ? normalizedCities : []).map(city => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+                  <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9fb0b5]" />
+                </div>
               </label>
             </div>
             <button
@@ -588,8 +623,8 @@ export default function Profile() {
           </form>
         </section>
 
-        <form className="space-y-3" onSubmit={handleProfessionalSubmit}>
-          <section className="rounded-xl border border-white/10 p-4 space-y-3">
+        <section className="rounded-xl border border-white/10 p-4">
+          <form className="space-y-4" onSubmit={handleProfessionalSubmit}>
             <header>
               <div className="font-semibold">Professional information</div>
               <p className="text-xs text-[#9fb0b5]">Let others know how to collaborate with you.</p>
@@ -624,16 +659,19 @@ export default function Profile() {
               </label>
               <label className="text-sm">
                 Industry
-                <select
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[13px] outline-none focus:border-[#4db6ac]"
-                  value={professional.industry}
-                  onChange={event => setProfessional(prev => ({ ...prev, industry: event.target.value }))}
-                >
-                  <option value="">Select an industry</option>
-                  {INDUSTRIES.map(industry => (
-                    <option key={industry} value={industry}>{industry}</option>
-                  ))}
-                </select>
+                <div className="relative mt-1">
+                  <select
+                    className="w-full appearance-none rounded-md bg-black border border-white/10 px-3 py-2 pr-9 text-sm outline-none focus:border-[#4db6ac]"
+                    value={professional.industry}
+                    onChange={event => setProfessional(prev => ({ ...prev, industry: event.target.value }))}
+                  >
+                    <option value="">Select an industry</option>
+                    {INDUSTRIES.map(industry => (
+                      <option key={industry} value={industry}>{industry}</option>
+                    ))}
+                  </select>
+                  <i className="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#9fb0b5]" />
+                </div>
               </label>
               <label className="text-sm">
                 LinkedIn URL
@@ -645,21 +683,22 @@ export default function Profile() {
                 />
               </label>
             </div>
-          </section>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+              disabled={savingProfessional}
+            >
+              {savingProfessional ? 'Saving…' : 'Save professional info'}
+            </button>
+          </form>
+        </section>
 
-          <button
-            type="submit"
-            className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
-            disabled={savingProfessional}
-          >
-            {savingProfessional ? 'Saving…' : 'Save professional info'}
-          </button>
-        </form>
-
-        <form className="space-y-3" onSubmit={handleInterestsSubmit}>
-          <section className="rounded-xl border border-white/10 p-4 space-y-3">
-            <div className="text-sm font-semibold text-white">Personal interests</div>
-            <p className="text-xs text-[#9fb0b5]">Press enter after each interest to add it.</p>
+        <section className="rounded-xl border border-white/10 p-4">
+          <form className="space-y-3" onSubmit={handleInterestsSubmit}>
+            <div>
+              <div className="text-sm font-semibold text-white">Personal interests</div>
+              <p className="text-xs text-[#9fb0b5]">Press enter after each interest to add it.</p>
+            </div>
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black px-2 py-2">
               {professional.interests.map((interest, index) => (
                 <button
@@ -684,27 +723,15 @@ export default function Profile() {
                 />
               ) : null}
             </div>
-          </section>
-
-          <button
-            type="submit"
-            className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
-            disabled={savingInterests}
-          >
-            {savingInterests ? 'Saving…' : 'Save personal interests'}
-          </button>
-        </form>
-
-        <datalist id="country-options">
-          {countries.map(country => (
-            <option key={country} value={country} />
-          ))}
-        </datalist>
-        <datalist id="city-options">
-          {cities.map(city => (
-            <option key={city} value={city} />
-          ))}
-        </datalist>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+              disabled={savingInterests}
+            >
+              {savingInterests ? 'Saving…' : 'Save personal interests'}
+            </button>
+          </form>
+        </section>
 
         {feedback ? (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full border border-white/10 bg-white/10 text-sm text-white">
