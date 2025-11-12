@@ -17,6 +17,11 @@ type ProfessionalInfo = {
   company?: string | null
   industry?: string | null
   linkedin?: string | null
+  degree?: string | null
+  school?: string | null
+  skills?: string | null
+  experience?: string | null
+  share_community_id?: number | null
 }
 
 type PublicProfileResponse = {
@@ -94,6 +99,16 @@ export default function PublicProfile() {
   const location = personal.city || personal.country
     ? [personal.city, personal.country].filter(Boolean).join(', ')
     : profile.location || ''
+
+  const hasProfessional =
+    professional.role ||
+    professional.company ||
+    professional.industry ||
+    professional.degree ||
+    professional.school ||
+    professional.skills ||
+    professional.experience ||
+    professional.linkedin
 
   return (
     <div className="min-h-screen bg-black text-white pt-16 pb-10">
@@ -185,7 +200,7 @@ export default function PublicProfile() {
           </section>
         ) : null}
 
-        {(professional.role || professional.company || professional.industry || professional.linkedin) ? (
+        {hasProfessional ? (
           <section className="rounded-xl border border-white/10 p-4 space-y-3">
             <div className="font-semibold">Professional</div>
             <div className="space-y-2 text-sm text-white/90">
@@ -205,6 +220,30 @@ export default function PublicProfile() {
                 <div>
                   <span className="text-[#9fb0b5] mr-2">Industry:</span>
                   {professional.industry}
+                </div>
+              ) : null}
+              {professional.degree ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Degree:</span>
+                  {professional.degree}
+                </div>
+              ) : null}
+              {professional.school ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">School:</span>
+                  {professional.school}
+                </div>
+              ) : null}
+              {professional.skills ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Skills:</span>
+                  {professional.skills}
+                </div>
+              ) : null}
+              {professional.experience ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Experience:</span>
+                  {professional.experience}
                 </div>
               ) : null}
               {professional.linkedin ? (
