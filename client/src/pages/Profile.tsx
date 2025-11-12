@@ -93,6 +93,7 @@ export default function Profile() {
   const [error, setError] = useState<string | null>(null)
   const [savingPersonal, setSavingPersonal] = useState(false)
   const [savingProfessional, setSavingProfessional] = useState(false)
+  const [savingInterests, setSavingInterests] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [citiesLoading, setCitiesLoading] = useState(false)
   const cityCache = useRef<Map<string, string[]>>(new Map())
@@ -302,15 +303,6 @@ export default function Profile() {
     ? [personal.city, personal.country].filter(Boolean).join(', ')
     : summary?.location || ''
 
-  const personalDobLabel = (() => {
-    if (!personal.date_of_birth) return ''
-    const parsed = new Date(personal.date_of_birth)
-    if (Number.isNaN(parsed.getTime())) return personal.date_of_birth
-    return new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long', day: 'numeric' }).format(parsed)
-  })()
-
-  const personalBioText = personal.bio.trim()
-
   async function handlePersonalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (savingPersonal) return
@@ -352,23 +344,12 @@ export default function Profile() {
     if (savingProfessional) return
     setSavingProfessional(true)
     try {
-      let interestList = professional.interests
-      const pendingInterest = interestInput.trim()
-      if (pendingInterest && professional.interests.length >= MAX_INTERESTS && !professional.interests.some(item => item.toLowerCase() === pendingInterest.toLowerCase())) {
-        setFeedback(`You can list up to ${MAX_INTERESTS} interests. Remove one to add more.`)
-        setSavingProfessional(false)
-        return
-      }
-      if (pendingInterest) {
-        interestList = normalizeInterests([...interestList, pendingInterest])
+      let interestList = normalizeInterests(professional.interests)
+      if (
+        interestList.length !== professional.interests.length ||
+        interestList.some((interest, index) => interest !== professional.interests[index])
+      ) {
         setProfessional(prev => ({ ...prev, interests: interestList }))
-        setInterestInput('')
-      } else {
-        const normalized = normalizeInterests(interestList)
-        if (normalized.length !== interestList.length || normalized.some((interest, index) => interest !== interestList[index])) {
-          interestList = normalized
-          setProfessional(prev => ({ ...prev, interests: interestList }))
-        }
       }
       const form = new FormData()
       form.append('role', professional.role)
@@ -388,6 +369,56 @@ export default function Profile() {
       setFeedback('Unable to save professional information')
     } finally {
       setSavingProfessional(false)
+    }
+  }
+
+  async function handleInterestsSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (savingInterests) return
+    setSavingInterests(true)
+    try {
+      const pendingInterest = interestInput.trim()
+      if (
+        pendingInterest &&
+        professional.interests.length >= MAX_INTERESTS &&
+        !professional.interests.some(item => item.toLowerCase() === pendingInterest.toLowerCase())
+      ) {
+        setFeedback(`You can list up to ${MAX_INTERESTS} interests. Remove one to add more.`)
+        return
+      }
+      let interestList = professional.interests
+      if (pendingInterest) {
+        interestList = normalizeInterests([...interestList, pendingInterest])
+      } else {
+        interestList = normalizeInterests(interestList)
+      }
+      if (
+        interestList.length !== professional.interests.length ||
+        interestList.some((interest, index) => interest !== professional.interests[index])
+      ) {
+        setProfessional(prev => ({ ...prev, interests: interestList }))
+      }
+      if (pendingInterest) {
+        setInterestInput('')
+      }
+      const form = new FormData()
+      form.append('role', professional.role)
+      form.append('company', professional.company)
+      form.append('industry', professional.industry)
+      form.append('linkedin', professional.linkedin)
+      form.append('about', professional.about)
+      form.append('interests', JSON.stringify(interestList))
+      const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        setFeedback('Personal interests saved')
+      } else {
+        setFeedback(payload?.error || 'Unable to save personal interests')
+      }
+    } catch {
+      setFeedback('Unable to save personal interests')
+    } finally {
+      setSavingInterests(false)
     }
   }
 
@@ -557,35 +588,6 @@ export default function Profile() {
           </form>
         </section>
 
-        {(personalBioText || personalDobLabel || personal.gender || locationPreview) ? (
-          <section className="rounded-xl border border-white/10 p-4 space-y-3">
-            <div className="font-semibold">Personal information</div>
-            <div className="space-y-2 text-sm text-white/90">
-              {personalBioText ? (
-                <div className="whitespace-pre-wrap leading-relaxed text-white/90">{personalBioText}</div>
-              ) : null}
-              {personalDobLabel ? (
-                <div>
-                  <span className="text-[#9fb0b5] mr-2">Date of birth:</span>
-                  {personalDobLabel}
-                </div>
-              ) : null}
-              {personal.gender ? (
-                <div>
-                  <span className="text-[#9fb0b5] mr-2">Gender:</span>
-                  {personal.gender}
-                </div>
-              ) : null}
-              {locationPreview ? (
-                <div>
-                  <span className="text-[#9fb0b5] mr-2">Location:</span>
-                  {locationPreview}
-                </div>
-              ) : null}
-            </div>
-          </section>
-        ) : null}
-
         <form className="space-y-3" onSubmit={handleProfessionalSubmit}>
           <section className="rounded-xl border border-white/10 p-4 space-y-3">
             <header>
@@ -645,6 +647,16 @@ export default function Profile() {
             </div>
           </section>
 
+          <button
+            type="submit"
+            className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+            disabled={savingProfessional}
+          >
+            {savingProfessional ? 'Saving…' : 'Save professional info'}
+          </button>
+        </form>
+
+        <form className="space-y-3" onSubmit={handleInterestsSubmit}>
           <section className="rounded-xl border border-white/10 p-4 space-y-3">
             <div className="text-sm font-semibold text-white">Personal interests</div>
             <p className="text-xs text-[#9fb0b5]">Press enter after each interest to add it.</p>
@@ -677,11 +689,11 @@ export default function Profile() {
           <button
             type="submit"
             className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
-            disabled={savingProfessional}
+            disabled={savingInterests}
           >
-            {savingProfessional ? 'Saving…' : 'Save professional info'}
+            {savingInterests ? 'Saving…' : 'Save personal interests'}
           </button>
-          </form>
+        </form>
 
         <datalist id="country-options">
           {countries.map(country => (

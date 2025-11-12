@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
-import ImageLoader from '../components/ImageLoader'
 
 type PersonalInfo = {
   display_name?: string | null
@@ -133,50 +132,40 @@ export default function PublicProfile() {
           Back
         </button>
 
-        <section className="rounded-xl border border-white/10 overflow-hidden">
-          {profile.cover_photo ? (
-            <ImageLoader
-              src={profile.cover_photo.startsWith('http') ? profile.cover_photo : `/uploads/${profile.cover_photo}`}
-              alt="Cover"
-              className="w-full"
-              style={{ height: 160, objectFit: 'cover' }}
-            />
-          ) : (
-            <div className="h-40 bg-white/5" />
-          )}
-          <div className="p-4 flex flex-wrap items-center gap-4">
-            <Avatar username={profile.username} url={profile.profile_picture || undefined} size={64} />
-            <div className="min-w-0 flex-1">
-              <div className="font-semibold text-lg truncate">{profile.display_name || profile.username}</div>
-              <div className="text-sm text-[#9fb0b5] truncate">
-                @{profile.username}{profile.subscription ? ` • ${profile.subscription}` : ''}
-              </div>
-              {location ? (
-                <div className="text-xs text-[#9fb0b5] flex items-center gap-1">
-                  <i className="fa-solid fa-location-dot" />
-                  <span>{location}</span>
+          <section className="rounded-xl border border-white/10 p-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <Avatar username={profile.username} url={profile.profile_picture || undefined} size={64} />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-lg truncate">{profile.display_name || profile.username}</div>
+                <div className="text-sm text-[#9fb0b5] truncate">
+                  @{profile.username}{profile.subscription ? ` • ${profile.subscription}` : ''}
                 </div>
-              ) : null}
+                {location ? (
+                  <div className="text-xs text-[#9fb0b5] flex items-center gap-1">
+                    <i className="fa-solid fa-location-dot" />
+                    <span>{location}</span>
+                  </div>
+                ) : null}
+              </div>
+              {isSelf ? (
+                <button
+                  className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
+                  onClick={() => navigate('/profile')}
+                >
+                  <i className="fa-solid fa-pen-to-square mr-2" />
+                  Edit profile
+                </button>
+              ) : (
+                <button
+                  className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
+                  onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)}
+                >
+                  <i className="fa-regular fa-paper-plane mr-2" />
+                  Send message
+                </button>
+              )}
             </div>
-            {isSelf ? (
-              <button
-                className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
-                onClick={() => navigate('/profile')}
-              >
-                <i className="fa-solid fa-pen-to-square mr-2" />
-                Edit profile
-              </button>
-            ) : (
-              <button
-                className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
-                onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)}
-              >
-                <i className="fa-regular fa-paper-plane mr-2" />
-                Send message
-              </button>
-            )}
-          </div>
-        </section>
+          </section>
 
         {(bioText || formattedDob || personal.gender || location) ? (
           <section className="rounded-xl border border-white/10 p-4 space-y-3">
