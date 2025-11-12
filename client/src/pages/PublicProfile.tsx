@@ -86,9 +86,9 @@ export default function PublicProfile(){
               ) : (
                 <button
                   className="ml-auto px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
-                  onClick={()=> navigate(`/user_chat/new?username=${encodeURIComponent(profile.username)}`)}
+                  onClick={()=> navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)}
                 >
-                  Message
+                  Send Message
                 </button>
               )}
           </div>
