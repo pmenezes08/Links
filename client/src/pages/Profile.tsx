@@ -302,6 +302,15 @@ export default function Profile() {
     ? [personal.city, personal.country].filter(Boolean).join(', ')
     : summary?.location || ''
 
+  const personalDobLabel = (() => {
+    if (!personal.date_of_birth) return ''
+    const parsed = new Date(personal.date_of_birth)
+    if (Number.isNaN(parsed.getTime())) return personal.date_of_birth
+    return new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long', day: 'numeric' }).format(parsed)
+  })()
+
+  const personalBioText = personal.bio.trim()
+
   async function handlePersonalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (savingPersonal) return
@@ -460,10 +469,6 @@ export default function Profile() {
         </div>
 
         <section className="rounded-xl border border-white/10 p-4 space-y-3">
-          <header>
-            <div className="font-semibold">Personal information</div>
-            <p className="text-xs text-[#9fb0b5]">These details are visible to other members.</p>
-          </header>
           <form className="space-y-3" onSubmit={handlePersonalSubmit}>
             <label className="text-sm block">
               Bio
@@ -636,7 +641,7 @@ export default function Profile() {
                 ) : null}
               </div>
               <p className="mt-1 text-xs text-[#9fb0b5]">
-                Press enter after each interest. Keep them playful—think Bumble energy, not résumés.
+                Press enter after each interest to add it.
               </p>
             </div>
             <button
@@ -648,6 +653,35 @@ export default function Profile() {
             </button>
           </form>
         </section>
+
+        {(personalBioText || personalDobLabel || personal.gender || locationPreview) ? (
+          <section className="rounded-xl border border-white/10 p-4 space-y-3">
+            <div className="font-semibold">Personal information</div>
+            <div className="space-y-2 text-sm text-white/90">
+              {personalBioText ? (
+                <div className="whitespace-pre-wrap leading-relaxed text-white/90">{personalBioText}</div>
+              ) : null}
+              {personalDobLabel ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Date of birth:</span>
+                  {personalDobLabel}
+                </div>
+              ) : null}
+              {personal.gender ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Gender:</span>
+                  {personal.gender}
+                </div>
+              ) : null}
+              {locationPreview ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Location:</span>
+                  {locationPreview}
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         <datalist id="country-options">
           {countries.map(country => (
