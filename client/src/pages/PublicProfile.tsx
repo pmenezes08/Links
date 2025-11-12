@@ -22,6 +22,7 @@ type ProfessionalInfo = {
   skills?: string | null
   experience?: string | null
   about?: string | null
+  interests?: string[] | null
   share_community_id?: number | null
 }
 
@@ -88,6 +89,7 @@ export default function PublicProfile() {
   const personal = profile.personal || {}
   const professional = profile.professional || {}
   const isSelf = Boolean(profile.is_self)
+  const bioText = (profile.bio || '').trim()
 
   let formattedDob = ''
   if (personal.date_of_birth) {
@@ -101,6 +103,12 @@ export default function PublicProfile() {
     ? [personal.city, personal.country].filter(Boolean).join(', ')
     : profile.location || ''
 
+  const interestTags = Array.isArray(professional.interests)
+    ? professional.interests
+        .map(item => (typeof item === 'string' ? item.trim() : ''))
+        .filter(Boolean)
+    : []
+
   const hasProfessional =
     professional.role ||
     professional.company ||
@@ -110,6 +118,7 @@ export default function PublicProfile() {
     professional.skills ||
     professional.experience ||
     professional.about ||
+    interestTags.length ||
     professional.linkedin
 
   return (
@@ -169,17 +178,16 @@ export default function PublicProfile() {
           </div>
         </section>
 
-        {profile.bio ? (
-          <section className="rounded-xl border border-white/10 p-4 space-y-2">
-            <div className="font-semibold text-sm text-[#9fb0b5]">About</div>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap text-white/90">{profile.bio}</p>
-          </section>
-        ) : null}
-
-        {(formattedDob || personal.gender || location) ? (
+        {(bioText || formattedDob || personal.gender || location) ? (
           <section className="rounded-xl border border-white/10 p-4 space-y-3">
             <div className="font-semibold">Personal information</div>
             <div className="space-y-2 text-sm text-white/90">
+              {bioText ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Bio:</span>
+                  <p className="mt-1 whitespace-pre-wrap leading-relaxed text-white/90">{bioText}</p>
+                </div>
+              ) : null}
               {formattedDob ? (
                 <div>
                   <span className="text-[#9fb0b5] mr-2">Date of birth:</span>
@@ -262,6 +270,18 @@ export default function PublicProfile() {
                 >
                   LinkedIn
                 </a>
+              ) : null}
+              {interestTags.length ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Personal interests:</span>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {interestTags.map(tag => (
+                      <span key={tag} className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-xs text-white">
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               ) : null}
             </div>
           </section>

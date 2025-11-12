@@ -1629,7 +1629,7 @@ def add_missing_tables():
                 for col, coltype in [
                     ('role','TEXT'), ('company','TEXT'), ('industry','TEXT'), ('degree','TEXT'),
                     ('school','TEXT'), ('skills','TEXT'), ('linkedin','TEXT'), ('experience','INTEGER'),
-                    ('professional_about','TEXT')
+                    ('professional_about','TEXT'), ('professional_interests','TEXT')
                 ]:
                     try:
                         c.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
@@ -8788,6 +8788,21 @@ def update_professional():
         linkedin = request.form.get('linkedin', '').strip()
         experience = request.form.get('experience', type=int)
         professional_about = request.form.get('about', '').strip()
+        interests_raw = (request.form.get('interests') or '').strip()
+        interests_payload = None
+        if interests_raw:
+            try:
+                parsed = json.loads(interests_raw)
+                if isinstance(parsed, list):
+                    cleaned = [str(item).strip() for item in parsed if isinstance(item, (str, int, float)) and str(item).strip()]
+                    if cleaned:
+                        interests_payload = json.dumps(cleaned)
+                else:
+                    raise ValueError("unexpected format")
+            except Exception:
+                cleaned = [part.strip() for part in interests_raw.split(',') if part and part.strip()]
+                if cleaned:
+                    interests_payload = json.dumps(cleaned)
         share_raw = request.form.get('share_community_id')
         professional_share_community_id = None
         try:
@@ -8804,12 +8819,12 @@ def update_professional():
                 UPDATE users SET 
                     role={ph}, company={ph}, industry={ph}, degree={ph}, school={ph}, 
                     skills={ph}, linkedin={ph}, experience={ph}, professional_about={ph},
-                    professional_share_community_id={ph}
+                    professional_interests={ph}, professional_share_community_id={ph}
                 WHERE username={ph}
             """
             c.execute(update_sql, (
                 role, company, industry, degree, school, skills, linkedin, experience, professional_about,
-                professional_share_community_id, username
+                interests_payload, professional_share_community_id, username
             ))
             conn.commit()
         
@@ -8823,6 +8838,7 @@ def update_professional():
 def update_personal_info():
     username = session['username']
     display_name = (request.form.get('display_name') or '').strip()
+    bio_text = (request.form.get('bio') or '').strip()
     date_of_birth = request.form.get('date_of_birth')
     gender = (request.form.get('gender') or '').strip() or None
     country = (request.form.get('country') or '').strip() or None
@@ -8870,6 +8886,23 @@ def update_personal_info():
                         )
                 except Exception as profile_err:
                     logger.warning(f"Failed to upsert display name for {username}: {profile_err}")
+
+            bio_value = bio_text or None
+            try:
+                if USE_MYSQL:
+                    c.execute(
+                        "INSERT INTO user_profiles (username, bio) VALUES (%s, %s) "
+                        "ON DUPLICATE KEY UPDATE bio=VALUES(bio)",
+                        (username, bio_value)
+                    )
+                else:
+                    c.execute(
+                        "INSERT INTO user_profiles (username, bio) VALUES (?, ?) "
+                        "ON CONFLICT(username) DO UPDATE SET bio=excluded.bio",
+                        (username, bio_value)
+                    )
+            except Exception as bio_err:
+                logger.warning(f"Failed to update bio for {username}: {bio_err}")
             
             location_value = None
             if city and country:

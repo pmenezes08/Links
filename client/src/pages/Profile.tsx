@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
 import Avatar from '../components/Avatar'
 
 type PersonalForm = {
@@ -80,6 +81,8 @@ const INDUSTRIES = [
   'Other',
 ]
 
+const MAX_INTERESTS = 12
+
 export default function Profile() {
   const [summary, setSummary] = useState<ProfileSummary | null>(null)
   const [personal, setPersonal] = useState<PersonalForm>(PERSONAL_DEFAULT)
@@ -95,6 +98,64 @@ export default function Profile() {
   const cityCache = useRef<Map<string, string[]>>(new Map())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [interestInput, setInterestInput] = useState('')
+
+  function normalizeInterests(list: string[]): string[] {
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const item of list) {
+      const trimmed = item.trim()
+      if (!trimmed) continue
+      const key = trimmed.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push(trimmed)
+      if (result.length >= MAX_INTERESTS) break
+    }
+    return result
+  }
+
+  function addInterest(value: string) {
+    const trimmed = value.trim()
+    if (!trimmed) return
+    const exists = professional.interests.some(existing => existing.toLowerCase() === trimmed.toLowerCase())
+    if (professional.interests.length >= MAX_INTERESTS && !exists) {
+      setFeedback(`You can list up to ${MAX_INTERESTS} interests. Remove one to add more.`)
+      setInterestInput('')
+      return
+    }
+    setProfessional(prev => {
+      const normalized = normalizeInterests([...prev.interests, trimmed])
+      if (normalized.length === prev.interests.length && normalized.every((interest, index) => interest === prev.interests[index])) {
+        return prev
+      }
+      return { ...prev, interests: normalized }
+    })
+    setInterestInput('')
+  }
+
+  function removeInterest(index: number) {
+    setProfessional(prev => ({
+      ...prev,
+      interests: prev.interests.filter((_, idx) => idx !== index),
+    }))
+  }
+
+  function handleInterestKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter' || event.key === ',') {
+      event.preventDefault()
+      if (interestInput.trim()) addInterest(interestInput)
+    } else if (event.key === 'Backspace' && !interestInput && professional.interests.length) {
+      event.preventDefault()
+      setProfessional(prev => ({
+        ...prev,
+        interests: prev.interests.slice(0, prev.interests.length - 1),
+      }))
+    }
+  }
+
+  function handleInterestBlur() {
+    if (interestInput.trim()) addInterest(interestInput)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -117,6 +178,7 @@ export default function Profile() {
                     .map(item => item.trim())
                     .filter(Boolean)
                 : []
+            const sanitizedInterests = normalizeInterests(interestList)
             setSummary({
               username: profile.username,
               subscription: profile.subscription,
@@ -140,8 +202,9 @@ export default function Profile() {
               industry: profile.professional?.industry || '',
               linkedin: profile.professional?.linkedin || '',
               about: profile.professional?.about || '',
-              interests: interestList,
+              interests: sanitizedInterests,
             })
+            setInterestInput('')
             setError(null)
           } else {
             setError(payload?.error || 'Unable to load profile')
@@ -239,12 +302,13 @@ export default function Profile() {
     ? [personal.city, personal.country].filter(Boolean).join(', ')
     : summary?.location || ''
 
-  async function handlePersonalSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handlePersonalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (savingPersonal) return
     setSavingPersonal(true)
     try {
       const form = new FormData()
+      form.append('bio', personal.bio)
       form.append('display_name', personal.display_name)
       if (personal.date_of_birth) form.append('date_of_birth', personal.date_of_birth)
       form.append('gender', personal.gender)
@@ -254,7 +318,16 @@ export default function Profile() {
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
         setFeedback('Personal information saved')
-        setSummary(prev => prev ? { ...prev, display_name: personal.display_name || prev.display_name, location: locationPreview } : prev)
+        setSummary(prev => {
+          if (!prev) return prev
+          const updatedLocation = [personal.city, personal.country].filter(Boolean).join(', ')
+          return {
+            ...prev,
+            display_name: personal.display_name || prev.display_name,
+            location: updatedLocation,
+            bio: personal.bio,
+          }
+        })
       } else {
         setFeedback(payload?.error || 'Unable to save personal information')
       }
@@ -265,17 +338,36 @@ export default function Profile() {
     }
   }
 
-  async function handleProfessionalSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleProfessionalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (savingProfessional) return
     setSavingProfessional(true)
     try {
+      let interestList = professional.interests
+      const pendingInterest = interestInput.trim()
+      if (pendingInterest && professional.interests.length >= MAX_INTERESTS && !professional.interests.some(item => item.toLowerCase() === pendingInterest.toLowerCase())) {
+        setFeedback(`You can list up to ${MAX_INTERESTS} interests. Remove one to add more.`)
+        setSavingProfessional(false)
+        return
+      }
+      if (pendingInterest) {
+        interestList = normalizeInterests([...interestList, pendingInterest])
+        setProfessional(prev => ({ ...prev, interests: interestList }))
+        setInterestInput('')
+      } else {
+        const normalized = normalizeInterests(interestList)
+        if (normalized.length !== interestList.length || normalized.some((interest, index) => interest !== interestList[index])) {
+          interestList = normalized
+          setProfessional(prev => ({ ...prev, interests: interestList }))
+        }
+      }
       const form = new FormData()
       form.append('role', professional.role)
       form.append('company', professional.company)
       form.append('industry', professional.industry)
       form.append('linkedin', professional.linkedin)
       form.append('about', professional.about)
+      form.append('interests', JSON.stringify(interestList))
       const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
@@ -307,7 +399,7 @@ export default function Profile() {
     }
   }
 
-  function onSelectPhoto(event: React.ChangeEvent<HTMLInputElement>) {
+  function onSelectPhoto(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (file) handlePhotoUpload(file)
   }
@@ -373,6 +465,28 @@ export default function Profile() {
             <p className="text-xs text-[#9fb0b5]">These details are visible to other members.</p>
           </header>
           <form className="space-y-3" onSubmit={handlePersonalSubmit}>
+            <label className="text-sm block">
+              Bio
+              <textarea
+                className="mt-1 w-full min-h-[100px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                value={personal.bio}
+                onChange={event => setPersonal(prev => ({ ...prev, bio: event.target.value }))}
+                placeholder={`💼 Your bio is currently consulting its therapist.\nDrop one polished line to lure it back.`}
+              />
+            </label>
+            {personal.bio.trim() ? null : (
+              <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-[#9fb0b5]">
+                <p className="text-white/80 font-medium">
+                  💼 Your bio is currently consulting its therapist.
+                </p>
+                <p>Drop one polished line to lure it back.</p>
+                <p className="mt-2 whitespace-pre-line">
+                  Example:
+                  {"\n"}"Owned by a sassy rescue cat named Pickles 🐱{'\n'}Excel wizard by day,{'\n'}jazz vinyl curator by night"
+                </p>
+                <p className="mt-2 text-white/70">Impress us—bonus points for zero typos. 🖋️</p>
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm">
                 Display name
@@ -494,6 +608,36 @@ export default function Profile() {
                   placeholder="https://www.linkedin.com/in/username"
                 />
               </label>
+            </div>
+            <div className="text-sm">
+              <div className="mb-1 text-[#9fb0b5] font-medium">Personal interests</div>
+              <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black px-2 py-2">
+                {professional.interests.map((interest, index) => (
+                  <button
+                    key={`${interest}-${index}`}
+                    type="button"
+                    className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs text-white hover:bg-white/25 transition"
+                    onClick={() => removeInterest(index)}
+                    aria-label={`Remove ${interest}`}
+                  >
+                    <span>{interest}</span>
+                    <i className="fa-solid fa-xmark text-[10px]" />
+                  </button>
+                ))}
+                {professional.interests.length < MAX_INTERESTS ? (
+                  <input
+                    value={interestInput}
+                    onChange={event => setInterestInput(event.target.value)}
+                    onKeyDown={handleInterestKeyDown}
+                    onBlur={handleInterestBlur}
+                    placeholder={professional.interests.length ? 'Add another interest' : 'Tap, yoga, AI ethics…'}
+                    className="flex-1 min-w-[140px] bg-transparent text-xs text-white placeholder:text-[#9fb0b5] outline-none"
+                  />
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-[#9fb0b5]">
+                Press enter after each interest. Keep them playful—think Bumble energy, not résumés.
+              </p>
             </div>
             <button
               type="submit"
