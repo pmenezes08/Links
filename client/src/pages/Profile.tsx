@@ -614,8 +614,9 @@ export default function Profile() {
                 />
               </label>
             </div>
-            <div className="text-sm">
-              <div className="mb-1 text-[#9fb0b5] font-medium">Personal interests</div>
+            <div className="space-y-2 border-t border-white/10 pt-3">
+              <div className="text-sm font-semibold text-white">Personal Interests</div>
+              <p className="text-xs text-[#9fb0b5]">Press enter after each interest to add it.</p>
               <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black px-2 py-2">
                 {professional.interests.map((interest, index) => (
                   <button
@@ -640,9 +641,6 @@ export default function Profile() {
                   />
                 ) : null}
               </div>
-              <p className="mt-1 text-xs text-[#9fb0b5]">
-                Press enter after each interest to add it.
-              </p>
             </div>
             <button
               type="submit"
