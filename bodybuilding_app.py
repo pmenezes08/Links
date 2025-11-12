@@ -921,7 +921,7 @@ def get_cached_cities(country_name: str) -> List[str]:
         if isinstance(data, list) and data:
             sorted_data = sorted(dict.fromkeys([str(city) for city in data]))
             filtered = filter_major_cities(country_name, sorted_data)
-            CITY_CACHE[key] = {'data': sorted_data, 'timestamp': now}
+            CITY_CACHE[key] = {'data': filtered, 'timestamp': now}
             return filtered
     except Exception as e:
         logger.warning(f"Failed to fetch cities for {country_name}: {e}")
