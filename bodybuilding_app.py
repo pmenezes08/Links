@@ -7485,7 +7485,7 @@ def api_public_profile(username):
 
             # Fetch user's professional info and share setting
             try:
-                c.execute("SELECT role, company, industry, degree, school, skills, linkedin, experience, professional_about, professional_share_community_id FROM users WHERE username = ?", (actual_username,))
+                c.execute("SELECT role, company, industry, degree, school, skills, linkedin, experience, professional_about, professional_interests, professional_share_community_id FROM users WHERE username = ?", (actual_username,))
                 urow = c.fetchone()
             except Exception:
                 urow = None
@@ -7520,6 +7520,24 @@ def api_public_profile(username):
                         return urow[idx_or_key] if hasattr(urow, 'keys') else urow[idx_or_key]
                     except Exception:
                         return None
+                interests_raw = uval('professional_interests') if hasattr(urow, 'keys') else uval(9)
+                interests_list: list[str] = []
+                if interests_raw:
+                    try:
+                        decoded = json.loads(interests_raw)
+                        if isinstance(decoded, list):
+                            interests_list = [
+                                str(item).strip() for item in decoded if isinstance(item, (str, int, float)) and str(item).strip()
+                            ]
+                        else:
+                            raise ValueError("unexpected format")
+                    except Exception:
+                        interests_list = [
+                            part.strip() for part in str(interests_raw).split(',') if part and part.strip()
+                        ]
+
+                    interests_list = list(dict.fromkeys(interests_list))
+
                 profile['professional'] = {
                     'role': uval('role') if hasattr(urow, 'keys') else uval(0),
                     'company': uval('company') if hasattr(urow, 'keys') else uval(1),
@@ -7530,7 +7548,8 @@ def api_public_profile(username):
                     'linkedin': uval('linkedin') if hasattr(urow, 'keys') else uval(6),
                     'experience': uval('experience') if hasattr(urow, 'keys') else uval(7),
                     'about': uval('professional_about') if hasattr(urow, 'keys') else uval(8),
-                    'share_community_id': uval('professional_share_community_id') if hasattr(urow, 'keys') else uval(9)
+                    'interests': interests_list,
+                    'share_community_id': uval('professional_share_community_id') if hasattr(urow, 'keys') else uval(10)
                 }
 
             # Recent posts (kept for potential future use; frontend may ignore)

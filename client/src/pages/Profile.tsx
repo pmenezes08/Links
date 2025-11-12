@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Avatar from '../components/Avatar'
 
 type PersonalForm = {
+  bio: string
   display_name: string
   date_of_birth: string
   gender: string
@@ -15,6 +16,7 @@ type ProfessionalForm = {
   industry: string
   linkedin: string
   about: string
+  interests: string[]
 }
 
 type ProfileSummary = {
@@ -24,9 +26,11 @@ type ProfileSummary = {
   cover_photo?: string | null
   display_name?: string | null
   location?: string | null
+  bio?: string | null
 }
 
 const PERSONAL_DEFAULT: PersonalForm = {
+  bio: '',
   display_name: '',
   date_of_birth: '',
   gender: '',
@@ -40,6 +44,7 @@ const PROFESSIONAL_DEFAULT: ProfessionalForm = {
   industry: '',
   linkedin: '',
   about: '',
+  interests: [],
 }
 
 const GENDERS = ['Female', 'Male', 'Prefer not to say', 'Other']
@@ -89,6 +94,7 @@ export default function Profile() {
   const [citiesLoading, setCitiesLoading] = useState(false)
   const cityCache = useRef<Map<string, string[]>>(new Map())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [interestInput, setInterestInput] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -100,6 +106,17 @@ export default function Profile() {
         if (!cancelled) {
           if (payload?.success && payload.profile) {
             const profile = payload.profile
+            const rawInterests = profile.professional?.interests
+            const interestList = Array.isArray(rawInterests)
+              ? rawInterests
+                  .map(item => (typeof item === 'string' ? item.trim() : ''))
+                  .filter(Boolean)
+              : typeof rawInterests === 'string' && rawInterests
+                ? rawInterests
+                    .split(',')
+                    .map(item => item.trim())
+                    .filter(Boolean)
+                : []
             setSummary({
               username: profile.username,
               subscription: profile.subscription,
@@ -107,8 +124,10 @@ export default function Profile() {
               cover_photo: profile.cover_photo || null,
               display_name: profile.display_name || profile.personal?.display_name || profile.username,
               location: profile.location || '',
+              bio: profile.bio || '',
             })
             setPersonal({
+              bio: profile.bio || '',
               display_name: profile.personal?.display_name || profile.display_name || '',
               date_of_birth: profile.personal?.date_of_birth ? String(profile.personal.date_of_birth).slice(0, 10) : '',
               gender: profile.personal?.gender || '',
@@ -121,6 +140,7 @@ export default function Profile() {
               industry: profile.professional?.industry || '',
               linkedin: profile.professional?.linkedin || '',
               about: profile.professional?.about || '',
+              interests: interestList,
             })
             setError(null)
           } else {
