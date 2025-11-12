@@ -7826,14 +7826,13 @@ def profile():
             user = c.fetchone()
             
         if user:
-            # Mobile -> React, Desktop -> HTML
-            ua = request.headers.get('User-Agent', '')
-            is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-            if is_mobile:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                dist_dir = os.path.join(base_dir, 'client', 'dist')
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            try:
                 return send_from_directory(dist_dir, 'index.html')
-            return render_template('profile.html', username=username, user=user)
+            except Exception as serve_err:
+                logger.warning(f"Failed to serve React profile page: {serve_err}")
+                return render_template('profile.html', username=username, user=user)
         return render_template('index.html', error="User profile not found!")
     except Exception as e:
         logger.error(f"Error in profile for {username}: {str(e)}")
