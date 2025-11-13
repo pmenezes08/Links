@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
+import ImageLoader from '../components/ImageLoader'
 
 type PersonalInfo = {
   display_name?: string | null
@@ -48,6 +49,7 @@ export default function PublicProfile() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<PublicProfileResponse | null>(null)
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!username) return
@@ -120,6 +122,16 @@ export default function PublicProfile() {
     professional.linkedin
   const hasInterests = interestTags.length > 0
 
+  const resolveMediaUrl = (value?: string | null) => {
+    if (!value) return null
+    if (value.startsWith('http')) return value
+    if (value.startsWith('/uploads') || value.startsWith('/static')) return value
+    if (value.startsWith('uploads')) return `/${value}`
+    return `/uploads/${value}`
+  }
+
+  const profilePictureUrl = resolveMediaUrl(profile.profile_picture)
+
   return (
     <div className="min-h-screen bg-black text-white pt-16 pb-10">
       <div className="max-w-3xl mx-auto px-4 space-y-4">
@@ -132,9 +144,18 @@ export default function PublicProfile() {
           Back
         </button>
 
-          <section className="rounded-xl border border-white/10 p-4">
-            <div className="flex flex-wrap items-center gap-4">
+        <section className="rounded-xl border border-white/10 p-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              className="rounded-full focus:outline-none focus:ring-2 focus:ring-[#4db6ac]"
+              onClick={() => {
+                if (profilePictureUrl) setPreviewImage(profilePictureUrl)
+              }}
+              aria-label="View profile picture"
+            >
               <Avatar username={profile.username} url={profile.profile_picture || undefined} size={64} />
+            </button>
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-lg truncate">{profile.display_name || profile.username}</div>
                 <div className="text-sm text-[#9fb0b5] truncate">
@@ -312,6 +333,30 @@ export default function PublicProfile() {
           </section>
         ) : null}
       </div>
+      {previewImage ? (
+        <div
+          className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-sm flex items-center justify-center px-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPreviewImage(null)
+          }}
+        >
+          <button
+            type="button"
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center"
+            onClick={() => setPreviewImage(null)}
+            aria-label="Close preview"
+          >
+            <i className="fa-solid fa-xmark" />
+          </button>
+          <div className="w-[90vw] max-w-3xl">
+            <ImageLoader
+              src={previewImage}
+              alt="Profile"
+              className="w-full h-full object-contain rounded-lg border border-white/10"
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

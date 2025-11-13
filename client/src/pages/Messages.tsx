@@ -324,11 +324,15 @@ export default function Messages(){
                     <span className="text-xs text-white/40">{filterSummary}</span>
                 )}
                 </div>
-                <div className="flex flex-wrap gap-2 pb-1">
+                <div className="flex gap-2 pb-1 overflow-x-auto overflow-y-visible no-scrollbar whitespace-nowrap">
                 <button
                   type="button"
-                  onClick={() => setCommunityFilter('all')}
-                  className={`px-3 py-1.5 text-xs rounded-full border transition ${
+                    onClick={() => {
+                      setCommunityFilter('all')
+                      setSubCommunityFilter(null)
+                      setOpenDropdownId(null)
+                    }}
+                    className={`px-3 py-1.5 text-xs rounded-full border transition whitespace-nowrap flex-shrink-0 ${
                     communityFilter === 'all'
                       ? 'border-[#4db6ac]/70 bg-[#4db6ac]/20 text-[#4db6ac]'
                       : 'border-white/15 bg-black/60 text-white/70 hover:border-white/25'
@@ -341,7 +345,7 @@ export default function Messages(){
                     const hasChildren = comm.children.length > 0
                     const open = openDropdownId === comm.id
                     return (
-                      <div key={comm.id} className="relative">
+                      <div key={comm.id} className="relative flex-shrink-0">
                         <button
                           type="button"
                           onClick={() => {
@@ -391,6 +395,11 @@ export default function Messages(){
                 </div>
             </div>
 
+            {openDropdownId !== null ? (
+              <div className="rounded-xl border border-white/10 bg-black p-4 text-sm text-[#9fb0b5] text-center">
+                Select a community or sub-community above.
+              </div>
+            ) : (
             <div className="rounded-xl border border-white/10 bg-black divide-y divide-white/10">
               {loading ? (
                 <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
@@ -495,6 +504,7 @@ export default function Messages(){
               })
             )}
             </div>
+            )}
           </div>
         ) : (
           <NewMessageInline />
