@@ -18470,6 +18470,7 @@ def create_community():
         is_premium_user = False
         is_free_creator = False
         is_business_admin_creating_sub = False
+        requested_type = request.form.get('type')
         raw_parent_value = request.form.get('parent_community_id', None)
 
         def normalize_parent_value(value):
@@ -18507,9 +18508,9 @@ def create_community():
             is_premium_user = subscription_value == 'premium'
             
             # Check if this is a Business sub-community creation by a parent admin
-            community_type_check = request.form.get('type', '')
+            community_type_check = (requested_type or '').strip().lower()
             
-            if parent_community_id_check is not None and community_type_check.lower() == 'business':
+            if parent_community_id_check is not None and community_type_check == 'business':
                 # Check if user is admin of parent Business community (using same connection/cursor)
                 try:
                     placeholder_check = get_sql_placeholder()
@@ -18538,15 +18539,17 @@ def create_community():
                 except Exception as bypass_err:
                     logger.warning(f"Error checking Business admin bypass: {bypass_err}")
             
+            raw_type = str(requested_type or '').strip().lower() or 'general'
+
             # Determine if user should be treated as free-plan creator
             parent_is_none = parent_community_id_check is None
             if not is_app_admin_user:
                 if not is_premium_user:
                     if parent_is_none:
                         is_free_creator = True
+                        raw_type = 'general'
         
         name = request.form.get('name')
-        community_type = request.form.get('type')
         description = request.form.get('description', '')
         location = request.form.get('location', '')
         template = request.form.get('template', 'default')
@@ -18562,11 +18565,12 @@ def create_community():
             except (TypeError, ValueError):
                 return jsonify({'success': False, 'error': 'Invalid parent community specified'}), 400
         
-        if not name or not community_type:
-            return jsonify({'success': False, 'error': 'Name and type are required'}), 400
+        if not name:
+            return jsonify({'success': False, 'error': 'Name is required'}), 400
         
         # Business communities can only be created by app admin (parent) or parent community admins (sub-communities)
-        if community_type.lower() == 'business':
+        normalized_type = raw_type
+        if normalized_type == 'business':
             if parent_community_id is not None:
                 # Check if user is admin of parent Business community
                 try:
@@ -18700,7 +18704,7 @@ def create_community():
             c.execute(f"""
                 INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
                 VALUES ({placeholders})
-            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_id_int))
+            """, (name, normalized_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_id_int))
             
             community_id = c.lastrowid
             

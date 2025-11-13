@@ -13,7 +13,7 @@ export default function PremiumDashboard() {
   const [joinCode, setJoinCode] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCommName, setNewCommName] = useState('')
-  const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'|'Business'>('Gym')
+  const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'|'Business'>('General')
   const [isAppAdmin, setIsAppAdmin] = useState(false)
   // Parent-only creation; no parent selection
   // Removed parentsWithChildren usage in desktop since cards now route to unified communities page
@@ -25,6 +25,7 @@ export default function PremiumDashboard() {
   const [displayName, setDisplayName] = useState('')
   const [firstName, setFirstName] = useState('')
   const [username, setUsername] = useState('')
+  const [subscription, setSubscription] = useState<string>('free')
   const [hasProfilePic, setHasProfilePic] = useState<boolean>(false)
   const [savingName, setSavingName] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
@@ -41,6 +42,12 @@ export default function PremiumDashboard() {
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
+  const isPremium = (subscription || 'free').toLowerCase() === 'premium'
+  const handleCloseCreateModal = () => {
+    setShowCreateModal(false)
+    setNewCommName('')
+    setNewCommType('General')
+  }
 
   function handleExitConfirm(){
     try { localStorage.setItem(doneKey, '1') } catch {}
@@ -82,6 +89,7 @@ export default function PremiumDashboard() {
             setFirstName(me.profile.first_name || '')
             setDisplayName(me.profile.display_name || me.profile.username)
             setHasProfilePic(!!me.profile.profile_picture)
+            setSubscription((me.profile.subscription || 'free') as string)
           }
         }catch{ setEmailVerified(null) }
 
@@ -135,6 +143,7 @@ export default function PremiumDashboard() {
           setUsername(pj.profile.username || '')
           setDisplayName(pj.profile.display_name || pj.profile.username)
           setHasProfilePic(!!pj.profile.profile_picture)
+          setSubscription((pj.profile.subscription || 'free') as string)
         }
         // Also refresh communities snapshot
         const parentDataResp = await fetch('/api/user_parent_community', { credentials:'include' })
@@ -317,7 +326,7 @@ export default function PremiumDashboard() {
         <div className="fixed bottom-6 right-6 z-50">
           {fabOpen && (
             <div className="mb-2 rounded-xl border border-white/10 bg:black/80 backdrop-blur p-2 w-48 shadow-lg">
-            <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); setShowCreateModal(true) }}>Create Community</button>
+            <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); setNewCommType('General'); setShowCreateModal(true) }}>Create Community</button>
             </div>
           )}
           <button className="w-14 h-14 rounded-full bg-[#4db6ac] text-black shadow-lg hover:brightness-110 grid place-items-center border border-[#4db6ac]" onClick={()=> setFabOpen(v=>!v)} aria-label="Actions">
@@ -537,40 +546,44 @@ export default function PremiumDashboard() {
       )}
 
       {/* Communities modal removed; button links to /communities */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowCreateModal(false)}>
+        {showCreateModal && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget===e.target) handleCloseCreateModal() }}>
           <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold text-sm">Create Community</div>
-              <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowCreateModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
+                <button className="p-2 rounded-md hover:bg:white/5" onClick={handleCloseCreateModal} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
             </div>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs text-[#9fb0b5] mb-1">Community Name (Parent)</label>
                 <input value={newCommName} onChange={e=> setNewCommName(e.target.value)} placeholder="e.g., My Parent Community" className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm" />
               </div>
-              <div>
-                <label className="block text-xs text-[#9fb0b5] mb-1">Community Type</label>
-                <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm">
-                  <option value="Gym">Gym</option>
-                  <option value="University">University</option>
-                  <option value="General">General</option>
-                  {isAppAdmin && <option value="Business">Business</option>}
-                </select>
-              </div>
+                <div>
+                  <label className="block text-xs text-[#9fb0b5] mb-1">Community Type</label>
+                  <select value={newCommType} onChange={e=> setNewCommType(e.target.value as any)} className="w-full px-3 py-2 rounded-md bg-black border border:white/15 text-sm">
+                    <option value="General">General</option>
+                    {isPremium && (
+                      <>
+                        <option value="Gym">Gym</option>
+                        <option value="University">University</option>
+                        {isAppAdmin && <option value="Business">Business</option>}
+                      </>
+                    )}
+                  </select>
+                </div>
               {/* For parent-only creation: remove parent selector and always create top-level */}
               <div className="text-xs text-[#9fb0b5]">This will create a parent community.</div>
-              <div className="flex items-center justify-end gap-2">
-                <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={()=> setShowCreateModal(false)}>Cancel</button>
-                <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=> {
+                <div className="flex items-center justify-end gap-2">
+                  <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={handleCloseCreateModal}>Cancel</button>
+                    <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=> {
                   if (!newCommName.trim()) { alert('Please provide a name'); return }
                   try{
-                    const fd = new URLSearchParams({ name: newCommName.trim(), type: newCommType })
+                      const fd = new URLSearchParams({ name: newCommName.trim(), type: newCommType })
                   // Force parent community creation: do not include parent_community_id
                     const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
                     if (j?.success){
-                      setShowCreateModal(false); setNewCommName('')
+                        handleCloseCreateModal()
                       // Refresh dashboard communities
                       const resp = await fetch('/api/user_parent_community', { method:'GET', credentials:'include' })
                       const data = await resp.json().catch(()=>null)

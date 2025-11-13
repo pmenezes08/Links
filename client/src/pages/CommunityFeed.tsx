@@ -61,6 +61,10 @@ export default function CommunityFeed() {
   const [reactorsPostId, setReactorsPostId] = useState<number|null>(null)
   const [reactorsLoading, setReactorsLoading] = useState(false)
   const [reactorGroups, setReactorGroups] = useState<Array<{ reaction_type:string; users: Array<{ username:string; profile_picture?:string|null }> }>>([])
+  const communityTypeLower = (data?.community?.type || '').toLowerCase()
+  const communityNameLower = (data?.community?.name || '').toLowerCase()
+  const showTasks = communityTypeLower === 'general' || communityTypeLower.includes('university') || communityNameLower.includes('university')
+  const showResourcesSection = communityTypeLower !== 'business'
   
   // Check if we should highlight from onboarding
   const [highlightStep, setHighlightStep] = useState<'reaction' | 'post' | null>(null)
@@ -751,12 +755,12 @@ export default function CommunityFeed() {
               {hasUnansweredPolls && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>Calendar</button>
-            {((data?.community?.type||'').toLowerCase().includes('university') || (data?.community?.name||'').toLowerCase().includes('university')) && (
+            {showTasks && (
               <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/tasks_react`) }}>Tasks</button>
             )}
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/photos_react`) }}>Photos</button>
-            {/* Hide Forum/Useful Links for General communities */}
-            {((data?.community?.type||'').toLowerCase() !== 'general') && (
+            {/* Forum/Useful Links visibility */}
+            {showResourcesSection && (
               <>
                 <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/resources_react`) }}>Forum</button>
                 <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/useful_links_react`) }}>Useful Links & Docs</button>
