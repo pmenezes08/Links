@@ -15,7 +15,9 @@ type Notif = {
 }
 
 function iconFor(type?: string){
-  switch(type){
+  const normalized = type?.split(':')[0]
+  switch(normalized){
+    case 'admin_broadcast': return 'fa-solid fa-bullhorn'
     case 'community_post': return 'fa-solid fa-bullhorn'
     case 'announcement': return 'fa-solid fa-bullhorn'
     case 'task_assigned': return 'fa-solid fa-list-check'
@@ -90,7 +92,8 @@ export default function Notifications(){
     
     // For poll notifications, navigate to polls page
     let url = n.link
-    const isPollNotification = n.type === 'poll' || n.type === 'poll_reminder' || n.type === 'poll_closed'
+    const typeKey = n.type?.split(':')[0] ?? n.type
+    const isPollNotification = typeKey === 'poll' || typeKey === 'poll_reminder' || typeKey === 'poll_closed'
     if (!url && isPollNotification && n.community_id) {
       url = `/community/${n.community_id}/polls_react`
     } else if (!url) {
@@ -136,37 +139,42 @@ export default function Notifications(){
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {items.map(n => (
-              <button key={n.id}
-                onClick={() => onClick(n)}
-                className={`text-left w-full px-3 py-2 rounded-lg border ${n.is_read ? 'border-white/10 bg-white/[0.03]' : 'border-[#4db6ac]/40 bg-[#4db6ac]/10'}`}
-              >
-                <div className="flex items-start gap-2">
-                  <i className={`${iconFor(n.type)} text-[#4db6ac] mt-0.5`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm truncate">
-                      {n.type === 'event_invitation' ? (n.message || 'Event invitation') :
-                       n.type === 'community_post' ? (n.message || `@${n.from_user} made a new post`) :
-                       n.type === 'new_member' ? (n.message || `@${n.from_user} joined the community`) :
-                       n.type === 'poll' ? (n.message || `@${n.from_user} created a new poll`) : (
-                        n.message ? (n.message) : (
-                          <>
-                            <strong>@{n.from_user}</strong> {
-                              n.type === 'task_assigned' ? 'assigned you a task' :
-                              n.type === 'reaction' ? 'reacted to your post' :
-                              n.type === 'reply' ? 'replied to your post' :
-                              n.type === 'mention_post' ? 'mentioned you in a post' :
-                              n.type === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'
-                            }
-                          </>
-                        )
-                      )}
+            {items.map(n => {
+              const typeKey = n.type?.split(':')[0] ?? n.type
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => onClick(n)}
+                  className={`text-left w-full px-3 py-2 rounded-lg border ${n.is_read ? 'border-white/10 bg-white/[0.03]' : 'border-[#4db6ac]/40 bg-[#4db6ac]/10'}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <i className={`${iconFor(n.type)} text-[#4db6ac] mt-0.5`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm truncate">
+                        {typeKey === 'event_invitation' ? (n.message || 'Event invitation') :
+                         typeKey === 'community_post' ? (n.message || `@${n.from_user} made a new post`) :
+                         typeKey === 'new_member' ? (n.message || `@${n.from_user} joined the community`) :
+                         typeKey === 'poll' ? (n.message || `@${n.from_user} created a new poll`) :
+                         typeKey === 'admin_broadcast' ? (n.message || 'Administrator announcement') : (
+                          n.message ? (n.message) : (
+                            <>
+                              <strong>@{n.from_user}</strong> {
+                                typeKey === 'task_assigned' ? 'assigned you a task' :
+                                typeKey === 'reaction' ? 'reacted to your post' :
+                                typeKey === 'reply' ? 'replied to your post' :
+                                typeKey === 'mention_post' ? 'mentioned you in a post' :
+                                typeKey === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'
+                              }
+                            </>
+                          )
+                        )}
+                      </div>
+                      <div className="text-[11px] text-[#9fb0b5]">{timeAgo(n.created_at)}</div>
                     </div>
-                    <div className="text-[11px] text-[#9fb0b5]">{timeAgo(n.created_at)}</div>
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              )
+            })}
           </div>
         )}
       </div>

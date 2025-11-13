@@ -165,6 +165,14 @@ export default function AdminDashboard() {
   const [welcomeError, setWelcomeError] = useState<string>('')
   const [welcomeMessage, setWelcomeMessage] = useState<string>('')
 
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false)
+  const [broadcastTitle, setBroadcastTitle] = useState('')
+  const [broadcastMessage, setBroadcastMessage] = useState('')
+  const [broadcastLink, setBroadcastLink] = useState('')
+  const [broadcastSending, setBroadcastSending] = useState(false)
+  const [broadcastSuccess, setBroadcastSuccess] = useState<string | null>(null)
+  const [broadcastError, setBroadcastError] = useState<string | null>(null)
+
   // New user form
   const [newUser, setNewUser] = useState({
     username: '',
@@ -354,6 +362,57 @@ export default function AdminDashboard() {
     setInviteSelectedParentIds([])
     setShowQRCode(false)
     setQRCodeUrl('')
+  }
+
+  const resetBroadcastForm = () => {
+    setBroadcastTitle('')
+    setBroadcastMessage('')
+    setBroadcastLink('')
+    setBroadcastError(null)
+    setBroadcastSuccess(null)
+    setBroadcastSending(false)
+  }
+
+  const handleBroadcastSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (broadcastSending) return
+    if (!broadcastTitle.trim() && !broadcastMessage.trim()) {
+      setBroadcastError('Please enter a title or message.')
+      return
+    }
+    setBroadcastSending(true)
+    setBroadcastError(null)
+    setBroadcastSuccess(null)
+    try {
+      const response = await fetch('/api/admin/broadcast_notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          title: broadcastTitle.trim(),
+          message: broadcastMessage.trim(),
+          link: broadcastLink.trim()
+        })
+      })
+      const data = await response.json()
+      if (response.ok && data?.success) {
+        setBroadcastSuccess(`Notification sent to ${data.notified ?? 0} users.`)
+        setBroadcastMessage('')
+        setBroadcastTitle('')
+        setBroadcastLink('')
+        window.setTimeout(() => {
+          setShowBroadcastModal(false)
+          resetBroadcastForm()
+        }, 1800)
+      } else {
+        setBroadcastError(data?.error || 'Failed to send notification.')
+      }
+    } catch (error) {
+      console.error('Error sending broadcast notification:', error)
+      setBroadcastError('Server error while sending notification.')
+    } finally {
+      setBroadcastSending(false)
+    }
   }
 
   const handleCloseInviteModal = () => {
@@ -850,23 +909,32 @@ export default function AdminDashboard() {
             {/* Parent Communities section removed per request */}
 
             {/* Quick Actions */}
-            <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
-              <h3 className="text-sm font-semibold mb-3">Quick Actions</h3>
-              <div className="grid grid-cols-2 gap-2">
-                <button 
-                  onClick={() => { setActiveTab('users'); setShowAddUserModal(true) }}
-                  className="py-2 px-3 bg-[#4db6ac]/20 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/30 transition-colors"
-                >
-                  Add New User
-                </button>
-                <button 
-                  onClick={() => navigate('/communities')}
-                  className="py-2 px-3 bg-[#4db6ac]/20 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/30 transition-colors"
-                >
-                  Create Community
-                </button>
+              <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                <h3 className="text-sm font-semibold mb-3">Quick Actions</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button 
+                    onClick={() => { setActiveTab('users'); setShowAddUserModal(true) }}
+                    className="py-2 px-3 bg-[#4db6ac]/20 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/30 transition-colors"
+                  >
+                    Add New User
+                  </button>
+                  <button 
+                    onClick={() => navigate('/communities')}
+                    className="py-2 px-3 bg-[#4db6ac]/20 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/30 transition-colors"
+                  >
+                    Create Community
+                  </button>
+                  <button
+                    onClick={() => {
+                      resetBroadcastForm()
+                      setShowBroadcastModal(true)
+                    }}
+                    className="py-2 px-3 bg-[#4db6ac]/20 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/30 transition-colors"
+                  >
+                    Broadcast Notification
+                  </button>
+                </div>
               </div>
-            </div>
           </div>
         )}
 
@@ -1247,6 +1315,98 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+        {showBroadcastModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-lg border border-white/10">
+              <h2 className="text-lg font-semibold mb-3 text-[#4db6ac]">Broadcast Notification</h2>
+              <p className="text-xs text-white/60 mb-4">
+                Send a message to every active member on the platform. Use this for important announcements.
+              </p>
+
+              {broadcastSuccess && (
+                <div className="mb-3 rounded-lg border border-[#4db6ac]/40 bg-[#4db6ac]/10 px-3 py-2 text-xs text-[#7fe7df]">
+                  {broadcastSuccess}
+                </div>
+              )}
+              {broadcastError && (
+                <div className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                  {broadcastError}
+                </div>
+              )}
+
+              <form onSubmit={handleBroadcastSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs text-white/60 mb-1">
+                    Title <span className="text-white/40">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={broadcastTitle}
+                    onChange={(e) => setBroadcastTitle(e.target.value)}
+                    maxLength={140}
+                    placeholder="System Maintenance Tonight"
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+                    disabled={broadcastSending}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-white/60 mb-1">Message</label>
+                  <textarea
+                    value={broadcastMessage}
+                    onChange={(e) => setBroadcastMessage(e.target.value)}
+                    placeholder="We're performing scheduled maintenance at 10 PM UTC..."
+                    rows={5}
+                    maxLength={2000}
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+                    disabled={broadcastSending}
+                    required={!broadcastTitle.trim()}
+                  />
+                  <div className="text-[11px] text-white/40 mt-1">
+                    {broadcastMessage.length}/2000 characters
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-white/60 mb-1">
+                    Link <span className="text-white/40">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={broadcastLink}
+                    onChange={(e) => setBroadcastLink(e.target.value)}
+                    placeholder="https://status.yourapp.com/maintenance"
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+                    disabled={broadcastSending}
+                  />
+                  <p className="text-[11px] text-white/40 mt-1">Recipients will be taken to this URL when they open the notification.</p>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={broadcastSending}
+                    className="flex-1 py-2 bg-[#4db6ac] text-black rounded-lg font-medium hover:bg-[#45a099] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {broadcastSending ? 'Sending…' : 'Send Notification'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetBroadcastForm()
+                      setShowBroadcastModal(false)
+                    }}
+                    className="flex-1 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10"
+                    disabled={broadcastSending}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Invite User Modal */}
         {showInviteModal && !showQRCode && (

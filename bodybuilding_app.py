@@ -7217,6 +7217,85 @@ def admin_delete_community():
         logger.error(f"Error deleting community: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/admin/broadcast_notification', methods=['POST'])
+@login_required
+def admin_broadcast_notification():
+    """Send a platform-wide notification from the admin dashboard"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
+        payload = request.get_json() or {}
+    except Exception:
+        payload = {}
+
+    title = (payload.get('title') or '').strip()
+    message_body = (payload.get('message') or '').strip()
+    link = (payload.get('link') or '').strip()
+
+    if not title and not message_body:
+        return jsonify({'success': False, 'error': 'Message is required'}), 400
+
+    if len(title) > 140:
+        return jsonify({'success': False, 'error': 'Title must be 140 characters or fewer'}), 400
+
+    composite_message = title if title else ''
+    if message_body:
+        composite_message = f"{title}\n\n{message_body}".strip() if composite_message else message_body
+
+    if len(composite_message) > 2000:
+        return jsonify({'success': False, 'error': 'Message is too long (max 2000 characters)'}), 400
+
+    link_value: Optional[str] = link if link else None
+
+    broadcast_token = datetime.now().strftime('%Y%m%d%H%M%S')
+    notification_type = f"admin_broadcast:{broadcast_token}"
+    created_at_iso = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("SELECT username FROM users WHERE COALESCE(is_active, 1) = 1")
+            else:
+                c.execute("SELECT username FROM users WHERE COALESCE(is_active, 1) = 1")
+
+            rows = c.fetchall() or []
+            notified = 0
+
+            for row in rows:
+                target_username = row['username'] if hasattr(row, 'keys') else row[0]
+                if not target_username:
+                    continue
+                try:
+                    if USE_MYSQL:
+                        c.execute(
+                            """
+                            INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
+                            VALUES (%s, %s, %s, %s, NOW(), 0, %s)
+                            """,
+                            (target_username, username, notification_type, composite_message, link_value),
+                        )
+                    else:
+                        c.execute(
+                            """
+                            INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
+                            VALUES (?, ?, ?, ?, ?, 0, ?)
+                            """,
+                            (target_username, username, notification_type, composite_message, created_at_iso, link_value),
+                        )
+                    notified += 1
+                except Exception as insert_err:
+                    logger.warning(f"Broadcast notification insert failed for {target_username}: {insert_err}")
+
+            conn.commit()
+
+        return jsonify({'success': True, 'notified': notified})
+    except Exception as e:
+        logger.error(f"Error broadcasting notification: {e}")
+        return jsonify({'success': False, 'error': 'Failed to send notification'}), 500
+
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
