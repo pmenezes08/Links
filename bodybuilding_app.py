@@ -18526,9 +18526,13 @@ def create_community():
                     logger.warning(f"Error checking Business admin bypass: {bypass_err}")
             
             # Determine if user should be treated as free-plan creator
+            parent_is_none = not parent_community_id_check or str(parent_community_id_check).lower() == 'none'
             if not is_business_admin_creating_sub and not is_app_admin_user:
                 if not is_premium_user:
-                    is_free_creator = True
+                    if parent_is_none:
+                        is_free_creator = True
+                    else:
+                        return jsonify({'success': False, 'error': 'only premium users can create communities'}), 403
         
         name = request.form.get('name')
         community_type = request.form.get('type')
