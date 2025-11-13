@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import Avatar from '../components/Avatar'
@@ -13,10 +13,11 @@ type Thread = {
   unread_count?: number
 }
 
-type CommunityWithMembers = {
+type CommunityNode = {
   id: number
   name: string
   members: string[]
+  children: CommunityNode[]
 }
 
 export default function Messages(){
@@ -45,10 +46,12 @@ export default function Messages(){
   const [dragX, setDragX] = useState(0)
   const startXRef = useRef(0)
   const draggingIdRef = useRef<string|null>(null)
-  const [communities, setCommunities] = useState<CommunityWithMembers[]>([])
+  const [communityTree, setCommunityTree] = useState<CommunityNode[]>([])
   const [communitiesLoading, setCommunitiesLoading] = useState(true)
-  const [communityFilter, setCommunityFilter] = useState<number | 'all'>('all')
+  const [communityFilter, setCommunityFilter] = useState<'all' | number>('all')
+  const [subCommunityFilter, setSubCommunityFilter] = useState<number | null>(null)
   const [communityError, setCommunityError] = useState<string | null>(null)
+  const [openDropdownId, setOpenDropdownId] = useState<number | null>(null)
 
   function load(silent:boolean=false){
     if (!silent) setLoading(true)
@@ -83,7 +86,7 @@ export default function Messages(){
     setCommunitiesLoading(true)
     setCommunityError(null)
 
-    async function fetchCommunities(){
+      async function fetchCommunities(){
       try{
         const [membersRes, hierarchyRes] = await Promise.all([
           fetch('/get_user_communities_with_members', { credentials: 'include' }).then(r => r.json()).catch(() => null),
@@ -92,43 +95,57 @@ export default function Messages(){
         if (cancelled) return
 
           if (membersRes?.success && Array.isArray(membersRes.communities)) {
-          const formatted = membersRes.communities.map((c:any) => ({
-            id: Number(c.id),
-            name: String(c.name || ''),
-            members: Array.isArray(c.members) ? c.members.map((m:any) => String(m.username || '')).filter(Boolean) : [],
-          })) as CommunityWithMembers[]
+            const membership = new Map<number, { name: string; members: string[] }>()
+            membersRes.communities.forEach((c:any) => {
+              const id = Number(c.id)
+              const name = String(c.name || '')
+              const members = Array.isArray(c.members) ? c.members.map((m:any) => String(m.username || '')).filter(Boolean) : []
+              membership.set(id, { name, members })
+            })
 
-          let filtered = formatted
-          if (hierarchyRes?.success && Array.isArray(hierarchyRes.communities)) {
-              const hierarchyInfo = new Map<number, { parentId: number | null; depth: number }>()
-              const traverse = (nodes:any[], parentId:number|null, depth:number) => {
+            const buildNodes = (nodes:any[]): CommunityNode[] =>
+              nodes.map((node:any) => {
+                const id = Number(node.id)
+                const info = membership.get(id) || { name: String(node.name || node.title || ''), members: [] }
+                const children = Array.isArray(node.children) ? buildNodes(node.children) : []
+                return { id, name: info.name, members: info.members, children }
+              })
+
+            let tree: CommunityNode[] = []
+            if (hierarchyRes?.success && Array.isArray(hierarchyRes.communities)) {
+              tree = buildNodes(hierarchyRes.communities)
+            } else {
+              tree = Array.from(membership.entries()).map(([id, info]) => ({
+                id,
+                name: info.name,
+                members: info.members,
+                children: [],
+              }))
+            }
+
+            const existingIds = new Set<number>()
+            const collectIds = (nodes: CommunityNode[]) => {
               nodes.forEach(node => {
-                const nodeId = Number(node.id)
-                  hierarchyInfo.set(nodeId, { parentId, depth })
-                if (Array.isArray(node.children) && node.children.length){
-                    traverse(node.children, nodeId, depth + 1)
-                }
+                existingIds.add(node.id)
+                if (node.children.length) collectIds(node.children)
               })
             }
-              traverse(hierarchyRes.communities, null, 0)
-              const firstLevelChildren = formatted.filter(comm => {
-                const info = hierarchyInfo.get(comm.id)
-                return info ? info.depth === 1 : false
-              })
-              if (firstLevelChildren.length > 0) {
-                filtered = firstLevelChildren
-              } else {
-                filtered = []
-            }
+            collectIds(tree)
+
+            membership.forEach((info, id) => {
+              if (!existingIds.has(id)) {
+                tree.push({ id, name: info.name, members: info.members, children: [] })
+              }
+            })
+
+            setCommunityTree(tree)
+          } else {
+            setCommunityTree([])
+            setCommunityError(membersRes?.error || 'Failed to load communities')
           }
-          setCommunities(filtered)
-        } else {
-          setCommunities([])
-          setCommunityError(membersRes?.error || 'Failed to load communities')
-        }
       }catch{
         if (cancelled) return
-        setCommunities([])
+          setCommunityTree([])
         setCommunityError('Failed to load communities')
       }finally{
         if (cancelled) return
@@ -138,30 +155,137 @@ export default function Messages(){
 
     fetchCommunities()
     return () => { cancelled = true }
-  }, [])
+    }, [])
+
+  const nodeById = useMemo(() => {
+    const map = new Map<number, CommunityNode>()
+    const traverse = (nodes: CommunityNode[]) => {
+      nodes.forEach(node => {
+        map.set(node.id, node)
+        if (node.children.length) traverse(node.children)
+      })
+    }
+    traverse(communityTree)
+    return map
+  }, [communityTree])
+
+  const parentMap = useMemo(() => {
+    const map = new Map<number, number | null>()
+    const traverse = (nodes: CommunityNode[], parentId: number | null) => {
+      nodes.forEach(node => {
+        map.set(node.id, parentId)
+        if (node.children.length) traverse(node.children, node.id)
+      })
+    }
+    traverse(communityTree, null)
+    return map
+  }, [communityTree])
+
+  const isDescendant = useCallback(
+    (childId: number, ancestorId: number) => {
+      let current: number | null | undefined = childId
+      while (current != null) {
+        const parentId: number | null = parentMap.get(current) ?? null
+        if (parentId === ancestorId) return true
+        current = parentId
+      }
+      return false
+    },
+    [parentMap],
+  )
 
   useEffect(() => {
-    if (communityFilter !== 'all' && !communities.some(c => c.id === communityFilter)){
-      setCommunityFilter('all')
+    if (communityFilter === 'all') {
+      setSubCommunityFilter(null)
+      setOpenDropdownId(null)
+      return
     }
-  }, [communities, communityFilter])
+    if (!nodeById.has(communityFilter)) {
+      setCommunityFilter('all')
+      setSubCommunityFilter(null)
+      setOpenDropdownId(null)
+    }
+  }, [communityFilter, nodeById])
 
-  const communityMembership = useMemo(() => {
-    const map = new Map<number, Set<string>>()
-    communities.forEach(comm => {
-      map.set(comm.id, new Set(comm.members))
-    })
-    return map
-  }, [communities])
+  useEffect(() => {
+    if (communityFilter === 'all') {
+      if (subCommunityFilter !== null) setSubCommunityFilter(null)
+      return
+    }
+    const communityId = communityFilter
+    if (subCommunityFilter !== null) {
+      if (!nodeById.has(subCommunityFilter) || (subCommunityFilter !== communityId && !isDescendant(subCommunityFilter, communityId))) {
+        setSubCommunityFilter(null)
+      }
+    }
+  }, [communityFilter, subCommunityFilter, nodeById, isDescendant])
+
+  const collectMembers = useCallback((node: CommunityNode, target: Set<string>) => {
+    node.members.forEach(m => target.add(m))
+    node.children.forEach(child => collectMembers(child, target))
+  }, [])
 
   const filteredThreads = useMemo(() => {
     if (communityFilter === 'all') return threads
-    const members = communityMembership.get(communityFilter)
-    if (!members) return []
-    return threads.filter(t => members.has(t.other_username))
-  }, [threads, communityFilter, communityMembership])
+    const communityId = communityFilter
+    const communityNode = nodeById.get(communityId)
+    if (!communityNode) return threads
+
+    const usernames = new Set<string>()
+    if (subCommunityFilter !== null && (subCommunityFilter === communityId || isDescendant(subCommunityFilter, communityId))) {
+      const subNode = nodeById.get(subCommunityFilter)
+      if (subNode) collectMembers(subNode, usernames)
+    } else {
+      collectMembers(communityNode, usernames)
+    }
+
+    if (usernames.size === 0) return []
+    return threads.filter(t => usernames.has(t.other_username))
+  }, [threads, communityFilter, subCommunityFilter, nodeById, isDescendant, collectMembers])
 
   const visibleThreads = filteredThreads
+
+  const activeCommunityId = communityFilter === 'all' ? null : communityFilter
+  const selectedCommunityNode = activeCommunityId !== null ? nodeById.get(activeCommunityId) : null
+  const selectedSubNode =
+    subCommunityFilter !== null &&
+    selectedCommunityNode &&
+    activeCommunityId !== null &&
+    (subCommunityFilter === activeCommunityId || isDescendant(subCommunityFilter, activeCommunityId))
+      ? nodeById.get(subCommunityFilter)
+      : null
+
+  const filterSummary =
+    communityFilter === 'all'
+      ? `Showing ${threads.length} chat${threads.length === 1 ? '' : 's'}`
+      : selectedSubNode
+        ? `Filtered to ${selectedSubNode.name} (${visibleThreads.length} chat${visibleThreads.length === 1 ? '' : 's'})`
+        : `Filtered to ${selectedCommunityNode?.name ?? 'community'} (${visibleThreads.length} chat${visibleThreads.length === 1 ? '' : 's'})`
+
+  const renderSubOptions = (nodes: CommunityNode[], depth: number, rootId: number): ReactNode[] =>
+    nodes.flatMap(node => {
+      const padding = 12 + depth * 12
+      const selected = subCommunityFilter === node.id
+      const option = (
+        <button
+          key={`${rootId}-${node.id}`}
+          type="button"
+          onClick={() => {
+            setCommunityFilter(rootId)
+            setSubCommunityFilter(node.id)
+            setOpenDropdownId(null)
+          }}
+          className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/10 ${selected ? 'bg-white/10 text-[#4db6ac]' : ''}`}
+          style={{ paddingLeft: `${padding}px` }}
+        >
+          <span className="truncate">{node.name}</span>
+        </button>
+      )
+      if (node.children.length) {
+        return [option, ...renderSubOptions(node.children, depth + 1, rootId)]
+      }
+      return [option]
+    })
 
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
@@ -189,22 +313,18 @@ export default function Messages(){
           <div className="space-y-3">
             <div className="bg-black border border-white/10 rounded-xl p-3">
               <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-semibold text-white/80">Filter by Sub-community</div>
+                  <div className="text-sm font-semibold text-white/80">Filter by community</div>
                 {communitiesLoading ? (
                   <span className="text-xs text-white/50">Loading…</span>
                 ) : communityError ? (
                   <span className="text-xs text-red-400">{communityError}</span>
-                ) : communities.length === 0 ? (
-                  <span className="text-xs text-white/40">No sub-communities available</span>
+                  ) : communityTree.length === 0 ? (
+                    <span className="text-xs text-white/40">No communities available</span>
                 ) : (
-                  <span className="text-xs text-white/40">
-                    {communityFilter === 'all'
-                      ? `Showing ${threads.length} chats`
-                      : `Filtered to ${visibleThreads.length} chat${visibleThreads.length === 1 ? '' : 's'}`}
-                  </span>
+                    <span className="text-xs text-white/40">{filterSummary}</span>
                 )}
               </div>
-                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
                 <button
                   type="button"
                   onClick={() => setCommunityFilter('all')}
@@ -216,24 +336,58 @@ export default function Messages(){
                 >
                   All
                 </button>
-                {communities.map(comm => {
-                  const selected = communityFilter === comm.id
-                  return (
-                    <button
-                      key={comm.id}
-                      type="button"
-                      onClick={() => setCommunityFilter(selected ? 'all' : comm.id)}
-                      className={`px-3 py-1.5 text-xs rounded-full border transition whitespace-nowrap ${
-                        selected
-                          ? 'border-[#4db6ac]/70 bg-[#4db6ac]/20 text-[#4db6ac]'
-                          : 'border-white/15 bg-black/60 text-white/70 hover:border-white/25'
-                      }`}
-                      title={comm.members.length ? `${comm.members.length} members` : undefined}
-                    >
-                      {comm.name}
-                    </button>
-                  )
-                })}
+                  {communityTree.map(comm => {
+                    const selected = communityFilter === comm.id
+                    const hasChildren = comm.children.length > 0
+                    const open = openDropdownId === comm.id
+                    return (
+                      <div key={comm.id} className="relative">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selected && !hasChildren) {
+                              setCommunityFilter('all')
+                              setSubCommunityFilter(null)
+                              setOpenDropdownId(null)
+                            } else {
+                              setCommunityFilter(comm.id)
+                              setSubCommunityFilter(null)
+                              setOpenDropdownId(hasChildren ? (selected && open ? null : comm.id) : null)
+                            }
+                          }}
+                          className={`px-3 py-1.5 text-xs rounded-full border transition whitespace-nowrap flex items-center gap-1 ${
+                            selected
+                              ? 'border-[#4db6ac]/70 bg-[#4db6ac]/20 text-[#4db6ac]'
+                              : 'border-white/15 bg-black/60 text-white/70 hover:border-white/25'
+                          }`}
+                          title={comm.members.length ? `${comm.members.length} members` : undefined}
+                        >
+                          <span className="truncate">{comm.name}</span>
+                          {hasChildren ? (
+                            <i className={`fa-solid fa-chevron-${selected && open ? 'up' : 'down'} text-[9px]`} />
+                          ) : null}
+                        </button>
+                        {hasChildren && selected && open ? (
+                          <div className="absolute left-0 right-0 top-full mt-2 rounded-lg border border-white/12 bg-[#0b0d11] shadow-[0_16px_35px_rgba(2,4,8,0.55)] z-30">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCommunityFilter(comm.id)
+                                setSubCommunityFilter(null)
+                                setOpenDropdownId(null)
+                              }}
+                              className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/10 ${
+                                subCommunityFilter === null ? 'bg-white/10 text-[#4db6ac]' : ''
+                              }`}
+                            >
+                              <span className="truncate">All {comm.name}</span>
+                            </button>
+                            {renderSubOptions(comm.children, 1, comm.id)}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
                 </div>
             </div>
 
