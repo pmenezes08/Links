@@ -98,6 +98,16 @@ const INTEREST_SUGGESTIONS = [
   'Wellness',
 ]
 
+function coalesceString(...values: Array<unknown>): string {
+  for (const value of values) {
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (trimmed.length > 0) return trimmed
+    }
+  }
+  return ''
+}
+
 type SelectOption = {
   value: string
   label: string
@@ -331,60 +341,148 @@ export default function Profile() {
     let cancelled = false
     async function loadProfile() {
       setLoading(true)
-      try {
-        const response = await fetch('/api/profile_me', { credentials: 'include' })
-        const payload = await response.json().catch(() => null)
-        if (!cancelled) {
-          if (payload?.success && payload.profile) {
-            const profile = payload.profile
-            const rawInterests = profile.professional?.interests
-            const interestList = Array.isArray(rawInterests)
-              ? rawInterests
-                  .map(item => (typeof item === 'string' ? item.trim() : ''))
-                  .filter(Boolean)
-              : typeof rawInterests === 'string' && rawInterests
-                ? rawInterests
-                    .split(',')
-                    .map(item => item.trim())
-                    .filter(Boolean)
-                : []
-            const sanitizedInterests = normalizeInterests(interestList)
-            setSummary({
-              username: profile.username,
-              subscription: profile.subscription,
-              profile_picture: profile.profile_picture || null,
-              cover_photo: profile.cover_photo || null,
-              display_name: profile.display_name || profile.personal?.display_name || profile.username,
-              location: profile.location || '',
-              bio: profile.bio || '',
-            })
-            setPersonal({
-              bio: profile.bio || '',
-              display_name: profile.personal?.display_name || profile.display_name || '',
-              date_of_birth: profile.personal?.date_of_birth ? String(profile.personal.date_of_birth).slice(0, 10) : '',
-              gender: profile.personal?.gender || '',
-              country: profile.personal?.country || '',
-              city: profile.personal?.city || '',
-            })
-            setProfessional({
-              role: profile.professional?.role || '',
-              company: profile.professional?.company || '',
-              industry: profile.professional?.industry || '',
-              linkedin: profile.professional?.linkedin || '',
-              about: profile.professional?.about || '',
-              interests: sanitizedInterests,
-            })
-            setInterestInput('')
-            setError(null)
-          } else {
-            setError(payload?.error || 'Unable to load profile')
+        try {
+          const response = await fetch('/api/profile_me', { credentials: 'include' })
+          const payload = await response.json().catch(() => null)
+          if (!cancelled) {
+            if (payload?.success && payload.profile) {
+              const profile = payload.profile
+              const personalInfo =
+                profile.personal ??
+                profile.personal_info ??
+                profile.personalInfo ??
+                profile.personal_details ??
+                profile.personalDetails ??
+                {}
+              const professionalInfo =
+                profile.professional ??
+                profile.professional_info ??
+                profile.professionalInfo ??
+                profile.professional_details ??
+                profile.professionalDetails ??
+                {}
+              const locationInfo = profile.location ?? personalInfo.location ?? {}
+              const rawInterests =
+                professionalInfo.interests ??
+                profile.interests ??
+                profile.personal_interests ??
+                profile.personalInterests ??
+                []
+              const interestList = Array.isArray(rawInterests)
+                ? rawInterests.map(item => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
+                : typeof rawInterests === 'string' && rawInterests
+                  ? rawInterests
+                      .split(',')
+                      .map(item => item.trim())
+                      .filter(Boolean)
+                  : []
+              const sanitizedInterests = normalizeInterests(interestList)
+              const cityValue = coalesceString(
+                personalInfo.city,
+                locationInfo.city,
+                profile.city,
+                profile.personal_city,
+                profile.personalCity,
+              )
+              const countryValue = coalesceString(
+                personalInfo.country,
+                locationInfo.country,
+                profile.country,
+                profile.personal_country,
+                profile.personalCountry,
+              )
+              setSummary({
+                username: coalesceString(profile.username),
+                subscription: coalesceString(profile.subscription, profile.plan),
+                profile_picture: coalesceString(profile.profile_picture, profile.profilePicture) || null,
+                cover_photo: coalesceString(profile.cover_photo, profile.coverPhoto) || null,
+                display_name:
+                  coalesceString(
+                    personalInfo.display_name,
+                    personalInfo.displayName,
+                    profile.display_name,
+                    profile.displayName,
+                  ) || coalesceString(profile.username),
+                location:
+                  coalesceString(
+                    typeof profile.location === 'string' ? profile.location : '',
+                    typeof locationInfo === 'string' ? locationInfo : '',
+                    locationInfo.formatted,
+                  ) || [cityValue, countryValue].filter(Boolean).join(', '),
+                bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about, profile.summary, profile.about),
+              })
+              setPersonal({
+                bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about),
+                display_name: coalesceString(
+                  personalInfo.display_name,
+                  personalInfo.displayName,
+                  profile.display_name,
+                  profile.displayName,
+                ),
+                date_of_birth: (() => {
+                  const dobValue =
+                    personalInfo.date_of_birth ??
+                    personalInfo.dateOfBirth ??
+                    personalInfo.dob ??
+                    profile.date_of_birth ??
+                    profile.dateOfBirth
+                  if (typeof dobValue === 'string') return dobValue.slice(0, 10)
+                  if (dobValue instanceof Date) return dobValue.toISOString().slice(0, 10)
+                  return ''
+                })(),
+                gender: coalesceString(personalInfo.gender, profile.gender),
+                country: countryValue,
+                city: cityValue,
+              })
+              setProfessional({
+                role: coalesceString(
+                  professionalInfo.role,
+                  professionalInfo.current_position,
+                  professionalInfo.currentPosition,
+                  professionalInfo.position,
+                  professionalInfo.job_title,
+                  professionalInfo.jobTitle,
+                  profile.role,
+                ),
+                company: coalesceString(
+                  professionalInfo.company,
+                  professionalInfo.organization,
+                  professionalInfo.employer,
+                  profile.company,
+                ),
+                industry: coalesceString(
+                  professionalInfo.industry,
+                  professionalInfo.field,
+                  professionalInfo.sector,
+                  profile.industry,
+                ),
+                linkedin: coalesceString(
+                  professionalInfo.linkedin,
+                  professionalInfo.linkedin_url,
+                  professionalInfo.linkedinUrl,
+                  profile.linkedin,
+                  profile.linkedinUrl,
+                ),
+                about: coalesceString(
+                  professionalInfo.about,
+                  professionalInfo.summary,
+                  professionalInfo.bio,
+                  profile.professional_summary,
+                  profile.professionalSummary,
+                ),
+                interests: sanitizedInterests,
+              })
+              setInterestInput('')
+              setError(null)
+            } else {
+              setError(payload?.error || 'Unable to load profile')
+            }
           }
+        } catch {
+          if (!cancelled) setError('Unable to load profile')
+        } finally {
+          if (!cancelled) setLoading(false)
         }
-      } catch {
-        if (!cancelled) setError('Unable to load profile')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
     }
     loadProfile()
     return () => {
