@@ -377,7 +377,7 @@ export default function PremiumDashboard() {
         </div>
       )}
 
-      {/* Onboarding Step 3: Profile Picture */}
+        {/* Onboarding Step 3: Profile Picture */}
       {onbStep === 3 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
@@ -399,7 +399,7 @@ export default function PremiumDashboard() {
               </div>
               <div className="flex gap-2">
               <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }} disabled={uploadingPic}>Exit</button>
-              <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)} disabled={uploadingPic}>Skip</button>
+                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)} disabled={uploadingPic}>Skip</button>
               <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={uploadingPic || !picFile} onClick={async()=>{
                 if (!picFile) return; setUploadingPic(true)
                 try{
@@ -407,7 +407,7 @@ export default function PremiumDashboard() {
                   const r = await fetch('/upload_profile_picture', { method:'POST', credentials:'include', body: fd })
                   const j = await r.json().catch(()=>null)
                   if (!r.ok || !j?.success){ alert(j?.error || 'Failed to upload'); return }
-                  setOnbStep(4)
+                    setOnbStep(4)
                 }catch{ alert('Network error') } finally { setUploadingPic(false) }
               }}>{uploadingPic ? 'Uploading…' : 'Upload & continue'}</button>
               </div>
@@ -416,8 +416,62 @@ export default function PremiumDashboard() {
         </div>
       )}
 
-      {/* Onboarding Step 4: Create First Post (Join step removed) */}
-      {onbStep === 4 && (
+        {/* Onboarding Step 4: Complete Profile */}
+        {onbStep === 4 && (
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
+            <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+              <div className="text-center mb-4">
+                <div className="text-4xl mb-3">👤</div>
+                <div className="text-lg font-semibold mb-2">Fill out your profile</div>
+                <div className="text-sm text-[#9fb0b5] mb-4">
+                  Keep your personal and professional details up to date so the right people can connect with you.
+                </div>
+              </div>
+              <div className="space-y-3">
+                <button
+                  className="w-full px-4 py-3 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110 transition"
+                  onClick={() => {
+                    try {
+                      window.open('/profile', '_blank', 'noopener');
+                    } catch {
+                      window.location.href = '/profile';
+                    }
+                  }}
+                >
+                  Open My Profile in a new tab
+                </button>
+                <div className="text-xs text-[#9fb0b5] text-center">
+                  Update your bio, professional information, and personal interests. You can return here when you’re done.
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2 justify-between">
+                <button
+                  className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]"
+                  onClick={() => setOnbStep(3)}
+                >
+                  Back
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]"
+                    onClick={(e) => { e.preventDefault(); setConfirmExit(true) }}
+                  >
+                    Exit
+                  </button>
+                  <button
+                    className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold"
+                    onClick={() => setOnbStep(5)}
+                  >
+                    Continue
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Onboarding Step 5: Create First Post (Join step removed) */}
+        {onbStep === 5 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
           <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
             <div className="text-center mb-4">
@@ -429,7 +483,7 @@ export default function PremiumDashboard() {
             </div>
             <div className="flex justify-between gap-2">
               <div>
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)}>Back</button>
+                  <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)}>Back</button>
               </div>
               <div className="flex gap-2">
                 <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
