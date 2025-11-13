@@ -84,7 +84,22 @@ const INDUSTRIES = [
 const MAX_INTERESTS = 12
 
 const SELECT_BASE_CLASS =
-  'w-full appearance-none rounded-lg bg-[#0f1115] border border-white/15 px-3 py-2 text-[13px] text-white/90 outline-none transition focus:border-[#4db6ac] focus:shadow-[0_0_0_2px_rgba(77,182,172,0.18)]'
+  'w-full appearance-none rounded-lg bg-[#10131a] border border-white/12 px-3 py-1.5 text-[12px] text-white/80 outline-none transition duration-150 focus:border-[#4db6ac] focus:shadow-[0_0_0_2px_rgba(77,182,172,0.2)]'
+
+const INTEREST_SUGGESTIONS = [
+  'Artificial Intelligence',
+  'Design',
+  'Entrepreneurship',
+  'Fitness',
+  'Investing',
+  'Marketing',
+  'Photography',
+  'Product Management',
+  'Software Engineering',
+  'Startups',
+  'Travel',
+  'Wellness',
+]
 
 export default function Profile() {
   const [summary, setSummary] = useState<ProfileSummary | null>(null)
@@ -519,7 +534,7 @@ export default function Profile() {
         <section className="rounded-xl border border-white/10 p-4 space-y-3">
           <form className="space-y-3" onSubmit={handlePersonalSubmit}>
             <label className="text-sm block">
-              Bio
+              Personal Bio
               <textarea
                 className="mt-1 w-full min-h-[100px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
                 value={personal.bio}
@@ -701,6 +716,31 @@ export default function Profile() {
             <div>
               <div className="text-sm font-semibold text-white">Personal interests</div>
               <p className="text-xs text-[#9fb0b5]">Press enter after each interest to add it.</p>
+              <div className="mt-2 space-y-1">
+                <div className="text-[11px] uppercase tracking-wide text-white/40">Popular suggestions</div>
+                <div className="flex flex-wrap gap-2">
+                  {INTEREST_SUGGESTIONS.map(suggestion => {
+                    const alreadySelected = professional.interests.some(
+                      interest => interest.toLowerCase() === suggestion.toLowerCase(),
+                    )
+                    return (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => !alreadySelected && addInterest(suggestion)}
+                        className={`rounded-full border px-3 py-1 text-[11px] transition ${
+                          alreadySelected
+                            ? 'border-[#4db6ac]/60 bg-[#4db6ac]/20 text-[#4db6ac] cursor-default'
+                            : 'border-white/15 bg-white/[0.08] text-white/80 hover:border-[#4db6ac] hover:text-[#4db6ac]'
+                        }`}
+                        disabled={alreadySelected}
+                      >
+                        {suggestion}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black px-2 py-2">
               {professional.interests.map((interest, index) => (
