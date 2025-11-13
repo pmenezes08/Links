@@ -31,9 +31,7 @@ class SimpleEncryptionService {
     
     if (existingKeys) {
       this.keyPair = existingKeys
-      console.log('🔐 Loaded existing encryption keys')
     } else {
-      console.log('🔐 Generating new encryption keys...')
       await this.generateKeys()
     }
   }
@@ -45,7 +43,6 @@ class SimpleEncryptionService {
     if (this.db) {
       this.db.close()
       this.db = null
-      console.log('🔐 Database connection closed')
     }
   }
 
@@ -106,8 +103,6 @@ class SimpleEncryptionService {
 
     // Upload public key to server
     await this.uploadPublicKey(publicKeyExport)
-
-    console.log('🔐 Keys generated and uploaded')
   }
 
   /**
@@ -194,10 +189,7 @@ class SimpleEncryptionService {
       const transaction = this.db!.transaction(['publicKeys'], 'readwrite')
       const store = transaction.objectStore('publicKeys')
       store.delete(username)
-      transaction.oncomplete = () => {
-        console.log('🔐 Cleared cached public key for', username)
-        resolve()
-      }
+      transaction.oncomplete = () => resolve()
       transaction.onerror = () => resolve()
     })
   }
@@ -210,12 +202,9 @@ class SimpleEncryptionService {
     // Respect optional forceRefresh by clearing cache first
     if (forceRefresh) {
       try { await this.clearCachedPublicKey(username) } catch {}
-      console.debug('🔐 forceRefresh requested for', username)
     }
 
     // ALWAYS fetch fresh from server (no caching) for correctness
-    console.log('🔐 Fetching fresh public key for', username, 'from server...')
-
     // Fetch from server with timeout
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
@@ -250,9 +239,8 @@ class SimpleEncryptionService {
         ['encrypt']
       )
 
-      // Cache it
-      await this.cachePublicKey(username, data.publicKey)
-      console.log('🔐 ✅ Public key fetched and cached for', username)
+        // Cache it
+        await this.cachePublicKey(username, data.publicKey)
 
       return publicKey
     } catch (error) {
@@ -322,16 +310,7 @@ class SimpleEncryptionService {
    * Encrypt a text message for recipient
    */
   async encryptMessage(recipientUsername: string, message: string): Promise<string> {
-    console.log('🔐 Starting encryption for recipient:', recipientUsername)
-    
     const publicKey = await this.getPublicKey(recipientUsername)
-    
-    console.log('🔐 🔍 ENCRYPTION DEBUG:', {
-      sender: this.currentUser,
-      recipient: recipientUsername,
-      messageLength: message.length,
-      hasPublicKey: !!publicKey
-    })
     
     // Convert message to ArrayBuffer
     const messageBuffer = new TextEncoder().encode(message)
@@ -343,8 +322,6 @@ class SimpleEncryptionService {
       messageBuffer
     )
 
-    console.log('🔐 ✅ Message encrypted successfully for', recipientUsername, 'encrypted size:', encrypted.byteLength)
-    
     // Convert to base64
     return this.arrayBufferToBase64(encrypted)
   }
@@ -356,8 +333,6 @@ class SimpleEncryptionService {
   async encryptMessageForSender(message: string): Promise<string> {
     if (!this.keyPair) throw new Error('Keys not loaded')
     
-    console.log('🔐 Encrypting message for sender (yourself)...')
-    
     // Convert message to ArrayBuffer
     const messageBuffer = new TextEncoder().encode(message)
     
@@ -368,8 +343,6 @@ class SimpleEncryptionService {
       messageBuffer
     )
 
-    console.log('🔐 Message encrypted for sender!')
-    
     // Convert to base64
     return this.arrayBufferToBase64(encrypted)
   }
@@ -425,8 +398,5 @@ export const encryptionService = new SimpleEncryptionService()
 // Expose helper function globally for debugging
 ;(window as any).clearCachedKey = async (username: string) => {
   await encryptionService.clearCachedPublicKey(username)
-  console.log(`✅ Cleared cached public key for ${username}. Next message will fetch fresh key from server.`)
 }
-
-console.log('💡 TIP: If encryption fails, run: clearCachedKey("username")')
 

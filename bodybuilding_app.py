@@ -736,7 +736,6 @@ if not FLASK_SECRET_KEY:
     FLASK_SECRET_KEY = 'c-point-secret-key-2024-stable-across-workers'
     print("WARNING: Using hardcoded secret key - set FLASK_SECRET_KEY env var in production")
 app.secret_key = FLASK_SECRET_KEY
-print(f"App initialized with secret key hash: {hash(app.secret_key)}")
 STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', 'sk_test_your_stripe_key')
 XAI_API_KEY = os.getenv('XAI_API_KEY', 'xai-hFCxhRKITxZXsIQy5rRpRus49rxcgUPw4NECAunCgHU0BnWnbPE9Y594Nk5jba03t5FYl2wJkjcwyxRh')
 X_CONSUMER_KEY = os.getenv('X_CONSUMER_KEY', 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ')
@@ -745,11 +744,6 @@ VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
 VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'https://www.c-point.co')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-print(f"🔑 OpenAI API Key loaded: {len(OPENAI_API_KEY)} characters")
-if OPENAI_API_KEY:
-    print(f"   Key starts with: {OPENAI_API_KEY[:15]}...")
-else:
-    print("   ⚠️ WARNING: OPENAI_API_KEY is empty!")
 TYPING_TTL_SECONDS = 5
 
 
@@ -23834,8 +23828,6 @@ def add_exercise():
             ''', (username, name, muscle_group))
         
         exercise_id = cursor.lastrowid
-        print(f"Debug: Inserted exercise with ID: {exercise_id}")
-        
         # Insert the initial weight entry
         if USE_MYSQL:
             cursor.execute('''
@@ -23847,8 +23839,6 @@ def add_exercise():
                 INSERT INTO exercise_sets (exercise_id, weight, reps, created_at)
                 VALUES (?, ?, ?, ?)
             ''', (exercise_id, weight, reps, date))
-        
-        print(f"Debug: Added initial weight entry: {weight}kg x {reps} reps on {date}")
         
         # Cross-sync initial entry to crossfit_entries for overlapping lift names
         try:
@@ -23896,7 +23886,6 @@ def add_exercise():
         conn.commit()
         conn.close()
         
-        print(f"Debug: Exercise added successfully for user {username}")
         return jsonify({'success': True})
         
     except Exception as e:
@@ -23926,9 +23915,6 @@ def get_workout_exercises():
         
         rows = cursor.fetchall()
         conn.close()
-        
-        print(f"Debug: Found {len(rows)} rows for user {username}")
-        print(f"Debug: First few rows: {rows[:3]}")
         
         if not rows:
             return jsonify({'success': True, 'exercises': []})
@@ -23965,19 +23951,10 @@ def get_workout_exercises():
                     'source': source  # 'exercise_management' or 'workout'
                 })
         
-        print(f"Debug: Returning {len(exercises)} exercises for user {username}")
-        print(f"Debug: Exercises data: {exercises}")
-        
-        # Debug: Check if exercises have sets_data
-        for exercise in exercises:
-            print(f"Debug: Exercise {exercise['name']} has {len(exercise['sets_data'])} sets")
-            if exercise['sets_data']:
-                print(f"Debug: First set: {exercise['sets_data'][0]}")
-        
         return jsonify({'success': True, 'exercises': exercises})
         
     except Exception as e:
-        print(f"Debug: Error in get_workout_exercises: {str(e)}")
+        logger.error(f"Error in get_workout_exercises: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/edit_exercise', methods=['POST'])
@@ -24459,8 +24436,6 @@ def log_weight_set():
         reps = request.form.get('reps')
         date = request.form.get('date')
         
-        print(f"Debug: Logging weight - Exercise ID: {exercise_id}, Weight: {weight}, Reps: {reps}, Date: {date}")
-        
         if not all([exercise_id, weight, reps, date]):
             return jsonify({'success': False, 'error': 'All fields are required'})
         
@@ -24547,15 +24522,13 @@ def log_weight_set():
         except Exception as _e:
             pass
         
-        print(f"Debug: Weight logged successfully for exercise {exercise_id}")
-        
         conn.commit()
         conn.close()
         
         return jsonify({'success': True})
         
     except Exception as e:
-        print(f"Debug: Error logging weight: {str(e)}")
+        logger.error(f"Error logging weight: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/edit_set', methods=['POST'])

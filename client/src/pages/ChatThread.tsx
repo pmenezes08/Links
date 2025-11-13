@@ -42,7 +42,6 @@ export default function ChatThread(){
       const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                             (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /MacIntel/.test(navigator.platform))
       setIsMobile(Boolean(isMobileDevice))
-      console.log('📱 Mobile device detected:', isMobileDevice)
     }
     checkMobile()
   }, [])
@@ -257,9 +256,7 @@ export default function ChatThread(){
     }
     
     try {
-      console.log('🔐 Decrypting', message.sent ? 'SENT' : 'RECEIVED', 'message:', message.id)
       const decryptedText = await encryptionService.decryptMessage(encryptedData)
-      console.log('🔐 ✅ Message', message.id, 'decrypted successfully!')
       
       // Cache the decrypted text
       decryptionCache.current.set(message.id, { text: decryptedText, error: false })
@@ -347,15 +344,16 @@ export default function ChatThread(){
         
         // Load user profile
         fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
-          .then(r=>r.json())
-          .then(j=>{
-            if (j?.success){ 
+          .then(r => r.json())
+          .then(j => {
+            if (j?.success) {
               setOtherProfile({ 
                 display_name: j.display_name, 
-                profile_picture: j.profile_picture||null 
+                profile_picture: j.profile_picture || null 
               }) 
             }
-          }).catch(()=>{})
+          })
+          .catch(()=>{})
       }
     }).catch(()=>{})
   }, [username])
@@ -534,12 +532,6 @@ export default function ChatThread(){
             // Convert map to array and sort
             const allMessages = Array.from(messagesByKey.values())
             
-            // Track if we're preserving messages not in server response (server caching issue)
-            const preservedCount = allMessages.length - j.messages.length
-            if (preservedCount > 0) {
-              console.log('🛡️ Preserving', preservedCount, 'messages not in server response (caching)')
-            }
-            
             return allMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
           })
         }
@@ -614,15 +606,12 @@ export default function ChatThread(){
       
       if (username) {
         try {
-          console.log('🔐 Attempting to encrypt message...')
-          
           // Encrypt for recipient with 3 second timeout
           const encryptForRecipientPromise = encryptionService.encryptMessage(username, formattedMessage)
           const timeoutPromise1 = new Promise<never>((_, reject) => 
             setTimeout(() => reject(new Error('Encryption timeout (recipient)')), 3000)
           )
           encryptedBodyForRecipient = await Promise.race([encryptForRecipientPromise, timeoutPromise1])
-          console.log('🔐 ✅ Message encrypted for recipient!')
           
           // Encrypt for sender (yourself) with 3 second timeout
           const encryptForSenderPromise = encryptionService.encryptMessageForSender(formattedMessage)
@@ -630,10 +619,8 @@ export default function ChatThread(){
             setTimeout(() => reject(new Error('Encryption timeout (sender)')), 3000)
           )
           encryptedBodyForSender = await Promise.race([encryptForSenderPromise, timeoutPromise2])
-          console.log('🔐 ✅ Message encrypted for sender!')
           
           isEncrypted = true
-          console.log('🔐 ✅ TRUE E2E encryption complete!')
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error'
           console.warn('🔐 ⚠️ Encryption failed, sending unencrypted:', errorMsg)
@@ -687,72 +674,68 @@ export default function ChatThread(){
         fd.append('is_encrypted', '1')
         fd.append('encrypted_body', encryptedBodyForRecipient) // Encrypted for recipient
         fd.append('encrypted_body_for_sender', encryptedBodyForSender) // Encrypted for sender
-        console.log('📤 Sending TRUE E2E ENCRYPTED message (no plaintext stored!)')
       } else {
         fd.append('message', formattedMessage)
-        console.log('📤 Sending UNENCRYPTED message')
       }
       
       fetch('/send_message', { 
-      method:'POST', 
-      credentials:'include', 
-      headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
-      body: fd 
-    })
-    .then(r=>r.json())
-    .then(j=>{
-      if (j?.success){
-        // Stop typing indicator
-        fetch('/api/typing', { 
-          method:'POST', 
-          credentials:'include', 
-          headers:{ 'Content-Type':'application/json' }, 
-          body: JSON.stringify({ peer: username, is_typing: false }) 
-        }).catch(()=>{})
-        
-        // CRITICAL: Update optimistic message immediately with server confirmation
-        if (j.message_id){
-          console.log('✅ Server confirmed - updating optimistic', tempId, '→', j.message_id)
-          
-          // Set up bridge mapping
-          idBridgeRef.current.tempToServer.set(tempId, j.message_id)
-          idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
-          
-          // Immediately update the optimistic message to be confirmed
-          // Keep the same clientKey (tempId) so React doesn't remount
-          // PRESERVE encryption flags!
-          setMessages(prev => prev.map(m => {
-            if ((m.clientKey || m.id) === tempId) {
-              return {
-                ...m,
-                id: j.message_id, // Update to server ID
-                isOptimistic: false, // No longer optimistic
-                time: j.time || m.time, // Use server time if available
-                clientKey: tempId, // Keep stable key for React
-                // Keep encryption flags from optimistic message
-                is_encrypted: m.is_encrypted,
-                encrypted_body: m.encrypted_body,
-                encrypted_body_for_sender: m.encrypted_body_for_sender
-              }
+        method:'POST', 
+        credentials:'include', 
+        headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
+        body: fd 
+      })
+        .then(r => r.json())
+        .then(j => {
+          if (j?.success) {
+            // Stop typing indicator
+            fetch('/api/typing', { 
+              method:'POST', 
+              credentials:'include', 
+              headers:{ 'Content-Type':'application/json' }, 
+              body: JSON.stringify({ peer: username, is_typing: false }) 
+            }).catch(()=>{})
+            
+            // CRITICAL: Update optimistic message immediately with server confirmation
+            if (j.message_id) {
+              // Set up bridge mapping
+              idBridgeRef.current.tempToServer.set(tempId, j.message_id)
+              idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
+              
+              // Immediately update the optimistic message to be confirmed
+              // Keep the same clientKey (tempId) so React doesn't remount
+              // PRESERVE encryption flags!
+              setMessages(prev => prev.map(m => {
+                if ((m.clientKey || m.id) === tempId) {
+                  return {
+                    ...m,
+                    id: j.message_id, // Update to server ID
+                    isOptimistic: false, // No longer optimistic
+                    time: j.time || m.time, // Use server time if available
+                    clientKey: tempId, // Keep stable key for React
+                    // Keep encryption flags from optimistic message
+                    is_encrypted: m.is_encrypted,
+                    encrypted_body: m.encrypted_body,
+                    encrypted_body_for_sender: m.encrypted_body_for_sender
+                  }
+                }
+                return m
+              }))
+              
+              // Clean up ref
+              setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
             }
-            return m
-          }))
-          
-          // Clean up ref
-          setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
-        }
-      } else {
-        console.log('❌ Send failed:', j.error)
-        // Keep optimistic message, restore draft for retry
-        setDraft(messageText)
-      }
-      })
-      .catch((err)=>{
-        console.log('❌ Send error:', err)
-        // Keep optimistic message, restore draft for retry
-        setDraft(messageText)
-      })
-      .finally(() => setSending(false))
+          } else {
+            console.error('Send failed:', j?.error)
+            // Keep optimistic message, restore draft for retry
+            setDraft(messageText)
+          }
+        })
+        .catch(err => {
+          console.error('Send error:', err)
+          // Keep optimistic message, restore draft for retry
+          setDraft(messageText)
+        })
+        .finally(() => setSending(false))
     } catch (error) {
       console.error('❌ Send function error:', error)
       setSending(false)
@@ -1498,32 +1481,32 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 </button>
                 <button
                   className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
-                  onClick={async () => {
-                    setShowAttachMenu(false)
-                    // Try to paste from clipboard manually
-                    if (navigator.clipboard && navigator.clipboard.read) {
-                      try {
-                        const clipboardItems = await navigator.clipboard.read()
-                        for (const clipboardItem of clipboardItems) {
-                          for (const type of clipboardItem.types) {
-                            if (type.startsWith('image/')) {
-                              const blob = await clipboardItem.getType(type)
-                              const file = new File([blob], `pasted-image.${type.split('/')[1]}`, { type })
-                              setPastedImage(file)
-                              setPreviewImage(URL.createObjectURL(file))
-                              return
+                    onClick={async () => {
+                      setShowAttachMenu(false)
+                      // Try to paste from clipboard manually
+                      if (navigator.clipboard && navigator.clipboard.read) {
+                        try {
+                          const clipboardItems = await navigator.clipboard.read()
+                          for (const clipboardItem of clipboardItems) {
+                            for (const type of clipboardItem.types) {
+                              if (type.startsWith('image/')) {
+                                const blob = await clipboardItem.getType(type)
+                                const file = new File([blob], `pasted-image.${type.split('/')[1]}`, { type })
+                                setPastedImage(file)
+                                setPreviewImage(URL.createObjectURL(file))
+                                return
+                              }
                             }
                           }
+                          alert('No image found in clipboard. Copy an image first, then tap this button again.')
+                        } catch (error) {
+                          console.warn('Clipboard access failed:', error)
+                          alert('Clipboard access denied. This is normal on some browsers. Try using the Photos button instead.')
                         }
-                        alert('No image found in clipboard. Copy an image first, then tap this button again.')
-                      } catch (error) {
-                        console.log('Clipboard access failed:', error)
-                        alert('Clipboard access denied. This is normal on some browsers. Try using the Photos button instead.')
+                      } else {
+                        alert("Your browser doesn't support clipboard image access. Try using the Photos button to select an image instead.")
                       }
-                    } else {
-                      alert('Your browser doesn\'t support clipboard image access. Try using the Photos button to select an image instead.')
-                    }
-                  }}
+                    }}
                 >
                   <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
                     <i className="fa-solid fa-paste text-[#4db6ac]" />
