@@ -368,7 +368,7 @@ export default function Messages(){
                           ) : null}
                         </button>
                         {hasChildren && selected && open ? (
-                          <div className="absolute left-0 right-0 top-full mt-2 rounded-lg border border-white/12 bg-[#0b0d11] shadow-[0_16px_35px_rgba(2,4,8,0.55)] z-30">
+                          <div className="absolute left-0 right-0 top-full mt-2 rounded-lg border border-white/12 bg-[#0b0d11] shadow-[0_16px_35px_rgba(2,4,8,0.55)] z-50">
                             <button
                               type="button"
                               onClick={() => {
