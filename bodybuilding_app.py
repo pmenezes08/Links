@@ -18470,6 +18470,20 @@ def create_community():
         is_premium_user = False
         is_free_creator = False
         is_business_admin_creating_sub = False
+        raw_parent_value = request.form.get('parent_community_id', None)
+
+        def normalize_parent_value(value):
+            if value is None:
+                return None
+            if isinstance(value, str):
+                cleaned = value.strip()
+            else:
+                cleaned = str(value).strip()
+            if cleaned.lower() in ('', 'none', 'null', 'undefined'):
+                return None
+            return cleaned
+
+        parent_community_id_check = normalize_parent_value(raw_parent_value)
         
         # Enforce verified email
         with get_db_connection() as conn:
@@ -18493,10 +18507,9 @@ def create_community():
             is_premium_user = subscription_value == 'premium'
             
             # Check if this is a Business sub-community creation by a parent admin
-            parent_community_id_check = request.form.get('parent_community_id', None)
             community_type_check = request.form.get('type', '')
             
-            if parent_community_id_check and parent_community_id_check != 'none' and community_type_check.lower() == 'business':
+            if parent_community_id_check is not None and community_type_check.lower() == 'business':
                 # Check if user is admin of parent Business community (using same connection/cursor)
                 try:
                     placeholder_check = get_sql_placeholder()
@@ -18543,11 +18556,11 @@ def create_community():
         text_color = request.form.get('text_color', '#ffffff')
         accent_color = request.form.get('accent_color', '#4db6ac')
         card_color = request.form.get('card_color', '#1a2526')
-        parent_community_id = request.form.get('parent_community_id', None)
+        parent_community_id = parent_community_id_check
         parent_community_id_value: Optional[int] = None
-        if parent_community_id and parent_community_id != 'none':
+        if parent_community_id is not None:
             try:
-                parent_community_id_value = int(parent_community_id)
+                parent_community_id_value = int(str(parent_community_id))
             except (TypeError, ValueError):
                 return jsonify({'success': False, 'error': 'Invalid parent community specified'}), 400
         
@@ -18556,7 +18569,7 @@ def create_community():
         
         # Business communities can only be created by app admin (parent) or parent community admins (sub-communities)
         if community_type.lower() == 'business':
-            if parent_community_id and parent_community_id != 'none':
+            if parent_community_id is not None:
                 # Check if user is admin of parent Business community
                 try:
                     with get_db_connection() as conn:

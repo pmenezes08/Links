@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
+import { useUserProfile } from '../contexts/UserProfileContext'
 
 type PersonalInfo = {
   display_name?: string | null
@@ -46,10 +47,22 @@ export default function PublicProfile() {
   const { username = '' } = useParams()
   const navigate = useNavigate()
   const { setTitle } = useHeader()
+  const { profile: currentUser } = useUserProfile()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<PublicProfileResponse | null>(null)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const currentUsername = useMemo(() => {
+    if (!currentUser || typeof currentUser !== 'object') return ''
+    const record = currentUser as Record<string, any>
+    const direct = typeof record.username === 'string' ? record.username : ''
+    if (direct) return direct
+    const nested = record.profile
+    if (nested && typeof nested === 'object' && typeof (nested as any).username === 'string') {
+      return (nested as any).username
+    }
+    return ''
+  }, [currentUser])
 
   useEffect(() => {
     if (!username) return
@@ -89,7 +102,7 @@ export default function PublicProfile() {
 
   const personal = profile.personal || {}
   const professional = profile.professional || {}
-  const isSelf = Boolean(profile.is_self)
+  const isSelf = Boolean(profile.is_self) || (currentUsername && currentUsername.toLowerCase() === profile.username.toLowerCase())
   const bioText = (profile.bio || '').trim()
 
   let formattedDob = ''
@@ -168,23 +181,23 @@ export default function PublicProfile() {
                   </div>
                 ) : null}
               </div>
-              {isSelf ? (
-                <button
-                  className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
-                  onClick={() => navigate('/profile')}
-                >
-                  <i className="fa-solid fa-pen-to-square mr-2" />
-                  Edit profile
-                </button>
-              ) : (
-                <button
-                  className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
-                  onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)}
-                >
-                  <i className="fa-regular fa-paper-plane mr-2" />
-                  Send message
-                </button>
-              )}
+                {isSelf ? (
+                  <button
+                    className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
+                    onClick={() => navigate('/profile')}
+                  >
+                    <i className="fa-solid fa-pen-to-square mr-2" />
+                    Edit profile
+                  </button>
+                ) : (
+                  <button
+                    className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
+                    onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)}
+                  >
+                    <i className="fa-regular fa-paper-plane mr-2" />
+                    Send message
+                  </button>
+                )}
             </div>
           </section>
 
