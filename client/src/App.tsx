@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -6,6 +6,7 @@ import MobileLogin from './pages/MobileLogin'
 import PremiumDashboard from './pages/PremiumDashboard'
 import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
+import { UserProfileContext, type UserProfile } from './contexts/UserProfileContext'
 import PushInit from './components/PushInit'
 import PwaInstallPrompt from './components/PwaInstallPrompt'
 import BrandAssetsInit from './components/BrandAssetsInit'
@@ -57,178 +58,223 @@ function AppRoutes(){
   const [isVerified, setIsVerified] = useState<boolean | null>(null)
   // const [hasCommunities, setHasCommunities] = useState<boolean | null>(null)
   const [requireVerification] = useState(() => (import.meta as any).env?.VITE_REQUIRE_VERIFICATION_CLIENT === 'true')
+  const [profileData, setProfileData] = useState<UserProfile>(null)
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [profileError, setProfileError] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function load(){
-      try{
-        const r = await fetch('/api/profile_me', { credentials:'include' })
-        const j = await r.json().catch(()=>null)
-        if (j?.success && j.profile){
-          setUserMeta({ username: j.profile.username, displayName: j.profile.display_name || j.profile.username, avatarUrl: j.profile.profile_picture || null })
-          
-          // Check if user requested encryption reset
-          const resetRequested = localStorage.getItem('encryption_reset_requested')
-          if (resetRequested === 'true') {
-            console.log('🔐 Reset requested - deleting old encryption database...')
-            localStorage.removeItem('encryption_reset_requested')
-            
-            try {
-              // Delete the database
-              await new Promise<void>((resolve) => {
-                const request = indexedDB.deleteDatabase('chat-encryption')
-                request.onsuccess = () => {
-                  console.log('🔐 ✅ Old encryption database deleted')
-                  resolve()
-                }
-                request.onerror = () => {
-                  console.log('🔐 ⚠️ Database deletion error (may not exist)')
-                  resolve() // Continue anyway
-                }
-                request.onblocked = () => {
-                  console.log('🔐 ⚠️ Database deletion blocked, will retry on next load')
-                  resolve() // Continue anyway
-                }
-              })
-            } catch (e) {
-              console.log('🔐 ⚠️ Delete error:', e)
-              // Continue anyway
-            }
-          }
-          
-          // Initialize E2E encryption for this user
+  const locationRef = useRef(location.pathname)
+  const publicPaths = useMemo(
+    () => new Set(['/', '/welcome', '/onboarding', '/login', '/signup', '/signup_react', '/verify_required']),
+    [],
+  )
+  const encryptionUserRef = useRef<string | null>(null)
+
+  const loadProfile = useCallback(async (path?: string): Promise<UserProfile> => {
+    const currentPath = path ?? locationRef.current
+    setProfileLoading(true)
+    setProfileError(null)
+    try {
+      const response = await fetch('/api/profile_me', { credentials: 'include' })
+      if (response.status === 401) {
+        setProfileData(null)
+        setIsVerified(null)
+        if (!publicPaths.has(currentPath)) {
+          window.location.href = '/'
+        } else {
+          setAuthLoaded(true)
+        }
+        return null
+      }
+      if (response.status === 403) {
+        setProfileData(null)
+        setIsVerified(false)
+        return null
+      }
+      if (!response.ok) {
+        setProfileData(null)
+        setProfileError('Failed to load profile')
+        return null
+      }
+      const json = await response.json().catch(() => null)
+      if (json?.success && json.profile) {
+        const profile = json.profile as UserProfile
+        setProfileData(profile)
+        setIsVerified(!!(profile as any)?.email_verified)
+        setProfileError(null)
+
+        if (currentPath === '/') {
+          navigate('/premium_dashboard', { replace: true })
+        }
+
+        const resetRequested = localStorage.getItem('encryption_reset_requested')
+        if (resetRequested === 'true') {
+          console.log('🔐 Reset requested - deleting old encryption database...')
+          localStorage.removeItem('encryption_reset_requested')
           try {
-            console.log('🔐 Initializing encryption for:', j.profile.username)
-            await encryptionService.init(j.profile.username)
-            
-            // Store timestamp of key generation
+            await new Promise<void>((resolve) => {
+              const request = indexedDB.deleteDatabase('chat-encryption')
+              request.onsuccess = () => {
+                console.log('🔐 ✅ Old encryption database deleted')
+                resolve()
+              }
+              request.onerror = () => {
+                console.log('🔐 ⚠️ Database deletion error (may not exist)')
+                resolve()
+              }
+              request.onblocked = () => {
+                console.log('🔐 ⚠️ Database deletion blocked, will retry on next load')
+                resolve()
+              }
+            })
+          } catch (e) {
+            console.log('🔐 ⚠️ Delete error:', e)
+          }
+        }
+
+        const username = (profile as any)?.username
+        if (username && encryptionUserRef.current !== username) {
+          try {
+            console.log('🔐 Initializing encryption for:', username)
+            await encryptionService.init(username)
             const existingTimestamp = localStorage.getItem('encryption_keys_generated_at')
             if (!existingTimestamp) {
               localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
             }
-            
             console.log('🔐 ✅ Encryption ready globally!')
           } catch (encError) {
             console.error('🔐 ❌ Encryption init failed:', encError)
-            // Continue without encryption - not a blocker
-          }
-          
-          // If already authenticated and at root, send to dashboard
-          if (location.pathname === '/'){
-            navigate('/premium_dashboard', { replace: true })
+          } finally {
+            encryptionUserRef.current = username
           }
         }
-        // First page is always the welcome page; defer community checks until after login
-      }catch{}
+
+        return profile
+      }
+
+      setProfileData(null)
+      setProfileError(json?.error || 'Failed to load profile')
+      return null
+    } catch (error) {
+      setProfileData(null)
+      setProfileError('Failed to load profile')
+      return null
+    } finally {
+      setProfileLoading(false)
+      setAuthLoaded(true)
     }
-    load()
-  }, [location.pathname, navigate])
+  }, [navigate, publicPaths])
 
-  // (disabled) route change logging
-
-  // Global guard: run once on boot
   useEffect(() => {
-    let cancelled = false
-    async function guard(){
-      try{
-        if (!requireVerification){ setAuthLoaded(true); return }
-        const r = await fetch('/api/profile_me', { credentials: 'include' })
-        if (r.status === 401){
-          if (!cancelled){
-            // Avoid reload loops on public pages
-            const p = window.location.pathname
-            const publicPaths = new Set(['/', '/welcome', '/onboarding', '/login', '/signup', '/signup_react', '/verify_required'])
-            if (!publicPaths.has(p)) {
-              window.location.href = '/'
-            } else {
-              setAuthLoaded(true)
-            }
-          }
-          return
-        }
-        if (r.status === 403){ if (!cancelled){ setIsVerified(false); setAuthLoaded(true) } return }
-        if (!r.ok){ if (!cancelled) setAuthLoaded(true); return }
-        const j = await r.json().catch(()=>null)
-        const verified = !!(j?.profile?.email_verified)
-        if (!cancelled){ setIsVerified(verified); setAuthLoaded(true) }
-      }catch{}
+    locationRef.current = location.pathname
+  }, [location.pathname])
+
+  useEffect(() => {
+    loadProfile(locationRef.current)
+  }, [loadProfile])
+
+  useEffect(() => {
+    if (profileData) {
+      const username = (profileData as any)?.username
+      const displayName = (profileData as any)?.display_name || username
+      const avatarUrl = (profileData as any)?.profile_picture || null
+      setUserMeta({ username, displayName, avatarUrl })
+    } else {
+      setUserMeta({})
     }
-    guard()
-    return () => { cancelled = true }
-  }, [requireVerification])
+  }, [profileData])
+
+  useEffect(() => {
+    if (location.pathname === '/' && profileData) {
+      navigate('/premium_dashboard', { replace: true })
+    }
+  }, [location.pathname, navigate, profileData])
+
+  const userProfileValue = useMemo(
+    () => ({
+      profile: profileData,
+      setProfile: setProfileData,
+      loading: profileLoading,
+      error: profileError,
+      refresh: () => loadProfile(),
+    }),
+    [profileData, profileLoading, profileError, loadProfile],
+  )
 
   // ProtectedRoute no longer used after simplifying guards
 
   return (
-    <HeaderContext.Provider value={{ setTitle }}>
-      {(() => {
-        const path = location.pathname
-        const hideHeader = isFirstPage || path === '/welcome' || path === '/onboarding' || path === '/login' || path === '/signup' || path === '/signup_react'
-        return !hideHeader
-      })() && (
-        <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
-      )}
-      <div style={{ paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : '56px' })() }}>
-        <ErrorBoundary>
-          <Routes>
-          <Route path="/" element={<OnboardingWelcome />} />
-          <Route path="/welcome" element={<OnboardingWelcome />} />
-          <Route path="/login" element={<MobileLogin />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/signup_react" element={<Signup />} />
-          <Route path="/onboarding" element={<OnboardingWelcome />} />
-          <Route path="/premium" element={<PremiumDashboard />} />
-          <Route path="/premium_dashboard" element={<PremiumDashboard />} />
-          <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
-          <Route path="/crossfit" element={<CrossfitExact />} />
-          <Route path="/crossfit_react" element={<CrossfitExact />} />
-          <Route path="/communities" element={<Communities />} />
-          <Route path="/your_sports" element={<YourSports />} />
-          <Route path="/gym" element={<Gym />} />
-          <Route path="/user_chat" element={<Messages />} />
-          <Route path="/user_chat/new" element={<NewMessage />} />
-          <Route path="/user_chat/chat/:username" element={<ChatThread />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/profile_react" element={<Profile />} />
-          <Route path="/profile/:username" element={<PublicProfile />} />
-          <Route path="/account_settings" element={<AccountSettings />} />
-          <Route path="/account_settings_react" element={<AccountSettings />} />
-          <Route path="/notifications" element={<Notifications />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin_dashboard" element={<AdminDashboard />} />
-          <Route path="/admin_profile_react" element={<AdminProfile />} />
-          <Route path="/home" element={<HomeTimeline />} />
-          <Route path="/workout_tracking" element={<WorkoutTracking />} />
-          <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
-          <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
-          <Route path="/community/:community_id/tasks_react" element={<CommunityTasks />} />
-          <Route path="/community/:community_id/polls_react" element={<CommunityPolls />} />
-          <Route path="/community/:community_id/resources_react" element={<CommunityResources />} />
-          <Route path="/community/:community_id/useful_links_react" element={<UsefulLinks />} />
-          <Route path="/community/:community_id/photos_react" element={<CommunityPhotos />} />
-          <Route path="/community/:community_id/key_posts" element={<KeyPosts />} />
-          <Route path="/community/:community_id/members" element={<Members />} />
-          <Route path="/community/:community_id/edit" element={<EditCommunity />} />
-          <Route path="/event/:event_id" element={<EventDetail />} />
-          <Route path="/post/:post_id" element={<PostDetail />} />
-          <Route path="/compose" element={<CreatePost />} />
-          <Route path="/product_development" element={<ProductDevelopment />} />
-          <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
-          <Route path="/encryption_settings" element={<EncryptionSettings />} />
-          <Route path="*" element={<PremiumDashboard />} />
-          </Routes>
-        </ErrorBoundary>
-      </div>
-      {requireVerification && authLoaded && isVerified === false && (
-        <VerifyOverlay onRecheck={async ()=>{
-          try{
-            const r = await fetch('/api/profile_me', { credentials:'include' })
-            const j = await r.json().catch(()=>null)
-            const v = !!(j?.profile?.email_verified)
-            setIsVerified(v)
-          }catch{}
-        }} />
-      )}
-    </HeaderContext.Provider>
+    <UserProfileContext.Provider value={userProfileValue}>
+      <HeaderContext.Provider value={{ setTitle }}>
+        {(() => {
+          const path = location.pathname
+          const hideHeader = isFirstPage || path === '/welcome' || path === '/onboarding' || path === '/login' || path === '/signup' || path === '/signup_react'
+          return !hideHeader
+        })() && (
+          <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
+        )}
+        <div style={{ paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : '56px' })() }}>
+          <ErrorBoundary>
+            <Routes>
+            <Route path="/" element={<OnboardingWelcome />} />
+            <Route path="/welcome" element={<OnboardingWelcome />} />
+            <Route path="/login" element={<MobileLogin />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/signup_react" element={<Signup />} />
+            <Route path="/onboarding" element={<OnboardingWelcome />} />
+            <Route path="/premium" element={<PremiumDashboard />} />
+            <Route path="/premium_dashboard" element={<PremiumDashboard />} />
+            <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
+            <Route path="/crossfit" element={<CrossfitExact />} />
+            <Route path="/crossfit_react" element={<CrossfitExact />} />
+            <Route path="/communities" element={<Communities />} />
+            <Route path="/your_sports" element={<YourSports />} />
+            <Route path="/gym" element={<Gym />} />
+            <Route path="/user_chat" element={<Messages />} />
+            <Route path="/user_chat/new" element={<NewMessage />} />
+            <Route path="/user_chat/chat/:username" element={<ChatThread />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/profile_react" element={<Profile />} />
+            <Route path="/profile/:username" element={<PublicProfile />} />
+            <Route path="/account_settings" element={<AccountSettings />} />
+            <Route path="/account_settings_react" element={<AccountSettings />} />
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin_dashboard" element={<AdminDashboard />} />
+            <Route path="/admin_profile_react" element={<AdminProfile />} />
+            <Route path="/home" element={<HomeTimeline />} />
+            <Route path="/workout_tracking" element={<WorkoutTracking />} />
+            <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
+            <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
+            <Route path="/community/:community_id/tasks_react" element={<CommunityTasks />} />
+            <Route path="/community/:community_id/polls_react" element={<CommunityPolls />} />
+            <Route path="/community/:community_id/resources_react" element={<CommunityResources />} />
+            <Route path="/community/:community_id/useful_links_react" element={<UsefulLinks />} />
+            <Route path="/community/:community_id/photos_react" element={<CommunityPhotos />} />
+            <Route path="/community/:community_id/key_posts" element={<KeyPosts />} />
+            <Route path="/community/:community_id/members" element={<Members />} />
+            <Route path="/community/:community_id/edit" element={<EditCommunity />} />
+            <Route path="/event/:event_id" element={<EventDetail />} />
+            <Route path="/post/:post_id" element={<PostDetail />} />
+            <Route path="/compose" element={<CreatePost />} />
+            <Route path="/product_development" element={<ProductDevelopment />} />
+            <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
+            <Route path="/encryption_settings" element={<EncryptionSettings />} />
+            <Route path="*" element={<PremiumDashboard />} />
+            </Routes>
+          </ErrorBoundary>
+        </div>
+        {requireVerification && authLoaded && isVerified === false && (
+          <VerifyOverlay onRecheck={async ()=>{
+            try{
+              const r = await fetch('/api/profile_me', { credentials:'include' })
+              const j = await r.json().catch(()=>null)
+              const v = !!(j?.profile?.email_verified)
+              setIsVerified(v)
+            }catch{}
+          }} />
+        )}
+      </HeaderContext.Provider>
+    </UserProfileContext.Provider>
   )
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
 import Avatar from '../components/Avatar'
+import { useUserProfile } from '../contexts/UserProfileContext'
 
 type PersonalForm = {
   bio: string
@@ -278,6 +279,12 @@ export default function Profile() {
   const cityCache = useRef<Map<string, string[]>>(new Map())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [interestInput, setInterestInput] = useState('')
+  const {
+    profile: cachedProfile,
+    loading: cachedProfileLoading,
+    error: cachedProfileError,
+    refresh: refreshUserProfile,
+  } = useUserProfile()
 
   function normalizeInterests(list: string[]): string[] {
     const seen = new Set<string>()
@@ -338,157 +345,151 @@ export default function Profile() {
   }
 
   useEffect(() => {
-    let cancelled = false
-    async function loadProfile() {
+    if (cachedProfileLoading) {
       setLoading(true)
-        try {
-          const response = await fetch('/api/profile_me', { credentials: 'include' })
-          const payload = await response.json().catch(() => null)
-          if (!cancelled) {
-            if (payload?.success && payload.profile) {
-              const profile = payload.profile
-              const personalInfo =
-                profile.personal ??
-                profile.personal_info ??
-                profile.personalInfo ??
-                profile.personal_details ??
-                profile.personalDetails ??
-                {}
-              const professionalInfo =
-                profile.professional ??
-                profile.professional_info ??
-                profile.professionalInfo ??
-                profile.professional_details ??
-                profile.professionalDetails ??
-                {}
-              const locationInfo = profile.location ?? personalInfo.location ?? {}
-              const rawInterests =
-                professionalInfo.interests ??
-                profile.interests ??
-                profile.personal_interests ??
-                profile.personalInterests ??
-                []
-              const interestList = Array.isArray(rawInterests)
-                ? rawInterests.map(item => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
-                : typeof rawInterests === 'string' && rawInterests
-                  ? rawInterests
-                      .split(',')
-                      .map(item => item.trim())
-                      .filter(Boolean)
-                  : []
-              const sanitizedInterests = normalizeInterests(interestList)
-              const cityValue = coalesceString(
-                personalInfo.city,
-                locationInfo.city,
-                profile.city,
-                profile.personal_city,
-                profile.personalCity,
-              )
-              const countryValue = coalesceString(
-                personalInfo.country,
-                locationInfo.country,
-                profile.country,
-                profile.personal_country,
-                profile.personalCountry,
-              )
-              setSummary({
-                username: coalesceString(profile.username),
-                subscription: coalesceString(profile.subscription, profile.plan),
-                profile_picture: coalesceString(profile.profile_picture, profile.profilePicture) || null,
-                cover_photo: coalesceString(profile.cover_photo, profile.coverPhoto) || null,
-                display_name:
-                  coalesceString(
-                    personalInfo.display_name,
-                    personalInfo.displayName,
-                    profile.display_name,
-                    profile.displayName,
-                  ) || coalesceString(profile.username),
-                location:
-                  coalesceString(
-                    typeof profile.location === 'string' ? profile.location : '',
-                    typeof locationInfo === 'string' ? locationInfo : '',
-                    locationInfo.formatted,
-                  ) || [cityValue, countryValue].filter(Boolean).join(', '),
-                bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about, profile.summary, profile.about),
-              })
-              setPersonal({
-                bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about),
-                display_name: coalesceString(
-                  personalInfo.display_name,
-                  personalInfo.displayName,
-                  profile.display_name,
-                  profile.displayName,
-                ),
-                date_of_birth: (() => {
-                  const dobValue =
-                    personalInfo.date_of_birth ??
-                    personalInfo.dateOfBirth ??
-                    personalInfo.dob ??
-                    profile.date_of_birth ??
-                    profile.dateOfBirth
-                  if (typeof dobValue === 'string') return dobValue.slice(0, 10)
-                  if (dobValue instanceof Date) return dobValue.toISOString().slice(0, 10)
-                  return ''
-                })(),
-                gender: coalesceString(personalInfo.gender, profile.gender),
-                country: countryValue,
-                city: cityValue,
-              })
-              setProfessional({
-                role: coalesceString(
-                  professionalInfo.role,
-                  professionalInfo.current_position,
-                  professionalInfo.currentPosition,
-                  professionalInfo.position,
-                  professionalInfo.job_title,
-                  professionalInfo.jobTitle,
-                  profile.role,
-                ),
-                company: coalesceString(
-                  professionalInfo.company,
-                  professionalInfo.organization,
-                  professionalInfo.employer,
-                  profile.company,
-                ),
-                industry: coalesceString(
-                  professionalInfo.industry,
-                  professionalInfo.field,
-                  professionalInfo.sector,
-                  profile.industry,
-                ),
-                linkedin: coalesceString(
-                  professionalInfo.linkedin,
-                  professionalInfo.linkedin_url,
-                  professionalInfo.linkedinUrl,
-                  profile.linkedin,
-                  profile.linkedinUrl,
-                ),
-                about: coalesceString(
-                  professionalInfo.about,
-                  professionalInfo.summary,
-                  professionalInfo.bio,
-                  profile.professional_summary,
-                  profile.professionalSummary,
-                ),
-                interests: sanitizedInterests,
-              })
-              setInterestInput('')
-              setError(null)
-            } else {
-              setError(payload?.error || 'Unable to load profile')
-            }
-          }
-        } catch {
-          if (!cancelled) setError('Unable to load profile')
-        } finally {
-          if (!cancelled) setLoading(false)
-        }
+      return
     }
-    loadProfile()
-    return () => {
-      cancelled = true
+
+    if (!cachedProfile) {
+      setLoading(false)
+      if (cachedProfileError) {
+        setError(cachedProfileError)
+      } else {
+        setError('Unable to load profile')
+      }
+      return
     }
-  }, [])
+
+    const profile = cachedProfile as Record<string, any>
+    const personalInfo =
+      profile.personal ??
+      profile.personal_info ??
+      profile.personalInfo ??
+      profile.personal_details ??
+      profile.personalDetails ??
+      {}
+    const professionalInfo =
+      profile.professional ??
+      profile.professional_info ??
+      profile.professionalInfo ??
+      profile.professional_details ??
+      profile.professionalDetails ??
+      {}
+    const locationInfo = profile.location ?? personalInfo.location ?? {}
+    const rawInterests =
+      professionalInfo.interests ??
+      profile.interests ??
+      profile.personal_interests ??
+      profile.personalInterests ??
+      []
+    const interestList = Array.isArray(rawInterests)
+      ? rawInterests.map(item => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
+      : typeof rawInterests === 'string' && rawInterests
+        ? rawInterests
+            .split(',')
+            .map(item => item.trim())
+            .filter(Boolean)
+        : []
+    const sanitizedInterests = normalizeInterests(interestList)
+    const cityValue = coalesceString(
+      personalInfo.city,
+      locationInfo.city,
+      profile.city,
+      profile.personal_city,
+      profile.personalCity,
+    )
+    const countryValue = coalesceString(
+      personalInfo.country,
+      locationInfo.country,
+      profile.country,
+      profile.personal_country,
+      profile.personalCountry,
+    )
+    setSummary({
+      username: coalesceString(profile.username),
+      subscription: coalesceString(profile.subscription, profile.plan),
+      profile_picture: coalesceString(profile.profile_picture, profile.profilePicture) || null,
+      cover_photo: coalesceString(profile.cover_photo, profile.coverPhoto) || null,
+      display_name:
+        coalesceString(
+          personalInfo.display_name,
+          personalInfo.displayName,
+          profile.display_name,
+          profile.displayName,
+        ) || coalesceString(profile.username),
+      location:
+        coalesceString(
+          typeof profile.location === 'string' ? profile.location : '',
+          typeof locationInfo === 'string' ? locationInfo : '',
+          locationInfo.formatted,
+        ) || [cityValue, countryValue].filter(Boolean).join(', '),
+      bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about, profile.summary, profile.about),
+    })
+    setPersonal({
+      bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about),
+      display_name: coalesceString(
+        personalInfo.display_name,
+        personalInfo.displayName,
+        profile.display_name,
+        profile.displayName,
+      ),
+      date_of_birth: (() => {
+        const dobValue =
+          personalInfo.date_of_birth ??
+          personalInfo.dateOfBirth ??
+          personalInfo.dob ??
+          profile.date_of_birth ??
+          profile.dateOfBirth
+        if (typeof dobValue === 'string') return dobValue.slice(0, 10)
+        if (dobValue instanceof Date) return dobValue.toISOString().slice(0, 10)
+        return ''
+      })(),
+      gender: coalesceString(personalInfo.gender, profile.gender),
+      country: countryValue,
+      city: cityValue,
+    })
+    setProfessional({
+      role: coalesceString(
+        professionalInfo.role,
+        professionalInfo.current_position,
+        professionalInfo.currentPosition,
+        professionalInfo.position,
+        professionalInfo.job_title,
+        professionalInfo.jobTitle,
+        profile.role,
+      ),
+      company: coalesceString(
+        professionalInfo.company,
+        professionalInfo.organization,
+        professionalInfo.employer,
+        profile.company,
+      ),
+      industry: coalesceString(
+        professionalInfo.industry,
+        professionalInfo.field,
+        professionalInfo.sector,
+        profile.industry,
+      ),
+      linkedin: coalesceString(
+        professionalInfo.linkedin,
+        professionalInfo.linkedin_url,
+        professionalInfo.linkedinUrl,
+        profile.linkedin,
+        profile.linkedinUrl,
+      ),
+      about: coalesceString(
+        professionalInfo.about,
+        professionalInfo.summary,
+        professionalInfo.bio,
+        profile.professional_summary,
+        profile.professionalSummary,
+      ),
+      interests: sanitizedInterests,
+    })
+    setInterestInput('')
+    setError(null)
+    setLoading(false)
+  }, [cachedProfile, cachedProfileLoading, cachedProfileError])
 
   useEffect(() => {
     let cancelled = false
@@ -622,6 +623,11 @@ export default function Profile() {
             bio: personal.bio,
           }
         })
+        try {
+          await refreshUserProfile()
+        } catch {
+          // Ignore refresh errors; context will retry on navigation
+        }
       } else {
         setFeedback(payload?.error || 'Unable to save personal information')
       }
@@ -655,6 +661,11 @@ export default function Profile() {
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
         setFeedback('Professional information saved')
+        try {
+          await refreshUserProfile()
+        } catch {
+          // Ignore refresh errors; context will retry on navigation
+        }
       } else {
         setFeedback(payload?.error || 'Unable to save professional information')
       }
@@ -705,6 +716,11 @@ export default function Profile() {
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
         setFeedback('Personal interests saved')
+        try {
+          await refreshUserProfile()
+        } catch {
+          // Ignore refresh errors; context will retry on navigation
+        }
       } else {
         setFeedback(payload?.error || 'Unable to save personal interests')
       }
@@ -724,6 +740,11 @@ export default function Profile() {
       if (payload?.success && payload.profile_picture) {
         setSummary(prev => prev ? { ...prev, profile_picture: payload.profile_picture } : prev)
         setFeedback('Profile picture updated')
+        try {
+          await refreshUserProfile()
+        } catch {
+          // Ignore refresh errors; context will retry on navigation
+        }
       } else {
         setFeedback(payload?.error || 'Unable to upload picture')
       }
