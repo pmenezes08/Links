@@ -9,6 +9,8 @@ import random
 import re
 import logging
 import requests
+import urllib.request
+import urllib.error
 import time
 import base64
 from io import BytesIO
@@ -46,6 +48,79 @@ except ImportError as e:
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
+
+COUNTRY_CACHE_TTL = 60 * 60 * 24  # 24 hours
+CITY_CACHE_TTL = 60 * 60 * 24
+COUNTRY_CACHE: Dict[str, Any] = {'timestamp': 0, 'data': []}
+CITY_CACHE: Dict[str, Dict[str, Any]] = {}
+FALLBACK_COUNTRIES = [
+    {'name': 'United States', 'iso2': 'US'},
+    {'name': 'United Kingdom', 'iso2': 'GB'},
+    {'name': 'Canada', 'iso2': 'CA'},
+    {'name': 'Australia', 'iso2': 'AU'},
+    {'name': 'Germany', 'iso2': 'DE'},
+    {'name': 'France', 'iso2': 'FR'},
+    {'name': 'Brazil', 'iso2': 'BR'},
+    {'name': 'India', 'iso2': 'IN'},
+    {'name': 'Japan', 'iso2': 'JP'},
+    {'name': 'Spain', 'iso2': 'ES'},
+]
+FALLBACK_CITY_MAP: Dict[str, List[str]] = {
+    'united states': ['New York', 'Los Angeles', 'Chicago', 'San Francisco', 'Seattle', 'Austin', 'Boston', 'Miami'],
+    'united kingdom': ['London', 'Manchester', 'Birmingham', 'Leeds', 'Glasgow', 'Edinburgh'],
+    'canada': ['Toronto', 'Vancouver', 'Montreal', 'Calgary', 'Ottawa', 'Edmonton'],
+    'australia': ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Canberra'],
+    'germany': ['Berlin', 'Munich', 'Hamburg', 'Frankfurt', 'Cologne', 'Stuttgart'],
+    'france': ['Paris', 'Lyon', 'Marseille', 'Toulouse', 'Nice', 'Bordeaux'],
+    'brazil': ['São Paulo', 'Rio de Janeiro', 'Brasília', 'Salvador', 'Fortaleza', 'Curitiba'],
+    'india': ['Mumbai', 'Delhi', 'Bengaluru', 'Hyderabad', 'Chennai', 'Kolkata'],
+    'japan': ['Tokyo', 'Osaka', 'Kyoto', 'Yokohama', 'Nagoya', 'Sapporo'],
+    'spain': ['Madrid', 'Barcelona', 'Valencia', 'Seville', 'Bilbao', 'Granada'],
+    'italy': ['Rome', 'Milan', 'Florence', 'Venice', 'Turin', 'Naples'],
+    'mexico': ['Mexico City', 'Guadalajara', 'Monterrey', 'Cancún', 'Tijuana', 'Puebla'],
+    'china': ['Beijing', 'Shanghai', 'Shenzhen', 'Guangzhou', 'Chengdu', 'Hong Kong'],
+    'south korea': ['Seoul', 'Busan', 'Incheon', 'Daegu', 'Daejeon', 'Gwangju'],
+    'russia': ['Moscow', 'Saint Petersburg', 'Novosibirsk', 'Yekaterinburg', 'Kazan', 'Sochi'],
+    'netherlands': ['Amsterdam', 'Rotterdam', 'The Hague', 'Utrecht', 'Eindhoven', 'Maastricht'],
+    'switzerland': ['Zurich', 'Geneva', 'Basel', 'Bern', 'Lausanne', 'Lucerne'],
+    'south africa': ['Johannesburg', 'Cape Town', 'Durban', 'Pretoria', 'Port Elizabeth', 'Bloemfontein'],
+    'united arab emirates': ['Dubai', 'Abu Dhabi', 'Sharjah', 'Al Ain', 'Ajman'],
+    'turkey': ['Istanbul', 'Ankara', 'Izmir', 'Antalya', 'Bursa', 'Gaziantep'],
+    'portugal': ['Lisbon', 'Porto', 'Faro', 'Coimbra', 'Braga', 'Funchal'],
+    'ireland': ['Dublin', 'Cork', 'Galway', 'Limerick', 'Waterford'],
+    'norway': ['Oslo', 'Bergen', 'Trondheim', 'Stavanger', 'Tromsø'],
+    'denmark': ['Copenhagen', 'Aarhus', 'Odense', 'Aalborg'],
+    'sweden': ['Stockholm', 'Gothenburg', 'Malmö', 'Uppsala'],
+    'belgium': ['Brussels', 'Antwerp', 'Ghent', 'Bruges', 'Leuven'],
+    'new zealand': ['Auckland', 'Wellington', 'Christchurch', 'Queenstown', 'Hamilton'],
+    'singapore': ['Singapore'],
+    'saudi arabia': ['Riyadh', 'Jeddah', 'Mecca', 'Medina', 'Dammam'],
+    'thailand': ['Bangkok', 'Chiang Mai', 'Phuket', 'Pattaya', 'Krabi'],
+    'indonesia': ['Jakarta', 'Bali', 'Surabaya', 'Bandung', 'Yogyakarta'],
+    'argentina': ['Buenos Aires', 'Córdoba', 'Rosario', 'Mendoza', 'Bariloche'],
+    'colombia': ['Bogotá', 'Medellín', 'Cartagena', 'Cali', 'Barranquilla'],
+    'chile': ['Santiago', 'Valparaíso', 'Viña del Mar', 'Concepción'],
+    'peru': ['Lima', 'Cusco', 'Arequipa', 'Trujillo'],
+    'egypt': ['Cairo', 'Alexandria', 'Giza', 'Luxor', 'Sharm El-Sheikh'],
+    'nigeria': ['Lagos', 'Abuja', 'Port Harcourt', 'Ibadan', 'Kano'],
+    'ghana': ['Accra', 'Kumasi', 'Takoradi', 'Tamale'],
+    'kenya': ['Nairobi', 'Mombasa', 'Kisumu'],
+    'philippines': ['Manila', 'Cebu', 'Davao City', 'Quezon City', 'Taguig'],
+    'vietnam': ['Hanoi', 'Ho Chi Minh City', 'Da Nang', 'Hoi An'],
+    'malaysia': ['Kuala Lumpur', 'George Town', 'Johor Bahru', 'Kota Kinabalu'],
+    'austria': ['Vienna', 'Salzburg', 'Innsbruck', 'Graz', 'Linz'],
+    'czech republic': ['Prague', 'Brno', 'Ostrava', 'Plzen'],
+    'poland': ['Warsaw', 'Kraków', 'Gdańsk', 'Wrocław', 'Poznań'],
+    'hungary': ['Budapest', 'Debrecen', 'Szeged', 'Pécs'],
+    'greece': ['Athens', 'Thessaloniki', 'Heraklion', 'Patras', 'Santorini'],
+    'romania': ['Bucharest', 'Cluj-Napoca', 'Brasov', 'Timisoara'],
+    'croatia': ['Zagreb', 'Split', 'Dubrovnik', 'Zadar'],
+    'israel': ['Tel Aviv', 'Jerusalem', 'Haifa', 'Eilat'],
+    'finland': ['Helsinki', 'Espoo', 'Tampere', 'Turku'],
+    'iceland': ['Reykjavik', 'Akureyri'],
+    'dominican republic': ['Santo Domingo', 'Punta Cana', 'Santiago De Los Caballeros'],
+    'costa rica': ['San José', 'Liberia', 'Alajuela'],
+}
 
 # Authentication decorators (defined early so they are in scope for route decorators)
 def login_required(f):
@@ -526,6 +601,53 @@ def ensure_community_invitations_table(c):
     except Exception as e:
         logger.warning(f"Could not ensure community_invitations table: {e}")
 
+def ensure_post_views_table(c):
+    """Ensure the post_views table exists for tracking unique post views."""
+    try:
+        if USE_MYSQL:
+            c.execute('''CREATE TABLE IF NOT EXISTS post_views (
+                          id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          post_id INTEGER NOT NULL,
+                          username VARCHAR(191) NOT NULL,
+                          viewed_at DATETIME NOT NULL,
+                          UNIQUE(post_id, username),
+                          FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                        )''')
+        else:
+            c.execute('''CREATE TABLE IF NOT EXISTS post_views (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          post_id INTEGER NOT NULL,
+                          username VARCHAR(191) NOT NULL,
+                          viewed_at TEXT NOT NULL,
+                          UNIQUE(post_id, username),
+                          FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                        )''')
+    except Exception as e:
+        logger.warning(f"Could not ensure post_views table: {e}")
+
+def upsert_post_view(c, post_id: int, username: str) -> Optional[int]:
+    """Create the post_views table if needed and ensure a unique view for username/post_id."""
+    ensure_post_views_table(c)
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        if USE_MYSQL:
+            c.execute("INSERT IGNORE INTO post_views (post_id, username, viewed_at) VALUES (%s,%s,%s)", (post_id, username, now_str))
+        else:
+            c.execute("INSERT OR IGNORE INTO post_views (post_id, username, viewed_at) VALUES (?,?,?)", (post_id, username, now_str))
+    except Exception as insert_err:
+        logger.warning(f"Failed inserting post_view for post {post_id} and user {username}: {insert_err}")
+    try:
+        placeholder = get_sql_placeholder()
+        c.execute(f"SELECT COUNT(*) as cnt FROM post_views WHERE post_id = {placeholder}", (post_id,))
+        row = c.fetchone()
+        count = row['cnt'] if hasattr(row, 'keys') else (row[0] if row else 0)
+        return int(count or 0)
+    except Exception as count_err:
+        logger.warning(f"Failed counting post views for post {post_id}: {count_err}")
+        return None
+
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
 CANONICAL_SCHEME = os.getenv('CANONICAL_SCHEME', 'https')
@@ -748,6 +870,87 @@ def get_scalar_result(row, column_index=0, column_name=None):
         return values[column_index] if values else None
     else:  # Tuple/list result (SQLite)
         return row[column_index] if len(row) > column_index else None
+
+
+def get_cached_countries() -> List[Dict[str, Any]]:
+    now = time.time()
+    cached = COUNTRY_CACHE
+    if cached['data'] and (now - cached['timestamp']) < COUNTRY_CACHE_TTL:
+        return cached['data']
+    url = 'https://countriesnow.space/api/v0.1/countries/iso'
+    try:
+        req = urllib.request.Request(url, headers={'Accept': 'application/json'})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            payload = json.loads(resp.read().decode('utf-8'))
+        data = []
+        for item in payload.get('data', []):
+            name = item.get('name')
+            iso2 = item.get('Iso2') or item.get('iso2')
+            if name:
+                data.append({'name': name, 'iso2': iso2})
+        if data:
+            COUNTRY_CACHE['data'] = sorted(data, key=lambda x: x['name'])
+            COUNTRY_CACHE['timestamp'] = now
+            return COUNTRY_CACHE['data']
+    except Exception as e:
+        logger.warning(f"Failed to fetch countries remotely: {e}")
+    COUNTRY_CACHE['data'] = FALLBACK_COUNTRIES
+    COUNTRY_CACHE['timestamp'] = now
+    return COUNTRY_CACHE['data']
+
+
+def get_cached_cities(country_name: str) -> List[str]:
+    if not country_name:
+        return []
+    key = country_name.strip().lower()
+    now = time.time()
+    cached = CITY_CACHE.get(key)
+    if cached and (now - cached['timestamp']) < CITY_CACHE_TTL:
+        return cached['data']
+    url = 'https://countriesnow.space/api/v0.1/countries/cities'
+    payload = json.dumps({'country': country_name}).encode('utf-8')
+    try:
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={'Content-Type': 'application/json', 'Accept': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
+        data = result.get('data') or []
+        if isinstance(data, list) and data:
+            sorted_data = sorted(dict.fromkeys([str(city) for city in data]))
+            filtered = filter_major_cities(country_name, sorted_data)
+            CITY_CACHE[key] = {'data': filtered, 'timestamp': now}
+            return filtered
+    except Exception as e:
+        logger.warning(f"Failed to fetch cities for {country_name}: {e}")
+    fallback = filter_major_cities(country_name, FALLBACK_CITY_MAP.get(key, []))
+    CITY_CACHE[key] = {'data': fallback, 'timestamp': now}
+    return fallback
+
+
+def filter_major_cities(country_name: str, incoming: List[str]) -> List[str]:
+    key = country_name.strip().lower()
+    override = FALLBACK_CITY_MAP.get(key)
+    if override:
+        return override
+    unique: List[str] = []
+    seen: set[str] = set()
+    for name in incoming:
+        if not name:
+            continue
+        cleaned = str(name).strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        unique.append(cleaned)
+        if len(unique) >= 24:
+            break
+    return unique
 
 def get_db_connection():
     if USE_MYSQL:
@@ -1188,6 +1391,13 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure community_invitations table: {e}")
 
+            # Ensure post_views table exists for tracking unique views
+            try:
+                ensure_post_views_table(c)
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"Could not ensure post_views table: {e}")
+
             # Idempotency tokens for post creation (prevent duplicate posts)
             try:
                 if USE_MYSQL:
@@ -1418,7 +1628,8 @@ def add_missing_tables():
                 # For MySQL, use SHOW COLUMNS to check
                 for col, coltype in [
                     ('role','TEXT'), ('company','TEXT'), ('industry','TEXT'), ('degree','TEXT'),
-                    ('school','TEXT'), ('skills','TEXT'), ('linkedin','TEXT'), ('experience','INTEGER')
+                    ('school','TEXT'), ('skills','TEXT'), ('linkedin','TEXT'), ('experience','INTEGER'),
+                    ('professional_about','TEXT'), ('professional_interests','TEXT')
                 ]:
                     try:
                         c.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
@@ -1458,7 +1669,7 @@ def add_missing_tables():
             # Ensure personal info columns (country, city, age, gender) exist on users
             try:
                 for col, coltype in [
-                    ('country','TEXT'), ('city','TEXT'), ('age','INTEGER'), ('gender','TEXT'), ('mobile','TEXT')
+                    ('country','TEXT'), ('city','TEXT'), ('age','INTEGER'), ('gender','TEXT'), ('mobile','TEXT'), ('date_of_birth','TEXT')
                 ]:
                     exists = False
                     try:
@@ -7254,6 +7465,7 @@ def api_public_profile(username):
             # Profile fields
             c.execute(f"""
                 SELECT u.username, u.subscription,
+                       u.gender, u.country, u.city, u.date_of_birth, u.age,
                        p.display_name, p.bio, p.location, p.website,
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo,
                        COALESCE(p.is_public, 1)
@@ -7273,7 +7485,7 @@ def api_public_profile(username):
 
             # Fetch user's professional info and share setting
             try:
-                c.execute("SELECT role, company, industry, degree, school, skills, linkedin, experience, professional_share_community_id FROM users WHERE username = ?", (actual_username,))
+                c.execute("SELECT role, company, industry, degree, school, skills, linkedin, experience, professional_about, professional_interests, professional_share_community_id FROM users WHERE username = ?", (actual_username,))
                 urow = c.fetchone()
             except Exception:
                 urow = None
@@ -7281,15 +7493,23 @@ def api_public_profile(username):
             profile = {
                 'username': actual_username,
                 'subscription': get_val(row, 'subscription', 1),
-                'display_name': get_val(row, 'display_name', 2) or actual_username,
-                'bio': get_val(row, 'bio', 3),
-                'location': get_val(row, 'location', 4),
-                'website': get_val(row, 'website', 5),
-                'instagram': get_val(row, 'instagram', 6),
-                'twitter': get_val(row, 'twitter', 7),
-                'profile_picture': get_val(row, 'profile_picture', 8),
-                'cover_photo': get_val(row, 'cover_photo', 9),
-                'is_public': bool(get_val(row, 'is_public', 10)),
+                'display_name': get_val(row, 'display_name', 7) or actual_username,
+                'bio': get_val(row, 'bio', 8),
+                'location': get_val(row, 'location', 9),
+                'website': get_val(row, 'website', 10),
+                'instagram': get_val(row, 'instagram', 11),
+                'twitter': get_val(row, 'twitter', 12),
+                'profile_picture': get_val(row, 'profile_picture', 13),
+                'cover_photo': get_val(row, 'cover_photo', 14),
+                'is_public': bool(get_val(row, 'is_public', 15)),
+                'personal': {
+                    'display_name': (get_val(row, 'display_name', 7) or actual_username),
+                    'gender': get_val(row, 'gender', 2),
+                    'country': get_val(row, 'country', 3),
+                    'city': get_val(row, 'city', 4),
+                    'date_of_birth': get_val(row, 'date_of_birth', 5),
+                    'age': get_val(row, 'age', 6),
+                },
                 'professional': None
             }
 
@@ -7300,6 +7520,24 @@ def api_public_profile(username):
                         return urow[idx_or_key] if hasattr(urow, 'keys') else urow[idx_or_key]
                     except Exception:
                         return None
+                interests_raw = uval('professional_interests') if hasattr(urow, 'keys') else uval(9)
+                interests_list: list[str] = []
+                if interests_raw:
+                    try:
+                        decoded = json.loads(interests_raw)
+                        if isinstance(decoded, list):
+                            interests_list = [
+                                str(item).strip() for item in decoded if isinstance(item, (str, int, float)) and str(item).strip()
+                            ]
+                        else:
+                            raise ValueError("unexpected format")
+                    except Exception:
+                        interests_list = [
+                            part.strip() for part in str(interests_raw).split(',') if part and part.strip()
+                        ]
+
+                    interests_list = list(dict.fromkeys(interests_list))
+
                 profile['professional'] = {
                     'role': uval('role') if hasattr(urow, 'keys') else uval(0),
                     'company': uval('company') if hasattr(urow, 'keys') else uval(1),
@@ -7309,7 +7547,9 @@ def api_public_profile(username):
                     'skills': uval('skills') if hasattr(urow, 'keys') else uval(5),
                     'linkedin': uval('linkedin') if hasattr(urow, 'keys') else uval(6),
                     'experience': uval('experience') if hasattr(urow, 'keys') else uval(7),
-                    'share_community_id': uval('professional_share_community_id') if hasattr(urow, 'keys') else uval(8)
+                    'about': uval('professional_about') if hasattr(urow, 'keys') else uval(8),
+                    'interests': interests_list,
+                    'share_community_id': uval('professional_share_community_id') if hasattr(urow, 'keys') else uval(10)
                 }
 
             # Recent posts (kept for potential future use; frontend may ignore)
@@ -7334,6 +7574,8 @@ def api_public_profile(username):
                     'image_path': val(p, 'image_path', 2),
                     'timestamp': val(p, 'timestamp', 3),
                 })
+
+            profile['is_self'] = session.get('username') == actual_username
 
             return jsonify({'success': True, 'profile': profile, 'posts': posts_list})
     except Exception as e:
@@ -7673,14 +7915,13 @@ def profile():
             user = c.fetchone()
             
         if user:
-            # Mobile -> React, Desktop -> HTML
-            ua = request.headers.get('User-Agent', '')
-            is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-            if is_mobile:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                dist_dir = os.path.join(base_dir, 'client', 'dist')
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            dist_dir = os.path.join(base_dir, 'client', 'dist')
+            try:
                 return send_from_directory(dist_dir, 'index.html')
-            return render_template('profile.html', username=username, user=user)
+            except Exception as serve_err:
+                logger.warning(f"Failed to serve React profile page: {serve_err}")
+                return render_template('profile.html', username=username, user=user)
         return render_template('index.html', error="User profile not found!")
     except Exception as e:
         logger.error(f"Error in profile for {username}: {str(e)}")
@@ -7703,7 +7944,7 @@ def api_profile_me():
             c = conn.cursor()
             c.execute("""
                 SELECT u.username, u.email, u.subscription, u.email_verified, u.email_verified_at,
-                       u.first_name, u.last_name,
+                       u.first_name, u.last_name, u.gender, u.country, u.city, u.date_of_birth, u.age,
                        p.display_name, p.bio, p.location, p.website,
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo
                 FROM users u
@@ -7715,25 +7956,42 @@ def api_profile_me():
                 return jsonify({ 'success': False, 'error': 'not found' }), 404
             def get_val(key_or_idx):
                 try:
-                    return row[key_or_idx] if hasattr(row, 'keys') and (isinstance(key_or_idx, str) and key_or_idx in row.keys()) else row[key_or_idx]
+                    if hasattr(row, 'keys'):
+                        if isinstance(key_or_idx, str):
+                            return row.get(key_or_idx)
+                        return row[key_or_idx]
+                    else:
+                        return row[key_or_idx]
                 except Exception:
                     return None
             profile = {
                 'username': username,
-                'email': get_val('email') if isinstance(row, dict) or hasattr(row, 'keys') else row[1],
-                'subscription': get_val('subscription') if isinstance(row, dict) or hasattr(row, 'keys') else row[2],
-                'email_verified': bool(get_val('email_verified') if isinstance(row, dict) or hasattr(row, 'keys') else row[3]),
-                'email_verified_at': get_val('email_verified_at') if isinstance(row, dict) or hasattr(row, 'keys') else row[4],
-                'first_name': get_val('first_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[5],
-                'last_name': get_val('last_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[6],
-                'display_name': get_val('display_name') if isinstance(row, dict) or hasattr(row, 'keys') else row[7],
-                'bio': get_val('bio') if isinstance(row, dict) or hasattr(row, 'keys') else row[8],
-                'location': get_val('location') if isinstance(row, dict) or hasattr(row, 'keys') else row[9],
-                'website': get_val('website') if isinstance(row, dict) or hasattr(row, 'keys') else row[10],
-                'instagram': get_val('instagram') if isinstance(row, dict) or hasattr(row, 'keys') else row[11],
-                'twitter': get_val('twitter') if isinstance(row, dict) or hasattr(row, 'keys') else row[12],
-                'profile_picture': get_val('profile_picture') if isinstance(row, dict) or hasattr(row, 'keys') else row[13],
-                'cover_photo': get_val('cover_photo') if isinstance(row, dict) or hasattr(row, 'keys') else row[14],
+                'email': get_val('email') if hasattr(row, 'keys') else row[1],
+                'subscription': get_val('subscription') if hasattr(row, 'keys') else row[2],
+                'email_verified': bool(get_val('email_verified') if hasattr(row, 'keys') else row[3]),
+                'email_verified_at': get_val('email_verified_at') if hasattr(row, 'keys') else row[4],
+                'first_name': get_val('first_name') if hasattr(row, 'keys') else row[5],
+                'last_name': get_val('last_name') if hasattr(row, 'keys') else row[6],
+                'gender': get_val('gender') if hasattr(row, 'keys') else row[7],
+                'country': get_val('country') if hasattr(row, 'keys') else row[8],
+                'city': get_val('city') if hasattr(row, 'keys') else row[9],
+                'date_of_birth': get_val('date_of_birth') if hasattr(row, 'keys') else row[10],
+                'age': get_val('age') if hasattr(row, 'keys') else row[11],
+                'display_name': get_val('display_name') if hasattr(row, 'keys') else row[12],
+                'bio': get_val('bio') if hasattr(row, 'keys') else row[13],
+                'location': get_val('location') if hasattr(row, 'keys') else row[14],
+                'website': get_val('website') if hasattr(row, 'keys') else row[15],
+                'instagram': get_val('instagram') if hasattr(row, 'keys') else row[16],
+                'twitter': get_val('twitter') if hasattr(row, 'keys') else row[17],
+                'profile_picture': get_val('profile_picture') if hasattr(row, 'keys') else row[18],
+                'cover_photo': get_val('cover_photo') if hasattr(row, 'keys') else row[19],
+                'personal': {
+                    'display_name': (get_val('display_name') if hasattr(row, 'keys') else row[12]) or username,
+                    'date_of_birth': get_val('date_of_birth') if hasattr(row, 'keys') else row[10],
+                    'gender': get_val('gender') if hasattr(row, 'keys') else row[7],
+                    'country': get_val('country') if hasattr(row, 'keys') else row[8],
+                    'city': get_val('city') if hasattr(row, 'keys') else row[9],
+                }
             }
             
             # Cache profile for faster future requests
@@ -7748,6 +8006,31 @@ def api_profile_me():
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+
+@app.route('/api/geo/countries')
+@login_required
+def api_geo_countries():
+    try:
+        countries = get_cached_countries()
+        return jsonify({'success': True, 'countries': countries})
+    except Exception as e:
+        logger.error(f"Failed to load countries: {e}")
+        return jsonify({'success': False, 'error': 'Failed to load countries'}), 500
+
+
+@app.route('/api/geo/cities')
+@login_required
+def api_geo_cities():
+    country = (request.args.get('country') or '').strip()
+    if not country:
+        return jsonify({'success': False, 'error': 'country required'}), 400
+    try:
+        cities = get_cached_cities(country)
+        return jsonify({'success': True, 'country': country, 'cities': cities})
+    except Exception as e:
+        logger.error(f"Failed to load cities for {country}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to load cities'}), 500
 
 @app.route('/debug_onboarding')
 @login_required
@@ -8504,6 +8787,22 @@ def update_professional():
         skills = request.form.get('skills', '').strip()
         linkedin = request.form.get('linkedin', '').strip()
         experience = request.form.get('experience', type=int)
+        professional_about = request.form.get('about', '').strip()
+        interests_raw = (request.form.get('interests') or '').strip()
+        interests_payload = None
+        if interests_raw:
+            try:
+                parsed = json.loads(interests_raw)
+                if isinstance(parsed, list):
+                    cleaned = [str(item).strip() for item in parsed if isinstance(item, (str, int, float)) and str(item).strip()]
+                    if cleaned:
+                        interests_payload = json.dumps(cleaned)
+                else:
+                    raise ValueError("unexpected format")
+            except Exception:
+                cleaned = [part.strip() for part in interests_raw.split(',') if part and part.strip()]
+                if cleaned:
+                    interests_payload = json.dumps(cleaned)
         share_raw = request.form.get('share_community_id')
         professional_share_community_id = None
         try:
@@ -8519,12 +8818,13 @@ def update_professional():
             update_sql = f"""
                 UPDATE users SET 
                     role={ph}, company={ph}, industry={ph}, degree={ph}, school={ph}, 
-                    skills={ph}, linkedin={ph}, experience={ph}, professional_share_community_id={ph}
+                    skills={ph}, linkedin={ph}, experience={ph}, professional_about={ph},
+                    professional_interests={ph}, professional_share_community_id={ph}
                 WHERE username={ph}
             """
             c.execute(update_sql, (
-                role, company, industry, degree, school, skills, linkedin, experience,
-                professional_share_community_id, username
+                role, company, industry, degree, school, skills, linkedin, experience, professional_about,
+                interests_payload, professional_share_community_id, username
             ))
             conn.commit()
         
@@ -8537,21 +8837,102 @@ def update_professional():
 @login_required
 def update_personal_info():
     username = session['username']
-    age = request.form.get('age')
-    gender = request.form.get('gender')
-    country = request.form.get('country')
-    city = request.form.get('city')
+    display_name = (request.form.get('display_name') or '').strip()
+    bio_text = (request.form.get('bio') or '').strip()
+    date_of_birth = request.form.get('date_of_birth')
+    gender = (request.form.get('gender') or '').strip() or None
+    country = (request.form.get('country') or '').strip() or None
+    city = (request.form.get('city') or '').strip() or None
+    age = request.form.get('age')  # legacy support
     
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             
             # Convert age to appropriate type
-            age = int(age) if age else None
+            age_val = None
+            if date_of_birth:
+                try:
+                    dob_obj = datetime.strptime(date_of_birth, '%Y-%m-%d')
+                    today = datetime.utcnow().date()
+                    age_val = int((today - dob_obj.date()).days / 365.2425)
+                    date_of_birth_iso = dob_obj.strftime('%Y-%m-%d')
+                except Exception:
+                    date_of_birth_iso = None
+            else:
+                date_of_birth_iso = None
+            # Fallback to provided age if DOB not supplied
+            if age and age_val is None:
+                try:
+                    age_val = int(age)
+                except Exception:
+                    age_val = None
+            c.execute("""UPDATE users SET age=?, gender=?, country=?, city=?, date_of_birth=? 
+                        WHERE username=?""", (age_val, gender, country, city, date_of_birth_iso, username))
             
-            c.execute("""UPDATE users SET age=?, gender=?, country=?, city=? 
-                        WHERE username=?""", (age, gender, country, city, username))
+            if display_name:
+                try:
+                    if USE_MYSQL:
+                        c.execute(
+                            "INSERT INTO user_profiles (username, display_name) VALUES (%s, %s) "
+                            "ON DUPLICATE KEY UPDATE display_name=VALUES(display_name)",
+                            (username, display_name)
+                        )
+                    else:
+                        c.execute(
+                            "INSERT INTO user_profiles (username, display_name) VALUES (?, ?) "
+                            "ON CONFLICT(username) DO UPDATE SET display_name=excluded.display_name",
+                            (username, display_name)
+                        )
+                except Exception as profile_err:
+                    logger.warning(f"Failed to upsert display name for {username}: {profile_err}")
+
+            bio_value = bio_text or None
+            try:
+                if USE_MYSQL:
+                    c.execute(
+                        "INSERT INTO user_profiles (username, bio) VALUES (%s, %s) "
+                        "ON DUPLICATE KEY UPDATE bio=VALUES(bio)",
+                        (username, bio_value)
+                    )
+                else:
+                    c.execute(
+                        "INSERT INTO user_profiles (username, bio) VALUES (?, ?) "
+                        "ON CONFLICT(username) DO UPDATE SET bio=excluded.bio",
+                        (username, bio_value)
+                    )
+            except Exception as bio_err:
+                logger.warning(f"Failed to update bio for {username}: {bio_err}")
+            
+            location_value = None
+            if city and country:
+                location_value = f"{city}, {country}"
+            elif city:
+                location_value = city
+            elif country:
+                location_value = country
+            if location_value is not None:
+                try:
+                    if USE_MYSQL:
+                        c.execute(
+                            "INSERT INTO user_profiles (username, location) VALUES (%s, %s) "
+                            "ON DUPLICATE KEY UPDATE location=VALUES(location)",
+                            (username, location_value)
+                        )
+                    else:
+                        c.execute(
+                            "INSERT INTO user_profiles (username, location) VALUES (?, ?) "
+                            "ON CONFLICT(username) DO UPDATE SET location=excluded.location",
+                            (username, location_value)
+                        )
+                except Exception as location_err:
+                    logger.warning(f"Failed to update profile location for {username}: {location_err}")
+            
             conn.commit()
+            try:
+                invalidate_user_cache(username)
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate user cache for {username}: {cache_err}")
             
             return jsonify({'success': True})
     except Exception as e:
@@ -11504,19 +11885,26 @@ def feed():
 @login_required
 def add_reaction():
     username = session['username']
-    post_id = request.form.get('post_id')
+    post_id = request.form.get('post_id', type=int)
     reaction_type = request.form.get('reaction')
 
     if not all([post_id, reaction_type]):
         return jsonify({'success': False, 'error': 'Missing data'}), 400
 
     try:
+        comm_id = None
+        view_count = None
         with get_db_connection() as conn:
             c = conn.cursor()
 
             # Check if the user already reacted to this post
             c.execute("SELECT id, reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
             existing = c.fetchone()
+
+            # Retrieve post metadata upfront (owner + community)
+            c.execute("SELECT username, community_id FROM posts WHERE id = ?", (post_id,))
+            post_data = c.fetchone()
+            comm_id = post_data['community_id'] if post_data and hasattr(post_data, 'keys') else (post_data[1] if post_data and len(post_data) > 1 else None)
 
             if existing:
                 if existing['reaction_type'] == reaction_type:
@@ -11531,52 +11919,47 @@ def add_reaction():
                           (post_id, username, reaction_type))
 
             # Create notification for post owner and other engaged users (only if adding/changing reaction, not removing)
-            if existing is None or (existing and existing['reaction_type'] != reaction_type):
-                # Get post owner and community_id
-                c.execute("SELECT username, community_id FROM posts WHERE id = ?", (post_id,))
-                post_data = c.fetchone()
+            if post_data and (existing is None or (existing and existing['reaction_type'] != reaction_type)):
                 logger.info(f"Reaction notification check - Post owner: {post_data['username'] if post_data else 'None'}, Reactor: {username}")
-                if post_data:
-                    owner = post_data['username']
-                    comm_id = post_data['community_id']
-                    recipients = set()
-                    if owner and owner != username:
-                        recipients.add(owner)
-                    # Prior repliers
+                owner = post_data['username']
+                recipients = set()
+                if owner and owner != username:
+                    recipients.add(owner)
+                # Prior repliers
+                try:
+                    c.execute("SELECT DISTINCT username FROM replies WHERE post_id=?", (post_id,))
+                    for rr in c.fetchall() or []:
+                        u = rr['username'] if hasattr(rr,'keys') else rr[0]
+                        if u and u != username and u != owner:
+                            recipients.add(u)
+                except Exception:
+                    pass
+                # Prior reactors
+                try:
+                    c.execute("SELECT DISTINCT username FROM reactions WHERE post_id=?", (post_id,))
+                    for rv in c.fetchall() or []:
+                        u = rv['username'] if hasattr(rv,'keys') else rv[0]
+                        if u and u != username and u != owner:
+                            recipients.add(u)
+                except Exception:
+                    pass
+                # Insert notifications
+                for target in recipients:
                     try:
-                        c.execute("SELECT DISTINCT username FROM replies WHERE post_id=?", (post_id,))
-                        for rr in c.fetchall() or []:
-                            u = rr['username'] if hasattr(rr,'keys') else rr[0]
-                            if u and u != username and u != owner:
-                                recipients.add(u)
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
+                            VALUES (?, ?, 'reaction', ?, ?, ?)
+                        """, (target, username, post_id, comm_id, f"{username} reacted in a thread you follow"))
                     except Exception:
-                        pass
-                    # Prior reactors
-                    try:
-                        c.execute("SELECT DISTINCT username FROM reactions WHERE post_id=?", (post_id,))
-                        for rv in c.fetchall() or []:
-                            u = rv['username'] if hasattr(rv,'keys') else rv[0]
-                            if u and u != username and u != owner:
-                                recipients.add(u)
-                    except Exception:
-                        pass
-                    # Insert notifications
-                    for target in recipients:
                         try:
                             c.execute("""
-                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message)
-                                VALUES (?, ?, 'reaction', ?, ?, ?)
+                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
+                                VALUES (?, ?, 'reaction', ?, ?, ?, NOW(), 0)
+                                ON CONFLICT(user_id, from_user, type, post_id, community_id) DO UPDATE SET created_at=excluded.created_at, is_read=0, message=excluded.message
                             """, (target, username, post_id, comm_id, f"{username} reacted in a thread you follow"))
                         except Exception:
-                            try:
-                                c.execute("""
-                                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                                    VALUES (?, ?, 'reaction', ?, ?, ?, NOW(), 0)
-                                    ON CONFLICT(user_id, from_user, type, post_id, community_id) DO UPDATE SET created_at=excluded.created_at, is_read=0, message=excluded.message
-                                """, (target, username, post_id, comm_id, f"{username} reacted in a thread you follow"))
-                            except Exception:
-                                pass
-                    logger.info(f"Created reaction notifications for {len(recipients)} recipients")
+                            pass
+                logger.info(f"Created reaction notifications for {len(recipients)} recipients")
             
             conn.commit()
 
@@ -11595,15 +11978,29 @@ def add_reaction():
             user_reaction_raw = c.fetchone()
             new_user_reaction = user_reaction_raw['reaction_type'] if user_reaction_raw else None
 
+            try:
+                view_count = upsert_post_view(c, int(post_id), username)
+                conn.commit()
+            except Exception as view_err:
+                logger.warning(f"add_reaction view tracking failed for post {post_id}: {view_err}")
+
             return jsonify({
                 'success': True,
                 'counts': new_counts,
-                'user_reaction': new_user_reaction
+                'user_reaction': new_user_reaction,
+                'view_count': int(view_count or 0) if view_count is not None else None
             })
 
     except Exception as e:
         logger.error(f"Error adding reaction: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+    finally:
+        try:
+            if comm_id:
+                invalidate_community_cache(comm_id)
+        except Exception as cache_err:
+            logger.warning(f"Failed to invalidate cache after reaction for community {comm_id}: {cache_err}")
 
 
 def create_notification(user_id, from_user, notification_type, post_id=None, community_id=None, message=None):
@@ -12916,6 +13313,7 @@ def post_reply():
     timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
     timestamp_display = now.strftime('%d-%m-%Y')
 
+    community_id = None
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -13010,7 +13408,19 @@ def post_reply():
             
             conn.commit()
 
+            try:
+                upsert_post_view(c, post_id, username)
+                conn.commit()
+            except Exception as view_err:
+                logger.warning(f"post_reply view tracking failed for post {post_id}: {view_err}")
+
         logger.info(f"Reply added successfully for {username} to post {post_id} with ID: {reply_id}")
+
+        try:
+            if community_id:
+                invalidate_community_cache(community_id)
+        except Exception as cache_err:
+            logger.warning(f"Failed to invalidate cache after reply for community {community_id}: {cache_err}")
 
         return jsonify({
             'success': True,
@@ -20817,19 +21227,18 @@ def api_post_view():
                     """, (username, community_id))
                     if not c.fetchone():
                         return jsonify({'success': False, 'error': 'Forbidden'}), 403
-            now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             try:
-                if USE_MYSQL:
-                    c.execute("INSERT IGNORE INTO post_views (post_id, username, viewed_at) VALUES (%s,%s,%s)", (post_id, username, now))
-                else:
-                    c.execute("INSERT OR IGNORE INTO post_views (post_id, username, viewed_at) VALUES (?,?,?)", (post_id, username, now))
+                view_count = upsert_post_view(c, post_id, username)
                 conn.commit()
+            except Exception as view_err:
+                logger.warning(f"Failed to record post view for {post_id}: {view_err}")
+                view_count = None
+            try:
+                if community_id:
+                    invalidate_community_cache(community_id)
             except Exception as e:
-                logger.warning(f"Failed to record post view for {post_id}: {e}")
-            c.execute("SELECT COUNT(*) as cnt FROM post_views WHERE post_id = ?", (post_id,))
-            row = c.fetchone()
-            count = row['cnt'] if hasattr(row, 'keys') else (row[0] if row else 0)
-            return jsonify({'success': True, 'view_count': int(count or 0), 'post_id': post_id})
+                logger.warning(f"Failed to invalidate cache for community {community_id}: {e}")
+            return jsonify({'success': True, 'view_count': int(view_count or 0), 'post_id': post_id})
     except Exception as e:
         logger.error(f"Error saving post view for {post_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500

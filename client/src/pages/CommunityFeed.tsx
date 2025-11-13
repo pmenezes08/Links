@@ -315,7 +315,15 @@ export default function CommunityFeed() {
       // Reconcile with server counts
       setData((prev:any) => {
         if (!prev) return prev
-        const updatedPosts = (prev.posts || []).map((p: any) => p.id === postId ? ({ ...p, reactions: { ...p.reactions, ...j.counts }, user_reaction: j.user_reaction }) : p)
+        const updatedPosts = (prev.posts || []).map((p: any) => {
+          if (p.id !== postId) return p
+          const nextPost: any = { ...p, reactions: { ...p.reactions, ...j.counts }, user_reaction: j.user_reaction }
+          if (typeof j.view_count === 'number') {
+            nextPost.view_count = j.view_count
+            nextPost.has_viewed = true
+          }
+          return nextPost
+        })
         return { ...prev, posts: updatedPosts }
       })
     }catch{}
@@ -884,13 +892,20 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     }
   }, [post.id])
 
+  const ensureViewRecorded = useCallback(() => {
+    if (!hasRecordedViewRef.current) {
+      hasRecordedViewRef.current = true
+      recordView()
+    }
+  }, [recordView])
+
   useEffect(() => {
     const el = cardRef.current
     if (!el) return
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.35) {
             if (!hasRecordedViewRef.current) {
               hasRecordedViewRef.current = true
               recordView()
@@ -898,7 +913,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           }
         }
       },
-      { threshold: [0.25, 0.6, 0.9] }
+      { threshold: [0.1, 0.35, 0.6, 0.9] }
     )
     observer.observe(el)
     return () => observer.disconnect()
@@ -1335,12 +1350,12 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 icon="fa-regular fa-heart" 
                 count={post.reactions?.['heart']||0} 
                 active={post.user_reaction==='heart'} 
-                onClick={()=> onToggleReaction(post.id, 'heart')}
+                onClick={()=> { ensureViewRecorded(); onToggleReaction(post.id, 'heart') }}
                 isHighlighted={highlightStep === 'reaction' && idx === 0}
               />
             </div>
-            <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
-            <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
+            <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> { ensureViewRecorded(); onToggleReaction(post.id, 'thumbs-up') }} />
+            <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> { ensureViewRecorded(); onToggleReaction(post.id, 'thumbs-down') }} />
             <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-white" title="View reactions" onClick={(e)=> { e.stopPropagation(); onOpenReactions && onOpenReactions() }}>
               <i className="fa-solid fa-users" />
             </button>
@@ -1475,41 +1490,42 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                           <i className="fa-solid fa-images" />
                           GIF
                         </button>
-                        <button
+                          <button
                           type="button"
                           className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110 disabled:opacity-40 uppercase tracking-wide text-[11px]"
                           disabled={sendingChildReply || (!childReplyText.trim() && !childReplyGif)}
-                          onClick={async (ev)=>{
-                            ev.stopPropagation()
-                            if (sendingChildReply || (!childReplyText.trim() && !childReplyGif)) return
-                            try{
-                              setSendingChildReply(true)
-                              const fd = new FormData()
-                              fd.append('post_id', String(post.id))
-                              fd.append('content', childReplyText.trim())
-                              fd.append('parent_reply_id', String(r.id))
-                              fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
-                              if (childReplyGif){
-                                const gifFile = await gifSelectionToFile(childReplyGif, 'community-reply')
-                                fd.append('image', gifFile)
+                            onClick={async (ev)=>{
+                              ev.stopPropagation()
+                              if (sendingChildReply || (!childReplyText.trim() && !childReplyGif)) return
+                              try{
+                                setSendingChildReply(true)
+                                const fd = new FormData()
+                                fd.append('post_id', String(post.id))
+                                fd.append('content', childReplyText.trim())
+                                fd.append('parent_reply_id', String(r.id))
+                                fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
+                                if (childReplyGif){
+                                  const gifFile = await gifSelectionToFile(childReplyGif, 'community-reply')
+                                  fd.append('image', gifFile)
+                                }
+                                const resp = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
+                                const j = await resp.json().catch(()=>null)
+                                if (j?.success && j.reply){
+                                  ensureViewRecorded()
+                                  onAddReply && onAddReply(post.id, j.reply as any)
+                                  setChildReplyText('')
+                                  setChildReplyGif(null)
+                                  setActiveChildReplyFor(null)
+                                } else {
+                                  alert(j?.error || 'Failed to reply')
+                                }
+                              }catch (err){
+                                console.error('Failed to send reply with GIF', err)
+                                alert('Failed to send reply. Please try again.')
+                              }finally{
+                                setSendingChildReply(false)
                               }
-                              const resp = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
-                              const j = await resp.json().catch(()=>null)
-                              if (j?.success && j.reply){
-                                onAddReply && onAddReply(post.id, j.reply as any)
-                                setChildReplyText('')
-                                setChildReplyGif(null)
-                                setActiveChildReplyFor(null)
-                              } else {
-                                alert(j?.error || 'Failed to reply')
-                              }
-                            }catch (err){
-                              console.error('Failed to send reply with GIF', err)
-                              alert('Failed to send reply. Please try again.')
-                            }finally{
-                              setSendingChildReply(false)
-                            }
-                          }}
+                            }}
                           aria-label="Send reply"
                         >
                           {sendingChildReply ? <i className="fa-solid fa-spinner fa-spin" /> : <><i className="fa-solid fa-paper-plane text-[11px]" /><span className="uppercase tracking-[0.2em] text-[10px] font-semibold">Send</span></>}
@@ -1567,31 +1583,32 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 disabled={sendingReply || (!replyText.trim() && !replyGif)}
                 onClick={async ()=>{
                   if (sendingReply || (!replyText.trim() && !replyGif)) return
-                  try{
-                    setSendingReply(true)
-                    const fd = new FormData()
-                    fd.append('post_id', String(post.id))
-                    fd.append('content', replyText.trim())
-                    fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
-                    if (replyGif){
-                      const gifFile = await gifSelectionToFile(replyGif, 'community-reply')
-                      fd.append('image', gifFile)
+                    try{
+                      setSendingReply(true)
+                      ensureViewRecorded()
+                      const fd = new FormData()
+                      fd.append('post_id', String(post.id))
+                      fd.append('content', replyText.trim())
+                      fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
+                      if (replyGif){
+                        const gifFile = await gifSelectionToFile(replyGif, 'community-reply')
+                        fd.append('image', gifFile)
+                      }
+                      const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
+                      const j = await r.json().catch(()=>null)
+                      if (j?.success && j.reply){
+                        onAddReply && onAddReply(post.id, j.reply as any)
+                        setReplyText('')
+                        setReplyGif(null)
+                      } else {
+                        alert(j?.error || 'Failed to reply')
+                      }
+                    }catch (err){
+                      console.error('Failed to send reply with GIF', err)
+                      alert('Failed to send reply. Please try again.')
+                    }finally{
+                      setSendingReply(false)
                     }
-                    const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
-                    const j = await r.json().catch(()=>null)
-                    if (j?.success && j.reply){
-                      onAddReply && onAddReply(post.id, j.reply as any)
-                      setReplyText('')
-                      setReplyGif(null)
-                    } else {
-                      alert(j?.error || 'Failed to reply')
-                    }
-                  }catch (err){
-                    console.error('Failed to send reply with GIF', err)
-                    alert('Failed to send reply. Please try again.')
-                  }finally{
-                    setSendingReply(false)
-                  }
                 }}
                 aria-label="Send reply"
               >
