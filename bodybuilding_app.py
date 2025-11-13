@@ -852,6 +852,141 @@ def fetch_community_names(cursor, community_ids: List[int]) -> List[str]:
         id_to_name[cid] = name
     return [id_to_name[cid] for cid in ids if cid in id_to_name]
 
+
+class CommunityMembershipLimitError(Exception):
+    """Raised when a free-plan community exceeds its member capacity."""
+    pass
+
+
+def normalize_subscription(value: Optional[str]) -> str:
+    return str(value or '').strip().lower()
+
+
+def fetch_user_subscription(cursor, username: Optional[str]) -> str:
+    if not username:
+        return ''
+    placeholder = get_sql_placeholder()
+    cursor.execute(f"SELECT subscription FROM users WHERE username = {placeholder}", (username,))
+    row = cursor.fetchone()
+    if not row:
+        return ''
+    if hasattr(row, 'keys'):
+        return normalize_subscription(row.get('subscription'))
+    return normalize_subscription(row[0] if isinstance(row, (list, tuple)) and row else row)
+
+
+def is_free_subscription(subscription_value: str) -> bool:
+    return subscription_value not in {'premium'}
+
+
+def get_community_basic(cursor, community_id: int) -> Optional[Dict[str, Any]]:
+    placeholder = get_sql_placeholder()
+    cursor.execute(f"SELECT id, creator_username, parent_community_id FROM communities WHERE id = {placeholder}", (community_id,))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if hasattr(row, 'keys'):
+        return {
+            'id': row.get('id'),
+            'creator_username': row.get('creator_username'),
+            'parent_community_id': row.get('parent_community_id'),
+        }
+    return {
+        'id': row[0] if len(row) > 0 else None,
+        'creator_username': row[1] if len(row) > 1 else None,
+        'parent_community_id': row[2] if len(row) > 2 else None,
+    }
+
+
+def get_community_ancestors(cursor, community_id: int) -> List[Dict[str, Any]]:
+    """Return list of ancestor community records starting from the specified community."""
+    ancestors: List[Dict[str, Any]] = []
+    current_id = community_id
+    visited: Set[int] = set()
+    while current_id:
+        if current_id in visited:
+            break
+        visited.add(current_id)
+        info = get_community_basic(cursor, current_id)
+        if not info:
+            break
+        ancestors.append(info)
+        current_id = info.get('parent_community_id')
+    return ancestors
+
+
+def ensure_free_parent_member_capacity(cursor, community_id: Optional[int], extra_members: int = 1) -> None:
+    """Ensure a free-plan parent community has capacity for additional members."""
+    if not community_id:
+        return
+    community_info = get_community_basic(cursor, community_id)
+    if not community_info:
+        return
+    if community_info.get('parent_community_id'):
+        # Only enforce on parent communities
+        return
+    creator_username = community_info.get('creator_username')
+    if not creator_username or creator_username.lower() == 'admin':
+        return
+    subscription_value = fetch_user_subscription(cursor, creator_username)
+    if not is_free_subscription(subscription_value):
+        return
+    placeholder = get_sql_placeholder()
+    cursor.execute(f"SELECT COUNT(*) FROM user_communities WHERE community_id = {placeholder}", (community_id,))
+    row = cursor.fetchone()
+    current_count = 0
+    if row:
+        if hasattr(row, 'keys'):
+            current_count = list(row.values())[0]
+        else:
+            current_count = row[0] if isinstance(row, (list, tuple)) and row else 0
+    try:
+        current_count = int(current_count or 0)
+    except Exception:
+        current_count = 0
+    if current_count + extra_members > 100:
+        raise CommunityMembershipLimitError('Free plan communities can have up to 100 members. Upgrade to add more members.')
+
+
+def add_user_to_community(cursor, user_id: int, community_id: int, role: Optional[str] = 'member') -> None:
+    """Insert a user into user_communities respecting free plan limits."""
+    ensure_free_parent_member_capacity(cursor, community_id)
+    joined_at_value = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if role is None:
+        if USE_MYSQL:
+            cursor.execute(
+                """
+                INSERT INTO user_communities (user_id, community_id, joined_at)
+                VALUES (%s, %s, %s)
+                """,
+                (user_id, community_id, joined_at_value),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO user_communities (user_id, community_id, joined_at)
+                VALUES (?, ?, ?)
+                """,
+                (user_id, community_id, joined_at_value),
+            )
+    else:
+        if USE_MYSQL:
+            cursor.execute(
+                """
+                INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (user_id, community_id, role, joined_at_value),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO user_communities (user_id, community_id, role, joined_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (user_id, community_id, role, joined_at_value),
+            )
+
 def get_scalar_result(row, column_index=0, column_name=None):
     """Helper to get a scalar value from a database row that could be dict or tuple"""
     if row is None:
@@ -3151,7 +3286,10 @@ def ensure_admin_member_of_all():
             for cid in comms:
                 c.execute("SELECT 1 FROM user_communities WHERE user_id=? AND community_id=?", (admin_id, cid))
                 if not c.fetchone():
-                    c.execute("INSERT INTO user_communities (user_id, community_id, joined_at) VALUES (?, ?, ?)", (admin_id, cid, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                    try:
+                        add_user_to_community(c, admin_id, int(cid), role=None)
+                    except CommunityMembershipLimitError:
+                        logger.warning(f"Skipped adding admin to community {cid} due to free-plan member limit.")
             conn.commit()
     except Exception as e:
         logger.error(f"ensure_admin_member_of_all error: {e}")
@@ -3272,19 +3410,12 @@ def ensure_paulo_member_of_gym():
                 c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (user_id, gym_id))
                 exists = c.fetchone() is not None
                 if not exists:
-                    if USE_MYSQL:
-                        c.execute(
-                            "INSERT IGNORE INTO user_communities (user_id, community_id, joined_at) VALUES (%s, %s, NOW())",
-                            (user_id, gym_id)
-                        )
-                    else:
-                        from datetime import datetime
-                        c.execute(
-                            "INSERT INTO user_communities (user_id, community_id, joined_at) VALUES (?, ?, ?)",
-                            (user_id, gym_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-                        )
-                    conn.commit()
-                    logger.info(f"Added Paulo (user_id={user_id}) to Gym community (id={gym_id})")
+                    try:
+                        add_user_to_community(c, user_id, int(gym_id), role=None)
+                        conn.commit()
+                        logger.info(f"Added Paulo (user_id={user_id}) to Gym community (id={gym_id})")
+                    except CommunityMembershipLimitError:
+                        logger.warning(f"Skipped adding Paulo to Gym community {gym_id} due to free-plan member limit.")
                 else:
                     logger.info("Paulo is already a member of the Gym community")
             except Exception as e:
@@ -4644,10 +4775,16 @@ def signup():
                         # Check if already a member
                         c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
                         if not c.fetchone():
-                            c.execute("""
-                                INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                                VALUES (?, ?, 'member', ?)
-                            """, (user_id, comm_id, datetime.now().isoformat()))
+                            try:
+                                add_user_to_community(c, user_id, int(comm_id), role='member')
+                            except CommunityMembershipLimitError as limit_err:
+                                conn.rollback()
+                                error_msg = str(limit_err)
+                                is_mobile_request = any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
+                                if is_mobile_request:
+                                    return jsonify({'success': False, 'error': error_msg}), 403
+                                flash(error_msg, 'error')
+                                return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
                     
                     # Mark invitation as used
                     c.execute("""
@@ -4928,10 +5065,12 @@ def login_password():
                                             for comm_id_join in communities_to_join:
                                                 c.execute(f"SELECT 1 FROM user_communities WHERE user_id = {placeholder} AND community_id = {placeholder}", (user_id, comm_id_join))
                                                 if not c.fetchone():
-                                                    c.execute(f"""
-                                                        INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                                                        VALUES ({placeholder}, {placeholder}, 'member', {placeholder})
-                                                    """, (user_id, comm_id_join, datetime.now().isoformat()))
+                                                    try:
+                                                        add_user_to_community(c, user_id, int(comm_id_join), role='member')
+                                                    except CommunityMembershipLimitError as limit_err:
+                                                        conn.rollback()
+                                                        flash(str(limit_err), 'error')
+                                                        return redirect(url_for('communities'))
                                             
                                             if not already_used:
                                                 c.execute(f"""
@@ -10339,10 +10478,14 @@ def add_community_member():
     if not community_id or not new_member_username:
         return jsonify({'success': False, 'error': 'Missing required parameters'})
     try:
+        community_id_int = int(community_id)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid community ID'})
+    try:
         with get_db_connection() as conn:
             c = conn.cursor()
             # Check if user is community owner or admin
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
+            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id_int,))
             community = c.fetchone()
             if not community:
                 return jsonify({'success': False, 'error': 'Community not found'})
@@ -10361,13 +10504,15 @@ def add_community_member():
                 SELECT 1 FROM user_communities uc
                 INNER JOIN users u ON uc.user_id = u.id
                 WHERE uc.community_id = ? AND u.username = ?
-            """, (community_id, new_member_username))
+            """, (community_id_int, new_member_username))
             if c.fetchone():
                 return jsonify({'success': False, 'error': 'User is already a member'})
             
             # Add member
-            c.execute("INSERT INTO user_communities (community_id, user_id, joined_at) VALUES (?, ?, ?)",
-                      (community_id, new_member['id'], datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            try:
+                add_user_to_community(c, new_member['id'], community_id_int, role='member')
+            except CommunityMembershipLimitError as limit_err:
+                return jsonify({'success': False, 'error': str(limit_err)}), 403
             conn.commit()
         return jsonify({'success': True})
     except Exception as e:
@@ -18241,6 +18386,12 @@ def create_community():
         # Log all form data for debugging
         logger.info(f"Form data: {dict(request.form)}")
         
+        is_app_admin_user = is_app_admin(username)
+        subscription_value = 'free'
+        is_premium_user = False
+        is_free_creator = False
+        is_business_admin_creating_sub = False
+        
         # Enforce verified email
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -18259,9 +18410,10 @@ def create_community():
                 subscription = (sub_row['subscription'] if hasattr(sub_row,'keys') else (sub_row[0] if sub_row else 'free'))
             except Exception:
                 subscription = 'free'
+            subscription_value = normalize_subscription(subscription)
+            is_premium_user = subscription_value == 'premium'
             
             # Check if this is a Business sub-community creation by a parent admin
-            is_business_admin_creating_sub = False
             parent_community_id_check = request.form.get('parent_community_id', None)
             community_type_check = request.form.get('type', '')
             
@@ -18294,10 +18446,10 @@ def create_community():
                 except Exception as bypass_err:
                     logger.warning(f"Error checking Business admin bypass: {bypass_err}")
             
-            # Only enforce premium if not admin and not Business admin creating sub
-            if not is_business_admin_creating_sub and username.lower() != 'admin':
-                if not subscription or str(subscription).lower() != 'premium':
-                    return jsonify({'success': False, 'error': 'only premium users can create communities'}), 403
+            # Determine if user should be treated as free-plan creator
+            if not is_business_admin_creating_sub and not is_app_admin_user:
+                if not is_premium_user:
+                    is_free_creator = True
         
         name = request.form.get('name')
         community_type = request.form.get('type')
@@ -18309,6 +18461,12 @@ def create_community():
         accent_color = request.form.get('accent_color', '#4db6ac')
         card_color = request.form.get('card_color', '#1a2526')
         parent_community_id = request.form.get('parent_community_id', None)
+        parent_community_id_value: Optional[int] = None
+        if parent_community_id and parent_community_id != 'none':
+            try:
+                parent_community_id_value = int(parent_community_id)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'Invalid parent community specified'}), 400
         
         if not name or not community_type:
             return jsonify({'success': False, 'error': 'Name and type are required'}), 400
@@ -18388,13 +18546,66 @@ def create_community():
         with get_db_connection() as conn:
             c = conn.cursor()
             
+            # Apply free-plan community limits before creation
+            parent_id_int = parent_community_id_value
+            if is_free_creator:
+                if parent_id_int is None:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT COUNT(*) FROM communities 
+                            WHERE creator_username = %s AND (parent_community_id IS NULL OR parent_community_id = '')
+                        """, (username,))
+                    else:
+                        c.execute("""
+                            SELECT COUNT(*) FROM communities 
+                            WHERE creator_username = ? AND (parent_community_id IS NULL OR parent_community_id = '')
+                        """, (username,))
+                    parent_count = get_scalar_result(c.fetchone(), column_index=0) or 0
+                    try:
+                        parent_count = int(parent_count)
+                    except Exception:
+                        parent_count = 0
+                    if parent_count >= 2:
+                        return jsonify({'success': False, 'error': 'Free plan allows up to 2 parent communities. Upgrade to create more communities.'}), 403
+                else:
+                    parent_info = get_community_basic(c, parent_id_int)
+                    if not parent_info:
+                        return jsonify({'success': False, 'error': 'Parent community not found'}), 404
+                    ancestors = get_community_ancestors(c, parent_id_int)
+                    depth = len(ancestors)
+                    top_info = ancestors[-1] if ancestors else parent_info
+                    top_creator = top_info.get('creator_username')
+                    if top_creator != username:
+                        return jsonify({'success': False, 'error': 'Free plan sub-communities must be created under your own parent communities.'}), 403
+                    if depth > 2:
+                        return jsonify({'success': False, 'error': 'Free plan communities support only one nested level.'}), 403
+                    child_placeholder = get_sql_placeholder()
+                    if parent_info.get('parent_community_id') is None:
+                        c.execute(f"SELECT COUNT(*) FROM communities WHERE parent_community_id = {child_placeholder}", (parent_id_int,))
+                        child_count = get_scalar_result(c.fetchone(), column_index=0) or 0
+                        try:
+                            child_count = int(child_count)
+                        except Exception:
+                            child_count = 0
+                        if child_count >= 3:
+                            return jsonify({'success': False, 'error': 'Free plan parent communities can have up to 3 sub-communities.'}), 403
+                    else:
+                        c.execute(f"SELECT COUNT(*) FROM communities WHERE parent_community_id = {child_placeholder}", (parent_id_int,))
+                        nested_count = get_scalar_result(c.fetchone(), column_index=0) or 0
+                        try:
+                            nested_count = int(nested_count)
+                        except Exception:
+                            nested_count = 0
+                        if nested_count >= 1:
+                            return jsonify({'success': False, 'error': 'Free plan sub-communities can have only one nested community.'}), 403
+
             # If creating a sub-community, enforce premium-only for creators as well
             # (Already enforced above for community creation, but keep guard explicit)
             placeholders = ', '.join([get_sql_placeholder()] * 14)
             c.execute(f"""
                 INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
                 VALUES ({placeholders})
-            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id if parent_community_id and parent_community_id != 'none' else None))
+            """, (name, community_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_id_int))
             
             community_id = c.lastrowid
             
@@ -18403,11 +18614,11 @@ def create_community():
             user_row = c.fetchone()
             if user_row:
                 user_id = user_row[0] if not hasattr(user_row, 'keys') else user_row['id']
-                uc_ph = ', '.join([get_sql_placeholder()] * 4)
-                c.execute(f"""
-                    INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                    VALUES ({uc_ph})
-                """, (user_id, community_id, 'owner', datetime.now().strftime('%m.%d.%y %H:%M')))
+                try:
+                    add_user_to_community(c, user_id, community_id, role='owner')
+                except CommunityMembershipLimitError as limit_err:
+                    conn.rollback()
+                    return jsonify({'success': False, 'error': str(limit_err)}), 403
             
             # Ensure admin is also a member of every community
             c.execute("SELECT id FROM users WHERE username = 'admin'")
@@ -18416,11 +18627,11 @@ def create_community():
                 admin_id = admin_row['id'] if hasattr(admin_row, 'keys') else admin_row[0]
                 c.execute(f"SELECT 1 FROM user_communities WHERE user_id={get_sql_placeholder()} AND community_id={get_sql_placeholder()}", (admin_id, community_id))
                 if not c.fetchone():
-                    uc2_ph = ', '.join([get_sql_placeholder()] * 3)
-                    c.execute(f"""
-                        INSERT INTO user_communities (user_id, community_id, joined_at)
-                        VALUES ({uc2_ph})
-                    """, (admin_id, community_id, datetime.now().strftime('%m.%d.%y %H:%M')))
+                    try:
+                        add_user_to_community(c, admin_id, community_id, role=None)
+                    except CommunityMembershipLimitError as limit_err:
+                        conn.rollback()
+                        return jsonify({'success': False, 'error': str(limit_err)}), 403
             
             conn.commit()
             
@@ -19020,15 +19231,11 @@ def fix_database_issues():
                     username_member = member['username']
                     
                     try:
-                        # Add to parent community
-                        c.execute("""
-                            INSERT INTO user_communities (user_id, community_id, joined_at)
-                            VALUES (%s, %s, NOW())
-                        """, (user_id, parent_id))
-                        
+                        add_user_to_community(c, int(user_id), int(parent_id), role=None)
                         total_added += 1
                         results.append(f"✅ Added {username_member} to {parent_name}")
-                        
+                    except CommunityMembershipLimitError as limit_err:
+                        results.append(f"⚠️ Skipped adding {username_member} to {parent_name}: {limit_err}")
                     except Exception as e:
                         results.append(f"❌ Failed to add {username_member}: {e}")
             
@@ -19561,10 +19768,11 @@ def join_with_invite():
                 # Check if already a member
                 c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
                 if not c.fetchone():
-                    c.execute("""
-                        INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                        VALUES (?, ?, 'member', ?)
-                    """, (user_id, comm_id, datetime.now().isoformat()))
+                    try:
+                        add_user_to_community(c, user_id, int(comm_id), role='member')
+                    except CommunityMembershipLimitError as limit_err:
+                        conn.rollback()
+                        return jsonify({'success': False, 'error': str(limit_err)}), 403
             
             # Mark invitation as used
             c.execute("""
@@ -19687,10 +19895,11 @@ def invite_to_community():
                     # Check if already a member
                     c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (existing_user_id, comm_id))
                     if not c.fetchone():
-                        c.execute("""
-                            INSERT INTO user_communities (user_id, community_id, role, joined_at)
-                            VALUES (?, ?, 'member', ?)
-                        """, (existing_user_id, comm_id, datetime.now().isoformat()))
+                        try:
+                            add_user_to_community(c, existing_user_id, int(comm_id), role='member')
+                        except CommunityMembershipLimitError as limit_err:
+                            conn.rollback()
+                            return jsonify({'success': False, 'error': str(limit_err)}), 403
                 
                 conn.commit()
                 
@@ -22622,9 +22831,18 @@ def api_groups_create():
         with get_db_connection() as conn:
             c = conn.cursor()
             # Ensure community exists
-            c.execute("SELECT id FROM communities WHERE id = ?", (community_id,))
-            if not c.fetchone():
+            c.execute("SELECT id, creator_username, parent_community_id FROM communities WHERE id = ?", (community_id,))
+            community_row = c.fetchone()
+            if not community_row:
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
+            community_parent_id = community_row['parent_community_id'] if hasattr(community_row, 'keys') else community_row[2]
+            ancestors = get_community_ancestors(c, community_id)
+            top_info = ancestors[-1] if ancestors else get_community_basic(c, community_id)
+            top_creator = top_info.get('creator_username') if top_info else None
+            if community_parent_id:
+                subscription_value = fetch_user_subscription(c, top_creator) if top_creator else ''
+                if top_creator and top_creator.lower() != 'admin' and is_free_subscription(subscription_value):
+                    return jsonify({'success': False, 'error': 'Groups for free plan communities are only available at the parent community level.'}), 403
             # Insert group
             if USE_MYSQL:
                 c.execute("""
@@ -26753,7 +26971,10 @@ def seed_dummy_data():
                 for comm_id in (gym_comm_id, cf_comm_id):
                     c.execute('SELECT 1 FROM user_communities WHERE user_id=? AND community_id=?', (user_id, comm_id))
                     if not c.fetchone():
-                        c.execute('INSERT INTO user_communities (user_id, community_id, joined_at) VALUES (?, ?, ?)', (user_id, comm_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                        try:
+                            add_user_to_community(c, user_id, int(comm_id), role=None)
+                        except CommunityMembershipLimitError:
+                            logger.warning(f"Skipping seed membership for user {u} in community {comm_id} due to free-plan member limit.")
 
             # Generate 20 users
             users = [f'user{i:02d}' for i in range(1, 21)]
