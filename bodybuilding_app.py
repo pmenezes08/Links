@@ -4410,10 +4410,10 @@ def is_nutrition_related(message):
 @app.route('/', methods=['GET'])
 def index():
     # Guests: mobile -> React welcome (serve SPA directly), desktop -> HTML
-    # Logged-in users -> communities
+    # Logged-in users -> dashboard
     try:
         if session.get('username'):
-            return redirect(url_for('communities'))
+            return redirect(url_for('premium_dashboard'))
         ua = request.headers.get('User-Agent', '')
         is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
         if is_mobile:
@@ -4932,7 +4932,7 @@ def login_password():
     if request.method == 'POST':
         password = request.form.get('password', '')
         if username == 'admin' and password == '12345':
-            return redirect(url_for('communities'))
+            return redirect(url_for('premium_dashboard'))
         try:
             conn = get_db_connection()
             c = conn.cursor()
@@ -5071,7 +5071,7 @@ def login_password():
                                                     except CommunityMembershipLimitError as limit_err:
                                                         conn.rollback()
                                                         flash(str(limit_err), 'error')
-                                                        return redirect(url_for('communities'))
+                                                        return redirect(url_for('premium_dashboard'))
                                             
                                             if not already_used:
                                                 c.execute(f"""
@@ -5091,7 +5091,7 @@ def login_password():
                     
                     # Issue remember-me token
                     from flask import make_response
-                    resp = make_response(redirect(url_for('communities')))
+                    resp = make_response(redirect(url_for('premium_dashboard')))
                     _issue_remember_token(resp, username)
                     return resp
                     
@@ -5203,7 +5203,7 @@ def dashboard():
         show_join_prompt = session.pop('show_join_community_prompt', False)
         
         if user['subscription'] == 'premium':
-            return redirect(url_for('communities'))
+            return redirect(url_for('premium_dashboard'))
         return render_template('dashboard.html', name=username, communities=communities, show_join_prompt=show_join_prompt)
     except Exception as e:
         logger.error(f"Error in dashboard for {username}: {str(e)}")
