@@ -349,15 +349,9 @@ export default function Messages(){
                         <button
                           type="button"
                           onClick={() => {
-                            if (selected && !hasChildren) {
-                              setCommunityFilter('all')
-                              setSubCommunityFilter(null)
-                              setOpenDropdownId(null)
-                            } else {
-                              setCommunityFilter(comm.id)
-                              setSubCommunityFilter(null)
-                              setOpenDropdownId(hasChildren ? (selected && open ? null : comm.id) : null)
-                            }
+                            setCommunityFilter(comm.id)
+                            setSubCommunityFilter(null)
+                            setOpenDropdownId(hasChildren ? (open ? null : comm.id) : null)
                           }}
                           className={`px-3 py-1.5 text-xs rounded-full border transition whitespace-nowrap flex items-center gap-1 ${
                             selected
@@ -371,35 +365,36 @@ export default function Messages(){
                             <i className={`fa-solid fa-chevron-${selected && open ? 'up' : 'down'} text-[9px]`} />
                           ) : null}
                         </button>
-                        {hasChildren && selected && open ? (
-                          <div className="absolute left-0 right-0 top-full mt-2 rounded-lg border border-white/12 bg-[#0b0d11] shadow-[0_16px_35px_rgba(2,4,8,0.55)] z-50">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCommunityFilter(comm.id)
-                                setSubCommunityFilter(null)
-                                setOpenDropdownId(null)
-                              }}
-                              className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/10 ${
-                                subCommunityFilter === null ? 'bg-white/10 text-[#4db6ac]' : ''
-                              }`}
-                            >
-                              <span className="truncate">All {comm.name}</span>
-                            </button>
-                            {renderSubOptions(comm.children, 1, comm.id)}
-                          </div>
-                        ) : null}
                       </div>
                     )
                   })}
                 </div>
             </div>
 
-            {openDropdownId !== null ? (
-              <div className="rounded-xl border border-white/10 bg-black p-4 text-sm text-[#9fb0b5] text-center">
-                Select a community or sub-community above.
-              </div>
-            ) : (
+            {(() => {
+              if (openDropdownId !== null) {
+                const node = nodeById.get(openDropdownId)
+                if (node && node.children.length > 0) {
+                  return (
+                    <div className="rounded-xl border border-white/10 bg-black p-4 space-y-1">
+                      <div className="text-xs text-white/70 mb-2">Filter {node.name}</div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCommunityFilter(node.id)
+                          setSubCommunityFilter(null)
+                          setOpenDropdownId(null)
+                        }}
+                        className={`flex w-full items-center gap-2 px-3 py-2 text-xs text-white/80 hover:bg-white/10 ${subCommunityFilter === null ? 'bg-white/10 text-[#4db6ac]' : ''}`}
+                      >
+                        <span className="truncate">All {node.name}</span>
+                      </button>
+                      {renderSubOptions(node.children, 1, node.id)}
+                    </div>
+                  )
+                }
+              }
+              return (
             <div className="rounded-xl border border-white/10 bg-black divide-y divide-white/10">
               {loading ? (
                 <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
@@ -504,7 +499,8 @@ export default function Messages(){
               })
             )}
             </div>
-            )}
+              )
+            })()}
           </div>
         ) : (
           <NewMessageInline />
