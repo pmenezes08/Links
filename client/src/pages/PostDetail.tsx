@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
+import { useCallback, useEffect, useRef, useState, memo } from 'react'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -13,9 +13,6 @@ import { formatSmartTime } from '../utils/time'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
-import { useImagineJobs, type ImagineJobState, type ImagineStyle } from '../hooks/useImagineJobs'
-import { ImagineStyleModal, ImagineOwnerModal } from '../components/ImagineModal'
-import VideoCarousel from '../components/VideoCarousel'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}> }
@@ -119,15 +116,6 @@ export default function PostDetail(){
   const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview, level } = useAudioRecorder() as any
   const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
-  const imagine = useImagineJobs()
-  const [imagineRequest, setImagineRequest] = useState<{ targetType: 'post' | 'reply'; targetId: number; nsfwAllowed?: boolean } | null>(null)
-  const [styleModalOpen, setStyleModalOpen] = useState(false)
-  const [styleSubmitting, setStyleSubmitting] = useState(false)
-  const [ownerJobId, setOwnerJobId] = useState<number | null>(null)
-  const [resolvingJobId, setResolvingJobId] = useState<number | null>(null)
-  const [carouselItems, setCarouselItems] = useState<Array<{type: 'original' | 'ai_video', image_path?: string | null, image_url?: string | null, video_path?: string | null, video_url?: string | null, created_by?: string | null, style?: string | null}>>([])
-  const [carouselLoading, setCarouselLoading] = useState(false)
-
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
@@ -258,142 +246,6 @@ export default function PostDetail(){
   }, [post_id])
 
   useEffect(() => {
-    const awaiting = Object.values(imagine.jobs).find(job => job.isOwner && job.status === 'awaiting_owner')
-    setOwnerJobId(awaiting ? awaiting.id : null)
-  }, [imagine.jobs])
-
-  useEffect(() => {
-    Object.values(imagine.jobs).forEach(job => {
-      if (job.status === 'error' && job.error) {
-        alert(job.error)
-        imagine.removeJob(job.id)
-      } else if (!job.isOwner && job.status === 'completed') {
-        imagine.removeJob(job.id)
-        refreshPost()
-        // Trigger carousel refresh when new AI video is completed
-        // The carousel useEffect will detect the new video from the updated post/replies
-      }
-    })
-  }, [imagine.jobs, imagine.removeJob, refreshPost])
-
-  // Fetch AI videos for carousel
-  useEffect(() => {
-    console.log('[Carousel] PostDetail useEffect triggered for post', post?.id, 'image_path:', post?.image_path, 'video_path:', post?.video_path, 'replies:', post?.replies?.length)
-    if (!post) {
-      console.log('[Carousel] PostDetail: no post, returning')
-      return
-    }
-    
-    async function fetchCarouselItems() {
-      if (!post) return
-      console.log('[Carousel] PostDetail fetchCarouselItems called for post', post.id)
-      setCarouselLoading(true)
-      try {
-        const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
-        const json = await resp.json().catch(() => null)
-        console.log('[Carousel] PostDetail fetch response for post', post.id, ':', json)
-        if (resp.ok && json?.success && json.videos) {
-          // Only set carousel items if there are AI videos (more than just original image)
-          const hasAiVideos = json.videos.some((v: any) => v.type === 'ai_video')
-          console.log('[Carousel] PostDetail Has AI videos:', hasAiVideos, 'Videos:', json.videos)
-          if (hasAiVideos) {
-            // Carousel should show: original image + AI videos
-            console.log('[Carousel] PostDetail Setting carousel items:', json.videos)
-            setCarouselItems(json.videos)
-          } else {
-            // No AI videos - don't show carousel
-            console.log('[Carousel] PostDetail No AI videos, setting empty carousel items')
-            setCarouselItems([])
-          }
-        } else {
-          // API error: don't show carousel
-          console.log('[Carousel] PostDetail API error or no videos:', resp.ok, json)
-          setCarouselItems([])
-        }
-      } catch (err) {
-        console.error('[Carousel] PostDetail Failed to fetch carousel items:', err)
-        setCarouselItems([])
-      } finally {
-        setCarouselLoading(false)
-      }
-    }
-    
-    // Always check for carousel items if post has image, video, or replies (which might have videos)
-    if (post.image_path || post.video_path || (post.replies && post.replies.length > 0)) {
-      console.log('[Carousel] PostDetail condition met, calling fetchCarouselItems')
-      fetchCarouselItems()
-    } else {
-      console.log('[Carousel] PostDetail condition NOT met, clearing carousel items')
-      setCarouselItems([])
-    }
-  }, [post?.id, post?.image_path, post?.video_path, post?.replies?.length])
-
-  const jobIndex = useMemo(() => {
-    const map = new Map<string, ImagineJobState>()
-    Object.values(imagine.jobs).forEach(job => {
-      map.set(`${job.targetType}:${job.targetId}`, job)
-    })
-    return map
-  }, [imagine.jobs])
-
-  const getImagineJob = useCallback((targetType: 'post' | 'reply', targetId: number) => {
-    return jobIndex.get(`${targetType}:${targetId}`)
-  }, [jobIndex])
-
-  const handleOpenImagine = useCallback((targetType: 'post' | 'reply', targetId: number, nsfwAllowed?: boolean) => {
-    setImagineRequest({ targetType, targetId, nsfwAllowed })
-    setStyleModalOpen(true)
-  }, [])
-
-  const handleStyleSelect = useCallback(async (style: ImagineStyle) => {
-    if (!imagineRequest) return
-    setStyleSubmitting(true)
-    try {
-      await imagine.startImagine({ targetType: imagineRequest.targetType, targetId: imagineRequest.targetId, style })
-      setStyleModalOpen(false)
-      setImagineRequest(null)
-    } catch (err: any) {
-      alert(err?.message || 'Failed to start imagine job')
-    } finally {
-      setStyleSubmitting(false)
-    }
-  }, [imagine, imagineRequest])
-
-  const handleCloseStyleModal = useCallback(() => {
-    if (styleSubmitting) return
-    setStyleModalOpen(false)
-    setImagineRequest(null)
-  }, [styleSubmitting])
-
-  const ownerJob = ownerJobId ? imagine.jobs[ownerJobId] : undefined
-
-  const handleOwnerDecision = useCallback(async (action: 'replace' | 'add_alongside') => {
-    if (!ownerJobId) return
-    setResolvingJobId(ownerJobId)
-    try {
-      await imagine.resolveImagine(ownerJobId, action)
-      imagine.removeJob(ownerJobId)
-      setOwnerJobId(null)
-      await refreshPost()
-      // Force carousel refresh after owner decision (video is now available)
-      // The carousel useEffect will pick up the change from post.image_path/post.video_path
-    } catch (err: any) {
-      alert(err?.message || 'Failed to apply change')
-    } finally {
-      setResolvingJobId(null)
-    }
-  }, [imagine, ownerJobId, refreshPost])
-
-  const nsfwAllowedForModal = useMemo(() => {
-    const val = (post as any)?.allow_nsfw_imagine
-    if (typeof val === 'boolean') return val
-    return true
-  }, [post])
-
-  const postImagineJob = post ? getImagineJob('post', post.id) : undefined
-  const ownerVideoUrl = ownerJob?.resultUrl || (ownerJob?.resultPath ? normalizePath(ownerJob.resultPath) : undefined)
-
-  useEffect(() => {
     // Pull-to-refresh on overscroll at top
     let startY = 0
     const threshold = 64
@@ -483,78 +335,6 @@ export default function PostDetail(){
     loadUser()
     return () => { mounted = false }
   }, [])
-
-  // Fetch carousel items when post changes or AI jobs complete
-  useEffect(() => {
-    if (!post?.id) return
-
-    async function fetchCarouselItems() {
-      console.log('[Carousel] PostDetail fetchCarouselItems called for post', post!.id)
-      setCarouselLoading(true)
-      try {
-        const resp = await fetch(`/api/carousel_items?post_id=${post!.id}`, { credentials: 'include' })
-        const json = await resp.json().catch(() => null)
-
-        console.log('[Carousel] PostDetail fetch response for post', post!.id, ':', json)
-
-        if (resp.ok && json?.success) {
-          const hasAiVideos = json.has_ai_videos
-          console.log('[Carousel] PostDetail Has AI videos:', hasAiVideos, 'Videos:', json.videos)
-
-          if (hasAiVideos) {
-            // Carousel should show: original image + AI videos
-            console.log('[Carousel] PostDetail Setting carousel items:', json.videos)
-            // Log the actual URLs being used
-            json.videos.forEach((item: any, i: number) => {
-              console.log(`[Carousel] Item ${i}:`, {
-                type: item.type,
-                video_path: item.video_path,
-                video_url: item.video_url,
-                normalized_path: item.video_path ? normalizePath(item.video_path) : 'N/A'
-              })
-            })
-            setCarouselItems(json.videos)
-          } else {
-            // No AI videos - don't show carousel
-            console.log('[Carousel] PostDetail No AI videos, setting empty carousel items')
-            setCarouselItems([])
-          }
-        } else {
-          // API error: don't show carousel
-          console.log('[Carousel] PostDetail API error or no videos:', resp.ok, json)
-          setCarouselItems([])
-        }
-      } catch (err) {
-        console.error('[Carousel] PostDetail Failed to fetch carousel items:', err)
-        setCarouselItems([])
-      } finally {
-        setCarouselLoading(false)
-      }
-    }
-
-    // Always check for carousel items if post has image, video, or replies (which might have videos)
-    if (post!.image_path || post!.video_path || post!.replies.length > 0) {
-      console.log('[Carousel] PostDetail condition met, calling fetchCarouselItems')
-      fetchCarouselItems()
-    } else {
-      console.log('[Carousel] PostDetail condition NOT met, clearing carousel items')
-      setCarouselItems([])
-    }
-  }, [post?.id, post?.image_path, post?.video_path, post?.replies?.length])
-
-  // Refetch carousel only when AI jobs complete (not during generation)
-  useEffect(() => {
-    const completedJobs = Object.values(imagine.jobs).filter(job =>
-      job.status === 'completed' && job.targetType === 'post' && job.targetId === post?.id
-    )
-
-    if (completedJobs.length > 0) {
-      console.log('[Carousel] AI jobs completed, triggering carousel refresh')
-      // Force a re-render by toggling loading state briefly
-      setCarouselLoading(true)
-      setTimeout(() => setCarouselLoading(false), 100)
-    }
-  }, [imagine.jobs, post?.id])
 
   async function toggleReaction(reaction: string){
     if (!post) return
@@ -749,21 +529,7 @@ export default function PostDetail(){
                 </>
               )
             })()}
-          {/* Show carousel ONLY if AI videos exist, otherwise show regular image/video */}
-          {carouselLoading ? (
-            <div className="px-3 flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
-            </div>
-          ) : carouselItems.length > 0 ? (
-            // Show carousel if there are AI videos
-            <div className="px-0" onClick={(e)=> e.stopPropagation()}>
-              <VideoCarousel
-                items={carouselItems}
-                onPreviewImage={(src) => setPreviewSrc(src)}
-              />
-            </div>
-          ) : post.image_path ? (
-            // No AI videos - show regular image (not carousel)
+          {post.image_path ? (
             <div className="px-0">
               <ImageLoader
                 src={normalizePath(post.image_path as string)}
@@ -773,7 +539,6 @@ export default function PostDetail(){
               />
             </div>
           ) : post.video_path ? (
-            // Regular video (not AI generated) - show directly
             <div className="px-3">
               <video
                 className="w-full max-h-[420px] rounded border border-white/10 bg-black"
@@ -806,26 +571,7 @@ export default function PostDetail(){
               <Reaction icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction('heart')} />
               <Reaction icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> toggleReaction('thumbs-up')} />
               <Reaction icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> toggleReaction('thumbs-down')} />
-              {post.image_path ? (
-                <button
-                  className={`ml-auto px-3 py-1 rounded-full text-[#4db6ac] hover:text-white hover:bg-white/10 transition flex items-center gap-1 ${postImagineJob && postImagineJob.status === 'awaiting_owner' ? 'ring-1 ring-[#4db6ac]/60' : ''}`}
-                  onClick={()=> handleOpenImagine('post', post.id, nsfwAllowedForModal)}
-                  disabled={!!postImagineJob && postImagineJob.status !== 'error' && postImagineJob.status !== 'completed'}
-                  title="Animate this photo"
-                >
-                  {postImagineJob && postImagineJob.status !== 'completed' && postImagineJob.status !== 'error'
-                    ? <i className="fa-solid fa-spinner fa-spin text-xs" />
-                    : <i className="fa-solid fa-wand-magic-sparkles text-xs" />}
-                  <span className="uppercase tracking-wide text-[11px]">Imagine</span>
-                </button>
-              ) : null}
             </div>
-            {postImagineJob && postImagineJob.status !== 'completed' && postImagineJob.status !== 'error' ? (
-              <div className="mt-1 text-[11px] text-[#7fe7df] flex items-center gap-1">
-                <i className="fa-solid fa-sparkles" />
-                <span>{postImagineJob.status === 'awaiting_owner' ? 'AI video ready?choose how to use it' : 'AI video is generating'}</span>
-              </div>
-            ) : null}
           </div>
         </div>
 
@@ -842,33 +588,12 @@ export default function PostDetail(){
               inlineSendingFlag={!!inlineSending[r.id]}
               communityId={(post as any)?.community_id}
               postId={post?.id}
-              onImagine={handleOpenImagine}
-              getImagineJob={getImagineJob}
-              nsfwAllowed={nsfwAllowedForModal}
             />
           ))}
         </div>
         {/* Spacer to prevent fixed composer overlap with first replies */}
         <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 12rem)' }} />
       </div>
-
-      <ImagineStyleModal
-        isOpen={styleModalOpen}
-        onClose={handleCloseStyleModal}
-        onSelect={handleStyleSelect}
-        isSubmitting={styleSubmitting}
-        nsfwAllowed={imagineRequest?.nsfwAllowed ?? nsfwAllowedForModal}
-      />
-      <ImagineOwnerModal
-        isOpen={!!ownerJob}
-        onClose={() => { if (resolvingJobId) return; setOwnerJobId(null) }}
-        videoUrl={ownerVideoUrl}
-        onReplace={() => handleOwnerDecision('replace')}
-        onAddAlongside={() => handleOwnerDecision('add_alongside')}
-        isProcessing={!!resolvingJobId}
-        error={ownerJob?.error || null}
-      />
-
       {/* Image preview modal */}
           {previewSrc ? (
         <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewSrc(null)}>
@@ -1051,13 +776,10 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   if (prev.inlineSendingFlag !== next.inlineSendingFlag) return false
   if (prev.currentUser !== next.currentUser) return false
   if (prev.depth !== next.depth) return false
-  if (prev.onImagine !== next.onImagine) return false
-  if (prev.getImagineJob !== next.getImagineJob) return false
-  if (prev.nsfwAllowed !== next.nsfwAllowed) return false
   return true
 })
 
-function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, onImagine, getImagineJob, nsfwAllowed }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, onImagine?: (targetType: 'post' | 'reply', targetId: number, nsfwAllowed?: boolean) => void, getImagineJob?: (targetType: 'post' | 'reply', targetId: number) => ImagineJobState | undefined, nsfwAllowed?: boolean }){
+function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number }){
   const currentUser = currentUserName
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
@@ -1069,8 +791,6 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
   const [showGifPicker, setShowGifPicker] = useState(false)
   const [inlineGif, setInlineGif] = useState<GifSelection | null>(null)
   const [gifFile, setGifFile] = useState<File | null>(null)
-  const imagineJob = getImagineJob?.('reply', reply.id)
-  const allowSpicy = typeof nsfwAllowed === 'boolean' ? nsfwAllowed : true
   const hasChildren = reply.children && reply.children.length > 0
   useEffect(() => {
     if (!showComposer){
@@ -1180,28 +900,9 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
             <Reaction icon="fa-regular fa-thumbs-down" count={reply.reactions?.['thumbs-down']||0} active={reply.user_reaction==='thumbs-down'} onClick={()=> onToggle(reply.id, 'thumbs-down')} />
             <div className="ml-auto flex items-center gap-1">
-              {onImagine && reply.image_path ? (
-                <button
-                  className={`px-2 py-0.5 rounded-full text-[#4db6ac] hover:text-white hover:bg-white/10 transition flex items-center gap-1 ${imagineJob && imagineJob.status === 'awaiting_owner' ? 'ring-1 ring-[#4db6ac]/60' : ''}`}
-                  onClick={()=> onImagine('reply', reply.id, allowSpicy)}
-                  disabled={!!imagineJob && imagineJob.status !== 'error' && imagineJob.status !== 'completed'}
-                  title="Animate this photo"
-                >
-                  {imagineJob && imagineJob.status !== 'completed' && imagineJob.status !== 'error'
-                    ? <i className="fa-solid fa-spinner fa-spin text-[10px]" />
-                    : <i className="fa-solid fa-wand-magic-sparkles text-[10px]" />}
-                  <span>Imagine</span>
-                </button>
-              ) : null}
               <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={()=> setShowComposer(v=>!v)}>Reply</button>
             </div>
           </div>
-          {imagineJob && imagineJob.status !== 'completed' && imagineJob.status !== 'error' ? (
-            <div className="mt-1 text-[10px] text-[#7fe7df] flex items-center gap-1">
-              <i className="fa-solid fa-sparkles" />
-              <span>{imagineJob.status === 'awaiting_owner' ? 'AI video ready?open the prompt to finish' : 'Animating'}</span>
-            </div>
-          ) : null}
           {showComposer ? (
             <div className="mt-2 space-y-2">
               <div className="flex items-start gap-2">
@@ -1342,9 +1043,6 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               inlineSendingFlag={false}
               communityId={communityId}
               postId={postId}
-              onImagine={onImagine}
-              getImagineJob={getImagineJob}
-              nsfwAllowed={nsfwAllowed}
             />
           ))}
         </div>

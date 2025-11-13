@@ -13,8 +13,6 @@ import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
-import VideoCarousel from '../components/VideoCarousel'
-import { useImagineJobs, type ImagineJobState } from '../hooks/useImagineJobs'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -860,11 +858,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [childReplyGif, setChildReplyGif] = useState<GifSelection | null>(null)
   const [sendingChildReply, setSendingChildReply] = useState(false)
   const [gifPickerTarget, setGifPickerTarget] = useState<'main' | number | null>(null)
-  const [carouselItems, setCarouselItems] = useState<Array<{type: 'original' | 'ai_video', image_path?: string | null, image_url?: string | null, video_path?: string | null, video_url?: string | null, created_by?: string | null, style?: string | null}>>([])
-  const [carouselLoading, setCarouselLoading] = useState(false)
   const [viewCount, setViewCount] = useState<number>(() => Number(post.view_count ?? 0))
   const hasRecordedViewRef = useRef<boolean>(Boolean(post.has_viewed))
-  const imagine = useImagineJobs()
 
   useEffect(() => {
     setViewCount(Number(post.view_count ?? 0))
@@ -937,86 +932,6 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     })
     setDetectedLinks(nonVideoLinks)
   }, [editText, isEditing])
-
-  // Fetch AI videos for carousel if post has image or might have AI videos
-  useEffect(() => {
-    console.log('[Carousel] useEffect triggered for post', post.id, 'image_path:', post.image_path, 'video_path:', post.video_path, 'replies:', post.replies?.length)
-    // Always try to fetch carousel items if post has an image OR video_path
-    // Even if image_path is null (replaced), we might have videos
-    async function fetchCarouselItems() {
-      console.log('[Carousel] fetchCarouselItems called for post', post.id)
-      setCarouselLoading(true)
-      try {
-        const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
-        const json = await resp.json().catch(() => null)
-        console.log('[Carousel] Fetch response for post', post.id, ':', json)
-        if (resp.ok && json?.success && json.videos) {
-          // Only set carousel items if there are AI videos (more than just original image)
-          // If there's at least one AI video, show carousel with original + videos
-          const hasAiVideos = json.videos.some((v: any) => v.type === 'ai_video')
-          console.log('[Carousel] Has AI videos:', hasAiVideos, 'Videos:', json.videos)
-          if (hasAiVideos) {
-            // Carousel should show: original image + AI videos
-            console.log('[Carousel] Setting carousel items:', json.videos)
-            setCarouselItems(json.videos)
-          } else {
-            // No AI videos - don't show carousel, show regular image instead
-            console.log('[Carousel] No AI videos, setting empty carousel items')
-            setCarouselItems([])
-          }
-        } else {
-          // API error: don't show carousel
-          console.log('[Carousel] API error or no videos:', resp.ok, json)
-          setCarouselItems([])
-        }
-      } catch (err) {
-        console.error('[Carousel] Failed to fetch carousel items:', err)
-        setCarouselItems([])
-      } finally {
-        setCarouselLoading(false)
-      }
-    }
-    
-    // Only fetch if post has image_path (original photo exists) OR if replies might have videos
-    // Always check for carousel items if there's a potential for videos
-    if (post.image_path || post.video_path || (post.replies && post.replies.length > 0)) {
-      fetchCarouselItems()
-    } else {
-      setCarouselItems([])
-    }
-  }, [post.id, post.image_path, post.video_path, post.replies?.length, post.replies])
-
-  // Refetch carousel when imagine jobs complete
-  useEffect(() => {
-    const completedJobs = Object.values(imagine.jobs).filter(
-      (job: ImagineJobState) => 
-        job.targetId === post.id && 
-        job.targetType === 'post' &&
-        (job.status === 'completed' || job.status === 'awaiting_owner')
-    )
-    if (completedJobs.length > 0) {
-      console.log('[Carousel] AI jobs completed, triggering carousel refresh for post', post.id)
-      // Refetch carousel items
-      async function refetch() {
-        setCarouselLoading(true)
-        try {
-          const resp = await fetch(`/api/imagine/videos/${post.id}`, { credentials: 'include' })
-          const json = await resp.json().catch(() => null)
-          if (resp.ok && json?.success && json.videos) {
-            const hasAiVideos = json.videos.some((v: any) => v.type === 'ai_video')
-            if (hasAiVideos) {
-              setCarouselItems(json.videos)
-            }
-          }
-        } catch (err) {
-          console.error('[Carousel] Refetch failed:', err)
-        } finally {
-          setCarouselLoading(false)
-        }
-      }
-      refetch()
-    }
-  }, [imagine.jobs, post.id])
 
   function startRenamingLink(link: DetectedLink) {
     setRenamingLink(link)
@@ -1176,21 +1091,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             </div>
           </div>
         )}
-        {/* Show carousel ONLY if AI videos exist, otherwise show regular image */}
-        {carouselLoading ? (
-          <div className="px-3 flex items-center justify-center py-8">
-            <div className="w-6 h-6 border-2 border-white/20 border-t-[#4db6ac] rounded-full animate-spin" />
-          </div>
-        ) : carouselItems.length > 0 ? (
-          // Show carousel if there are AI videos
-          <div className="px-0" onClick={(e)=> e.stopPropagation()}>
-            <VideoCarousel
-              items={carouselItems}
-              onPreviewImage={onPreviewImage}
-            />
-          </div>
-        ) : post.image_path ? (
-          // No AI videos - show regular image (not carousel)
+        {post.image_path ? (
           <div className="px-0">
             <ImageLoader
               src={normalizeMediaPath(post.image_path || '')}
@@ -1200,7 +1101,6 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             />
           </div>
         ) : post.video_path ? (
-          // Regular video (not AI generated) - show directly
           <div className="px-3" onClick={(e)=> e.stopPropagation()}>
             <video
               className="w-full max-h-[420px] rounded border border-white/10 bg-black"
