@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
+from collections import deque
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 import os
 import sys
@@ -48,6 +48,7 @@ except ImportError as e:
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
+MISSING_UPLOAD_CACHE = deque(maxlen=200)
 
 COUNTRY_CACHE_TTL = 60 * 60 * 24  # 24 hours
 CITY_CACHE_TTL = 60 * 60 * 24
@@ -20544,11 +20545,30 @@ def serve_uploads(filename):
             except Exception:
                 continue
 
-        logger.error(f"serve_uploads not found after fallbacks: {filename} | tried: {tried}")
-        # Return a 1x1 transparent PNG placeholder instead of 404
+        missing_key = (filename or '').lower()
+        if missing_key not in MISSING_UPLOAD_CACHE:
+            logger.error(f"serve_uploads not found after fallbacks: {filename} | tried: {tried}")
+            MISSING_UPLOAD_CACHE.append(missing_key)
+        # Return a lightweight placeholder based on requested extension
         try:
-            from flask import Response
+            _, ext = os.path.splitext(basename.lower())
             transparent_pixel = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x00\x00\x02\x00\x01\xe5\'\xde\xfc\x00\x00\x00\x00IEND\xaeB`\x82'
+            audio_extensions = ('.mp3', '.wav', '.ogg', '.m4a', '.webm', '.mp4', '.aac', '.3gp', '.3g2')
+            video_extensions = ('.mp4', '.webm', '.mov', '.mkv', '.avi')
+            document_extensions = ('.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt')
+
+            if ext in audio_extensions or ext in video_extensions:
+                resp = Response(status=204)
+                resp.headers['Cache-Control'] = 'public, max-age=3600'
+                resp.headers['X-Missing-Upload'] = 'media'
+                return resp
+
+            if ext in document_extensions:
+                resp = Response('', mimetype='text/plain')
+                resp.headers['Cache-Control'] = 'public, max-age=3600'
+                resp.headers['X-Missing-Upload'] = 'document'
+                return resp
+
             resp = Response(transparent_pixel, mimetype='image/png')
             try:
                 resp.headers['Cache-Control'] = 'public, max-age=300'
