@@ -1,344 +1,1030 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
 import Avatar from '../components/Avatar'
 
-type Profile = {
-  username: string
-  email?: string
-  subscription?: string
-  display_name?: string|null
-  bio?: string|null
-  location?: string|null
-  website?: string|null
-  instagram?: string|null
-  twitter?: string|null
-  profile_picture?: string|null
-  cover_photo?: string|null
+type PersonalForm = {
+  bio: string
+  display_name: string
+  date_of_birth: string
+  gender: string
+  country: string
+  city: string
 }
 
-export default function Profile(){
-  const [data, setData] = useState<Profile|null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string|null>(null)
-  const [form, setForm] = useState({
-    display_name: '', location: '', is_public: true,
-    role: '', company: '', industry: '', linkedin: '',
-    age: '', gender: '', country: '', city: '',
-    share_community_id: '' as string
-  })
-  const [communities, setCommunities] = useState<Array<{id:number,name:string,type?:string}>>([])
-  const [showPhotoModal, setShowPhotoModal] = useState(false)
-  const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null)
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
-  const [uploadingPhoto, setUploadingPhoto] = useState(false)
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
+type ProfessionalForm = {
+  role: string
+  company: string
+  industry: string
+  linkedin: string
+  about: string
+  interests: string[]
+}
+
+type ProfileSummary = {
+  username: string
+  subscription?: string
+  profile_picture?: string | null
+  cover_photo?: string | null
+  display_name?: string | null
+  location?: string | null
+  bio?: string | null
+}
+
+const PERSONAL_DEFAULT: PersonalForm = {
+  bio: '',
+  display_name: '',
+  date_of_birth: '',
+  gender: '',
+  country: '',
+  city: '',
+}
+
+const PROFESSIONAL_DEFAULT: ProfessionalForm = {
+  role: '',
+  company: '',
+  industry: '',
+  linkedin: '',
+  about: '',
+  interests: [],
+}
+
+const GENDERS = ['Female', 'Male', 'Prefer not to say', 'Other']
+
+const INDUSTRIES = [
+  'Accounting',
+  'Advertising & Marketing',
+  'Aerospace',
+  'Agriculture',
+  'Automotive',
+  'Biotechnology',
+  'Construction',
+  'Consulting',
+  'Consumer Goods',
+  'Education',
+  'Energy & Utilities',
+  'Financial Services',
+  'Government',
+  'Healthcare',
+  'Hospitality',
+  'Information Technology',
+  'Insurance',
+  'Legal Services',
+  'Manufacturing',
+  'Media & Entertainment',
+  'Nonprofit',
+  'Professional Services',
+  'Real Estate',
+  'Retail',
+  'Telecommunications',
+  'Transportation & Logistics',
+  'Travel & Tourism',
+  'Other',
+]
+
+const MAX_INTERESTS = 12
+
+const INTEREST_SUGGESTIONS = [
+  'Artificial Intelligence',
+  'Design',
+  'Entrepreneurship',
+  'Fitness',
+  'Investing',
+  'Marketing',
+  'Photography',
+  'Product Management',
+  'Software Engineering',
+  'Startups',
+  'Travel',
+  'Wellness',
+]
+
+function coalesceString(...values: Array<unknown>): string {
+  for (const value of values) {
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (trimmed.length > 0) return trimmed
+    }
+  }
+  return ''
+}
+
+type SelectOption = {
+  value: string
+  label: string
+}
+
+type SelectFieldProps = {
+  value: string
+  onChange: (value: string) => void
+  options: SelectOption[]
+  placeholder?: string
+  disabled?: boolean
+  loading?: boolean
+  searchable?: boolean
+  allowCustomOption?: boolean
+  emptyMessage?: string
+}
+
+function SelectField({
+  value,
+  onChange,
+  options,
+  placeholder,
+  disabled = false,
+  loading = false,
+  searchable = false,
+  allowCustomOption = false,
+  emptyMessage = 'No options available',
+}: SelectFieldProps) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const containerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    let mounted = true
-    async function load(){
-      setLoading(true)
-      try{
-        const r = await fetch('/api/profile_me', { credentials:'include' })
-        const j = await r.json()
-        if (!mounted) return
-        if (j?.success){
-          setData(j.profile)
-          setForm(f => ({
-            ...f,
-            display_name: j.profile.display_name || '',
-            location: j.profile.location || ''
-          }))
-        }
-        else setError(j?.error || 'Error')
-      }catch{
-        if (mounted) setError('Error')
-      } finally { if (mounted) setLoading(false) }
-    }
-    load()
-    // Load user's communities for sharing dropdown
-    ;(async () => {
-      try{
-        const rc = await fetch('/api/user_parent_community', { credentials:'include' })
-        const jc = await rc.json().catch(()=>null)
-        if (jc?.success && Array.isArray(jc.communities)){
-          setCommunities(jc.communities)
-        }
-      }catch{}
-    })()
-    return () => { mounted = false }
-  }, [])
-
-  function handlePhotoSelect(event: React.ChangeEvent<HTMLInputElement>){
-    const file = event.target.files?.[0]
-    if (file){
-      setSelectedPhoto(file)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setPhotoPreview(e.target?.result as string)
+    if (!open) return
+    function handleClick(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false)
       }
-      reader.readAsDataURL(file)
     }
-  }
-
-  async function handleCameraCapture(){
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      const video = document.createElement('video')
-      video.srcObject = stream
-      video.play()
-
-      const canvas = document.createElement('canvas')
-      canvas.width = 300
-      canvas.height = 300
-      const ctx = canvas.getContext('2d')
-
-      // Wait for video to load
-      await new Promise((resolve) => {
-        video.onloadeddata = resolve
-      })
-
-      ctx?.drawImage(video, 0, 0, 300, 300)
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const file = new File([blob], 'camera-photo.jpg', { type: 'image/jpeg' })
-          setSelectedPhoto(file)
-          setPhotoPreview(canvas.toDataURL())
-        }
-      }, 'image/jpeg', 0.8)
-
-      stream.getTracks().forEach(track => track.stop())
-    } catch (error) {
-      alert('Camera access denied or not available')
-    }
-  }
-
-  async function uploadProfilePicture(){
-    if (!selectedPhoto) return
-
-    setUploadingPhoto(true)
-    try {
-      const fd = new FormData()
-      fd.append('profile_picture', selectedPhoto)
-      const r = await fetch('/upload_profile_picture', { method: 'POST', credentials: 'include', body: fd })
-      const j = await r.json()
-      if (j?.success) {
-        setData(d => d ? { ...d, profile_picture: j.profile_picture } : d)
-        setShowPhotoModal(false)
-        setSelectedPhoto(null)
-        setPhotoPreview(null)
-      } else {
-        alert(j?.error || 'Upload failed')
+    function handleKey(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpen(false)
       }
-    } catch (error) {
-      alert('Upload failed')
-    } finally {
-      setUploadingPhoto(false)
     }
-  }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [open])
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
-  if (error || !data) return <div className="p-4 text-red-400">{error||'Error'}</div>
+  useEffect(() => {
+    if (!open) setQuery('')
+  }, [open])
+
+  const mergedOptions = options.map(option => ({
+    value: option.value,
+    label: option.label || option.value,
+  }))
+
+  const selectedOption = mergedOptions.find(option => option.value === value)
+  const buttonLabel = selectedOption?.label || value || placeholder || 'Select…'
+  const filteredOptions =
+    searchable && query
+      ? mergedOptions.filter(option => option.label.toLowerCase().includes(query.toLowerCase()))
+      : mergedOptions
+  const showCreateOption =
+    allowCustomOption &&
+    query.trim().length > 0 &&
+    !mergedOptions.some(option => option.label.toLowerCase() === query.trim().toLowerCase())
+
+  function handleSelect(nextValue: string) {
+    onChange(nextValue)
+    setOpen(false)
+    setQuery('')
+  }
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white overflow-y-auto">
-      <div className="max-w-2xl mx-auto p-3 space-y-3">
-        {data.cover_photo ? (
-          <div className="rounded-xl overflow-hidden border border-white/10">
-            <img src={(data.cover_photo!.startsWith('http') || data.cover_photo!.startsWith('/static')) ? data.cover_photo! : `/static/${data.cover_photo}`} alt="" className="w-full h-auto" />
-          </div>
-        ) : null}
-        <div className="flex items-center gap-3">
-          <button
-            className="relative group cursor-pointer"
-            onClick={() => setShowPhotoModal(true)}
-            aria-label="Change profile picture"
-          >
-            <Avatar username={data.username} url={data.profile_picture || undefined} size={56} />
-            <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <i className="fa-solid fa-camera text-white text-lg" />
+    <div ref={containerRef} className={`relative ${disabled ? 'opacity-60' : ''}`}>
+      <button
+        type="button"
+        className={`flex w-full items-center justify-between rounded-lg border border-white/12 bg-[#10131a] px-3 py-1.5 text-left transition ${
+          disabled ? 'cursor-not-allowed text-white/40' : 'text-white/80 hover:border-[#4db6ac]/60'
+        }`}
+        onClick={() => {
+          if (!disabled) setOpen(prev => !prev)
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+      >
+        <span className={`truncate ${value ? 'text-white' : 'text-white/40'}`}>{buttonLabel}</span>
+        <i
+          className={`fa-solid fa-chevron-down text-[10px] transition-transform ${
+            open ? 'rotate-180 text-[#4db6ac]' : 'text-white/50'
+          }`}
+        />
+      </button>
+      {open ? (
+        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-lg border border-white/12 bg-[#0b0d11] shadow-[0_16px_35px_rgba(2,4,8,0.55)]">
+          {searchable ? (
+            <div className="p-2">
+              <input
+                className="w-full rounded-md border border-white/10 bg-[#12141a] px-2 py-1 text-xs text-white/80 outline-none focus:border-[#4db6ac]"
+                placeholder="Search…"
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                autoFocus
+              />
             </div>
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-[#4db6ac] rounded-full flex items-center justify-center">
-              <i className="fa-solid fa-plus text-xs text-white" />
+          ) : null}
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 px-3 py-4 text-xs text-white/60">
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/20 border-t-[#4db6ac]" />
+              Loading…
             </div>
-          </button>
-          <div>
-            <div className="text-lg font-semibold">{data.display_name || data.username}</div>
-            <div className="text-sm text-[#9fb0b5]">@{data.username} • {data.subscription||'free'}</div>
-          </div>
-        </div>
-        {/* Bio display removed */}
-        {/* Public Profile form */}
-        <div className="rounded-xl border border-white/10 p-3">
-          <div className="font-semibold mb-2">Public Profile</div>
-          <form onSubmit={async (e)=>{
-            e.preventDefault()
-            const fd = new FormData()
-            fd.append('display_name', form.display_name)
-            fd.append('location', form.location)
-            fd.append('is_public', form.is_public ? 'on' : '')
-            const r = await fetch('/update_public_profile', { method:'POST', credentials:'include', body: fd })
-            const j = await r.json().catch(()=>null)
-            if (!j?.success) alert(j?.error || 'Error updating')
-          }}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label className="text-sm">Display Name
-                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.display_name} onChange={e=> setForm(f=>({...f, display_name: e.target.value}))} />
-              </label>
-              <label className="text-sm">Location
-                <input className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.location} onChange={e=> setForm(f=>({...f, location: e.target.value}))} />
-              </label>
-            </div>
-            {/* Bio input removed */}
-            <label className="inline-flex items-center gap-2 mt-2 text-sm">
-              <input type="checkbox" checked={form.is_public} onChange={e=> setForm(f=>({...f, is_public: e.target.checked}))} /> Public
-            </label>
-            <div className="mt-3">
-              <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Update Public Profile</button>
-              <a className="ml-3 text-sm text-[#9fb0b5] underline" href={`/profile/${data.username}`}>
-                View Public Profile
-              </a>
-            </div>
-          </form>
-        </div>
-
-        {/* Professional Information */}
-        <div className="rounded-xl border border-white/10 p-3">
-          <div className="font-semibold mb-2">Professional Information</div>
-          <form onSubmit={async (e)=>{
-            e.preventDefault()
-            const fd = new FormData()
-            fd.append('role', form.role)
-            fd.append('company', form.company)
-            fd.append('industry', form.industry)
-            fd.append('linkedin', form.linkedin)
-            if (form.share_community_id) fd.append('share_community_id', form.share_community_id)
-            const r = await fetch('/update_professional', { method:'POST', credentials:'include', body: fd })
-            const j = await r.json().catch(()=>null)
-            if (j?.success) {
-              alert('Professional information updated successfully!')
-            } else {
-              alert(j?.error || 'Error updating')
-            }
-          }}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Role" value={form.role} onChange={e=> setForm(f=>({...f, role: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Company" value={form.company} onChange={e=> setForm(f=>({...f, company: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Industry" value={form.industry} onChange={e=> setForm(f=>({...f, industry: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="LinkedIn" value={form.linkedin} onChange={e=> setForm(f=>({...f, linkedin: e.target.value}))} />
-              <label className="text-sm">
-                Share Professional Info with Community
-                <select className="mt-1 w-full rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" value={form.share_community_id} onChange={e=> setForm(f=>({...f, share_community_id: e.target.value}))}>
-                  <option value="">Do not share</option>
-                  {communities.map(c => (
-                    <option key={c.id} value={String(c.id)}>{c.name}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <button type="submit" className="mt-3 px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Save Professional Info</button>
-          </form>
-        </div>
-
-        {/* Personal Information */}
-        <div className="rounded-xl border border-white/10 p-3">
-          <div className="font-semibold mb-2">Personal Details</div>
-          <form onSubmit={async (e)=>{
-            e.preventDefault()
-            const fd = new FormData()
-            fd.append('age', form.age)
-            fd.append('gender', form.gender)
-            fd.append('country', form.country)
-            fd.append('city', form.city)
-            const r = await fetch('/update_personal_info', { method:'POST', credentials:'include', body: fd })
-            const j = await r.json().catch(()=>null)
-            if (!j?.success) alert(j?.error || 'Error updating')
-          }}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Age" value={form.age} onChange={e=> setForm(f=>({...f, age: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Gender" value={form.gender} onChange={e=> setForm(f=>({...f, gender: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="Country" value={form.country} onChange={e=> setForm(f=>({...f, country: e.target.value}))} />
-              <input className="rounded-md bg-black text-white border border-white/10 px-2 py-1.5 text-[16px] outline-none focus:border-[#4db6ac] focus:ring-1 focus:ring-[#4db6ac]" placeholder="City" value={form.city} onChange={e=> setForm(f=>({...f, city: e.target.value}))} />
-            </div>
-            <button className="mt-3 px-3 py-1.5 rounded-md bg-[#4db6ac] text-black">Save Personal Details</button>
-          </form>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-          {data.location ? (<div className="text-[#9fb0b5]"><i className="fa-solid fa-location-dot mr-2" />{data.location}</div>) : null}
-          {data.website ? (<a className="text-[#9fb0b5] hover:text-teal-300" href={data.website} target="_blank" rel="noreferrer"><i className="fa-solid fa-link mr-2" />{data.website}</a>) : null}
-          {data.instagram ? (<a className="text-[#9fb0b5] hover:text-teal-300" href={`https://instagram.com/${data.instagram}`} target="_blank" rel="noreferrer"><i className="fa-brands fa-instagram mr-2" />@{data.instagram}</a>) : null}
-          {data.twitter ? (<a className="text-[#9fb0b5] hover:text-teal-300" href={`https://x.com/${data.twitter}`} target="_blank" rel="noreferrer"><i className="fa-brands fa-x-twitter mr-2" />@{data.twitter}</a>) : null}
-        </div>
-      </div>
-
-      {/* Photo Upload Modal */}
-      {showPhotoModal && (
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowPhotoModal(false)}>
-          <div className="w-[90%] max-w-md rounded-2xl border border-white/10 bg-black p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div className="font-semibold">Change Profile Picture</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setShowPhotoModal(false)}>✕</button>
-            </div>
-
-            {/* Photo Preview */}
-            {photoPreview ? (
-              <div className="mb-4">
-                <div className="relative w-32 h-32 mx-auto mb-2">
-                  <img src={photoPreview} alt="Preview" className="w-full h-full rounded-full object-cover border-2 border-white/20" />
-                </div>
-                <div className="text-center">
+          ) : (
+            <div className="max-h-48 overflow-y-auto py-1">
+              {filteredOptions.length ? (
+                filteredOptions.map(option => (
                   <button
-                    onClick={uploadProfilePicture}
-                    disabled={uploadingPhoto}
-                    className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110 disabled:opacity-50"
+                    key={option.value}
+                    type="button"
+                    className={`flex w-full items-center justify-between px-3 py-2 text-xs text-white/80 transition hover:bg-white/10 ${
+                      option.value === value ? 'text-[#4db6ac]' : ''
+                    }`}
+                    onClick={() => handleSelect(option.value)}
                   >
-                    {uploadingPhoto ? 'Uploading...' : 'Update Profile Picture'}
+                    <span className="truncate">{option.label}</span>
+                    {option.value === value ? <i className="fa-solid fa-check text-[10px]" /> : null}
                   </button>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Photo Selection Options */}
-            <div className="space-y-3">
-              <button
-                className="w-full flex items-center gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <i className="fa-solid fa-file-image text-[#4db6ac]" />
-                <span>Choose from gallery</span>
-              </button>
-
-              <button
-                className="w-full flex items-center gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5"
-                onClick={handleCameraCapture}
-              >
-                <i className="fa-solid fa-camera text-[#4db6ac]" />
-                <span>Take photo</span>
-              </button>
-
-              <button
-                className="w-full flex items-center gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5 text-red-400"
-                onClick={() => {
-                  setShowPhotoModal(false)
-                  setSelectedPhoto(null)
-                  setPhotoPreview(null)
-                }}
-              >
-                <i className="fa-solid fa-times" />
-                <span>Cancel</span>
-              </button>
+                ))
+              ) : (
+                <div className="px-3 py-3 text-xs text-white/40">{emptyMessage}</div>
+              )}
+              {showCreateOption ? (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs text-[#4db6ac] transition hover:bg-[#4db6ac]/10"
+                  onClick={() => handleSelect(query.trim())}
+                >
+                  <i className="fa-solid fa-plus text-[10px]" />
+                  Add “{query.trim()}”
+                </button>
+              ) : null}
             </div>
-
-            {/* Hidden file input */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handlePhotoSelect}
-              className="hidden"
-            />
-          </div>
+          )}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
 
+export default function Profile() {
+  const [summary, setSummary] = useState<ProfileSummary | null>(null)
+  const [personal, setPersonal] = useState<PersonalForm>(PERSONAL_DEFAULT)
+  const [professional, setProfessional] = useState<ProfessionalForm>(PROFESSIONAL_DEFAULT)
+  const [countries, setCountries] = useState<string[]>([])
+  const [cities, setCities] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingPersonal, setSavingPersonal] = useState(false)
+  const [savingProfessional, setSavingProfessional] = useState(false)
+  const [savingInterests, setSavingInterests] = useState(false)
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [citiesLoading, setCitiesLoading] = useState(false)
+  const cityCache = useRef<Map<string, string[]>>(new Map())
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [interestInput, setInterestInput] = useState('')
+
+  function normalizeInterests(list: string[]): string[] {
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const item of list) {
+      const trimmed = item.trim()
+      if (!trimmed) continue
+      const key = trimmed.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push(trimmed)
+      if (result.length >= MAX_INTERESTS) break
+    }
+    return result
+  }
+
+  function addInterest(value: string) {
+    const trimmed = value.trim()
+    if (!trimmed) return
+    const exists = professional.interests.some(existing => existing.toLowerCase() === trimmed.toLowerCase())
+    if (professional.interests.length >= MAX_INTERESTS && !exists) {
+      setFeedback(`You can list up to ${MAX_INTERESTS} interests. Remove one to add more.`)
+      setInterestInput('')
+      return
+    }
+    setProfessional(prev => {
+      const normalized = normalizeInterests([...prev.interests, trimmed])
+      if (normalized.length === prev.interests.length && normalized.every((interest, index) => interest === prev.interests[index])) {
+        return prev
+      }
+      return { ...prev, interests: normalized }
+    })
+    setInterestInput('')
+  }
+
+  function removeInterest(index: number) {
+    setProfessional(prev => ({
+      ...prev,
+      interests: prev.interests.filter((_, idx) => idx !== index),
+    }))
+  }
+
+  function handleInterestKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter' || event.key === ',') {
+      event.preventDefault()
+      if (interestInput.trim()) addInterest(interestInput)
+    } else if (event.key === 'Backspace' && !interestInput && professional.interests.length) {
+      event.preventDefault()
+      setProfessional(prev => ({
+        ...prev,
+        interests: prev.interests.slice(0, prev.interests.length - 1),
+      }))
+    }
+  }
+
+  function handleInterestBlur() {
+    if (interestInput.trim()) addInterest(interestInput)
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadProfile() {
+      setLoading(true)
+        try {
+          const response = await fetch('/api/profile_me', { credentials: 'include' })
+          const payload = await response.json().catch(() => null)
+          if (!cancelled) {
+            if (payload?.success && payload.profile) {
+              const profile = payload.profile
+              const personalInfo =
+                profile.personal ??
+                profile.personal_info ??
+                profile.personalInfo ??
+                profile.personal_details ??
+                profile.personalDetails ??
+                {}
+              const professionalInfo =
+                profile.professional ??
+                profile.professional_info ??
+                profile.professionalInfo ??
+                profile.professional_details ??
+                profile.professionalDetails ??
+                {}
+              const locationInfo = profile.location ?? personalInfo.location ?? {}
+              const rawInterests =
+                professionalInfo.interests ??
+                profile.interests ??
+                profile.personal_interests ??
+                profile.personalInterests ??
+                []
+              const interestList = Array.isArray(rawInterests)
+                ? rawInterests.map(item => (typeof item === 'string' ? item.trim() : '')).filter(Boolean)
+                : typeof rawInterests === 'string' && rawInterests
+                  ? rawInterests
+                      .split(',')
+                      .map(item => item.trim())
+                      .filter(Boolean)
+                  : []
+              const sanitizedInterests = normalizeInterests(interestList)
+              const cityValue = coalesceString(
+                personalInfo.city,
+                locationInfo.city,
+                profile.city,
+                profile.personal_city,
+                profile.personalCity,
+              )
+              const countryValue = coalesceString(
+                personalInfo.country,
+                locationInfo.country,
+                profile.country,
+                profile.personal_country,
+                profile.personalCountry,
+              )
+              setSummary({
+                username: coalesceString(profile.username),
+                subscription: coalesceString(profile.subscription, profile.plan),
+                profile_picture: coalesceString(profile.profile_picture, profile.profilePicture) || null,
+                cover_photo: coalesceString(profile.cover_photo, profile.coverPhoto) || null,
+                display_name:
+                  coalesceString(
+                    personalInfo.display_name,
+                    personalInfo.displayName,
+                    profile.display_name,
+                    profile.displayName,
+                  ) || coalesceString(profile.username),
+                location:
+                  coalesceString(
+                    typeof profile.location === 'string' ? profile.location : '',
+                    typeof locationInfo === 'string' ? locationInfo : '',
+                    locationInfo.formatted,
+                  ) || [cityValue, countryValue].filter(Boolean).join(', '),
+                bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about, profile.summary, profile.about),
+              })
+              setPersonal({
+                bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about),
+                display_name: coalesceString(
+                  personalInfo.display_name,
+                  personalInfo.displayName,
+                  profile.display_name,
+                  profile.displayName,
+                ),
+                date_of_birth: (() => {
+                  const dobValue =
+                    personalInfo.date_of_birth ??
+                    personalInfo.dateOfBirth ??
+                    personalInfo.dob ??
+                    profile.date_of_birth ??
+                    profile.dateOfBirth
+                  if (typeof dobValue === 'string') return dobValue.slice(0, 10)
+                  if (dobValue instanceof Date) return dobValue.toISOString().slice(0, 10)
+                  return ''
+                })(),
+                gender: coalesceString(personalInfo.gender, profile.gender),
+                country: countryValue,
+                city: cityValue,
+              })
+              setProfessional({
+                role: coalesceString(
+                  professionalInfo.role,
+                  professionalInfo.current_position,
+                  professionalInfo.currentPosition,
+                  professionalInfo.position,
+                  professionalInfo.job_title,
+                  professionalInfo.jobTitle,
+                  profile.role,
+                ),
+                company: coalesceString(
+                  professionalInfo.company,
+                  professionalInfo.organization,
+                  professionalInfo.employer,
+                  profile.company,
+                ),
+                industry: coalesceString(
+                  professionalInfo.industry,
+                  professionalInfo.field,
+                  professionalInfo.sector,
+                  profile.industry,
+                ),
+                linkedin: coalesceString(
+                  professionalInfo.linkedin,
+                  professionalInfo.linkedin_url,
+                  professionalInfo.linkedinUrl,
+                  profile.linkedin,
+                  profile.linkedinUrl,
+                ),
+                about: coalesceString(
+                  professionalInfo.about,
+                  professionalInfo.summary,
+                  professionalInfo.bio,
+                  profile.professional_summary,
+                  profile.professionalSummary,
+                ),
+                interests: sanitizedInterests,
+              })
+              setInterestInput('')
+              setError(null)
+            } else {
+              setError(payload?.error || 'Unable to load profile')
+            }
+          }
+        } catch {
+          if (!cancelled) setError('Unable to load profile')
+        } finally {
+          if (!cancelled) setLoading(false)
+        }
+    }
+    loadProfile()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadCountries() {
+      try {
+        const response = await fetch('/api/geo/countries', { credentials: 'include' })
+        const payload = await response.json().catch(() => null)
+        if (!cancelled) {
+          if (payload?.success && Array.isArray(payload.countries)) {
+            const names = payload.countries
+              .map((item: { name?: string }) => typeof item?.name === 'string' ? item.name : null)
+              .filter(Boolean) as string[]
+            setCountries(names)
+          } else {
+            setCountries([])
+          }
+        }
+      } catch {
+        if (!cancelled) setCountries([])
+      }
+    }
+    loadCountries()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    const countryName = personal.country.trim()
+    if (!countryName) {
+      setCities([])
+      return
+    }
+    const exactMatch = countries.find(name => name.toLowerCase() === countryName.toLowerCase()) || countryName
+    const cacheKey = exactMatch.toLowerCase()
+    const cached = cityCache.current.get(cacheKey)
+    if (cached) {
+      setCities(cached)
+      return
+    }
+    let cancelled = false
+    async function loadCities() {
+      setCitiesLoading(true)
+      try {
+        const response = await fetch(`/api/geo/cities?country=${encodeURIComponent(exactMatch)}`, { credentials: 'include' })
+        const payload = await response.json().catch(() => null)
+        if (!cancelled) {
+          if (payload?.success && Array.isArray(payload.cities)) {
+            const list = payload.cities.map((item: string) => item?.trim()).filter(Boolean)
+            cityCache.current.set(cacheKey, list)
+            setCities(list)
+          } else {
+            cityCache.current.set(cacheKey, [])
+            setCities([])
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          cityCache.current.set(cacheKey, [])
+          setCities([])
+        }
+      } finally {
+        if (!cancelled) setCitiesLoading(false)
+      }
+    }
+    loadCities()
+    return () => {
+      cancelled = true
+    }
+  }, [personal.country, countries])
+
+  useEffect(() => {
+    if (!feedback) return
+    const timer = window.setTimeout(() => setFeedback(null), 3000)
+    return () => window.clearTimeout(timer)
+  }, [feedback])
+
+  const locationPreview = personal.city || personal.country
+    ? [personal.city, personal.country].filter(Boolean).join(', ')
+    : summary?.location || ''
+
+  const normalizedCountries = personal.country
+    ? countries.some(country => country.toLowerCase() === personal.country.toLowerCase())
+      ? countries
+      : [personal.country, ...countries.filter(country => country.toLowerCase() !== personal.country.toLowerCase())]
+    : countries
+
+  const normalizedCities = personal.city
+    ? cities.some(city => city.toLowerCase() === personal.city.toLowerCase())
+      ? cities
+      : [personal.city, ...cities.filter(city => city.toLowerCase() !== personal.city.toLowerCase())]
+    : cities
+
+  const genderOptions: SelectOption[] = GENDERS.map(option => ({ value: option, label: option }))
+  const countryOptions: SelectOption[] = normalizedCountries.map(country => ({ value: country, label: country }))
+  const cityOptions: SelectOption[] = normalizedCities.map(city => ({ value: city, label: city }))
+  const industryOptions: SelectOption[] = INDUSTRIES.map(industry => ({ value: industry, label: industry }))
+
+  const citySelectDisabled = !personal.country
+  const cityPlaceholder = personal.country
+    ? citiesLoading
+      ? 'Loading cities…'
+      : normalizedCities.length
+        ? 'Select a city'
+        : 'Type to add a city'
+    : 'Select a country first'
+
+  async function handlePersonalSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (savingPersonal) return
+    setSavingPersonal(true)
+    try {
+      const form = new FormData()
+      form.append('bio', personal.bio)
+      form.append('display_name', personal.display_name)
+      if (personal.date_of_birth) form.append('date_of_birth', personal.date_of_birth)
+      form.append('gender', personal.gender)
+      form.append('country', personal.country)
+      form.append('city', personal.city)
+      const response = await fetch('/update_personal_info', { method: 'POST', credentials: 'include', body: form })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        setFeedback('Personal information saved')
+        setSummary(prev => {
+          if (!prev) return prev
+          const updatedLocation = [personal.city, personal.country].filter(Boolean).join(', ')
+          return {
+            ...prev,
+            display_name: personal.display_name || prev.display_name,
+            location: updatedLocation,
+            bio: personal.bio,
+          }
+        })
+      } else {
+        setFeedback(payload?.error || 'Unable to save personal information')
+      }
+    } catch {
+      setFeedback('Unable to save personal information')
+    } finally {
+      setSavingPersonal(false)
+    }
+  }
+
+  async function handleProfessionalSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (savingProfessional) return
+    setSavingProfessional(true)
+    try {
+      let interestList = normalizeInterests(professional.interests)
+      if (
+        interestList.length !== professional.interests.length ||
+        interestList.some((interest, index) => interest !== professional.interests[index])
+      ) {
+        setProfessional(prev => ({ ...prev, interests: interestList }))
+      }
+      const form = new FormData()
+      form.append('role', professional.role)
+      form.append('company', professional.company)
+      form.append('industry', professional.industry)
+      form.append('linkedin', professional.linkedin)
+      form.append('about', professional.about)
+      form.append('interests', JSON.stringify(interestList))
+      const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        setFeedback('Professional information saved')
+      } else {
+        setFeedback(payload?.error || 'Unable to save professional information')
+      }
+    } catch {
+      setFeedback('Unable to save professional information')
+    } finally {
+      setSavingProfessional(false)
+    }
+  }
+
+  async function handleInterestsSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (savingInterests) return
+    setSavingInterests(true)
+    try {
+      const pendingInterest = interestInput.trim()
+      if (
+        pendingInterest &&
+        professional.interests.length >= MAX_INTERESTS &&
+        !professional.interests.some(item => item.toLowerCase() === pendingInterest.toLowerCase())
+      ) {
+        setFeedback(`You can list up to ${MAX_INTERESTS} interests. Remove one to add more.`)
+        return
+      }
+      let interestList = professional.interests
+      if (pendingInterest) {
+        interestList = normalizeInterests([...interestList, pendingInterest])
+      } else {
+        interestList = normalizeInterests(interestList)
+      }
+      if (
+        interestList.length !== professional.interests.length ||
+        interestList.some((interest, index) => interest !== professional.interests[index])
+      ) {
+        setProfessional(prev => ({ ...prev, interests: interestList }))
+      }
+      if (pendingInterest) {
+        setInterestInput('')
+      }
+      const form = new FormData()
+      form.append('role', professional.role)
+      form.append('company', professional.company)
+      form.append('industry', professional.industry)
+      form.append('linkedin', professional.linkedin)
+      form.append('about', professional.about)
+      form.append('interests', JSON.stringify(interestList))
+      const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        setFeedback('Personal interests saved')
+      } else {
+        setFeedback(payload?.error || 'Unable to save personal interests')
+      }
+    } catch {
+      setFeedback('Unable to save personal interests')
+    } finally {
+      setSavingInterests(false)
+    }
+  }
+
+  async function handlePhotoUpload(file: File) {
+    const form = new FormData()
+    form.append('profile_picture', file)
+    try {
+      const response = await fetch('/upload_profile_picture', { method: 'POST', credentials: 'include', body: form })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success && payload.profile_picture) {
+        setSummary(prev => prev ? { ...prev, profile_picture: payload.profile_picture } : prev)
+        setFeedback('Profile picture updated')
+      } else {
+        setFeedback(payload?.error || 'Unable to upload picture')
+      }
+    } catch {
+      setFeedback('Unable to upload picture')
+    }
+  }
+
+  function onSelectPhoto(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (file) handlePhotoUpload(file)
+  }
+
+  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
+  if (error || !summary) return <div className="p-4 text-red-400">{error || 'Something went wrong'}</div>
+
+  return (
+    <div className="fixed inset-x-0 top-14 bottom-0 overflow-y-auto bg-black text-white">
+      <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
+        {summary.cover_photo ? (
+          <div className="rounded-xl border border-white/10 overflow-hidden">
+            <img
+              src={summary.cover_photo.startsWith('http') ? summary.cover_photo : `/static/${summary.cover_photo}`}
+              alt="Cover"
+              className="w-full h-40 object-cover"
+            />
+          </div>
+        ) : null}
+
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Avatar username={summary.username} url={summary.profile_picture || undefined} size={64} />
+            <button
+              className="absolute -right-1 -bottom-1 w-7 h-7 rounded-full bg-[#4db6ac] text-black text-xs flex items-center justify-center border border-black"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Change profile picture"
+              type="button"
+            >
+              <i className="fa-solid fa-camera" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onSelectPhoto}
+            />
+          </div>
+          <div className="min-w-0">
+            <div className="font-semibold text-lg truncate">{summary.display_name || summary.username}</div>
+            <div className="text-sm text-[#9fb0b5] truncate">
+              @{summary.username}{summary.subscription ? ` • ${summary.subscription}` : ''}
+            </div>
+            {locationPreview ? (
+              <div className="text-xs text-[#9fb0b5] flex items-center gap-1">
+                <i className="fa-solid fa-location-dot" />
+                <span>{locationPreview}</span>
+              </div>
+            ) : null}
+          </div>
+          <a
+            className="ml-auto px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
+            href={`/profile/${encodeURIComponent(summary.username)}`}
+          >
+            Preview Profile
+          </a>
+        </div>
+
+        <section className="rounded-xl border border-white/10 p-4 space-y-3">
+          <form className="space-y-3" onSubmit={handlePersonalSubmit}>
+            <label className="text-sm block">
+              Personal Bio
+              <textarea
+                className="mt-1 w-full min-h-[100px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                value={personal.bio}
+                onChange={event => setPersonal(prev => ({ ...prev, bio: event.target.value }))}
+                placeholder={`💼 Your bio is currently consulting its therapist.\nDrop one polished line to lure it back.`}
+              />
+            </label>
+            {personal.bio.trim() ? null : (
+              <div className="rounded-lg border border-dashed border-white/15 bg-white/[0.03] px-3 py-2 text-xs leading-relaxed text-[#9fb0b5]">
+                <p className="text-white/80 font-medium">
+                  💼 Your bio is currently consulting its therapist.
+                </p>
+                <p>Drop one polished line to lure it back.</p>
+                <p className="mt-2 whitespace-pre-line">
+                  Example:
+                  {"\n"}"Owned by a sassy rescue cat named Pickles 🐱{'\n'}Excel wizard by day,{'\n'}jazz vinyl curator by night"
+                </p>
+                <p className="mt-2 text-white/70">Impress us—bonus points for zero typos. 🖋️</p>
+              </div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                Display name
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  value={personal.display_name}
+                  onChange={event => setPersonal(prev => ({ ...prev, display_name: event.target.value }))}
+                />
+              </label>
+              <label className="text-sm">
+                Date of birth
+                <input
+                  type="date"
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  value={personal.date_of_birth}
+                  onChange={event => setPersonal(prev => ({ ...prev, date_of_birth: event.target.value }))}
+                />
+              </label>
+                <label className="text-sm">
+                  Gender
+                  <div className="mt-1">
+                    <SelectField
+                      value={personal.gender}
+                      onChange={nextValue => setPersonal(prev => ({ ...prev, gender: nextValue }))}
+                      options={genderOptions}
+                      placeholder="Select a value"
+                    />
+                  </div>
+                </label>
+                <label className="text-sm">
+                  Country
+                  <div className="mt-1">
+                    <SelectField
+                      value={personal.country}
+                      onChange={nextValue => setPersonal(prev => ({ ...prev, country: nextValue, city: '' }))}
+                      options={countryOptions}
+                      placeholder="Select a country"
+                      searchable
+                      allowCustomOption
+                      emptyMessage="No countries match your search"
+                    />
+                  </div>
+                </label>
+                <label className="text-sm">
+                  City
+                  <div className="mt-1">
+                    <SelectField
+                      value={personal.city}
+                      onChange={nextValue => setPersonal(prev => ({ ...prev, city: nextValue }))}
+                      options={cityOptions}
+                      placeholder={cityPlaceholder}
+                      disabled={citySelectDisabled}
+                      loading={citiesLoading}
+                      searchable
+                      allowCustomOption
+                      emptyMessage={personal.country ? 'No cities found, type to add your own' : 'Select a country first'}
+                    />
+                  </div>
+                </label>
+            </div>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+              disabled={savingPersonal}
+            >
+              {savingPersonal ? 'Saving…' : 'Save personal info'}
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-xl border border-white/10 p-4">
+          <form className="space-y-4" onSubmit={handleProfessionalSubmit}>
+            <header>
+              <div className="font-semibold">Professional information</div>
+              <p className="text-xs text-[#9fb0b5]">Let others know how to collaborate with you.</p>
+            </header>
+            <label className="text-sm block">
+              About
+              <textarea
+                className="mt-1 w-full min-h-[96px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                value={professional.about}
+                onChange={event => setProfessional(prev => ({ ...prev, about: event.target.value }))}
+                placeholder="Share a short summary about your professional background"
+              />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm">
+                Current position
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  value={professional.role}
+                  onChange={event => setProfessional(prev => ({ ...prev, role: event.target.value }))}
+                  placeholder="e.g. Product Manager"
+                />
+              </label>
+              <label className="text-sm">
+                Company
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  value={professional.company}
+                  onChange={event => setProfessional(prev => ({ ...prev, company: event.target.value }))}
+                  placeholder="Company name"
+                />
+              </label>
+              <label className="text-sm">
+                Industry
+                <div className="mt-1">
+                  <SelectField
+                    value={professional.industry}
+                    onChange={nextValue => setProfessional(prev => ({ ...prev, industry: nextValue }))}
+                    options={industryOptions}
+                    placeholder="Select an industry"
+                    searchable
+                    allowCustomOption
+                    emptyMessage="No industries match your search"
+                  />
+                </div>
+              </label>
+              <label className="text-sm">
+                LinkedIn URL
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  value={professional.linkedin}
+                  onChange={event => setProfessional(prev => ({ ...prev, linkedin: event.target.value }))}
+                  placeholder="https://www.linkedin.com/in/username"
+                />
+              </label>
+            </div>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+              disabled={savingProfessional}
+            >
+              {savingProfessional ? 'Saving…' : 'Save professional info'}
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-xl border border-white/10 p-4">
+          <form className="space-y-3" onSubmit={handleInterestsSubmit}>
+            <div>
+              <div className="text-sm font-semibold text-white">Personal interests</div>
+              <p className="text-xs text-[#9fb0b5]">Press enter after each interest to add it.</p>
+              <div className="mt-2 space-y-1">
+                <div className="text-[11px] uppercase tracking-wide text-white/40">Popular suggestions</div>
+                <div className="flex flex-wrap gap-2">
+                  {INTEREST_SUGGESTIONS.map(suggestion => {
+                    const alreadySelected = professional.interests.some(
+                      interest => interest.toLowerCase() === suggestion.toLowerCase(),
+                    )
+                    return (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => !alreadySelected && addInterest(suggestion)}
+                        className={`rounded-full border px-3 py-1 text-[11px] transition ${
+                          alreadySelected
+                            ? 'border-[#4db6ac]/60 bg-[#4db6ac]/20 text-[#4db6ac] cursor-default'
+                            : 'border-white/15 bg-white/[0.08] text-white/80 hover:border-[#4db6ac] hover:text-[#4db6ac]'
+                        }`}
+                        disabled={alreadySelected}
+                      >
+                        {suggestion}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black px-2 py-2">
+              {professional.interests.map((interest, index) => (
+                <button
+                  key={`${interest}-${index}`}
+                  type="button"
+                  className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs text-white hover:bg-white/25 transition"
+                  onClick={() => removeInterest(index)}
+                  aria-label={`Remove ${interest}`}
+                >
+                  <span>{interest}</span>
+                  <i className="fa-solid fa-xmark text-[10px]" />
+                </button>
+              ))}
+              {professional.interests.length < MAX_INTERESTS ? (
+                <input
+                  value={interestInput}
+                  onChange={event => setInterestInput(event.target.value)}
+                  onKeyDown={handleInterestKeyDown}
+                  onBlur={handleInterestBlur}
+                  placeholder={professional.interests.length ? 'Add another interest' : 'Add an interest…'}
+                  className="flex-1 min-w-[140px] bg-transparent text-xs text-white placeholder:text-[#9fb0b5] outline-none"
+                />
+              ) : null}
+            </div>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+              disabled={savingInterests}
+            >
+              {savingInterests ? 'Saving…' : 'Save personal interests'}
+            </button>
+          </form>
+        </section>
+
+        {feedback ? (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full border border-white/10 bg-white/10 text-sm text-white">
+            {feedback}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
