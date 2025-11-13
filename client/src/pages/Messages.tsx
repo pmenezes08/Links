@@ -323,8 +323,8 @@ export default function Messages(){
                 ) : (
                     <span className="text-xs text-white/40">{filterSummary}</span>
                 )}
-              </div>
-                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                </div>
+                <div className="flex flex-wrap gap-2 pb-1">
                 <button
                   type="button"
                   onClick={() => setCommunityFilter('all')}

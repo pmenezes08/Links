@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
@@ -843,7 +843,6 @@ export default function CommunityFeed() {
 // Ad components removed
 
 function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void }) {
-  const cardRef = useRef<HTMLDivElement|null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
   const [starring, setStarring] = useState(false)
@@ -858,61 +857,6 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [childReplyGif, setChildReplyGif] = useState<GifSelection | null>(null)
   const [sendingChildReply, setSendingChildReply] = useState(false)
   const [gifPickerTarget, setGifPickerTarget] = useState<'main' | number | null>(null)
-  const [viewCount, setViewCount] = useState<number>(() => Number(post.view_count ?? 0))
-  const hasRecordedViewRef = useRef<boolean>(Boolean(post.has_viewed))
-
-  useEffect(() => {
-    setViewCount(Number(post.view_count ?? 0))
-    hasRecordedViewRef.current = Boolean(post.has_viewed)
-  }, [post.id, post.view_count, post.has_viewed])
-
-  const recordView = useCallback(async () => {
-    try {
-      const res = await fetch('/api/post_view', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ post_id: post.id })
-      })
-      const j = await res.json().catch(() => null)
-      if (j?.success && typeof j.view_count === 'number') {
-        const next = Number(j.view_count) || 0
-        setViewCount(next)
-        ;(post as any).view_count = next
-        ;(post as any).has_viewed = true
-      }
-    } catch (err) {
-      console.error('Failed to record post view', err)
-      hasRecordedViewRef.current = false
-    }
-  }, [post.id])
-
-  const ensureViewRecorded = useCallback(() => {
-    if (!hasRecordedViewRef.current) {
-      hasRecordedViewRef.current = true
-      recordView()
-    }
-  }, [recordView])
-
-  useEffect(() => {
-    const el = cardRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.35) {
-            if (!hasRecordedViewRef.current) {
-              hasRecordedViewRef.current = true
-              recordView()
-            }
-          }
-        }
-      },
-      { threshold: [0.1, 0.35, 0.6, 0.9] }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [recordView])
 
   // Detect links when editing
   useEffect(() => {
@@ -1004,19 +948,13 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     else alert(j?.error || 'Failed to update post')
   }
   return (
-    <div id={`post-${post.id}`} ref={cardRef} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
+    <div id={`post-${post.id}`} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
       {!post.poll && (
         <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
           <Avatar username={post.username} url={post.profile_picture || undefined} size={32} linkToProfile />
           <div className="font-medium tracking-[-0.01em]">{post.username}</div>
           <div className="ml-auto flex items-center gap-2">
-            <div className="flex items-center gap-3 text-xs text-[#9fb0b5]">
-              <div className="tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
-              <div className="flex items-center gap-1 text-[11px]" title="Unique viewers">
-                <i className="fa-regular fa-eye" />
-                <span className="tabular-nums">{viewCount}</span>
-              </div>
-            </div>
+            <div className="text-xs text-[#9fb0b5] tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
             <div className="flex items-center gap-2">
               {/* Personal star (turquoise when selected) */}
               <button className="px-2 py-1 rounded-full" title={post.is_starred ? 'Unstar (yours)' : 'Star (yours)'} onClick={toggleStar} aria-label="Star post (yours)">
@@ -1153,10 +1091,6 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   <span className="ml-2 text-[11px] text-[#9fb0b5]">? closes {(() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(post.poll.expires_at) })()}</span>
                 ) : null}
               </div>
-              <div className="flex items-center gap-1 text-[11px] text-[#9fb0b5]" title="Unique viewers">
-                <i className="fa-regular fa-eye" />
-                <span className="tabular-nums">{viewCount}</span>
-              </div>
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
                 <>
                   <button 
@@ -1250,12 +1184,12 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 icon="fa-regular fa-heart" 
                 count={post.reactions?.['heart']||0} 
                 active={post.user_reaction==='heart'} 
-                onClick={()=> { ensureViewRecorded(); onToggleReaction(post.id, 'heart') }}
+                onClick={()=> onToggleReaction(post.id, 'heart')}
                 isHighlighted={highlightStep === 'reaction' && idx === 0}
               />
             </div>
-            <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> { ensureViewRecorded(); onToggleReaction(post.id, 'thumbs-up') }} />
-            <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> { ensureViewRecorded(); onToggleReaction(post.id, 'thumbs-down') }} />
+            <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
+            <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
             <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-white" title="View reactions" onClick={(e)=> { e.stopPropagation(); onOpenReactions && onOpenReactions() }}>
               <i className="fa-solid fa-users" />
             </button>
@@ -1411,7 +1345,6 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                                 const resp = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
                                 const j = await resp.json().catch(()=>null)
                                 if (j?.success && j.reply){
-                                  ensureViewRecorded()
                                   onAddReply && onAddReply(post.id, j.reply as any)
                                   setChildReplyText('')
                                   setChildReplyGif(null)
@@ -1485,7 +1418,6 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   if (sendingReply || (!replyText.trim() && !replyGif)) return
                     try{
                       setSendingReply(true)
-                      ensureViewRecorded()
                       const fd = new FormData()
                       fd.append('post_id', String(post.id))
                       fd.append('content', replyText.trim())
