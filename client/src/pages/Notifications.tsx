@@ -51,6 +51,8 @@ export default function Notifications(){
   const [items, setItems] = useState<Notif[]|null>(null)
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
+  const [broadcastNotif, setBroadcastNotif] = useState<Notif|null>(null)
 
   useEffect(() => { setTitle('Notifications') }, [setTitle])
 
@@ -93,6 +95,11 @@ export default function Notifications(){
     // For poll notifications, navigate to polls page
     let url = n.link
     const typeKey = n.type?.split(':')[0] ?? n.type
+    if (typeKey === 'admin_broadcast') {
+      setBroadcastNotif(n)
+      setBroadcastOpen(true)
+      return
+    }
     const isPollNotification = typeKey === 'poll' || typeKey === 'poll_reminder' || typeKey === 'poll_closed'
     if (!url && isPollNotification && n.community_id) {
       url = `/community/${n.community_id}/polls_react`
@@ -178,7 +185,74 @@ export default function Notifications(){
           </div>
         )}
       </div>
+      {broadcastOpen && (
+        <BroadcastModal
+          notif={broadcastNotif}
+          onClose={() => {
+            setBroadcastOpen(false)
+            setBroadcastNotif(null)
+          }}
+        />
+      )}
     </div>
   )
 }
 
+function BroadcastModal({ notif, onClose }: { notif: Notif | null; onClose: () => void }) {
+  if (!notif) return null
+  const messageLines = notif.message ? notif.message.split(/\n+/) : []
+  const link = notif.link
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.currentTarget === e.target && onClose()}>
+      <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0b0f10] p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2 text-lg font-semibold text-white">
+            <i className="fa-solid fa-bullhorn text-[#4db6ac]" />
+            Platform Announcement
+          </div>
+          <button className="p-2 rounded-lg hover:bg-white/10" onClick={onClose} aria-label="Close announcement modal">
+            <i className="fa-solid fa-xmark text-white" />
+          </button>
+        </div>
+
+        <div className="space-y-3 text-sm text-white/80 max-h-[50vh] overflow-y-auto pr-1">
+          {messageLines.length > 0
+            ? messageLines.map((line, idx) => (
+                <p key={idx} className="leading-relaxed whitespace-pre-line">
+                  {line}
+                </p>
+              ))
+            : (
+              <p className="leading-relaxed">
+                {notif.message || 'No additional message provided.'}
+              </p>
+            )}
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+          {link && (
+            <button
+              className="px-3 py-2 text-sm rounded-lg border border-white/15 bg-white/10 hover:bg-white/15"
+              onClick={() => {
+                try {
+                  window.open(link, '_blank', 'noopener');
+                } catch {
+                  window.location.href = link;
+                }
+              }}
+            >
+              Open Link
+            </button>
+          )}
+          <button
+            className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
