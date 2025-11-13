@@ -35,8 +35,7 @@ export default function PremiumDashboard() {
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
   const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
-  const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)  // Track community joined during onboarding
-  const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)  // Track community name
+  const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)  // Success modal for join
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle } = useHeader()
@@ -496,11 +495,7 @@ export default function PremiumDashboard() {
                 <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=> {
                   // Mark onboarding as complete and redirect to community feed
                   try { localStorage.setItem(doneKey, '1') } catch {}
-                  if (joinedCommunityId) {
-                    window.location.href = `/community_feed_react/${joinedCommunityId}?highlight_post=true`;
-                  } else {
-                    window.location.href = '/communities';
-                  }
+                    window.location.href = '/premium_dashboard';
                 }}>Go to Community</button>
               </div>
             </div>
@@ -621,7 +616,6 @@ export default function PremiumDashboard() {
                     const j = await r.json().catch(()=>null)
                     
                     if (j?.success){ 
-                      setJoinedCommunityId(j.community_id);
                       setJoinedCommunityName(j.community_name || 'community');
                       setShowJoinModal(false); 
                       setJoinCode('');
