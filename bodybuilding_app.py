@@ -14168,23 +14168,84 @@ def get_post_reactors(post_id: int):
             groups.sort(key=lambda g: order.get(g['reaction_type'], 99))
 
             # Normalize image paths
+            def _normalize_pic(value: Optional[str]) -> Optional[str]:
+                if not value:
+                    return None
+                try:
+                    s = str(value).strip()
+                    if s.startswith(('http://', 'https://', '/uploads', '/static')):
+                        return s
+                    if s.startswith('uploads/'):
+                        return '/' + s
+                    return f"/uploads/{s}"
+                except Exception:
+                    return None
+
             for g in groups:
                 for u in g['users']:
-                    pp = u.get('profile_picture')
-                    if not pp:
-                        continue
-                    try:
-                        s = str(pp).strip()
-                        if s.startswith('http://') or s.startswith('https://') or s.startswith('/uploads') or s.startswith('/static'):
-                            u['profile_picture'] = s
-                        elif s.startswith('uploads/'):
-                            u['profile_picture'] = '/' + s
-                        else:
-                            u['profile_picture'] = f"/uploads/{s}"
-                    except Exception:
-                        pass
+                    normalized = _normalize_pic(u.get('profile_picture'))
+                    u['profile_picture'] = normalized
 
-            return jsonify({'success': True, 'groups': groups})
+            view_count = 0
+            viewers: List[Dict[str, Any]] = []
+            try:
+                c.execute("SELECT COUNT(*) as cnt FROM post_views WHERE post_id = ?", (post_id,))
+                row = c.fetchone()
+                if row:
+                    if hasattr(row, 'keys'):
+                        view_count = int(row.get('cnt', 0) or 0)
+                    else:
+                        view_count = int(row[0] if len(row) > 0 else 0)
+            except Exception as count_err:
+                logger.warning(f"Could not count views for post {post_id}: {count_err}")
+
+            viewer_rows = []
+            try:
+                c.execute(
+                    """
+                    SELECT pv.username, pv.viewed_at, up.profile_picture
+                    FROM post_views pv
+                    LEFT JOIN user_profiles up ON up.username = pv.username
+                    WHERE pv.post_id = ?
+                    ORDER BY pv.viewed_at DESC
+                    LIMIT 100
+                    """,
+                    (post_id,),
+                )
+                viewer_rows = c.fetchall() or []
+            except Exception as viewer_err:
+                logger.warning(f"Could not fetch viewers for post {post_id}: {viewer_err}")
+
+            for row in viewer_rows:
+                if hasattr(row, 'keys'):
+                    uname = row.get('username')
+                    viewed_at_raw = row.get('viewed_at')
+                    pic = row.get('profile_picture')
+                else:
+                    uname = row[0] if len(row) > 0 else None
+                    viewed_at_raw = row[1] if len(row) > 1 else None
+                    pic = row[2] if len(row) > 2 else None
+                if not uname:
+                    continue
+                viewed_at_str: Optional[str]
+                if isinstance(viewed_at_raw, datetime):
+                    viewed_at_str = viewed_at_raw.isoformat()
+                elif isinstance(viewed_at_raw, str):
+                    viewed_at_str = viewed_at_raw.strip()
+                else:
+                    viewed_at_str = None
+                viewers.append({
+                    'username': uname,
+                    'profile_picture': _normalize_pic(pic),
+                    'viewed_at': viewed_at_str,
+                })
+
+            return jsonify({
+                'success': True,
+                'groups': groups,
+                'view_count': int(view_count or 0),
+                'viewers': viewers,
+            })
     except Exception as e:
         logger.error(f"get_post_reactors error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500

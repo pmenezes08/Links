@@ -18,6 +18,8 @@ type PollOption = { id: number; text: string; votes: number; user_voted?: boolea
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean }
+type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
+type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 
 function normalizeMediaPath(p?: string | null){
   if (!p) return ''
@@ -60,11 +62,33 @@ export default function CommunityFeed() {
   // Reaction details modal state
   const [reactorsPostId, setReactorsPostId] = useState<number|null>(null)
   const [reactorsLoading, setReactorsLoading] = useState(false)
-  const [reactorGroups, setReactorGroups] = useState<Array<{ reaction_type:string; users: Array<{ username:string; profile_picture?:string|null }> }>>([])
+  const [reactorGroups, setReactorGroups] = useState<ReactionGroup[]>([])
+  const [reactorViewers, setReactorViewers] = useState<PostViewer[]>([])
+  const [reactorViewCount, setReactorViewCount] = useState<number | null>(null)
   const communityTypeLower = (data?.community?.type || '').toLowerCase()
   const communityNameLower = (data?.community?.name || '').toLowerCase()
   const showTasks = communityTypeLower === 'general' || communityTypeLower.includes('university') || communityNameLower.includes('university')
   const showResourcesSection = communityTypeLower !== 'business'
+  const formatViewerRelative = (value?: string | null) => {
+    if (!value) return ''
+    try {
+      const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+      const date = new Date(normalized)
+      if (Number.isNaN(date.getTime())) return ''
+      const diffMs = Date.now() - date.getTime()
+      const diffSeconds = Math.floor(diffMs / 1000)
+      if (diffSeconds < 60) return 'just now'
+      const diffMinutes = Math.floor(diffSeconds / 60)
+      if (diffMinutes < 60) return `${diffMinutes}m ago`
+      const diffHours = Math.floor(diffMinutes / 60)
+      if (diffHours < 24) return `${diffHours}h ago`
+      const diffDays = Math.floor(diffHours / 24)
+      if (diffDays < 7) return `${diffDays}d ago`
+      return date.toLocaleDateString()
+    } catch {
+      return ''
+    }
+  }
   
   // Check if we should highlight from onboarding
   const [highlightStep, setHighlightStep] = useState<'reaction' | 'post' | null>(null)
@@ -280,13 +304,44 @@ export default function CommunityFeed() {
       setReactorsPostId(postId)
       setReactorsLoading(true)
       setReactorGroups([])
+      setReactorViewers([])
+      setReactorViewCount(null)
       const r = await fetch(`/get_post_reactors/${postId}`, { credentials:'include' })
       const j = await r.json().catch(()=>null)
-      if (j?.success){ setReactorGroups(j.groups || []) }
-      else { setReactorGroups([]) }
+      if (j?.success){
+        setReactorGroups(Array.isArray(j.groups) ? j.groups : [])
+        const viewerList: PostViewer[] = Array.isArray(j.viewers)
+          ? (j.viewers as Array<any>)
+              .map((v) => ({
+                username: v?.username,
+                profile_picture: v?.profile_picture ?? null,
+                viewed_at: v?.viewed_at ?? null,
+              }))
+              .filter((v) => typeof v.username === 'string' && v.username.length > 0)
+          : []
+        setReactorViewers(viewerList)
+        if (typeof j.view_count === 'number') {
+          setReactorViewCount(j.view_count)
+        } else if (viewerList.length > 0) {
+          setReactorViewCount(viewerList.length)
+        } else {
+          setReactorViewCount(null)
+        }
+      } else {
+        setReactorGroups([])
+        setReactorViewers([])
+        setReactorViewCount(null)
+      }
     } finally {
       setReactorsLoading(false)
     }
+  }
+
+  function closeReactorsModal(){
+    setReactorsPostId(null)
+    setReactorGroups([])
+    setReactorViewers([])
+    setReactorViewCount(null)
   }
 
   async function handleToggleReaction(postId: number, reaction: string){
@@ -808,23 +863,56 @@ export default function CommunityFeed() {
 
       {/* Reaction details modal */}
       {reactorsPostId && (
-        <div className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setReactorsPostId(null)}>
+        <div
+          className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
+          onClick={(e)=> e.currentTarget===e.target && closeReactorsModal()}
+        >
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold">Reactions</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setReactorsPostId(null)}>?</button>
+              <button className="px-2 py-1 rounded-full border border-white/10" onClick={closeReactorsModal}>X</button>
             </div>
             {reactorsLoading ? (
               <div className="text-[#9fb0b5] text-sm">Loading</div>
             ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
+                <div className="rounded-lg border border-white/10 p-2">
+                  <div className="flex items-center justify-between text-xs text-white/80 uppercase tracking-wide">
+                    <span>Views</span>
+                    <span className="text-sm font-semibold text-white">{reactorViewCount ?? 0}</span>
+                  </div>
+                  {reactorViewers.length === 0 ? (
+                    <div className="mt-2 text-xs text-[#9fb0b5]">No views yet.</div>
+                  ) : (
+                    <div className="mt-2 flex flex-col gap-1">
+                      {reactorViewers.map((viewer) => {
+                        const viewedLabel = formatViewerRelative(viewer.viewed_at)
+                        return (
+                          <div
+                            key={`viewer-${viewer.username}-${viewer.viewed_at ?? ''}`}
+                            className="flex items-center gap-2 text-xs text-[#9fb0b5]"
+                          >
+                            <Avatar
+                              username={viewer.username}
+                              url={viewer.profile_picture || undefined}
+                              size={18}
+                              linkToProfile
+                            />
+                            <div className="flex-1 truncate">@{viewer.username}</div>
+                            {viewedLabel ? <div className="text-[10px] text-white/40">{viewedLabel}</div> : null}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
                 {reactorGroups.length === 0 ? (
                   <div className="text-sm text-[#9fb0b5]">No reactions yet.</div>
-                ) : reactorGroups.map(group => (
+                ) : reactorGroups.map((group) => (
                   <div key={group.reaction_type} className="rounded-lg border border-white/10 p-2">
                     <div className="text-xs text-white/80 mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
                     <div className="flex flex-col gap-1">
-                      {(group.users||[]).map(u => (
+                      {(group.users || []).map((u) => (
                         <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
                           <Avatar username={u.username} url={u.profile_picture || undefined} size={18} linkToProfile />
                           <div className="flex-1 truncate">@{u.username}</div>
