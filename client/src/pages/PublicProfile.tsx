@@ -215,15 +215,7 @@ export default function PublicProfile() {
 
   return (
     <div className="min-h-screen bg-black text-white pt-16 pb-10">
-      <div className="max-w-3xl mx-auto px-4 space-y-4">
-        <button
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-white/10 hover:bg-white/10 text-sm"
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-        >
-          <i className="fa-solid fa-arrow-left" />
-          Back
-        </button>
+        <div className="max-w-3xl mx-auto px-4 space-y-4">
 
         <section className="rounded-xl border border-white/10 p-4">
           <div className="flex flex-wrap items-center gap-4">

@@ -121,10 +121,6 @@ export default function Followers() {
   const [feedLoading, setFeedLoading] = useState(true)
   const [feedError, setFeedError] = useState<string | null>(null)
   const [feedRefreshKey, setFeedRefreshKey] = useState(0)
-  const handleBackNav = () => {
-    if (window.history.length > 1) navigate(-1)
-    else navigate('/home')
-  }
 
   useEffect(() => {
     setTitle('Followers')
@@ -547,10 +543,7 @@ export default function Followers() {
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
-        <div className="max-w-3xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={handleBackNav} aria-label="Back">
-            <i className="fa-solid fa-arrow-left" />
-          </button>
+        <div className="max-w-3xl mx-auto h-full flex items-center px-2">
           <div className="flex-1 h-full flex">
             {SECTION_DEFINITIONS.map(section => {
               const isActive = section.key === activeSection
