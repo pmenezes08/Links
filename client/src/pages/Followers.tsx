@@ -39,7 +39,7 @@ type FollowersFeedPost = {
 const TAB_DEFINITIONS = [
   { key: 'followers', label: 'Followers' },
   { key: 'following', label: 'Following' },
-  { key: 'requests', label: 'Follow Requests' },
+  { key: 'requests', label: 'Requests' },
 ] as const
 
 const SECTION_DEFINITIONS = [
@@ -52,7 +52,7 @@ type SectionKey = (typeof SECTION_DEFINITIONS)[number]['key']
 
 const DEFAULT_SUMMARY: FollowSummary = { followers: 0, following: 0, requests: 0 }
 const TAB_BUTTON_BASE =
-  'inline-flex w-full items-center justify-center gap-1 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40'
+  'inline-flex w-full items-center justify-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40'
 
 function normalizeTab(value: string | null | undefined): TabKey {
   if (!value) return 'followers'
@@ -405,7 +405,7 @@ export default function Followers() {
               >
                 <span>{def.label}</span>
                 <span
-                  className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'text-black/60' : 'text-[#8ca0a8]'}`}
+                  className={`ml-1 rounded-full px-1 py-0.5 text-[9px] ${isActive ? 'text-black/60' : 'text-[#8ca0a8]'}`}
                 >
                   {countValue}
                 </span>
