@@ -369,7 +369,7 @@ export default function Followers() {
   const renderManageSection = () => (
     <section
       id="manage-followers"
-      className="rounded-2xl border border-white/8 bg-[#070a0c] p-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)]"
+      className="rounded-2xl bg-black p-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)]"
     >
       <div className="space-y-2.5">
         <div className="space-y-1.5">
@@ -414,7 +414,7 @@ export default function Followers() {
           })}
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+        <div className="rounded-2xl bg-black/40 p-3">
           {loading && items.length === 0 ? (
             <div className="text-[#9fb0b5]">Loading…</div>
           ) : error ? (
@@ -434,7 +434,7 @@ export default function Followers() {
   const renderFeedSection = () => (
     <section
       id="followers-feed"
-      className="rounded-2xl border border-white/8 bg-[#070a0c] p-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)]"
+      className="rounded-2xl bg-black p-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)]"
     >
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -480,7 +480,7 @@ export default function Followers() {
               const image = normalizeMediaPath(post.image_path || undefined)
               const video = normalizeMediaPath(post.video_path || undefined)
               return (
-                <article key={post.id} className="rounded-xl border border-white/10 bg-black/30 p-2.5">
+                <article key={post.id} className="rounded-xl bg-black/40 p-2.5">
                   <div className="flex items-center gap-2.5">
                     <Avatar username={post.username} url={normalizeAvatar(post.profile_picture)} size={36} />
                     <div className="min-w-0 flex-1">
