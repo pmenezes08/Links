@@ -82,11 +82,11 @@ export default function Followers() {
         const data = await response.json().catch(() => null)
         if (cancelled) return
         if (data?.success) {
-          const list = Array.isArray(data.items) ? data.items : []
+          const list = (Array.isArray(data.items) ? data.items : []) as FollowEntry[]
           setItems(
             list
-              .filter(entry => entry && typeof entry.username === 'string')
-              .map((entry: FollowEntry) => ({
+              .filter((entry) => entry && typeof entry.username === 'string')
+              .map((entry) => ({
                 username: entry.username,
                 display_name: entry.display_name || entry.username,
                 profile_picture: entry.profile_picture || null,

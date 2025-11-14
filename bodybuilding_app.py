@@ -2701,6 +2701,7 @@ def init_db():
                           message TEXT,
                           is_read INTEGER DEFAULT 0,
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          link TEXT,
                           FOREIGN KEY (post_id) REFERENCES posts(id),
                           FOREIGN KEY (community_id) REFERENCES communities(id),
                           UNIQUE KEY unique_notification (user_id, from_user, type, post_id, community_id))''')
@@ -6018,6 +6019,26 @@ def premium_dashboard_react():
         logger.error(f"Error serving React premium dashboard: {str(e)}")
         abort(500)
 
+
+@app.route('/followers')
+@login_required
+def followers_page():
+    """Serve the React SPA for the Followers hub."""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.error(f"Error serving Followers page: {e}")
+        abort(500)
+
 @app.route('/admin_dashboard')
 @login_required
 def admin_dashboard_react():
@@ -8038,23 +8059,13 @@ def api_follow_toggle(username):
                     else:
                         try:
                             message = f"{follower} requested to follow you"
-                            link_value = '/followers?tab=requests'
-                            if USE_MYSQL:
-                                c.execute(
-                                    """
-                                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
-                                    VALUES (%s, %s, 'follow_request', %s, NOW(), 0, %s)
-                                    """,
-                                    (actual_target, follower, message, link_value)
-                                )
-                            else:
-                                c.execute(
-                                    """
-                                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
-                                    VALUES (?, ?, 'follow_request', ?, datetime('now'), 0, ?)
-                                    """,
-                                    (actual_target, follower, message, link_value)
-                                )
+                            create_notification(
+                                user_id=actual_target,
+                                from_user=follower,
+                                notification_type='follow_request',
+                                message=message,
+                                link='/followers?tab=requests'
+                            )
                         except Exception as notif_err:
                             logger.warning(f"follow request notification insert failed {follower}->{actual_target}: {notif_err}")
             else:
@@ -8066,6 +8077,15 @@ def api_follow_toggle(username):
                 except Exception as delete_err:
                     logger.warning(f"follow delete failed {follower}->{actual_target}: {delete_err}")
                 new_status = 'none'
+
+                try:
+                    delete_ph = get_sql_placeholder()
+                    c.execute(
+                        f"DELETE FROM notifications WHERE user_id = {delete_ph} AND from_user = {delete_ph} AND type = {delete_ph}",
+                        (actual_target, follower, 'follow_request')
+                    )
+                except Exception as notif_delete_err:
+                    logger.warning(f"Failed removing follow request notification {follower}->{actual_target}: {notif_delete_err}")
 
             conn.commit()
 
@@ -8274,26 +8294,25 @@ def api_follow_request_accept(username):
 
             try:
                 message = f"{current_user} accepted your follow request"
-                link_value = f"/profile/{current_user}"
-                if USE_MYSQL:
-                    c.execute(
-                        """
-                        INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
-                        VALUES (%s, %s, 'follow_accept', %s, NOW(), 0, %s)
-                        """,
-                        (actual_follower, current_user, message, link_value)
-                    )
-                else:
-                    c.execute(
-                        """
-                        INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
-                        VALUES (?, ?, 'follow_accept', ?, datetime('now'), 0, ?)
-                        """,
-                        (actual_follower, current_user, message, link_value)
-                    )
-                conn.commit()
+                create_notification(
+                    user_id=actual_follower,
+                    from_user=current_user,
+                    notification_type='follow_accept',
+                    message=message,
+                    link=f"/profile/{current_user}"
+                )
             except Exception as notif_err:
                 logger.warning(f"follow accept notification insert failed {current_user}->{actual_follower}: {notif_err}")
+
+            try:
+                cleanup_ph = get_sql_placeholder()
+                c.execute(
+                    f"DELETE FROM notifications WHERE user_id = {cleanup_ph} AND from_user = {cleanup_ph} AND type = {cleanup_ph}",
+                    (current_user, actual_follower, 'follow_request')
+                )
+                conn.commit()
+            except Exception as cleanup_err:
+                logger.warning(f"Failed clearing follow_request notification after acceptance {actual_follower}->{current_user}: {cleanup_err}")
 
             try:
                 send_push_to_user(actual_follower, {
@@ -8349,6 +8368,15 @@ def api_follow_request_decline(username):
                 return jsonify({'success': True, 'counts': summary_current})
             conn.commit()
             summary_current = get_follow_summary(c, current_user)
+            try:
+                cleanup_ph = get_sql_placeholder()
+                c.execute(
+                    f"DELETE FROM notifications WHERE user_id = {cleanup_ph} AND from_user = {cleanup_ph} AND type = {cleanup_ph}",
+                    (current_user, actual_follower, 'follow_request')
+                )
+                conn.commit()
+            except Exception as cleanup_err:
+                logger.warning(f"Failed clearing follow_request notification after decline {actual_follower}->{current_user}: {cleanup_err}")
             return jsonify({'success': True, 'counts': summary_current})
     except Exception as e:
         logger.error(f"api_follow_request_decline error for {current_user}: {e}")
@@ -12637,20 +12665,39 @@ def add_reaction():
             logger.warning(f"Failed to invalidate cache after reaction for community {comm_id}: {cache_err}")
 
 
-def create_notification(user_id, from_user, notification_type, post_id=None, community_id=None, message=None):
-    """Helper function to create a notification with duplicate prevention"""
+def create_notification(user_id, from_user, notification_type, post_id=None, community_id=None, message=None, link=None):
+    """Helper function to create or refresh a notification entry."""
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Use ON DUPLICATE KEY UPDATE to prevent duplicates
-            c.execute("""
-                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                VALUES (?, ?, ?, ?, ?, ?, NOW(), 0)
-                ON DUPLICATE KEY UPDATE
-                    created_at = NOW(),
-                    message = VALUES(message),
-                    is_read = 0
-            """, (user_id, from_user, notification_type, post_id, community_id, message))
+            if USE_MYSQL:
+                c.execute(
+                    """
+                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW(), 0, %s)
+                    ON DUPLICATE KEY UPDATE
+                        created_at = NOW(),
+                        message = VALUES(message),
+                        link = VALUES(link),
+                        is_read = 0
+                    """,
+                    (user_id, from_user, notification_type, post_id, community_id, message, link),
+                )
+            else:
+                now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                c.execute(
+                    """
+                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+                    ON CONFLICT(user_id, from_user, type, post_id, community_id)
+                    DO UPDATE SET
+                        created_at = excluded.created_at,
+                        message = excluded.message,
+                        link = excluded.link,
+                        is_read = 0
+                    """,
+                    (user_id, from_user, notification_type, post_id, community_id, message, now_str, link),
+                )
             conn.commit()
     except Exception as e:
         logger.error(f"Error creating notification: {str(e)}")
