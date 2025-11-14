@@ -369,23 +369,21 @@ export default function Followers() {
   const renderManageSection = () => (
     <section
       id="manage-followers"
-      className="rounded-2xl border border-white/10 bg-[#050708] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      className="rounded-2xl border border-white/8 bg-[#070a0c] p-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)]"
     >
-      <div className="space-y-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9fb0b5]/80">
-            Manage Followers
-          </p>
-          <h1 className="text-2xl font-semibold tracking-tight">Stay in control of your network</h1>
-          <p className="text-sm text-[#9fb0b5]">
+      <div className="space-y-2.5">
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">Manage Followers</p>
+          <h1 className="text-xl font-semibold tracking-tight text-white">Stay in control of your network</h1>
+          <p className="text-[13px] leading-relaxed text-[#a7b8be]">
             Approve follow requests, review your followers, and keep tabs on who you follow.
           </p>
-          <div className="text-xs text-[#6f7c81]">
+          <div className="text-[11px] text-[#6f7c81]">
             {counts.followers} followers · {counts.following} following · {counts.requests} requests
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-1.5">
           {TAB_DEFINITIONS.map(def => {
             const isActive = def.key === activeTab
             const countValue =
@@ -395,8 +393,8 @@ export default function Followers() {
                   ? counts.following
                   : counts.requests
             const activeClasses = isActive
-              ? 'border-white bg-white text-black'
-              : 'border-white/20 text-[#9fb0b5] hover:border-white/40 hover:text-white'
+              ? 'border-white bg-white text-black shadow-[0_8px_20px_rgba(255,255,255,0.18)]'
+              : 'border-white/15 text-[#9fb0b5] hover:border-white/35 hover:text-white'
             return (
               <button
                 key={def.key}
@@ -407,7 +405,7 @@ export default function Followers() {
               >
                 <span>{def.label}</span>
                 <span
-                  className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'text-black/70' : 'text-[#9fb0b5]'}`}
+                  className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'text-black/60' : 'text-[#8ca0a8]'}`}
                 >
                   {countValue}
                 </span>
@@ -416,7 +414,7 @@ export default function Followers() {
           })}
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+        <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
           {loading && items.length === 0 ? (
             <div className="text-[#9fb0b5]">Loading…</div>
           ) : error ? (
@@ -436,18 +434,18 @@ export default function Followers() {
   const renderFeedSection = () => (
     <section
       id="followers-feed"
-      className="rounded-2xl border border-white/10 bg-[#050708] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+      className="rounded-2xl border border-white/8 bg-[#070a0c] p-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)]"
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9fb0b5]/80">Followers Feed</p>
-          <h2 className="text-xl font-semibold">See what your circle is up to</h2>
-          <p className="text-sm text-[#9fb0b5]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">Followers Feed</p>
+          <h2 className="text-xl font-semibold text-white">See what your circle is up to</h2>
+          <p className="text-[13px] text-[#a7b8be]">
             Browse posts your followers created or recently reacted to.
           </p>
         </div>
         <button
-          className="self-start rounded-full border border-white/20 px-3 py-1 text-xs font-semibold tracking-wide text-white hover:border-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60"
+          className="self-start rounded-full border border-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white hover:border-white/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 disabled:opacity-60"
           onClick={() => setFeedRefreshKey(prev => prev + 1)}
           disabled={feedLoading}
         >
@@ -455,7 +453,7 @@ export default function Followers() {
         </button>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-3">
         {feedLoading ? (
           <div className="text-[#9fb0b5]">Loading feed…</div>
         ) : feedError ? (
@@ -463,7 +461,7 @@ export default function Followers() {
         ) : feedPosts.length === 0 ? (
           <div className="text-[#9fb0b5]">No recent activity from the people you follow.</div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2.5">
             {feedPosts.map(post => {
               const timestamp = post.display_timestamp || post.timestamp
               const content = (post.content || '').trim()
@@ -482,33 +480,33 @@ export default function Followers() {
               const image = normalizeMediaPath(post.image_path || undefined)
               const video = normalizeMediaPath(post.video_path || undefined)
               return (
-                <article key={post.id} className="rounded-xl border border-white/10 bg-black/30 p-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar username={post.username} url={normalizeAvatar(post.profile_picture)} size={40} />
+                <article key={post.id} className="rounded-xl border border-white/10 bg-black/30 p-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <Avatar username={post.username} url={normalizeAvatar(post.profile_picture)} size={36} />
                     <div className="min-w-0 flex-1">
                       <button
-                        className="text-left text-sm font-semibold text-white hover:underline"
+                        className="text-left text-[13px] font-semibold text-white hover:underline"
                         onClick={() => navigate(`/profile/${encodeURIComponent(post.username)}`)}
                       >
                         {post.username}
                       </button>
                       {post.community_name ? (
-                        <div className="text-xs text-[#9fb0b5]">in {post.community_name}</div>
+                        <div className="text-[11px] text-[#9fb0b5]">in {post.community_name}</div>
                       ) : null}
                     </div>
-                    <div className="text-xs text-[#9fb0b5] whitespace-nowrap">{formatRelative(timestamp)}</div>
+                    <div className="text-[11px] text-[#7d8a91] whitespace-nowrap">{formatRelative(timestamp)}</div>
                   </div>
                   {badges.length ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-2 flex flex-wrap gap-1.5">
                       {badges.map(badge => (
-                        <span key={badge} className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-[#9fb0b5]">
+                        <span key={badge} className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-[#9fb0b5]">
                           {badge}
                         </span>
                       ))}
                     </div>
                   ) : null}
                   {content && (
-                    <div className="mt-2 whitespace-pre-line text-sm text-white/90">
+                    <div className="mt-2 whitespace-pre-line text-[13px] leading-relaxed text-white/90">
                       {content}
                     </div>
                   )}
@@ -516,19 +514,19 @@ export default function Followers() {
                     <img
                       src={image}
                       alt="Post attachment"
-                      className="mt-3 max-h-64 w-full rounded-lg border border-white/10 object-cover"
+                      className="mt-2.5 max-h-56 w-full rounded-lg border border-white/10 object-cover"
                       loading="lazy"
                     />
                   ) : null}
                   {video ? (
                     <video
-                      className="mt-3 w-full rounded-lg border border-white/10 bg-black"
+                      className="mt-2.5 w-full rounded-lg border border-white/10 bg-black"
                       src={video}
                       controls
                       playsInline
                     />
                   ) : null}
-                  <div className="mt-3 flex flex-wrap gap-3 text-xs text-[#9fb0b5]">
+                  <div className="mt-2.5 flex flex-wrap gap-2 text-[11px] text-[#9fb0b5]">
                     <button className="font-semibold text-[#4db6ac] hover:underline" onClick={() => navigate(`/post/${post.id}`)}>
                       View post →
                     </button>
@@ -542,34 +540,34 @@ export default function Followers() {
     </section>
   )
 
-  return (
-    <div className="min-h-screen bg-black text-white pt-16 pb-12">
-      <nav className="sticky top-14 z-20 border-b border-white/10 bg-black/90 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl">
-          {SECTION_DEFINITIONS.map(section => {
-            const isActive = section.key === activeSection
-            const baseClasses =
-              'flex-1 px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40'
-            const palette = isActive
-              ? 'text-white border-b-2 border-white'
-              : 'text-[#9fb0b5] border-b-2 border-transparent hover:text-white'
-            return (
-              <button
-                key={section.key}
-                type="button"
-                className={`${baseClasses} ${palette}`}
-                onClick={() => setActiveSection(section.key)}
-              >
-                {section.label}
-              </button>
-            )
-          })}
-        </div>
-      </nav>
+    return (
+      <div className="min-h-screen bg-black text-white pt-16 pb-12">
+        <nav className="sticky top-14 z-20 border-b border-white/10 bg-black/95 backdrop-blur">
+          <div className="mx-auto flex max-w-2xl">
+            {SECTION_DEFINITIONS.map(section => {
+              const isActive = section.key === activeSection
+              const baseClasses =
+                'flex-1 px-4 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.25em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40'
+              const palette = isActive
+                ? 'text-white border-b-2 border-white'
+                : 'text-[#9fb0b5] border-b-2 border-transparent hover:text-white'
+              return (
+                <button
+                  key={section.key}
+                  type="button"
+                  className={`${baseClasses} ${palette}`}
+                  onClick={() => setActiveSection(section.key)}
+                >
+                  {section.label}
+                </button>
+              )
+            })}
+          </div>
+        </nav>
 
-      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 pt-6">
-        {activeSection === 'manage' ? renderManageSection() : renderFeedSection()}
+        <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 pt-6">
+          {activeSection === 'manage' ? renderManageSection() : renderFeedSection()}
+        </div>
       </div>
-    </div>
-  )
-}
+    )
+  }
