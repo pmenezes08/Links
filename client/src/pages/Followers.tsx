@@ -42,12 +42,13 @@ const TAB_DEFINITIONS = [
   { key: 'requests', label: 'Follow Requests' },
 ] as const
 
-const SECTION_LINKS = [
-  { key: 'manage', label: 'Manage Followers', href: '#manage-followers' },
-  { key: 'feed', label: 'Followers Feed', href: '#followers-feed' },
+const SECTION_DEFINITIONS = [
+  { key: 'manage', label: 'Manage Followers' },
+  { key: 'feed', label: 'Followers Feed' },
 ] as const
 
 type TabKey = (typeof TAB_DEFINITIONS)[number]['key']
+type SectionKey = (typeof SECTION_DEFINITIONS)[number]['key']
 
 const DEFAULT_SUMMARY: FollowSummary = { followers: 0, following: 0, requests: 0 }
 const TAB_BUTTON_BASE =
@@ -57,6 +58,12 @@ function normalizeTab(value: string | null | undefined): TabKey {
   if (!value) return 'followers'
   const match = TAB_DEFINITIONS.find(def => def.key === value.toLowerCase())
   return match ? match.key : 'followers'
+}
+
+function normalizeSection(value: string | null | undefined): SectionKey {
+  if (!value) return 'manage'
+  const match = SECTION_DEFINITIONS.find(def => def.key === value.toLowerCase())
+  return match ? match.key : 'manage'
 }
 
 function formatRelative(value?: string | null): string {
@@ -101,8 +108,10 @@ export default function Followers() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialTab = useMemo(() => normalizeTab(searchParams.get('tab')), [searchParams])
+  const initialSection = useMemo(() => normalizeSection(searchParams.get('section')), [searchParams])
 
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab)
+  const [activeSection, setActiveSection] = useState<SectionKey>(initialSection)
   const [items, setItems] = useState<FollowEntry[]>([])
   const [counts, setCounts] = useState<FollowSummary>(DEFAULT_SUMMARY)
   const [loading, setLoading] = useState(true)
@@ -118,8 +127,11 @@ export default function Followers() {
   }, [setTitle])
 
   useEffect(() => {
-    setSearchParams({ tab: activeTab }, { replace: true })
-  }, [activeTab, setSearchParams])
+    const params = new URLSearchParams()
+    params.set('tab', activeTab)
+    params.set('section', activeSection)
+    setSearchParams(params, { replace: true })
+  }, [activeTab, activeSection, setSearchParams])
 
   useEffect(() => {
     let cancelled = false
@@ -358,20 +370,30 @@ export default function Followers() {
     <div className="min-h-screen bg-black text-white pt-16 pb-12">
       <nav className="sticky top-14 z-20 border-b border-white/10 bg-black/90 backdrop-blur">
         <div className="mx-auto flex max-w-2xl">
-          {SECTION_LINKS.map(link => (
-            <a
-              key={link.key}
-              href={link.href}
-              className="flex-1 px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wide text-[#9fb0b5] transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-            >
-              {link.label}
-            </a>
-          ))}
+          {SECTION_DEFINITIONS.map(section => {
+            const isActive = section.key === activeSection
+            const baseClasses =
+              'flex-1 px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40'
+            const palette = isActive
+              ? 'text-white border-b-2 border-white'
+              : 'text-[#9fb0b5] border-b-2 border-transparent hover:text-white'
+            return (
+              <button
+                key={section.key}
+                type="button"
+                className={`${baseClasses} ${palette}`}
+                onClick={() => setActiveSection(section.key)}
+              >
+                {section.label}
+              </button>
+            )
+          })}
         </div>
       </nav>
 
-      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 pt-6">
-        <section
+        <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 pt-6">
+          {activeSection === 'manage' ? (
+          <section
           id="manage-followers"
           className="rounded-2xl border border-white/10 bg-[#050708] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
         >
@@ -432,9 +454,11 @@ export default function Followers() {
               )}
             </div>
           </div>
-        </section>
+          </section>
+          ) : null}
 
-        <section
+          {activeSection === 'feed' ? (
+          <section
           id="followers-feed"
           className="rounded-2xl border border-white/10 bg-[#050708] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
         >
@@ -550,7 +574,8 @@ export default function Followers() {
               </div>
             )}
           </div>
-        </section>
+          </section>
+          ) : null}
       </div>
     </div>
   )
