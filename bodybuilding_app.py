@@ -997,13 +997,13 @@ def ensure_followers_table(cursor) -> None:
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS followers (
-                    follower_username VARCHAR(150) NOT NULL,
-                    followed_username VARCHAR(150) NOT NULL,
+                    follower_username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+                    followed_username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
                     created_at DATETIME NOT NULL,
                     PRIMARY KEY (follower_username, followed_username),
                     CONSTRAINT fk_follow_follower FOREIGN KEY (follower_username) REFERENCES users(username) ON DELETE CASCADE,
                     CONSTRAINT fk_follow_followed FOREIGN KEY (followed_username) REFERENCES users(username) ON DELETE CASCADE
-                ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+                ) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci
                 """
             )
         else:
