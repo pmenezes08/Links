@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
-from collections import deque
+from collections import deque, defaultdict
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 import os
 import sys
@@ -8236,6 +8236,180 @@ def api_followers_list():
             })
     except Exception as e:
         logger.error(f"api_followers_list error for {username}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/followers_feed', methods=['GET'])
+@login_required
+def api_followers_feed():
+    """Return posts authored or interacted with by people the user follows."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_followers_table(c)
+            placeholder = get_sql_placeholder()
+            c.execute(
+                f"""
+                SELECT followed_username
+                FROM followers
+                WHERE follower_username = {placeholder} AND status = 'accepted'
+                ORDER BY COALESCE(accepted_at, created_at) DESC
+                """,
+                (username,),
+            )
+            rows = c.fetchall() or []
+            followings: List[str] = []
+            for row in rows:
+                value = row['followed_username'] if hasattr(row, 'keys') else row[0]
+                if value:
+                    followings.append(value)
+
+            if not followings:
+                return jsonify({'success': True, 'posts': []})
+
+            MAX_FOLLOWINGS = 200
+            if len(followings) > MAX_FOLLOWINGS:
+                followings = followings[:MAX_FOLLOWINGS]
+
+            in_placeholders = ','.join([get_sql_placeholder()] * len(followings))
+            in_params = tuple(followings)
+
+            c.execute(
+                f"SELECT id FROM posts WHERE username IN ({in_placeholders}) ORDER BY id DESC LIMIT 200",
+                in_params,
+            )
+            authored_ids = [
+                row['id'] if hasattr(row, 'keys') else row[0] for row in (c.fetchall() or [])
+            ]
+
+            c.execute(
+                f"SELECT post_id, username FROM reactions WHERE username IN ({in_placeholders}) ORDER BY id DESC LIMIT 400",
+                in_params,
+            )
+            reaction_rows = c.fetchall() or []
+            c.execute(
+                f"SELECT post_id, username FROM replies WHERE username IN ({in_placeholders}) ORDER BY id DESC LIMIT 400",
+                in_params,
+            )
+            reply_rows = c.fetchall() or []
+
+            reaction_map: dict[int, List[str]] = defaultdict(list)
+            reaction_ids: List[int] = []
+            for row in reaction_rows:
+                pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                reactor = row['username'] if hasattr(row, 'keys') else row[1]
+                if not pid or not reactor:
+                    continue
+                reaction_ids.append(pid)
+                reactor_clean = str(reactor).strip()
+                if reactor_clean and reactor_clean not in reaction_map[pid]:
+                    reaction_map[pid].append(reactor_clean)
+
+            reply_map: dict[int, List[str]] = defaultdict(list)
+            reply_ids: List[int] = []
+            for row in reply_rows:
+                pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                replier = row['username'] if hasattr(row, 'keys') else row[1]
+                if not pid or not replier:
+                    continue
+                reply_ids.append(pid)
+                replier_clean = str(replier).strip()
+                if replier_clean and replier_clean not in reply_map[pid]:
+                    reply_map[pid].append(replier_clean)
+
+            combined_ids: List[int] = []
+            seen: set[int] = set()
+            for pid in authored_ids + reaction_ids + reply_ids:
+                if not pid or pid in seen:
+                    continue
+                seen.add(pid)
+                combined_ids.append(pid)
+                if len(combined_ids) >= 50:
+                    break
+
+            if not combined_ids:
+                return jsonify({'success': True, 'posts': []})
+
+            post_placeholders = ','.join([get_sql_placeholder()] * len(combined_ids))
+            c.execute(
+                f"SELECT * FROM posts WHERE id IN ({post_placeholders}) ORDER BY id DESC",
+                tuple(combined_ids),
+            )
+            posts = [dict(row) for row in (c.fetchall() or [])]
+            if not posts:
+                return jsonify({'success': True, 'posts': []})
+
+            community_ids = {
+                post.get('community_id')
+                for post in posts
+                if post.get('community_id')
+            }
+            community_map: Dict[int, str] = {}
+            if community_ids:
+                comm_placeholders = ','.join([get_sql_placeholder()] * len(community_ids))
+                c.execute(
+                    f"SELECT id, name FROM communities WHERE id IN ({comm_placeholders})",
+                    tuple(community_ids),
+                )
+                for row in c.fetchall() or []:
+                    cid = row['id'] if hasattr(row, 'keys') else row[0]
+                    name = row['name'] if hasattr(row, 'keys') else row[1]
+                    if cid:
+                        community_map[cid] = name
+
+            author_usernames = {
+                post.get('username')
+                for post in posts
+                if post.get('username')
+            }
+            profile_map: Dict[str, str] = {}
+            if author_usernames:
+                profile_placeholders = ','.join([get_sql_placeholder()] * len(author_usernames))
+                c.execute(
+                    f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({profile_placeholders})",
+                    tuple(author_usernames),
+                )
+                for row in c.fetchall() or []:
+                    uname = row['username'] if hasattr(row, 'keys') else row[0]
+                    pic = row['profile_picture'] if hasattr(row, 'keys') else row[1]
+                    if uname:
+                        profile_map[uname] = pic
+
+            def normalize_media_path(value: Optional[str]) -> Optional[str]:
+                if not value:
+                    return None
+                path = str(value).strip()
+                if not path:
+                    return None
+                if path.startswith('http://') or path.startswith('https://'):
+                    return path
+                if path.startswith('/'):
+                    return path
+                if path.startswith('uploads') or path.startswith('static'):
+                    return f'/{path}'
+                return f'/uploads/{path}'
+
+            following_lookup = {name.lower(): name for name in followings if isinstance(name, str)}
+
+            for post in posts:
+                pid = post.get('id')
+                post['community_name'] = community_map.get(post.get('community_id'))
+                author = post.get('username')
+                post['profile_picture'] = normalize_media_path(
+                    profile_map.get(author) if author else None
+                )
+                post['image_path'] = normalize_media_path(post.get('image_path'))
+                post['video_path'] = normalize_media_path(post.get('video_path'))
+                post['followers_activity'] = {
+                    'authored': bool(author and author.lower() in following_lookup),
+                    'reacted_by': reaction_map.get(pid, [])[:3],
+                    'replied_by': reply_map.get(pid, [])[:3],
+                }
+
+            return jsonify({'success': True, 'posts': posts})
+    except Exception as e:
+        logger.error(f"api_followers_feed error for {username}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
