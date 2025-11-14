@@ -26,6 +26,8 @@ const TAB_DEFINITIONS = [
 type TabKey = (typeof TAB_DEFINITIONS)[number]['key']
 
 const DEFAULT_SUMMARY: FollowSummary = { followers: 0, following: 0, requests: 0 }
+const TAB_BUTTON_BASE =
+  'rounded-full border px-4 py-1.5 text-sm font-medium transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50'
 
 function normalizeTab(value: string | null | undefined): TabKey {
   if (!value) return 'followers'
@@ -197,12 +199,89 @@ export default function Followers() {
     }
   }
 
+  const renderRequestsList = () => (
+    <ul className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/[0.02]">
+      {items.map(entry => {
+        const actionKeyAccept = `accept:${entry.username.toLowerCase()}`
+        const actionKeyDecline = `decline:${entry.username.toLowerCase()}`
+        const isAccepting = actionLoading === actionKeyAccept
+        const isDeclining = actionLoading === actionKeyDecline
+        return (
+          <li key={entry.username} className="flex items-center gap-3 px-3.5 py-2.5">
+            <Avatar username={entry.username} url={normalizeAvatar(entry.profile_picture)} size={40} />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold truncate text-white">
+                {entry.display_name || entry.username}
+                <span className="ml-1 text-xs font-normal text-[#6f7c81]">@{entry.username}</span>
+              </div>
+              {entry.created_at ? (
+                <div className="text-xs text-[#6f7c81]">Requested {formatRelative(entry.created_at)}</div>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                className="h-8 rounded-full bg-[#4db6ac] px-3 text-xs font-semibold text-black hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isAccepting}
+                onClick={() => handleAccept(entry.username)}
+              >
+                {isAccepting ? 'Accepting…' : 'Accept'}
+              </button>
+              <button
+                className="h-8 rounded-full border border-white/20 px-3 text-xs font-medium text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isDeclining}
+                onClick={() => handleDecline(entry.username)}
+              >
+                {isDeclining ? 'Declining…' : 'Decline'}
+              </button>
+            </div>
+          </li>
+        )
+      })}
+    </ul>
+  )
+
+  const renderPeopleList = () => (
+    <div className="flex flex-col gap-2.5">
+      {items.map(entry => (
+        <div
+          key={entry.username}
+          className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-2.5"
+        >
+          <Avatar username={entry.username} url={normalizeAvatar(entry.profile_picture)} size={44} />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold truncate text-white">{entry.display_name || entry.username}</div>
+            <div className="text-xs text-[#6f7c81]">@{entry.username}</div>
+            {entry.created_at ? (
+              <div className="text-xs text-[#6f7c81] mt-0.5">
+                {activeTab === 'followers' ? 'Following since' : 'Since'} {formatRelative(entry.created_at)}
+              </div>
+            ) : null}
+          </div>
+          <div className="flex flex-col items-stretch gap-1.5 sm:flex-row sm:items-center">
+            <button
+              className="rounded-full border border-white/15 px-3 py-1 text-xs font-medium text-white hover:border-white/40"
+              onClick={() => navigate(`/profile/${encodeURIComponent(entry.username)}`)}
+            >
+              View
+            </button>
+            <button
+              className="rounded-full border border-white/15 px-3 py-1 text-xs font-medium text-white hover:border-white/40"
+              onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(entry.username)}`)}
+            >
+              Message
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-black text-white pt-16 pb-12">
-      <div className="max-w-2xl mx-auto px-4 space-y-6">
+      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4">
         <header className="flex flex-col gap-3">
-          <h1 className="text-2xl font-semibold">Followers</h1>
-          <div className="flex gap-2">
+          <h1 className="text-xl font-semibold tracking-tight">Followers</h1>
+          <div className="flex flex-wrap gap-2">
             {TAB_DEFINITIONS.map(def => {
               const isActive = def.key === activeTab
               const countValue =
@@ -211,20 +290,21 @@ export default function Followers() {
                   : def.key === 'following'
                     ? counts.following
                     : counts.requests
+              const activeClasses = isActive
+                ? 'border-white bg-white text-black'
+                : 'border-white/20 text-[#9fb0b5] hover:border-white/40 hover:text-white'
               return (
                 <button
                   key={def.key}
-                  className={
-                    isActive
-                      ? 'flex-1 rounded-full border border-[#4db6ac] bg-[#4db6ac] text-black font-semibold py-2'
-                      : 'flex-1 rounded-full border border-white/15 bg-white/5 text-[#9fb0b5] py-2 hover:border-white/30'
-                  }
+                  className={`${TAB_BUTTON_BASE} ${activeClasses}`}
                   onClick={() => {
                     if (!isActive) setActiveTab(def.key)
                   }}
                 >
-                  {def.label}
-                  <span className="ml-2 text-sm font-normal text-[#9fb0b5]">
+                  <span>{def.label}</span>
+                  <span
+                    className={`ml-2 rounded-full px-2 py-0.5 text-[11px] ${isActive ? 'text-black/70' : 'text-[#9fb0b5]'}`}
+                  >
                     {countValue}
                   </span>
                 </button>
@@ -233,75 +313,18 @@ export default function Followers() {
           </div>
         </header>
 
-        <section className="rounded-2xl border border-white/10 bg-[#040708]">
-          <div className="p-4 space-y-3">
-            {loading && items.length === 0 ? (
-              <div className="text-[#9fb0b5]">Loading…</div>
-            ) : error ? (
-              <div className="text-red-400">{error}</div>
-            ) : items.length === 0 ? (
-              renderEmptyState()
-            ) : (
-              <div className="flex flex-col gap-3">
-                {items.map(entry => {
-                  const actionKeyAccept = `accept:${entry.username.toLowerCase()}`
-                  const actionKeyDecline = `decline:${entry.username.toLowerCase()}`
-                  const isAccepting = actionLoading === actionKeyAccept
-                  const isDeclining = actionLoading === actionKeyDecline
-                  return (
-                    <div
-                      key={entry.username}
-                      className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/40 p-3"
-                    >
-                      <Avatar username={entry.username} url={normalizeAvatar(entry.profile_picture)} size={48} />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold truncate">{entry.display_name || entry.username}</div>
-                        <div className="text-sm text-[#9fb0b5] truncate">@{entry.username}</div>
-                        {entry.created_at ? (
-                          <div className="text-xs text-[#6f7c81] mt-0.5">
-                            {activeTab === 'requests' ? 'Requested' : 'Since'} {formatRelative(entry.created_at)}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:gap-2">
-                        <button
-                          className="px-3 py-1.5 rounded-md border border-white/15 text-sm hover:bg-white/10"
-                          onClick={() => navigate(`/profile/${encodeURIComponent(entry.username)}`)}
-                        >
-                          View profile
-                        </button>
-                        {activeTab === 'requests' ? (
-                          <>
-                            <button
-                              className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm font-semibold hover:brightness-110 disabled:opacity-60"
-                              disabled={isAccepting}
-                              onClick={() => handleAccept(entry.username)}
-                            >
-                              {isAccepting ? 'Accepting…' : 'Accept'}
-                            </button>
-                            <button
-                              className="px-3 py-1.5 rounded-md border border-white/15 text-sm hover:bg-white/10 disabled:opacity-60"
-                              disabled={isDeclining}
-                              onClick={() => handleDecline(entry.username)}
-                            >
-                              {isDeclining ? 'Declining…' : 'Decline'}
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            className="px-3 py-1.5 rounded-md border border-white/15 text-sm hover:bg-white/10"
-                            onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(entry.username)}`)}
-                          >
-                            Message
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+        <section className="rounded-2xl border border-white/10 bg-[#050708] p-4">
+          {loading && items.length === 0 ? (
+            <div className="text-[#9fb0b5]">Loading…</div>
+          ) : error ? (
+            <div className="text-red-400">{error}</div>
+          ) : items.length === 0 ? (
+            renderEmptyState()
+          ) : activeTab === 'requests' ? (
+            renderRequestsList()
+          ) : (
+            renderPeopleList()
+          )}
         </section>
       </div>
     </div>
