@@ -15,7 +15,7 @@ import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}> }
+type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number }
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -120,6 +120,36 @@ export default function PostDetail(){
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
+  const viewRecordedRef = useRef(false)
+  
+  useEffect(() => {
+    if (!post_id) return
+    if (viewRecordedRef.current) return
+    viewRecordedRef.current = true
+    let cancelled = false
+    async function recordView(){
+      try{
+        const res = await fetch('/save_post_view', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ post_id: Number(post_id) })
+        })
+        const j = await res.json().catch(() => null)
+        if (!cancelled && j?.success && typeof j.view_count === 'number'){
+          setPost(prev => {
+            if (!prev) return prev
+            if (Number(prev.id) !== Number(post_id)) return prev
+            return { ...prev, view_count: j.view_count }
+          })
+        }
+      } catch {
+        viewRecordedRef.current = false
+      }
+    }
+    recordView()
+    return () => { cancelled = true }
+  }, [post_id])
 
   async function compressImageFile(input: File, maxEdge = 1600, quality = 0.82): Promise<File> {
     try {

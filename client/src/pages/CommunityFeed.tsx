@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
@@ -69,6 +69,8 @@ export default function CommunityFeed() {
   const communityNameLower = (data?.community?.name || '').toLowerCase()
   const showTasks = communityTypeLower === 'general' || communityTypeLower.includes('university') || communityNameLower.includes('university')
   const showResourcesSection = communityTypeLower !== 'business'
+  const recordedViewsRef = useRef<Set<number>>(new Set())
+
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
     try {
@@ -89,6 +91,45 @@ export default function CommunityFeed() {
       return ''
     }
   }
+  
+  const markPostViewed = useCallback(async (postId: number, alreadyViewed?: boolean) => {
+    if (!postId) return
+    if (alreadyViewed) {
+      recordedViewsRef.current.add(postId)
+      return
+    }
+    if (recordedViewsRef.current.has(postId)) return
+    recordedViewsRef.current.add(postId)
+    try {
+      const res = await fetch('/save_post_view', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: postId })
+      })
+      const j = await res.json().catch(() => null)
+      if (j?.success) {
+        const nextCount = typeof j.view_count === 'number' ? j.view_count : undefined
+        setData((prev: any) => {
+          if (!prev) return prev
+          const posts = Array.isArray(prev.posts) ? prev.posts : []
+          const updated = posts.map((p: any) => {
+            if (p.id !== postId) return p
+            return {
+              ...p,
+              has_viewed: true,
+              view_count: typeof nextCount === 'number' ? nextCount : (typeof p.view_count === 'number' ? p.view_count : 0)
+            }
+          })
+          return { ...prev, posts: updated }
+        })
+      } else {
+        recordedViewsRef.current.delete(postId)
+      }
+    } catch {
+      recordedViewsRef.current.delete(postId)
+    }
+  }, [])
   
   // Check if we should highlight from onboarding
   const [highlightStep, setHighlightStep] = useState<'reaction' | 'post' | null>(null)
@@ -306,6 +347,8 @@ export default function CommunityFeed() {
       setReactorGroups([])
       setReactorViewers([])
       setReactorViewCount(null)
+      const targetPost = postsOnly.find((p: Post) => p.id === postId)
+      markPostViewed(postId, targetPost?.has_viewed)
       const r = await fetch(`/get_post_reactors/${postId}`, { credentials:'include' })
       const j = await r.json().catch(()=>null)
       if (j?.success){
@@ -585,7 +628,10 @@ export default function CommunityFeed() {
                 currentUser={data.username}
                 isAdmin={!!(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin')}
                 highlightStep={highlightStep}
-                onOpen={() => navigate(`/post/${p.id}`)}
+                onOpen={() => {
+                  markPostViewed(p.id, p.has_viewed)
+                  navigate(`/post/${p.id}`)
+                }}
                 onToggleReaction={handleToggleReaction}
                 onPollVote={handlePollVote}
                 communityId={community_id}
@@ -601,8 +647,12 @@ export default function CommunityFeed() {
                 onPollClick={() => navigate(`/community/${community_id}/polls_react`)}
                 onOpenVoters={openVoters}
                 onAddReply={onAddReply}
-                onOpenReactions={() => openReactors(p.id)}
+                onOpenReactions={() => {
+                  markPostViewed(p.id, p.has_viewed)
+                  openReactors(p.id)
+                }}
                 onPreviewImage={(src)=> setPreviewImageSrc(src)}
+                onMarkViewed={markPostViewed}
               />
               {/* Dark overlay for all posts except first one during reaction highlight */}
               {highlightStep === 'reaction' && idx !== 0 && (
@@ -934,7 +984,8 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void }) {
+  const cardRef = useRef<HTMLDivElement | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
   const [starring, setStarring] = useState(false)
@@ -946,6 +997,29 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [sendingReply, setSendingReply] = useState(false)
   const [activeChildReplyFor, setActiveChildReplyFor] = useState<number|null>(null)
   const [childReplyText, setChildReplyText] = useState('')
+  useEffect(() => {
+    if (!onMarkViewed) return
+    if (post.has_viewed) return
+    const el = cardRef.current
+    if (!el) return
+
+    if (typeof IntersectionObserver === 'undefined') {
+      onMarkViewed(post.id, post.has_viewed)
+      return
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          onMarkViewed(post.id, post.has_viewed)
+          observer.disconnect()
+        }
+      })
+    }, { threshold: 0.4 })
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [onMarkViewed, post.id, post.has_viewed])
   const [childReplyGif, setChildReplyGif] = useState<GifSelection | null>(null)
   const [sendingChildReply, setSendingChildReply] = useState(false)
   const [gifPickerTarget, setGifPickerTarget] = useState<'main' | number | null>(null)
@@ -1040,7 +1114,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     else alert(j?.error || 'Failed to update post')
   }
   return (
-    <div id={`post-${post.id}`} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
+    <div ref={cardRef} id={`post-${post.id}`} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
       {!post.poll && (
         <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
           <Avatar username={post.username} url={post.profile_picture || undefined} size={32} linkToProfile />
