@@ -129,7 +129,7 @@ export default function PostDetail(){
     let cancelled = false
     async function recordView(){
       try{
-        const res = await fetch('/save_post_view', {
+        const res = await fetch('/api/post_view', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },

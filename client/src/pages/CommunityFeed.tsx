@@ -101,7 +101,7 @@ export default function CommunityFeed() {
     if (recordedViewsRef.current.has(postId)) return
     recordedViewsRef.current.add(postId)
     try {
-      const res = await fetch('/save_post_view', {
+      const res = await fetch('/api/post_view', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
