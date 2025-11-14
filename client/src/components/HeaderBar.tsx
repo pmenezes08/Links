@@ -117,7 +117,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
         </div>
       </div>
 
-      {menuOpen && (
+        {menuOpen && (
         <div className="fixed inset-0 z-[90] flex bg-black/50" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)}>
           <div className="w-[90%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-3 text-white overflow-y-auto overscroll-contain">
             <div className="flex items-center gap-2 pb-2 border-b border-white/10">
@@ -142,8 +142,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
               >
                 My Profile
               </button>
-              <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/user_chat') }}>Messages</button>
-              <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>Followers</button>
+                <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg:white/5 text:white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>Followers</button>
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text:white" href="/logout">Logout</a>
             <a className="block px-4 py-3 rounded-xl hover:bg:white/5 text:white" href="/account_settings">Account Settings</a>
           </div>
