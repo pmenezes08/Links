@@ -27,6 +27,7 @@ export default function PremiumDashboard() {
   const [username, setUsername] = useState('')
   const [subscription, setSubscription] = useState<string>('free')
   const [hasProfilePic, setHasProfilePic] = useState<boolean>(false)
+  const [existingProfilePic, setExistingProfilePic] = useState<string>('')
   const [savingName, setSavingName] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
   const [picPreview, setPicPreview] = useState('')
@@ -46,6 +47,16 @@ export default function PremiumDashboard() {
     setShowCreateModal(false)
     setNewCommName('')
     setNewCommType('General')
+  }
+
+  const resolveAvatar = (value?: string | null) => {
+    if (!value) return ''
+    const trimmed = value.trim()
+    if (!trimmed) return ''
+    if (trimmed.startsWith('http')) return trimmed
+    if (trimmed.startsWith('/uploads') || trimmed.startsWith('/static')) return trimmed
+    if (trimmed.startsWith('uploads') || trimmed.startsWith('static')) return `/${trimmed}`
+    return `/uploads/${trimmed}`
   }
 
   function handleExitConfirm(){
@@ -87,7 +98,11 @@ export default function PremiumDashboard() {
             setUsername(me.profile.username || '')
             setFirstName(me.profile.first_name || '')
             setDisplayName(me.profile.display_name || me.profile.username)
-            setHasProfilePic(!!me.profile.profile_picture)
+            const profilePicValue = me.profile.profile_picture || null
+            const resolvedPic = resolveAvatar(profilePicValue)
+            setHasProfilePic(!!profilePicValue)
+            setExistingProfilePic(resolvedPic)
+            setPicPreview(prev => prev || resolvedPic)
             setSubscription((me.profile.subscription || 'free') as string)
           }
         }catch{ setEmailVerified(null) }
@@ -141,7 +156,11 @@ export default function PremiumDashboard() {
           setEmailVerifiedAt(pj.profile.email_verified_at || null)
           setUsername(pj.profile.username || '')
           setDisplayName(pj.profile.display_name || pj.profile.username)
-          setHasProfilePic(!!pj.profile.profile_picture)
+          const profilePicValue = pj.profile.profile_picture || null
+          const resolvedPic = resolveAvatar(profilePicValue)
+          setHasProfilePic(!!profilePicValue)
+          setExistingProfilePic(resolvedPic)
+          setPicPreview(prev => prev || resolvedPic)
           setSubscription((pj.profile.subscription || 'free') as string)
         }
         // Also refresh communities snapshot
@@ -236,6 +255,9 @@ export default function PremiumDashboard() {
 
   // Parent-only creation: skip loading parent communities
 
+
+  const hasAnyCommunity = communities.length > 0
+  const profilePreviewSrc = picPreview || existingProfilePic
 
   return (
     <div className="min-h-screen pt-14 bg-[#0b0f10] text-white">
@@ -393,9 +415,9 @@ export default function PremiumDashboard() {
               setPicFile(f as any)
               if (f){ try{ setPicPreview(URL.createObjectURL(f)) }catch{ setPicPreview('') } }
             }} />
-            {picPreview && (
+            {profilePreviewSrc && (
               <div className="mt-3 flex items-center justify-center">
-                <img src={picPreview} className="max-h-40 rounded-lg border border-white/10" />
+                <img src={profilePreviewSrc} className="max-h-40 rounded-lg border border-white/10" />
               </div>
             )}
             <div className="mt-4 flex gap-2 justify-between">
@@ -412,7 +434,17 @@ export default function PremiumDashboard() {
                   const r = await fetch('/upload_profile_picture', { method:'POST', credentials:'include', body: fd })
                   const j = await r.json().catch(()=>null)
                   if (!r.ok || !j?.success){ alert(j?.error || 'Failed to upload'); return }
-                    setOnbStep(4)
+                  if (picPreview && picPreview.startsWith('blob:')){
+                    try { URL.revokeObjectURL(picPreview) } catch {}
+                  }
+                  const uploadedPath = resolveAvatar(j?.profile_picture || j?.path || j?.url || '')
+                  if (uploadedPath){
+                    setExistingProfilePic(uploadedPath)
+                    setPicPreview(uploadedPath)
+                  }
+                  setHasProfilePic(true)
+                  setPicFile(null)
+                  setOnbStep(4)
                 }catch{ alert('Network error') } finally { setUploadingPic(false) }
               }}>{uploadingPic ? 'Uploading…' : 'Upload & continue'}</button>
               </div>
@@ -475,33 +507,69 @@ export default function PremiumDashboard() {
           </div>
         )}
 
-        {/* Onboarding Step 5: Create First Post (Join step removed) */}
+        {/* Onboarding Step 5: Final action */}
         {onbStep === 5 && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
-            <div className="text-center mb-4">
-              <div className="text-4xl mb-3">✍️</div>
-              <div className="text-lg font-semibold mb-2">Create or React to Your First Post!</div>
-              <div className="text-sm text-[#9fb0b5] mb-4">
-                Welcome to {joinedCommunityName || 'your community'}! Share your thoughts, introduce yourself, or start a conversation.
-              </div>
-            </div>
-            <div className="flex justify-between gap-2">
-              <div>
-                  <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)}>Back</button>
-              </div>
-              <div className="flex gap-2">
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
-                <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={()=> {
-                  // Mark onboarding as complete and redirect to community feed
-                  try { localStorage.setItem(doneKey, '1') } catch {}
-                    window.location.href = '/premium_dashboard';
-                }}>Go to Community</button>
-              </div>
+          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
+            <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+              {hasAnyCommunity ? (
+                <>
+                  <div className="text-center mb-4">
+                    <div className="text-4xl mb-3">✍️</div>
+                    <div className="text-lg font-semibold mb-2">Create or React to Your First Post!</div>
+                    <div className="text-sm text-[#9fb0b5] mb-4">
+                      Welcome to {joinedCommunityName || 'your community'}! Share your thoughts, introduce yourself, or start a conversation.
+                    </div>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <div>
+                      <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)}>Back</button>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
+                      <button
+                        className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold"
+                        onClick={() => {
+                          try { localStorage.setItem(doneKey, '1') } catch {}
+                          window.location.href = '/premium_dashboard'
+                        }}
+                      >
+                        Go to Community
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-center mb-4">
+                    <div className="text-4xl mb-3">🏗️</div>
+                    <div className="text-lg font-semibold mb-2">Create your first community</div>
+                    <div className="text-sm text-[#9fb0b5] mb-4">
+                      You're all set. Launch a parent community to bring everyone together.
+                    </div>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <div>
+                      <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)}>Back</button>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
+                      <button
+                        className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold"
+                        onClick={() => {
+                          setFabOpen(false)
+                          setShowCreateModal(true)
+                          setOnbStep(0)
+                        }}
+                      >
+                        Create community
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        )}
       {/* Success Toast - Subtle notification */}
       {showSuccessModal && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[60] pointer-events-none">
@@ -577,13 +645,15 @@ export default function PremiumDashboard() {
                   // Force parent community creation: do not include parent_community_id
                     const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
-                    if (j?.success){
+                      if (j?.success){
                         handleCloseCreateModal()
-                      // Refresh dashboard communities
-                      const resp = await fetch('/api/user_parent_community', { method:'GET', credentials:'include' })
-                      const data = await resp.json().catch(()=>null)
-                      if (data?.success && data.communities) setCommunities(data.communities)
-                    } else alert(j?.error || 'Failed to create community')
+                        try { localStorage.setItem(doneKey, '1') } catch {}
+                        setOnbStep(0)
+                        // Refresh dashboard communities
+                        const resp = await fetch('/api/user_parent_community', { method:'GET', credentials:'include' })
+                        const data = await resp.json().catch(()=>null)
+                        if (data?.success && data.communities) setCommunities(data.communities)
+                      } else alert(j?.error || 'Failed to create community')
                   }catch{ alert('Failed to create community') }
                 }}>Create</button>
               </div>
