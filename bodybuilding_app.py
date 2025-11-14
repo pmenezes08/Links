@@ -916,6 +916,80 @@ def get_community_ancestors(cursor, community_id: int) -> List[Dict[str, Any]]:
     return ancestors
 
 
+def get_descendant_community_ids(cursor, community_id: int) -> List[int]:
+    """Return descendant community IDs (including the provided one) ordered deepest-first."""
+    try:
+        from collections import deque
+        queue = deque([(community_id, 0)])
+        pop_left = True
+    except Exception:
+        queue = [(community_id, 0)]  # type: ignore
+        pop_left = False
+
+    seen: Set[int] = set()
+    results: List[Tuple[int, int]] = []
+
+    while queue:
+        if pop_left:
+            current_id, depth = queue.popleft()  # type: ignore
+        else:
+            current_id, depth = queue.pop(0)  # type: ignore
+
+        if current_id in seen:
+            continue
+        seen.add(current_id)
+        results.append((current_id, depth))
+
+        placeholder = get_sql_placeholder()
+        try:
+            cursor.execute(f"SELECT id FROM communities WHERE parent_community_id = {placeholder}", (current_id,))
+            rows = cursor.fetchall() or []
+        except Exception as child_err:
+            logger.warning(f"Failed to load child communities for {current_id}: {child_err}")
+            rows = []
+
+        for row in rows:
+            try:
+                child_id = row['id'] if hasattr(row, 'keys') else row[0]
+            except Exception:
+                child_id = None
+            if child_id and child_id not in seen:
+                if pop_left:
+                    queue.append((child_id, depth + 1))  # type: ignore
+                else:
+                    queue.append((child_id, depth + 1))  # type: ignore
+
+    results.sort(key=lambda item: item[1], reverse=True)
+    return [cid for cid, _ in results]
+
+
+def delete_community_records(cursor, community_id: int) -> None:
+    """Remove a community and its direct associations."""
+    placeholder = get_sql_placeholder()
+    try:
+        cursor.execute(
+            f"DELETE FROM post_views WHERE post_id IN (SELECT id FROM posts WHERE community_id = {placeholder})",
+            (community_id,),
+        )
+    except Exception as err:
+        logger.warning(f"Failed deleting post_views for community {community_id}: {err}")
+
+    try:
+        cursor.execute(f"DELETE FROM posts WHERE community_id = {placeholder}", (community_id,))
+    except Exception as err:
+        logger.warning(f"Failed deleting posts for community {community_id}: {err}")
+
+    try:
+        cursor.execute(f"DELETE FROM user_communities WHERE community_id = {placeholder}", (community_id,))
+    except Exception as err:
+        logger.warning(f"Failed deleting user_communities for community {community_id}: {err}")
+
+    try:
+        cursor.execute(f"DELETE FROM communities WHERE id = {placeholder}", (community_id,))
+    except Exception as err:
+        logger.warning(f"Failed deleting community {community_id}: {err}")
+
+
 def ensure_free_parent_member_capacity(cursor, community_id: Optional[int], extra_members: int = 1) -> None:
     """Ensure a free-plan parent community has capacity for additional members."""
     if not community_id:
@@ -7196,7 +7270,11 @@ def admin_delete_community():
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     
     data = request.get_json()
-    community_id = data.get('community_id')
+    community_id_raw = data.get('community_id') if data else None
+    try:
+        community_id = int(community_id_raw)
+    except (TypeError, ValueError):
+        community_id = None
     
     if not community_id:
         return jsonify({'success': False, 'error': 'Community ID required'}), 400
@@ -7204,15 +7282,22 @@ def admin_delete_community():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            
-            # Delete community and related data
-            c.execute("DELETE FROM user_communities WHERE community_id = ?", (community_id,))
-            c.execute("DELETE FROM post_views WHERE post_id IN (SELECT id FROM posts WHERE community_id = ?)", (community_id,))
-            c.execute("DELETE FROM posts WHERE community_id = ?", (community_id,))
-            c.execute("DELETE FROM communities WHERE id = ?", (community_id,))
+
+            placeholder = get_sql_placeholder()
+            c.execute(f"SELECT id FROM communities WHERE id = {placeholder}", (community_id,))
+            existing = c.fetchone()
+            if not existing:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+
+            descendant_ids = get_descendant_community_ids(c, community_id)
+            deleted_ids: List[int] = []
+
+            for target_id in descendant_ids:
+                delete_community_records(c, target_id)
+                deleted_ids.append(target_id)
             
             conn.commit()
-            return jsonify({'success': True})
+            return jsonify({'success': True, 'deleted_ids': deleted_ids})
             
     except Exception as e:
         logger.error(f"Error deleting community: {e}")
@@ -19140,20 +19225,32 @@ def delete_community():
             
             if community['creator_username'] != username:
                 return jsonify({'success': False, 'error': 'Only the community creator can delete the community'}), 403
-            
-            # Delete all posts in the community
-            c.execute(f"DELETE FROM post_views WHERE post_id IN (SELECT id FROM posts WHERE community_id = {get_sql_placeholder()} )", (community_id,))
-            c.execute(f"DELETE FROM posts WHERE community_id = {get_sql_placeholder()} ", (community_id,))
-            
-            # Delete all user_communities entries for this community
-            c.execute(f"DELETE FROM user_communities WHERE community_id = {get_sql_placeholder()} ", (community_id,))
-            
-            # Delete the community itself
-            c.execute(f"DELETE FROM communities WHERE id = {get_sql_placeholder()} ", (community_id,))
+
+            descendant_ids = get_descendant_community_ids(c, community_id)
+            placeholder = get_sql_placeholder()
+            for target_id in descendant_ids:
+                c.execute(f"SELECT creator_username FROM communities WHERE id = {placeholder}", (target_id,))
+                owner_row = c.fetchone()
+                owner_username = None
+                if owner_row:
+                    if hasattr(owner_row, 'keys'):
+                        owner_username = owner_row.get('creator_username')
+                    elif isinstance(owner_row, (list, tuple)):
+                        owner_username = owner_row[0]
+                if owner_username and owner_username != username:
+                    return jsonify({
+                        'success': False,
+                        'error': 'This community has nested communities you do not own. Please contact an admin to remove them first.'
+                    }), 403
+
+            deleted_ids: List[int] = []
+            for target_id in descendant_ids:
+                delete_community_records(c, target_id)
+                deleted_ids.append(target_id)
             
             conn.commit()
             
-            return jsonify({'success': True, 'message': 'Community deleted successfully'})
+            return jsonify({'success': True, 'message': 'Community deleted successfully', 'deleted_ids': deleted_ids})
             
     except Exception as e:
         logger.error(f"Error deleting community: {str(e)}")

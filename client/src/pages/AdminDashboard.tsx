@@ -627,10 +627,14 @@ export default function AdminDashboard() {
       
       const data = await response.json()
       if (data.success) {
-        loadAdminData()
+        alert('Community deleted successfully.')
+        await loadAdminData()
+      } else {
+        alert(data.error || 'Failed to delete community.')
       }
     } catch (error) {
       console.error('Error deleting community:', error)
+      alert('Failed to delete community. Please try again.')
     }
   }
 
