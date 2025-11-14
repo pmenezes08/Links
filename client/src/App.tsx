@@ -24,6 +24,7 @@ import CreatePost from './pages/CreatePost'
 import Members from './pages/Members'
 import EditCommunity from './pages/EditCommunity'
 import Communities from './pages/Communities'
+import Followers from './pages/Followers'
 import HomeTimeline from './pages/HomeTimeline'
 import WorkoutTracking from './pages/WorkoutTracking'
 import Gym from './pages/Gym'
@@ -213,55 +214,56 @@ function AppRoutes(){
           <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
         )}
         <div style={{ paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : '56px' })() }}>
-          <ErrorBoundary>
-            <Routes>
-            <Route path="/" element={<OnboardingWelcome />} />
-            <Route path="/welcome" element={<OnboardingWelcome />} />
-            <Route path="/login" element={<MobileLogin />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/signup_react" element={<Signup />} />
-            <Route path="/onboarding" element={<OnboardingWelcome />} />
-            <Route path="/premium" element={<PremiumDashboard />} />
-            <Route path="/premium_dashboard" element={<PremiumDashboard />} />
-            <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
-            <Route path="/crossfit" element={<CrossfitExact />} />
-            <Route path="/crossfit_react" element={<CrossfitExact />} />
-            <Route path="/communities" element={<Communities />} />
-            <Route path="/your_sports" element={<YourSports />} />
-            <Route path="/gym" element={<Gym />} />
-            <Route path="/user_chat" element={<Messages />} />
-            <Route path="/user_chat/new" element={<NewMessage />} />
-            <Route path="/user_chat/chat/:username" element={<ChatThread />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/profile_react" element={<Profile />} />
-            <Route path="/profile/:username" element={<PublicProfile />} />
-            <Route path="/account_settings" element={<AccountSettings />} />
-            <Route path="/account_settings_react" element={<AccountSettings />} />
-            <Route path="/notifications" element={<Notifications />} />
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin_dashboard" element={<AdminDashboard />} />
-            <Route path="/admin_profile_react" element={<AdminProfile />} />
-            <Route path="/home" element={<HomeTimeline />} />
-            <Route path="/workout_tracking" element={<WorkoutTracking />} />
-            <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
-            <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
-            <Route path="/community/:community_id/tasks_react" element={<CommunityTasks />} />
-            <Route path="/community/:community_id/polls_react" element={<CommunityPolls />} />
-            <Route path="/community/:community_id/resources_react" element={<CommunityResources />} />
-            <Route path="/community/:community_id/useful_links_react" element={<UsefulLinks />} />
-            <Route path="/community/:community_id/photos_react" element={<CommunityPhotos />} />
-            <Route path="/community/:community_id/key_posts" element={<KeyPosts />} />
-            <Route path="/community/:community_id/members" element={<Members />} />
-            <Route path="/community/:community_id/edit" element={<EditCommunity />} />
-            <Route path="/event/:event_id" element={<EventDetail />} />
-            <Route path="/post/:post_id" element={<PostDetail />} />
-            <Route path="/compose" element={<CreatePost />} />
-            <Route path="/product_development" element={<ProductDevelopment />} />
-            <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
-            <Route path="/encryption_settings" element={<EncryptionSettings />} />
-            <Route path="*" element={<PremiumDashboard />} />
-            </Routes>
-          </ErrorBoundary>
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<OnboardingWelcome />} />
+                <Route path="/welcome" element={<OnboardingWelcome />} />
+                <Route path="/login" element={<MobileLogin />} />
+                <Route path="/signup" element={<Signup />} />
+                <Route path="/signup_react" element={<Signup />} />
+                <Route path="/onboarding" element={<OnboardingWelcome />} />
+                <Route path="/premium" element={<PremiumDashboard />} />
+                <Route path="/premium_dashboard" element={<PremiumDashboard />} />
+                <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
+                <Route path="/crossfit" element={<CrossfitExact />} />
+                <Route path="/crossfit_react" element={<CrossfitExact />} />
+                <Route path="/communities" element={<Communities />} />
+                <Route path="/followers" element={<Followers />} />
+                <Route path="/your_sports" element={<YourSports />} />
+                <Route path="/gym" element={<Gym />} />
+                <Route path="/user_chat" element={<Messages />} />
+                <Route path="/user_chat/new" element={<NewMessage />} />
+                <Route path="/user_chat/chat/:username" element={<ChatThread />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/profile_react" element={<Profile />} />
+                <Route path="/profile/:username" element={<PublicProfile />} />
+                <Route path="/account_settings" element={<AccountSettings />} />
+                <Route path="/account_settings_react" element={<AccountSettings />} />
+                <Route path="/notifications" element={<Notifications />} />
+                <Route path="/admin" element={<AdminDashboard />} />
+                <Route path="/admin_dashboard" element={<AdminDashboard />} />
+                <Route path="/admin_profile_react" element={<AdminProfile />} />
+                <Route path="/home" element={<HomeTimeline />} />
+                <Route path="/workout_tracking" element={<WorkoutTracking />} />
+                <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
+                <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
+                <Route path="/community/:community_id/tasks_react" element={<CommunityTasks />} />
+                <Route path="/community/:community_id/polls_react" element={<CommunityPolls />} />
+                <Route path="/community/:community_id/resources_react" element={<CommunityResources />} />
+                <Route path="/community/:community_id/useful_links_react" element={<UsefulLinks />} />
+                <Route path="/community/:community_id/photos_react" element={<CommunityPhotos />} />
+                <Route path="/community/:community_id/key_posts" element={<KeyPosts />} />
+                <Route path="/community/:community_id/members" element={<Members />} />
+                <Route path="/community/:community_id/edit" element={<EditCommunity />} />
+                <Route path="/event/:event_id" element={<EventDetail />} />
+                <Route path="/post/:post_id" element={<PostDetail />} />
+                <Route path="/compose" element={<CreatePost />} />
+                <Route path="/product_development" element={<ProductDevelopment />} />
+                <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
+                <Route path="/encryption_settings" element={<EncryptionSettings />} />
+                <Route path="*" element={<PremiumDashboard />} />
+              </Routes>
+            </ErrorBoundary>
         </div>
         {requireVerification && authLoaded && isVerified === false && (
           <VerifyOverlay onRecheck={async ()=>{

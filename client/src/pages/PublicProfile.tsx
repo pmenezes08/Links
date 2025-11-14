@@ -44,6 +44,8 @@ type PublicProfileResponse = {
   followers_count?: number
   following_count?: number
   is_following?: boolean
+  follow_status?: 'none' | 'pending' | 'accepted' | 'self'
+  has_pending_follow_request?: boolean
 }
 
 export default function PublicProfile() {
@@ -55,7 +57,7 @@ export default function PublicProfile() {
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<PublicProfileResponse | null>(null)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
-  const [isFollowing, setIsFollowing] = useState(false)
+  const [followStatus, setFollowStatus] = useState<'none' | 'pending' | 'accepted'>('none')
   const [followersCount, setFollowersCount] = useState(0)
   const [followingCount, setFollowingCount] = useState(0)
   const [followLoading, setFollowLoading] = useState(false)
@@ -82,9 +84,12 @@ export default function PublicProfile() {
         if (!cancelled) {
           if (payload?.success && payload.profile) {
             setProfile(payload.profile)
-              setIsFollowing(Boolean(payload.profile.is_following))
-              setFollowersCount(Number(payload.profile.followers_count || 0))
-              setFollowingCount(Number(payload.profile.following_count || 0))
+            const rawStatus = (payload.profile.follow_status as string | undefined) || (payload.profile.is_following ? 'accepted' : 'none')
+            const normalizedStatus: 'none' | 'pending' | 'accepted' =
+              rawStatus === 'accepted' ? 'accepted' : rawStatus === 'pending' ? 'pending' : 'none'
+            setFollowStatus(normalizedStatus)
+            setFollowersCount(Number(payload.profile.followers_count || 0))
+            setFollowingCount(Number(payload.profile.following_count || 0))
             setError(null)
           } else {
             setError(payload?.error || 'Profile not found')
@@ -112,7 +117,8 @@ export default function PublicProfile() {
     if (followLoading) return
     setFollowLoading(true)
     try {
-      const method = isFollowing ? 'DELETE' : 'POST'
+      const shouldDelete = followStatus === 'accepted' || followStatus === 'pending'
+      const method = shouldDelete ? 'DELETE' : 'POST'
       const resp = await fetch(`/api/follow/${encodeURIComponent(profile.username)}`, {
         method,
         credentials: 'include',
@@ -120,17 +126,21 @@ export default function PublicProfile() {
       })
       const data = await resp.json().catch(() => null)
       if (data?.success) {
-        const nextIsFollowing = Boolean(data.is_following)
+        const nextStatusRaw = typeof data.status === 'string' ? data.status : (shouldDelete ? 'none' : 'pending')
+        const normalizedStatus: 'none' | 'pending' | 'accepted' =
+          nextStatusRaw === 'accepted' ? 'accepted' : nextStatusRaw === 'pending' ? 'pending' : 'none'
         const nextFollowers = Number(data.followers_count ?? followersCount)
         const nextFollowing = Number(data.following_count ?? followingCount)
-        setIsFollowing(nextIsFollowing)
+        setFollowStatus(normalizedStatus)
         setFollowersCount(nextFollowers)
         setFollowingCount(nextFollowing)
         setProfile(prev => prev ? {
           ...prev,
           followers_count: nextFollowers,
           following_count: nextFollowing,
-          is_following: nextIsFollowing
+          is_following: normalizedStatus === 'accepted',
+          follow_status: normalizedStatus,
+          has_pending_follow_request: normalizedStatus === 'pending'
         } : prev)
       } else {
         const errMsg = data?.error || 'Failed to update follow status'
@@ -151,6 +161,17 @@ export default function PublicProfile() {
   const professional = profile.professional || {}
   const isSelf = Boolean(profile.is_self) || (currentUsername && currentUsername.toLowerCase() === profile.username.toLowerCase())
   const bioText = (profile.bio || '').trim()
+  const isFollowing = followStatus === 'accepted'
+  const isPending = followStatus === 'pending'
+  const followButtonLabel = followLoading
+    ? (isFollowing ? 'Unfollowing…' : isPending ? 'Cancelling…' : 'Following…')
+    : (isFollowing ? 'Following' : isPending ? 'Requested' : 'Follow')
+  const followButtonClasses =
+    followStatus === 'accepted'
+      ? 'px-3 py-1.5 rounded-md text-sm font-medium transition border border-white/15 bg-white/15 text-white hover:bg-white/20'
+      : isPending
+        ? 'px-3 py-1.5 rounded-md text-sm font-medium transition border border-white/20 bg-white/5 text-[#9fb0b5]'
+        : 'px-3 py-1.5 rounded-md text-sm font-medium transition bg-[#4db6ac] text-black hover:brightness-110'
 
   let formattedDob = ''
   if (personal.date_of_birth) {
@@ -227,43 +248,39 @@ export default function PublicProfile() {
                     <span>{location}</span>
                   </div>
                 ) : null}
-              <div className="text-xs text-[#9fb0b5] flex items-center gap-3 mt-1">
-                <span><span className="text-white font-semibold">{followersCount}</span> followers</span>
-                <span><span className="text-white font-semibold">{followingCount}</span> following</span>
-              </div>
-              </div>
-            {isSelf ? (
-              <button
-                className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
-                onClick={() => navigate('/profile')}
-              >
-                <i className="fa-solid fa-pen-to-square mr-2" />
-                Edit profile
-              </button>
-            ) : (
-              currentUsername && (
-                <div className="flex flex-col w-full gap-2 sm:flex-row sm:w-auto sm:items-center sm:gap-3">
-                  <button
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
-                      isFollowing
-                        ? 'bg-white/15 text-white hover:bg-white/20'
-                        : 'bg-[#4db6ac] text-black hover:brightness-110'
-                    }`}
-                    disabled={followLoading}
-                    onClick={handleFollowToggle}
-                  >
-                    {followLoading ? (isFollowing ? 'Unfollowing…' : 'Following…') : (isFollowing ? 'Following' : 'Follow')}
-                  </button>
-                  <button
-                    className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
-                    onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)}
-                  >
-                    <i className="fa-regular fa-paper-plane mr-2" />
-                    Send message
-                  </button>
+                <div className="text-xs text-[#9fb0b5] flex items-center gap-3 mt-1">
+                  <span><span className="text-white font-semibold">{followersCount}</span> followers</span>
+                  <span><span className="text-white font-semibold">{followingCount}</span> following</span>
                 </div>
-              )
-            )}
+              </div>
+              {isSelf ? (
+                <button
+                  className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
+                  onClick={() => navigate('/profile')}
+                >
+                  <i className="fa-solid fa-pen-to-square mr-2" />
+                  Edit profile
+                </button>
+              ) : (
+                currentUsername && (
+                  <div className="flex flex-col w-full gap-2 sm:flex-row sm:w-auto sm:items-center sm:gap-3">
+                    <button
+                      className={followButtonClasses}
+                      disabled={followLoading}
+                      onClick={handleFollowToggle}
+                    >
+                      {followButtonLabel}
+                    </button>
+                    <button
+                      className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
+                      onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)}
+                    >
+                      <i className="fa-regular fa-paper-plane mr-2" />
+                      Send message
+                    </button>
+                  </div>
+                )
+              )}
             </div>
           </section>
 

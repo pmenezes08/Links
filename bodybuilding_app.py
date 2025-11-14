@@ -1000,6 +1000,8 @@ def ensure_followers_table(cursor) -> None:
                     follower_username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
                     followed_username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
                     created_at DATETIME NOT NULL,
+                    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+                    accepted_at DATETIME NULL,
                     PRIMARY KEY (follower_username, followed_username),
                     CONSTRAINT fk_follow_follower FOREIGN KEY (follower_username) REFERENCES users(username) ON DELETE CASCADE,
                     CONSTRAINT fk_follow_followed FOREIGN KEY (followed_username) REFERENCES users(username) ON DELETE CASCADE
@@ -1013,6 +1015,8 @@ def ensure_followers_table(cursor) -> None:
                     follower_username TEXT NOT NULL,
                     followed_username TEXT NOT NULL,
                     created_at TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    accepted_at TEXT NULL,
                     PRIMARY KEY (follower_username, followed_username),
                     FOREIGN KEY (follower_username) REFERENCES users(username) ON DELETE CASCADE,
                     FOREIGN KEY (followed_username) REFERENCES users(username) ON DELETE CASCADE
@@ -1021,30 +1025,74 @@ def ensure_followers_table(cursor) -> None:
             )
     except Exception as e:
         logger.warning(f"Could not ensure followers table: {e}")
-
-
-def get_follow_counts(cursor, username: str) -> Tuple[int, int]:
-    """Return follower and following counts for a username."""
-    ensure_followers_table(cursor)
-    follower_count = 0
-    following_count = 0
+    # Ensure newer columns exist for pending/accepted workflow
     try:
-        placeholder = get_sql_placeholder()
-        cursor.execute(f"SELECT COUNT(*) FROM followers WHERE followed_username = {placeholder}", (username,))
+        if USE_MYSQL:
+            cursor.execute("ALTER TABLE followers ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'pending'")
+        else:
+            cursor.execute("ALTER TABLE followers ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
+    except Exception:
+        pass
+    try:
+        if USE_MYSQL:
+            cursor.execute("ALTER TABLE followers ADD COLUMN accepted_at DATETIME NULL")
+        else:
+            cursor.execute("ALTER TABLE followers ADD COLUMN accepted_at TEXT NULL")
+    except Exception:
+        pass
+    try:
+        if USE_MYSQL:
+            cursor.execute("UPDATE followers SET status = 'accepted' WHERE status IS NULL OR status = ''")
+        else:
+            cursor.execute("UPDATE followers SET status = 'accepted' WHERE status IS NULL OR status = ''")
+    except Exception as backfill_err:
+        logger.warning(f"Could not backfill follower status: {backfill_err}")
+
+
+def get_follow_summary(cursor, username: str) -> Dict[str, int]:
+    """Return followers/following/request counts for a username."""
+    ensure_followers_table(cursor)
+    followers_count = 0
+    following_count = 0
+    requests_count = 0
+    placeholder = get_sql_placeholder()
+    try:
+        cursor.execute(
+            f"SELECT COUNT(*) FROM followers WHERE followed_username = {placeholder} AND status = 'accepted'",
+            (username,),
+        )
         row = cursor.fetchone()
         if row:
-            follower_count = int(row[0] if not hasattr(row, 'keys') else list(row.values())[0] or 0)
+            followers_count = int(row[0] if not hasattr(row, 'keys') else list(row.values())[0] or 0)
     except Exception as e:
-        logger.warning(f"Failed counting followers for {username}: {e}")
+        logger.warning(f"Failed counting accepted followers for {username}: {e}")
     try:
-        placeholder = get_sql_placeholder()
-        cursor.execute(f"SELECT COUNT(*) FROM followers WHERE follower_username = {placeholder}", (username,))
+        cursor.execute(
+            f"SELECT COUNT(*) FROM followers WHERE follower_username = {placeholder} AND status = 'accepted'",
+            (username,),
+        )
         row = cursor.fetchone()
         if row:
             following_count = int(row[0] if not hasattr(row, 'keys') else list(row.values())[0] or 0)
     except Exception as e:
-        logger.warning(f"Failed counting following for {username}: {e}")
-    return follower_count, following_count
+        logger.warning(f"Failed counting accepted following for {username}: {e}")
+    try:
+        cursor.execute(
+            f"SELECT COUNT(*) FROM followers WHERE followed_username = {placeholder} AND status = 'pending'",
+            (username,),
+        )
+        row = cursor.fetchone()
+        if row:
+            requests_count = int(row[0] if not hasattr(row, 'keys') else list(row.values())[0] or 0)
+    except Exception as e:
+        logger.warning(f"Failed counting follow requests for {username}: {e}")
+    return {'followers': followers_count, 'following': following_count, 'requests': requests_count}
+
+
+def get_follow_counts(cursor, username: str) -> Tuple[int, int]:
+    """Return follower and following counts for a username."""
+    summary = get_follow_summary(cursor, username)
+    return summary['followers'], summary['following']
 
 
 def ensure_free_parent_member_capacity(cursor, community_id: Optional[int], extra_members: int = 1) -> None:
@@ -7852,24 +7900,31 @@ def api_public_profile(username):
             profile['is_self'] = session.get('username') == actual_username
             viewer_username = session.get('username')
             try:
-                followers_count, following_count = get_follow_counts(c, actual_username)
+                summary_counts = get_follow_summary(c, actual_username)
             except Exception:
-                followers_count, following_count = (0, 0)
-            profile['followers_count'] = followers_count
-            profile['following_count'] = following_count
-            is_following = False
+                summary_counts = {'followers': 0, 'following': 0, 'requests': 0}
+            profile['followers_count'] = summary_counts.get('followers', 0)
+            profile['following_count'] = summary_counts.get('following', 0)
+            follow_status = 'self' if profile['is_self'] else 'none'
             if viewer_username and viewer_username.lower() != actual_username.lower():
                 try:
                     ensure_followers_table(c)
                     placeholder = get_sql_placeholder()
                     c.execute(
-                        f"SELECT 1 FROM followers WHERE follower_username = {placeholder} AND followed_username = {placeholder}",
+                        f"SELECT status FROM followers WHERE follower_username = {placeholder} AND followed_username = {placeholder}",
                         (viewer_username, actual_username)
                     )
-                    is_following = c.fetchone() is not None
+                    row = c.fetchone()
+                    if row:
+                        follow_status = row['status'] if hasattr(row, 'keys') and 'status' in row.keys() else row[0]
+                    else:
+                        follow_status = 'none'
                 except Exception as follow_err:
                     logger.warning(f"follow status check failed for {viewer_username}->{actual_username}: {follow_err}")
-            profile['is_following'] = is_following
+                    follow_status = 'none'
+            profile['follow_status'] = follow_status
+            profile['is_following'] = follow_status == 'accepted'
+            profile['has_pending_follow_request'] = follow_status == 'pending'
 
             return jsonify({'success': True, 'profile': profile, 'posts': posts_list})
     except Exception as e:
@@ -7879,12 +7934,27 @@ def api_public_profile(username):
 
 def resolve_username_case(cursor, username: str) -> Optional[str]:
     """Resolve stored username given case-insensitive lookup."""
+    if not username:
+        return None
     placeholder = get_sql_placeholder()
     cursor.execute(f"SELECT username FROM users WHERE LOWER(username) = LOWER({placeholder})", (username,))
     row = cursor.fetchone()
     if not row:
         return None
     return row['username'] if hasattr(row, 'keys') else row[0]
+
+
+def get_user_id(cursor, username: str) -> Optional[int]:
+    """Return user id for username."""
+    if not username:
+        return None
+    placeholder = get_sql_placeholder()
+    cursor.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    value = row.get('id') if hasattr(row, 'keys') else row[0]
+    return int(value) if value is not None else None
 
 
 @app.route('/api/follow/<username>', methods=['POST', 'DELETE'])
@@ -7904,28 +7974,90 @@ def api_follow_toggle(username):
 
             ensure_followers_table(c)
             now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            placeholder = get_sql_placeholder()
+            existing_status = None
+            try:
+                c.execute(
+                    f"SELECT status FROM followers WHERE follower_username = {placeholder} AND followed_username = {placeholder}",
+                    (follower, actual_target)
+                )
+                row = c.fetchone()
+                if row:
+                    existing_status = row['status'] if hasattr(row, 'keys') and 'status' in row.keys() else row[0]
+            except Exception as status_err:
+                logger.warning(f"follow status fetch failed {follower}->{actual_target}: {status_err}")
+                existing_status = None
+
+            new_status = existing_status or 'none'
+
             if request.method == 'POST':
-                try:
-                    if USE_MYSQL:
-                        c.execute(
-                            """
-                            INSERT IGNORE INTO followers (follower_username, followed_username, created_at)
-                            VALUES (%s, %s, %s)
-                            """,
-                            (follower, actual_target, now_str)
-                        )
+                if existing_status:
+                    if existing_status == 'pending':
+                        try:
+                            if USE_MYSQL:
+                                c.execute(
+                                    """
+                                    UPDATE followers SET created_at = NOW()
+                                    WHERE follower_username = %s AND followed_username = %s
+                                    """,
+                                    (follower, actual_target)
+                                )
+                            else:
+                                c.execute(
+                                    """
+                                    UPDATE followers SET created_at = ?
+                                    WHERE follower_username = ? AND followed_username = ?
+                                    """,
+                                    (now_str, follower, actual_target)
+                                )
+                        except Exception as refresh_err:
+                            logger.warning(f"follow request timestamp refresh failed {follower}->{actual_target}: {refresh_err}")
+                    new_status = existing_status
+                else:
+                    try:
+                        if USE_MYSQL:
+                            c.execute(
+                                """
+                                INSERT INTO followers (follower_username, followed_username, created_at, status)
+                                VALUES (%s, %s, %s, 'pending')
+                                """,
+                                (follower, actual_target, now_str)
+                            )
+                        else:
+                            c.execute(
+                                """
+                                INSERT INTO followers (follower_username, followed_username, created_at, status)
+                                VALUES (?, ?, ?, 'pending')
+                                """,
+                                (follower, actual_target, now_str)
+                            )
+                        new_status = 'pending'
+                    except Exception as insert_err:
+                        logger.warning(f"follow insert failed {follower}->{actual_target}: {insert_err}")
+                        new_status = existing_status or 'none'
                     else:
-                        c.execute(
-                            """
-                            INSERT OR IGNORE INTO followers (follower_username, followed_username, created_at)
-                            VALUES (?, ?, ?)
-                            """,
-                            (follower, actual_target, now_str)
-                        )
-                except Exception as insert_err:
-                    logger.warning(f"follow insert failed {follower}->{actual_target}: {insert_err}")
+                        try:
+                            message = f"{follower} requested to follow you"
+                            link_value = '/followers?tab=requests'
+                            if USE_MYSQL:
+                                c.execute(
+                                    """
+                                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
+                                    VALUES (%s, %s, 'follow_request', %s, NOW(), 0, %s)
+                                    """,
+                                    (actual_target, follower, message, link_value)
+                                )
+                            else:
+                                c.execute(
+                                    """
+                                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
+                                    VALUES (?, ?, 'follow_request', ?, datetime('now'), 0, ?)
+                                    """,
+                                    (actual_target, follower, message, link_value)
+                                )
+                        except Exception as notif_err:
+                            logger.warning(f"follow request notification insert failed {follower}->{actual_target}: {notif_err}")
             else:
-                placeholder = get_sql_placeholder()
                 try:
                     c.execute(
                         f"DELETE FROM followers WHERE follower_username = {placeholder} AND followed_username = {placeholder}",
@@ -7933,31 +8065,293 @@ def api_follow_toggle(username):
                     )
                 except Exception as delete_err:
                     logger.warning(f"follow delete failed {follower}->{actual_target}: {delete_err}")
+                new_status = 'none'
+
             conn.commit()
 
-            target_followers, target_following = get_follow_counts(c, actual_target)
-            viewer_followers, viewer_following = get_follow_counts(c, follower)
+            target_summary = get_follow_summary(c, actual_target)
+            viewer_summary = get_follow_summary(c, follower)
 
-            is_following = False
-            if follower.lower() != actual_target.lower():
-                placeholder = get_sql_placeholder()
-                c.execute(
-                    f"SELECT 1 FROM followers WHERE follower_username = {placeholder} AND followed_username = {placeholder}",
-                    (follower, actual_target)
-                )
-                is_following = c.fetchone() is not None
+            if request.method == 'POST' and new_status == 'pending':
+                try:
+                    send_push_to_user(actual_target, {
+                        'title': 'New follow request',
+                        'body': f'{follower} requested to follow you',
+                        'url': '/followers?tab=requests',
+                        'tag': f'follow-request-{follower}-{actual_target}'
+                    })
+                except Exception as push_err:
+                    logger.warning(f"follow request push failed {follower}->{actual_target}: {push_err}")
 
             return jsonify({
                 'success': True,
-                'followers_count': target_followers,
-                'following_count': target_following,
-                'is_following': is_following,
-                'viewer_followers_count': viewer_followers,
-                'viewer_following_count': viewer_following,
+                'status': new_status,
+                'followers_count': target_summary.get('followers', 0),
+                'following_count': target_summary.get('following', 0),
+                'requests_count': target_summary.get('requests', 0),
+                'viewer_followers_count': viewer_summary.get('followers', 0),
+                'viewer_following_count': viewer_summary.get('following', 0),
                 'target_username': actual_target,
             })
     except Exception as e:
         logger.error(f"api_follow_toggle error for {follower}->{username}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/followers', methods=['GET'])
+@login_required
+def api_followers_list():
+    username = session.get('username')
+    tab = (request.args.get('tab') or 'followers').strip().lower()
+    if tab not in {'followers', 'following', 'requests'}:
+        tab = 'followers'
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_followers_table(c)
+            summary = get_follow_summary(c, username)
+            placeholder = get_sql_placeholder()
+            items: List[Dict[str, Any]] = []
+
+            def normalize_pic(pic: Optional[str]) -> Optional[str]:
+                if not pic:
+                    return None
+                pic = pic.strip()
+                if not pic:
+                    return None
+                if pic.startswith('http') or pic.startswith('/'):
+                    return pic
+                return f"/static/{pic}"
+
+            if tab == 'followers':
+                c.execute(
+                    f"""
+                    SELECT f.follower_username AS username,
+                           f.created_at,
+                           f.accepted_at,
+                           f.status,
+                           up.display_name,
+                           up.profile_picture
+                    FROM followers f
+                    LEFT JOIN user_profiles up ON up.username = f.follower_username
+                    WHERE f.followed_username = {placeholder} AND f.status = 'accepted'
+                    ORDER BY COALESCE(f.accepted_at, f.created_at) DESC
+                    """,
+                    (username,),
+                )
+            elif tab == 'following':
+                c.execute(
+                    f"""
+                    SELECT f.followed_username AS username,
+                           f.created_at,
+                           f.accepted_at,
+                           f.status,
+                           up.display_name,
+                           up.profile_picture
+                    FROM followers f
+                    LEFT JOIN user_profiles up ON up.username = f.followed_username
+                    WHERE f.follower_username = {placeholder} AND f.status = 'accepted'
+                    ORDER BY COALESCE(f.accepted_at, f.created_at) DESC
+                    """,
+                    (username,),
+                )
+            else:  # requests
+                c.execute(
+                    f"""
+                    SELECT f.follower_username AS username,
+                           f.created_at,
+                           f.status,
+                           up.display_name,
+                           up.profile_picture
+                    FROM followers f
+                    LEFT JOIN user_profiles up ON up.username = f.follower_username
+                    WHERE f.followed_username = {placeholder} AND f.status = 'pending'
+                    ORDER BY f.created_at DESC
+                    """,
+                    (username,),
+                )
+
+            rows = c.fetchall() or []
+            for row in rows:
+                if hasattr(row, 'keys'):
+                    data = row
+                    created_raw = data.get('accepted_at') or data.get('created_at')
+                    created_val = created_raw.isoformat() if hasattr(created_raw, 'isoformat') else created_raw
+                    items.append({
+                        'username': data.get('username'),
+                        'display_name': data.get('display_name') or data.get('username'),
+                        'profile_picture': normalize_pic(data.get('profile_picture')),
+                        'status': data.get('status'),
+                        'created_at': created_val,
+                    })
+                else:
+                    username_val = row[0]
+                    display_name = row[4] if len(row) > 4 else username_val
+                    profile_pic = row[5] if len(row) > 5 else None
+                    accepted_at_idx = 2 if tab != 'requests' else None
+                    created_idx = 1
+                    accepted_val = row[accepted_at_idx] if accepted_at_idx is not None and len(row) > accepted_at_idx else None
+                    created_val = accepted_val or (row[created_idx] if len(row) > created_idx else None)
+                    status_val = row[3] if len(row) > 3 else ('pending' if tab == 'requests' else 'accepted')
+                    if tab == 'requests':
+                        # For SQLite result ordering, indexes differ slightly
+                        display_name = row[3] if len(row) > 3 else username_val
+                        profile_pic = row[4] if len(row) > 4 else None
+                        created_val = row[1] if len(row) > 1 else None
+                        status_val = row[2] if len(row) > 2 else 'pending'
+                    iso_created = created_val.isoformat() if hasattr(created_val, 'isoformat') else created_val
+                    items.append({
+                        'username': username_val,
+                        'display_name': display_name or username_val,
+                        'profile_picture': normalize_pic(profile_pic),
+                        'status': status_val,
+                        'created_at': iso_created,
+                    })
+
+            return jsonify({
+                'success': True,
+                'tab': tab,
+                'items': items,
+                'counts': summary,
+            })
+    except Exception as e:
+        logger.error(f"api_followers_list error for {username}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/follow_requests/<username>/accept', methods=['POST'])
+@login_required
+def api_follow_request_accept(username):
+    current_user = session.get('username')
+    if not current_user:
+        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_followers_table(c)
+            actual_follower = resolve_username_case(c, username)
+            if not actual_follower:
+                return jsonify({'success': False, 'error': 'Request not found'}), 404
+            if actual_follower.lower() == current_user.lower():
+                return jsonify({'success': False, 'error': 'Invalid follower'}), 400
+            placeholder = get_sql_placeholder()
+            c.execute(
+                f"SELECT status FROM followers WHERE follower_username = {placeholder} AND followed_username = {placeholder}",
+                (actual_follower, current_user)
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Request not found'}), 404
+            status_val = row['status'] if hasattr(row, 'keys') and 'status' in row.keys() else row[0]
+            if status_val != 'accepted':
+                try:
+                    if USE_MYSQL:
+                        c.execute(
+                            """
+                            UPDATE followers
+                            SET status = 'accepted', accepted_at = NOW()
+                            WHERE follower_username = %s AND followed_username = %s
+                            """,
+                            (actual_follower, current_user)
+                        )
+                    else:
+                        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        c.execute(
+                            """
+                            UPDATE followers
+                            SET status = 'accepted', accepted_at = ?
+                            WHERE follower_username = ? AND followed_username = ?
+                            """,
+                            (now_str, actual_follower, current_user)
+                        )
+                except Exception as update_err:
+                    logger.error(f"follow request accept update failed {actual_follower}->{current_user}: {update_err}")
+                    return jsonify({'success': False, 'error': 'Could not accept request'}), 500
+            conn.commit()
+
+            summary_current = get_follow_summary(c, current_user)
+            summary_follower = get_follow_summary(c, actual_follower)
+
+            try:
+                message = f"{current_user} accepted your follow request"
+                link_value = f"/profile/{current_user}"
+                if USE_MYSQL:
+                    c.execute(
+                        """
+                        INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
+                        VALUES (%s, %s, 'follow_accept', %s, NOW(), 0, %s)
+                        """,
+                        (actual_follower, current_user, message, link_value)
+                    )
+                else:
+                    c.execute(
+                        """
+                        INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
+                        VALUES (?, ?, 'follow_accept', ?, datetime('now'), 0, ?)
+                        """,
+                        (actual_follower, current_user, message, link_value)
+                    )
+                conn.commit()
+            except Exception as notif_err:
+                logger.warning(f"follow accept notification insert failed {current_user}->{actual_follower}: {notif_err}")
+
+            try:
+                send_push_to_user(actual_follower, {
+                    'title': 'Follow request accepted',
+                    'body': f'{current_user} accepted your follow request',
+                    'url': f'/profile/{current_user}',
+                    'tag': f'follow-accepted-{current_user}-{actual_follower}'
+                })
+            except Exception as push_err:
+                logger.warning(f"follow accept push failed {current_user}->{actual_follower}: {push_err}")
+
+            return jsonify({
+                'success': True,
+                'counts': summary_current,
+                'viewer_counts': summary_follower,
+                'follower_username': actual_follower,
+            })
+    except Exception as e:
+        logger.error(f"api_follow_request_accept error for {current_user}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/follow_requests/<username>', methods=['DELETE'])
+@login_required
+def api_follow_request_decline(username):
+    current_user = session.get('username')
+    if not current_user:
+        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_followers_table(c)
+            actual_follower = resolve_username_case(c, username)
+            if not actual_follower:
+                return jsonify({'success': False, 'error': 'Request not found'}), 404
+            placeholder = get_sql_placeholder()
+            try:
+                c.execute(
+                    f"""
+                    DELETE FROM followers
+                    WHERE follower_username = {placeholder}
+                      AND followed_username = {placeholder}
+                      AND status = 'pending'
+                    """,
+                    (actual_follower, current_user)
+                )
+            except Exception as delete_err:
+                logger.error(f"follow request decline delete failed {actual_follower}->{current_user}: {delete_err}")
+                return jsonify({'success': False, 'error': 'Could not decline request'}), 500
+            if getattr(c, 'rowcount', None) == 0:
+                conn.commit()
+                summary_current = get_follow_summary(c, current_user)
+                return jsonify({'success': True, 'counts': summary_current})
+            conn.commit()
+            summary_current = get_follow_summary(c, current_user)
+            return jsonify({'success': True, 'counts': summary_current})
+    except Exception as e:
+        logger.error(f"api_follow_request_decline error for {current_user}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/profile/<username>')
