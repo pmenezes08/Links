@@ -8268,29 +8268,79 @@ def api_followers_feed():
             if not followings:
                 return jsonify({'success': True, 'posts': []})
 
+            c.execute(
+                f"""
+                SELECT c.id
+                FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {placeholder}
+                """,
+                (username,),
+            )
+            community_rows = c.fetchall() or []
+            shared_comm_ids: List[int] = []
+            for row in community_rows:
+                raw = row['id'] if hasattr(row, 'keys') else row[0]
+                if raw is None:
+                    continue
+                try:
+                    shared_comm_ids.append(int(raw))
+                except (TypeError, ValueError):
+                    continue
+
+            shared_comm_ids = list(dict.fromkeys(shared_comm_ids))
+            if not shared_comm_ids:
+                return jsonify({'success': True, 'posts': []})
+
             MAX_FOLLOWINGS = 200
             if len(followings) > MAX_FOLLOWINGS:
                 followings = followings[:MAX_FOLLOWINGS]
 
             in_placeholders = ','.join([get_sql_placeholder()] * len(followings))
             in_params = tuple(followings)
+            community_placeholders = ','.join([get_sql_placeholder()] * len(shared_comm_ids))
+            community_params = tuple(shared_comm_ids)
 
             c.execute(
-                f"SELECT id FROM posts WHERE username IN ({in_placeholders}) ORDER BY id DESC LIMIT 200",
-                in_params,
+                f"""
+                SELECT id
+                FROM posts
+                WHERE username IN ({in_placeholders})
+                  AND community_id IN ({community_placeholders})
+                ORDER BY id DESC
+                LIMIT 200
+                """,
+                in_params + community_params,
             )
             authored_ids = [
                 row['id'] if hasattr(row, 'keys') else row[0] for row in (c.fetchall() or [])
             ]
 
             c.execute(
-                f"SELECT post_id, username FROM reactions WHERE username IN ({in_placeholders}) ORDER BY id DESC LIMIT 400",
-                in_params,
+                f"""
+                SELECT r.post_id, r.username
+                FROM reactions r
+                JOIN posts p ON p.id = r.post_id
+                WHERE r.username IN ({in_placeholders})
+                  AND p.community_id IN ({community_placeholders})
+                ORDER BY r.id DESC
+                LIMIT 400
+                """,
+                in_params + community_params,
             )
             reaction_rows = c.fetchall() or []
             c.execute(
-                f"SELECT post_id, username FROM replies WHERE username IN ({in_placeholders}) ORDER BY id DESC LIMIT 400",
-                in_params,
+                f"""
+                SELECT rp.post_id, rp.username
+                FROM replies rp
+                JOIN posts p ON p.id = rp.post_id
+                WHERE rp.username IN ({in_placeholders})
+                  AND p.community_id IN ({community_placeholders})
+                ORDER BY rp.id DESC
+                LIMIT 400
+                """,
+                in_params + community_params,
             )
             reply_rows = c.fetchall() or []
 
