@@ -41,6 +41,9 @@ type PublicProfileResponse = {
   instagram?: string | null
   twitter?: string | null
   is_self?: boolean
+  followers_count?: number
+  following_count?: number
+  is_following?: boolean
 }
 
 export default function PublicProfile() {
@@ -52,6 +55,10 @@ export default function PublicProfile() {
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<PublicProfileResponse | null>(null)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [isFollowing, setIsFollowing] = useState(false)
+  const [followersCount, setFollowersCount] = useState(0)
+  const [followingCount, setFollowingCount] = useState(0)
+  const [followLoading, setFollowLoading] = useState(false)
   const currentUsername = useMemo(() => {
     if (!currentUser || typeof currentUser !== 'object') return ''
     const record = currentUser as Record<string, any>
@@ -75,6 +82,9 @@ export default function PublicProfile() {
         if (!cancelled) {
           if (payload?.success && payload.profile) {
             setProfile(payload.profile)
+              setIsFollowing(Boolean(payload.profile.is_following))
+              setFollowersCount(Number(payload.profile.followers_count || 0))
+              setFollowingCount(Number(payload.profile.following_count || 0))
             setError(null)
           } else {
             setError(payload?.error || 'Profile not found')
@@ -96,6 +106,43 @@ export default function PublicProfile() {
     const titleText = profile?.personal?.display_name || profile?.display_name || (username ? `@${username}` : 'Profile')
     setTitle(titleText)
   }, [profile, setTitle, username])
+
+  const handleFollowToggle = async () => {
+    if (!profile || !currentUsername) return
+    if (followLoading) return
+    setFollowLoading(true)
+    try {
+      const method = isFollowing ? 'DELETE' : 'POST'
+      const resp = await fetch(`/api/follow/${encodeURIComponent(profile.username)}`, {
+        method,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      const data = await resp.json().catch(() => null)
+      if (data?.success) {
+        const nextIsFollowing = Boolean(data.is_following)
+        const nextFollowers = Number(data.followers_count ?? followersCount)
+        const nextFollowing = Number(data.following_count ?? followingCount)
+        setIsFollowing(nextIsFollowing)
+        setFollowersCount(nextFollowers)
+        setFollowingCount(nextFollowing)
+        setProfile(prev => prev ? {
+          ...prev,
+          followers_count: nextFollowers,
+          following_count: nextFollowing,
+          is_following: nextIsFollowing
+        } : prev)
+      } else {
+        const errMsg = data?.error || 'Failed to update follow status'
+        alert(errMsg)
+      }
+    } catch (err) {
+      console.error('Follow toggle error', err)
+      alert('Failed to update follow status. Please try again.')
+    } finally {
+      setFollowLoading(false)
+    }
+  }
 
   if (loading) return <div className="min-h-screen pt-16 bg-black text-white px-4">Loading…</div>
   if (error || !profile) return <div className="min-h-screen pt-16 bg-black text-white px-4 text-red-400">{error || 'Profile not found'}</div>
@@ -180,16 +227,33 @@ export default function PublicProfile() {
                     <span>{location}</span>
                   </div>
                 ) : null}
+              <div className="text-xs text-[#9fb0b5] flex items-center gap-3 mt-1">
+                <span><span className="text-white font-semibold">{followersCount}</span> followers</span>
+                <span><span className="text-white font-semibold">{followingCount}</span> following</span>
               </div>
-                {isSelf ? (
+              </div>
+            {isSelf ? (
+              <button
+                className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
+                onClick={() => navigate('/profile')}
+              >
+                <i className="fa-solid fa-pen-to-square mr-2" />
+                Edit profile
+              </button>
+            ) : (
+              currentUsername && (
+                <div className="flex flex-col w-full gap-2 sm:flex-row sm:w-auto sm:items-center sm:gap-3">
                   <button
-                    className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
-                    onClick={() => navigate('/profile')}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
+                      isFollowing
+                        ? 'bg-white/15 text-white hover:bg-white/20'
+                        : 'bg-[#4db6ac] text-black hover:brightness-110'
+                    }`}
+                    disabled={followLoading}
+                    onClick={handleFollowToggle}
                   >
-                    <i className="fa-solid fa-pen-to-square mr-2" />
-                    Edit profile
+                    {followLoading ? (isFollowing ? 'Unfollowing…' : 'Following…') : (isFollowing ? 'Following' : 'Follow')}
                   </button>
-                ) : (
                   <button
                     className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
                     onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)}
@@ -197,7 +261,9 @@ export default function PublicProfile() {
                     <i className="fa-regular fa-paper-plane mr-2" />
                     Send message
                   </button>
-                )}
+                </div>
+              )
+            )}
             </div>
           </section>
 

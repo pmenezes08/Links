@@ -990,6 +990,63 @@ def delete_community_records(cursor, community_id: int) -> None:
         logger.warning(f"Failed deleting community {community_id}: {err}")
 
 
+def ensure_followers_table(cursor) -> None:
+    """Ensure followers table exists for follow relationships."""
+    try:
+        if USE_MYSQL:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS followers (
+                    follower_username VARCHAR(150) NOT NULL,
+                    followed_username VARCHAR(150) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    PRIMARY KEY (follower_username, followed_username),
+                    CONSTRAINT fk_follow_follower FOREIGN KEY (follower_username) REFERENCES users(username) ON DELETE CASCADE,
+                    CONSTRAINT fk_follow_followed FOREIGN KEY (followed_username) REFERENCES users(username) ON DELETE CASCADE
+                ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+                """
+            )
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS followers (
+                    follower_username TEXT NOT NULL,
+                    followed_username TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (follower_username, followed_username),
+                    FOREIGN KEY (follower_username) REFERENCES users(username) ON DELETE CASCADE,
+                    FOREIGN KEY (followed_username) REFERENCES users(username) ON DELETE CASCADE
+                )
+                """
+            )
+    except Exception as e:
+        logger.warning(f"Could not ensure followers table: {e}")
+
+
+def get_follow_counts(cursor, username: str) -> Tuple[int, int]:
+    """Return follower and following counts for a username."""
+    ensure_followers_table(cursor)
+    follower_count = 0
+    following_count = 0
+    try:
+        placeholder = get_sql_placeholder()
+        cursor.execute(f"SELECT COUNT(*) FROM followers WHERE followed_username = {placeholder}", (username,))
+        row = cursor.fetchone()
+        if row:
+            follower_count = int(row[0] if not hasattr(row, 'keys') else list(row.values())[0] or 0)
+    except Exception as e:
+        logger.warning(f"Failed counting followers for {username}: {e}")
+    try:
+        placeholder = get_sql_placeholder()
+        cursor.execute(f"SELECT COUNT(*) FROM followers WHERE follower_username = {placeholder}", (username,))
+        row = cursor.fetchone()
+        if row:
+            following_count = int(row[0] if not hasattr(row, 'keys') else list(row.values())[0] or 0)
+    except Exception as e:
+        logger.warning(f"Failed counting following for {username}: {e}")
+    return follower_count, following_count
+
+
 def ensure_free_parent_member_capacity(cursor, community_id: Optional[int], extra_members: int = 1) -> None:
     """Ensure a free-plan parent community has capacity for additional members."""
     if not community_id:
@@ -7793,11 +7850,115 @@ def api_public_profile(username):
                 })
 
             profile['is_self'] = session.get('username') == actual_username
+            viewer_username = session.get('username')
+            try:
+                followers_count, following_count = get_follow_counts(c, actual_username)
+            except Exception:
+                followers_count, following_count = (0, 0)
+            profile['followers_count'] = followers_count
+            profile['following_count'] = following_count
+            is_following = False
+            if viewer_username and viewer_username.lower() != actual_username.lower():
+                try:
+                    ensure_followers_table(c)
+                    placeholder = get_sql_placeholder()
+                    c.execute(
+                        f"SELECT 1 FROM followers WHERE follower_username = {placeholder} AND followed_username = {placeholder}",
+                        (viewer_username, actual_username)
+                    )
+                    is_following = c.fetchone() is not None
+                except Exception as follow_err:
+                    logger.warning(f"follow status check failed for {viewer_username}->{actual_username}: {follow_err}")
+            profile['is_following'] = is_following
 
             return jsonify({'success': True, 'profile': profile, 'posts': posts_list})
     except Exception as e:
         logger.error(f"api_public_profile error for {username}: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
+
+
+def resolve_username_case(cursor, username: str) -> Optional[str]:
+    """Resolve stored username given case-insensitive lookup."""
+    placeholder = get_sql_placeholder()
+    cursor.execute(f"SELECT username FROM users WHERE LOWER(username) = LOWER({placeholder})", (username,))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return row['username'] if hasattr(row, 'keys') else row[0]
+
+
+@app.route('/api/follow/<username>', methods=['POST', 'DELETE'])
+@login_required
+def api_follow_toggle(username):
+    follower = session.get('username')
+    if not follower:
+        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            actual_target = resolve_username_case(c, username)
+            if not actual_target:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            if actual_target.lower() == follower.lower():
+                return jsonify({'success': False, 'error': 'You cannot follow yourself'}), 400
+
+            ensure_followers_table(c)
+            now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            if request.method == 'POST':
+                try:
+                    if USE_MYSQL:
+                        c.execute(
+                            """
+                            INSERT IGNORE INTO followers (follower_username, followed_username, created_at)
+                            VALUES (%s, %s, %s)
+                            """,
+                            (follower, actual_target, now_str)
+                        )
+                    else:
+                        c.execute(
+                            """
+                            INSERT OR IGNORE INTO followers (follower_username, followed_username, created_at)
+                            VALUES (?, ?, ?)
+                            """,
+                            (follower, actual_target, now_str)
+                        )
+                except Exception as insert_err:
+                    logger.warning(f"follow insert failed {follower}->{actual_target}: {insert_err}")
+            else:
+                placeholder = get_sql_placeholder()
+                try:
+                    c.execute(
+                        f"DELETE FROM followers WHERE follower_username = {placeholder} AND followed_username = {placeholder}",
+                        (follower, actual_target)
+                    )
+                except Exception as delete_err:
+                    logger.warning(f"follow delete failed {follower}->{actual_target}: {delete_err}")
+            conn.commit()
+
+            target_followers, target_following = get_follow_counts(c, actual_target)
+            viewer_followers, viewer_following = get_follow_counts(c, follower)
+
+            is_following = False
+            if follower.lower() != actual_target.lower():
+                placeholder = get_sql_placeholder()
+                c.execute(
+                    f"SELECT 1 FROM followers WHERE follower_username = {placeholder} AND followed_username = {placeholder}",
+                    (follower, actual_target)
+                )
+                is_following = c.fetchone() is not None
+
+            return jsonify({
+                'success': True,
+                'followers_count': target_followers,
+                'following_count': target_following,
+                'is_following': is_following,
+                'viewer_followers_count': viewer_followers,
+                'viewer_following_count': viewer_following,
+                'target_username': actual_target,
+            })
+    except Exception as e:
+        logger.error(f"api_follow_toggle error for {follower}->{username}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/profile/<username>')
 def public_profile(username):
