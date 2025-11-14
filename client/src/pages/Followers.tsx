@@ -121,6 +121,10 @@ export default function Followers() {
   const [feedLoading, setFeedLoading] = useState(true)
   const [feedError, setFeedError] = useState<string | null>(null)
   const [feedRefreshKey, setFeedRefreshKey] = useState(0)
+  const handleBackNav = () => {
+    if (window.history.length > 1) navigate(-1)
+    else navigate('/home')
+  }
 
   useEffect(() => {
     setTitle('Followers')
@@ -369,9 +373,9 @@ export default function Followers() {
   const renderManageSection = () => (
     <section
       id="manage-followers"
-      className="rounded-2xl bg-black p-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)]"
+      className="rounded-xl border border-white/10 bg-black p-3 space-y-2.5"
     >
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         <div className="space-y-1.5">
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">Manage Followers</p>
           <h1 className="text-xl font-semibold tracking-tight text-white">Stay in control of your network</h1>
@@ -414,7 +418,7 @@ export default function Followers() {
           })}
         </div>
 
-        <div className="rounded-2xl bg-black/40 p-3">
+        <div className="rounded-xl border border-white/10 bg-black/50 p-3">
           {loading && items.length === 0 ? (
             <div className="text-[#9fb0b5]">Loading…</div>
           ) : error ? (
@@ -434,7 +438,7 @@ export default function Followers() {
   const renderFeedSection = () => (
     <section
       id="followers-feed"
-      className="rounded-2xl bg-black p-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)]"
+      className="rounded-xl border border-white/10 bg-black p-3 space-y-2.5"
     >
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -480,7 +484,7 @@ export default function Followers() {
               const image = normalizeMediaPath(post.image_path || undefined)
               const video = normalizeMediaPath(post.video_path || undefined)
               return (
-                <article key={post.id} className="rounded-xl bg-black/40 p-2.5">
+                <article key={post.id} className="rounded-xl border border-white/10 bg-black/50 p-2.5">
                   <div className="flex items-center gap-2.5">
                     <Avatar username={post.username} url={normalizeAvatar(post.profile_picture)} size={36} />
                     <div className="min-w-0 flex-1">
@@ -540,34 +544,48 @@ export default function Followers() {
     </section>
   )
 
-    return (
-      <div className="min-h-screen bg-black text-white pt-16 pb-12">
-        <nav className="sticky top-14 z-20 border-b border-white/10 bg-black/95 backdrop-blur">
-          <div className="mx-auto flex max-w-2xl">
+  return (
+    <div className="h-screen overflow-hidden bg-black text-white">
+      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+        <div className="max-w-3xl mx-auto h-full flex items-center gap-2 px-2">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={handleBackNav} aria-label="Back">
+            <i className="fa-solid fa-arrow-left" />
+          </button>
+          <div className="flex-1 h-full flex">
             {SECTION_DEFINITIONS.map(section => {
               const isActive = section.key === activeSection
-              const baseClasses =
-                'flex-1 px-4 py-2.5 text-center text-[10px] font-semibold uppercase tracking-[0.25em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40'
-              const palette = isActive
-                ? 'text-white border-b-2 border-white'
-                : 'text-[#9fb0b5] border-b-2 border-transparent hover:text-white'
               return (
                 <button
                   key={section.key}
                   type="button"
-                  className={`${baseClasses} ${palette}`}
+                  className={`flex-1 text-center text-sm font-medium ${
+                    isActive ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
+                  }`}
                   onClick={() => setActiveSection(section.key)}
                 >
-                  {section.label}
+                  <div className="pt-2">{section.label}</div>
+                  <div
+                    className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${
+                      isActive ? 'bg-[#4db6ac]' : 'bg-transparent'
+                    }`}
+                  />
                 </button>
               )
             })}
           </div>
-        </nav>
-
-        <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4 pt-6">
-          {activeSection === 'manage' ? renderManageSection() : renderFeedSection()}
         </div>
       </div>
-    )
-  }
+
+      <div
+        className="max-w-3xl mx-auto pt-[70px] h-[calc(100vh-70px)] px-1 sm:px-3 pb-2 overflow-y-auto overscroll-contain"
+        style={{ WebkitOverflowScrolling: 'touch' as any }}
+      >
+        {activeSection === 'manage' ? (
+          <div className="space-y-3">{renderManageSection()}</div>
+        ) : (
+          <div className="space-y-3">{renderFeedSection()}</div>
+        )}
+      </div>
+    </div>
+  )
+}
