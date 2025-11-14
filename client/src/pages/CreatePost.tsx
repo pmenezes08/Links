@@ -348,7 +348,7 @@ export default function CreatePost(){
           )}
           <div className="flex-1" />
           <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !gifFile && !preview && !hasVideoAttachment)}>
-            {submitting ? 'Posting?' : 'Post'}
+            {submitting ? 'Posting...' : 'Post'}
           </button>
         </div>
       </div>

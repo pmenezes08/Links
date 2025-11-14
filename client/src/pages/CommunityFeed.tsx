@@ -918,10 +918,16 @@ export default function CommunityFeed() {
           onClick={(e)=> e.currentTarget===e.target && closeReactorsModal()}
         >
           <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-semibold">Reactions</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={closeReactorsModal}>X</button>
-            </div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-semibold">Reactions</div>
+                <button
+                  className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-sm text-white/80 hover:bg-white/10"
+                  onClick={closeReactorsModal}
+                  aria-label="Close reactions"
+                >
+                  <span className="leading-none">X</span>
+                </button>
+              </div>
             {reactorsLoading ? (
               <div className="text-[#9fb0b5] text-sm">Loading</div>
             ) : (
