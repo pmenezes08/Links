@@ -27,7 +27,7 @@ type TabKey = (typeof TAB_DEFINITIONS)[number]['key']
 
 const DEFAULT_SUMMARY: FollowSummary = { followers: 0, following: 0, requests: 0 }
 const TAB_BUTTON_BASE =
-  'rounded-full border px-4 py-1.5 text-sm font-medium transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50'
+  'inline-flex items-center justify-center gap-1 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50'
 
 function normalizeTab(value: string | null | undefined): TabKey {
   if (!value) return 'followers'
@@ -281,7 +281,7 @@ export default function Followers() {
       <div className="mx-auto flex max-w-2xl flex-col gap-6 px-4">
         <header className="flex flex-col gap-3">
           <h1 className="text-xl font-semibold tracking-tight">Followers</h1>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2">
             {TAB_DEFINITIONS.map(def => {
               const isActive = def.key === activeTab
               const countValue =
@@ -296,7 +296,7 @@ export default function Followers() {
               return (
                 <button
                   key={def.key}
-                  className={`${TAB_BUTTON_BASE} ${activeClasses}`}
+                  className={`${TAB_BUTTON_BASE} ${activeClasses} flex-1`}
                   onClick={() => {
                     if (!isActive) setActiveTab(def.key)
                   }}
