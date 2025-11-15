@@ -737,7 +737,15 @@ if not FLASK_SECRET_KEY:
     FLASK_SECRET_KEY = 'c-point-secret-key-2024-stable-across-workers'
     print("WARNING: Using hardcoded secret key - set FLASK_SECRET_KEY env var in production")
 app.secret_key = FLASK_SECRET_KEY
-STRIPE_API_KEY = os.getenv('STRIPE_API_KEY', 'sk_test_your_stripe_key')
+DEFAULT_STRIPE_API_KEY = 'sk_test_your_stripe_key'
+STRIPE_API_KEY = (os.getenv('STRIPE_API_KEY') or DEFAULT_STRIPE_API_KEY).strip()
+STRIPE_PUBLISHABLE_KEY = (os.getenv('STRIPE_PUBLISHABLE_KEY') or '').strip()
+STRIPE_PRICE_PREMIUM_MONTHLY = (os.getenv('STRIPE_PRICE_PREMIUM_MONTHLY') or '').strip()
+STRIPE_PRICE_PREMIUM_YEARLY = (os.getenv('STRIPE_PRICE_PREMIUM_YEARLY') or '').strip()
+STRIPE_PRICE_IDS = {
+    'premium_monthly': STRIPE_PRICE_PREMIUM_MONTHLY,
+    'premium_yearly': STRIPE_PRICE_PREMIUM_YEARLY,
+}
 XAI_API_KEY = os.getenv('XAI_API_KEY', 'xai-hFCxhRKITxZXsIQy5rRpRus49rxcgUPw4NECAunCgHU0BnWnbPE9Y594Nk5jba03t5FYl2wJkjcwyxRh')
 X_CONSUMER_KEY = os.getenv('X_CONSUMER_KEY', 'cjB0MmRPRFRnOG9jcTA0UGRZV006MTpjaQ')
 X_CONSUMER_SECRET = os.getenv('X_CONSUMER_SECRET', 'Wxo9qnpOaDIJ-9Aw_Bl_MDkor4uY24ephq9ZJFq6HwdH7o4-kB')
@@ -8461,6 +8469,76 @@ def api_followers_feed():
     except Exception as e:
         logger.error(f"api_followers_feed error for {username}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/stripe/config', methods=['GET'])
+@login_required
+def api_stripe_config():
+    """Expose publishable key so the client can initialize Stripe.js."""
+    if not STRIPE_PUBLISHABLE_KEY:
+        return jsonify({'success': False, 'error': 'stripe_not_configured'}), 400
+    return jsonify({'success': True, 'publishableKey': STRIPE_PUBLISHABLE_KEY})
+
+
+@app.route('/api/stripe/create_checkout_session', methods=['POST'])
+@login_required
+def api_stripe_create_checkout_session():
+    """Create a Checkout session for upgrading to premium."""
+    username = session.get('username')
+    if not stripe or not STRIPE_API_KEY or STRIPE_API_KEY == DEFAULT_STRIPE_API_KEY:
+        return jsonify({'success': False, 'error': 'Stripe is not configured'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    plan_id = str(payload.get('plan_id', '')).strip().lower()
+    billing_cycle = str(payload.get('billing_cycle', 'monthly')).strip().lower()
+    if plan_id != 'premium':
+        return jsonify({'success': False, 'error': 'Unsupported plan'}), 400
+    if billing_cycle not in {'monthly', 'yearly'}:
+        billing_cycle = 'monthly'
+
+    price_key = STRIPE_PRICE_IDS.get(f'{plan_id}_{billing_cycle}')
+    if not price_key:
+        return jsonify({'success': False, 'error': 'Pricing is not configured'}), 400
+
+    try:
+        email_value = None
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            placeholder = get_sql_placeholder()
+            c.execute(
+                f"SELECT email FROM users WHERE username = {placeholder}",
+                (username,),
+            )
+            row = c.fetchone()
+            if row:
+                email_value = row['email'] if hasattr(row, 'keys') else row[0]
+
+        success_url = urljoin(request.host_url, 'success')
+        cancel_url = urljoin(request.host_url, 'subscription_plans?status=cancelled')
+        session_args = {
+            'mode': 'subscription',
+            'line_items': [{'price': price_key, 'quantity': 1}],
+            'allow_promotion_codes': True,
+            'success_url': success_url,
+            'cancel_url': cancel_url,
+            'metadata': {
+                'plan_id': plan_id,
+                'billing_cycle': billing_cycle,
+                'username': username or '',
+            },
+        }
+        if email_value:
+            session_args['customer_email'] = email_value
+
+        checkout_session = stripe.checkout.Session.create(**session_args)
+        return jsonify({
+            'success': True,
+            'sessionId': checkout_session.get('id'),
+            'url': checkout_session.get('url'),
+        })
+    except Exception as exc:
+        logger.error(f"Stripe checkout creation failed for {username}: {exc}")
+        return jsonify({'success': False, 'error': 'Unable to start checkout'}), 500
 
 
 @app.route('/api/follow_requests/<username>/accept', methods=['POST'])
