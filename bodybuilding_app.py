@@ -8394,7 +8394,14 @@ def api_followers_feed():
                 f"SELECT * FROM posts WHERE id IN ({post_placeholders}) ORDER BY id DESC",
                 tuple(combined_ids),
             )
-            posts = [dict(row) for row in (c.fetchall() or [])]
+            raw_posts = [dict(row) for row in (c.fetchall() or [])]
+            posts: List[dict[str, Any]] = []
+            username_lower = username.lower() if isinstance(username, str) else ''
+            for post in raw_posts:
+                author = post.get('username')
+                if author and username_lower and isinstance(author, str) and author.lower() == username_lower:
+                    continue
+                posts.append(post)
             if not posts:
                 return jsonify({'success': True, 'posts': []})
 
