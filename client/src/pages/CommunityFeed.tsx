@@ -523,10 +523,10 @@ export default function CommunityFeed() {
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
       {refreshHint && (
         <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
-            <i className="fa-solid fa-rotate fa-spin" />
-            <span>Refreshing?</span>
-          </div>
+            <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
+              <i className="fa-solid fa-rotate fa-spin" />
+              <span>Refreshing...</span>
+            </div>
         </div>
       )}
       {/* Scrollable content area below fixed global header */}
@@ -680,35 +680,35 @@ export default function CommunityFeed() {
       {/* Announcements modal */}
       {showAnnouncements && (
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && _setShowAnnouncements(false)}>
-          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-semibold">Announcements</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> _setShowAnnouncements(false)}>?</button>
-            </div>
-            {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
-              <div className="mb-3 p-2 rounded-xl border border-white/10 bg-white/[0.02]">
-                <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder="Write an announcement?" className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none min-h-[72px]" />
-                <div className="text-right mt-2">
-                  <button disabled={savingAnn || !newAnnouncement.trim()} onClick={saveAnnouncement} className="px-3 py-1.5 rounded-md bg-[#4db6ac] disabled:opacity-50 text-black text-sm hover:brightness-110">Post</button>
-                </div>
+            <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-semibold">Announcements</div>
+                <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> _setShowAnnouncements(false)}>Close</button>
               </div>
-            )}
-            <div className="space-y-3 max-h-[420px] overflow-y-auto">
-              {_announcements.length === 0 ? (
-                <div className="text-sm text-[#9fb0b5]">No announcements.</div>
-              ) : _announcements.map((a:any)=> (
-                <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
-                  <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} ? {(() => { try { const d = new Date(a.created_at); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} const s = String(a.created_at||'').split(' '); return s[0] || String(a.created_at||''); })()}</div>
-                  <div className="whitespace-pre-wrap text-sm">{a.content}</div>
-                  {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
-                    <div className="mt-2 text-right">
-                      <button className="px-2 py-1 rounded-full border border-white/10 text-xs hover:bg-white/5" onClick={()=> deleteAnnouncement(a.id)}>Delete</button>
-                    </div>
-                  )}
+              {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
+                <div className="mb-3 p-2 rounded-xl border border-white/10 bg-white/[0.02]">
+                  <textarea value={newAnnouncement} onChange={(e)=> setNewAnnouncement(e.target.value)} placeholder="Write an announcement..." className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none min-h-[72px]" />
+                  <div className="text-right mt-2">
+                    <button disabled={savingAnn || !newAnnouncement.trim()} onClick={saveAnnouncement} className="px-3 py-1.5 rounded-md bg-[#4db6ac] disabled:opacity-50 text-black text-sm hover:brightness-110">Post</button>
+                  </div>
                 </div>
-              ))}
+              )}
+              <div className="space-y-3 max-h-[420px] overflow-y-auto">
+                {_announcements.length === 0 ? (
+                  <div className="text-sm text-[#9fb0b5]">No announcements.</div>
+                ) : _announcements.map((a:any)=> (
+                  <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
+                    <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} - {(() => { try { const d = new Date(a.created_at); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} const s = String(a.created_at||'').split(' '); return s[0] || String(a.created_at||''); })()}</div>
+                    <div className="whitespace-pre-wrap text-sm">{a.content}</div>
+                    {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
+                      <div className="mt-2 text-right">
+                        <button className="px-2 py-1 rounded-full border border-white/10 text-xs hover:bg-white/5" onClick={()=> deleteAnnouncement(a.id)}>Delete</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
         </div>
       )}
 
@@ -721,16 +721,16 @@ export default function CommunityFeed() {
               <input id="hashtag-input" value={q} onChange={(e)=> setQ(e.target.value)} placeholder="#hashtag" className="flex-1 rounded-md bg-black border border-white/10 px-3 py-2 text-sm focus:border-teal-400/70 outline-none" />
               <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={runSearch}>Search</button>
             </div>
-            <div className="max-h-[320px] overflow-y-auto space-y-2">
-              {results.length === 0 ? (
-                <div className="text-[#9fb0b5] text-sm">No results</div>
-              ) : results.map(r => (
-                <button key={r.id} className="w-full text-left rounded-xl border border-white/10 p-2 hover:bg-white/5" onClick={()=> scrollToPost(r.id)}>
-                  <div className="text-sm text-white/90 truncate">{r.content}</div>
-                  <div className="text-xs text-[#9fb0b5]">{r.username} ? {formatSmartTime(r.timestamp)}</div>
-                </button>
-              ))}
-            </div>
+              <div className="max-h-[320px] overflow-y-auto space-y-2">
+                {results.length === 0 ? (
+                  <div className="text-[#9fb0b5] text-sm">No results</div>
+                ) : results.map(r => (
+                  <button key={r.id} className="w-full text-left rounded-xl border border-white/10 p-2 hover:bg-white/5" onClick={()=> scrollToPost(r.id)}>
+                    <div className="text-sm text-white/90 truncate">{r.content}</div>
+                    <div className="text-xs text-[#9fb0b5]">{r.username} - {formatSmartTime(r.timestamp)}</div>
+                  </button>
+                ))}
+              </div>
           </div>
         </div>
       )}
@@ -879,14 +879,14 @@ export default function CommunityFeed() {
       {/* Voters modal */}
       {viewingVotersPollId && (
         <div className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setViewingVotersPollId(null)}>
-          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-semibold">Voters</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setViewingVotersPollId(null)}>?</button>
-            </div>
-            {votersLoading ? (
-              <div className="text-[#9fb0b5] text-sm">Loading voters?</div>
-            ) : (
+            <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-semibold">Voters</div>
+                <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setViewingVotersPollId(null)}>Close</button>
+              </div>
+              {votersLoading ? (
+                <div className="text-[#9fb0b5] text-sm">Loading voters...</div>
+              ) : (
               <div className="space-y-3 max-h-[420px] overflow-y-auto">
                 {votersData.length === 0 ? (
                   <div className="text-sm text-[#9fb0b5]">No voters yet.</div>
@@ -1260,7 +1260,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               <div className="font-medium text-sm flex-1">
                 {post.poll.question}
                 {post.poll.expires_at ? (
-                  <span className="ml-2 text-[11px] text-[#9fb0b5]">? closes {(() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(post.poll.expires_at) })()}</span>
+                  <span className="ml-2 text-[11px] text-[#9fb0b5]">Closes {(() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(post.poll.expires_at) })()}</span>
                 ) : null}
               </div>
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
@@ -1338,13 +1338,13 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               {(() => { const sv = (post.poll as any)?.single_vote; const isSingle = !(sv === false || sv === 0 || sv === '0' || sv === 'false'); return isSingle })() && (
                 <span>{post.poll.total_votes || 0} {post.poll.total_votes === 1 ? 'vote' : 'votes'}</span>
               )}
-              <button 
-                type="button"
-                onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (onPollClick) onPollClick() }}
-                className="text-[#4db6ac] hover:underline"
-              >
-                View all polls ?
-              </button>
+                <button 
+                  type="button"
+                  onClick={(e)=> { e.preventDefault(); e.stopPropagation(); if (onPollClick) onPollClick() }}
+                  className="text-[#4db6ac] hover:underline"
+                >
+                  View all polls
+                </button>
             </div>
           </div>
         )}
@@ -1372,11 +1372,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             </button>
           </div>
         )}
-      </div>
-      {/* Inline recent replies (last 1?2) */}
-      {!post.poll && Array.isArray(post.replies) && post.replies.length > 0 && (
-        <div className="px-3 pb-2 pt-2 mt-2 border-t border-white/10 space-y-2" onClick={(e)=> e.stopPropagation()}>
-          {(() => {
+        </div>
+        {/* Inline recent replies (last 1-2) */}
+        {!post.poll && Array.isArray(post.replies) && post.replies.length > 0 && (
+          <div className="px-3 pb-2 pt-2 mt-2 border-t border-white/10 space-y-2" onClick={(e)=> e.stopPropagation()}>
+            {(() => {
             const ordered = (() => {
               const pair = post.replies.slice(0, 2)
               if (pair.length === 2){
@@ -1543,7 +1543,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             ))
           })()}
           {post.replies.length > 2 && (
-            <button className="text-xs text-[#4db6ac] hover:underline" onClick={()=> onOpen()}>View all replies ?</button>
+            <button className="text-xs text-[#4db6ac] hover:underline" onClick={()=> onOpen()}>View all replies</button>
           )}
         </div>
       )}
@@ -1551,15 +1551,15 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       {!post.poll && (
         <div className="px-3 pb-3" onClick={(e)=> e.stopPropagation()}>
           <div className="rounded-xl border border-white/5 bg-white/[0.03] px-2 pt-2 pb-2 space-y-2">
-            <MentionTextarea
-              value={replyText}
-              onChange={setReplyText}
-              communityId={communityId as any}
-              postId={post.id}
-              placeholder="Write a reply?"
-              className="w-full resize-none rounded-xl bg-transparent border-0 outline-none text-[14px] placeholder-white/40 px-1"
-              rows={2}
-            />
+              <MentionTextarea
+                value={replyText}
+                onChange={setReplyText}
+                communityId={communityId as any}
+                postId={post.id}
+                placeholder="Write a reply..."
+                className="w-full resize-none rounded-xl bg-transparent border-0 outline-none text-[14px] placeholder-white/40 px-1"
+                rows={2}
+              />
             {replyGif && (
               <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-2">
                 <img src={replyGif.previewUrl} alt="Selected GIF" className="h-20 w-20 rounded object-cover" loading="lazy" />
