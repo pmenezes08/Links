@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import { useHeader } from '../contexts/HeaderContext'
@@ -133,21 +133,33 @@ export default function Followers() {
     setSearchParams(params, { replace: true })
   }, [activeTab, activeSection, setSearchParams])
 
+  const activeTabRef = useRef(activeTab)
+
   useEffect(() => {
-    let cancelled = false
+    activeTabRef.current = activeTab
+  }, [activeTab])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let isCurrent = true
     async function load(tab: TabKey) {
       setLoading(true)
       setError(null)
       try {
-        const response = await fetch(`/api/followers?tab=${tab}`, { credentials: 'include' })
+        const response = await fetch(`/api/followers?tab=${tab}`, {
+          credentials: 'include',
+          signal: controller.signal,
+        })
         const data = await response.json().catch(() => null)
-        if (cancelled) return
+        if (!isCurrent) return
         if (data?.success) {
           const list = (Array.isArray(data.items) ? data.items : []) as FollowEntry[]
+          // Only apply results matching the latest selected tab
+          if (tab !== activeTabRef.current) return
           setItems(
             list
-              .filter((entry) => entry && typeof entry.username === 'string')
-              .map((entry) => ({
+              .filter(entry => entry && typeof entry.username === 'string')
+              .map(entry => ({
                 username: entry.username,
                 display_name: entry.display_name || entry.username,
                 profile_picture: entry.profile_picture || null,
@@ -166,18 +178,20 @@ export default function Followers() {
           setItems([])
         }
       } catch (err) {
+        if ((err as Error).name === 'AbortError') return
         console.error('Failed loading followers tab', err)
-        if (!cancelled) {
+        if (isCurrent) {
           setError('Failed to load followers')
           setItems([])
         }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (isCurrent) setLoading(false)
       }
     }
     load(activeTab)
     return () => {
-      cancelled = true
+      isCurrent = false
+      controller.abort()
     }
   }, [activeTab])
 
