@@ -35,6 +35,8 @@ import ChatThread from './pages/ChatThread'
 import Profile from './pages/Profile'
 import PublicProfile from './pages/PublicProfile'
 import AccountSettings from './pages/AccountSettings'
+import AccountSecurity from './pages/AccountSecurity'
+import AccountDangerZone from './pages/AccountDangerZone'
 import SubscriptionPlans from './pages/SubscriptionPlans'
 import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
@@ -238,8 +240,10 @@ function AppRoutes(){
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/profile_react" element={<Profile />} />
                   <Route path="/profile/:username" element={<PublicProfile />} />
-                  <Route path="/account_settings" element={<AccountSettings />} />
-                  <Route path="/account_settings_react" element={<AccountSettings />} />
+                <Route path="/account_settings" element={<AccountSettings />} />
+                <Route path="/account_settings_react" element={<AccountSettings />} />
+                <Route path="/account_settings/security" element={<AccountSecurity />} />
+                <Route path="/account_settings/danger" element={<AccountDangerZone />} />
                   <Route path="/subscription_plans" element={<SubscriptionPlans />} />
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/admin" element={<AdminDashboard />} />
