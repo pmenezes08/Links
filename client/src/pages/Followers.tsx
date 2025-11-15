@@ -145,6 +145,7 @@ export default function Followers() {
     async function load(tab: TabKey) {
       setLoading(true)
       setError(null)
+      setItems([])
       try {
         const response = await fetch(`/api/followers?tab=${tab}`, {
           credentials: 'include',
