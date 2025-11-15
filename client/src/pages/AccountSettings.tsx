@@ -143,9 +143,12 @@ export default function AccountSettings(){
         )}
 
           <form onSubmit={handleSave} className="space-y-6">
-          {/* Basic Information */}
-            <div className="bg-black rounded-xl p-6 border border-white/10">
-            <h2 className="text-lg font-semibold mb-4">Basic Information</h2>
+            {/* Account Information */}
+            <div className="bg-black rounded-xl p-6 border border-white/10 space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold">Account Information</h2>
+                <p className="text-sm text-white/60">Update the email tied to your account.</p>
+              </div>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Username</label>
@@ -168,6 +171,15 @@ export default function AccountSettings(){
                   className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white focus:border-[#4db6ac] focus:outline-none"
                 />
               </div>
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-semibold hover:bg-[#3da398]"
+                    >
+                      <i className="fa-solid fa-floppy-disk" />
+                      Save Changes
+                    </button>
+                  </div>
             </div>
           </div>
 
