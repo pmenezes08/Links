@@ -16,49 +16,49 @@ type Plan = {
 
 const PLAN_DATA: Plan[] = [
   {
-    id: 'basic',
-    name: 'Basic',
-    description: 'Free plan with limited access to essential tools.',
+    id: 'free',
+    name: 'Free',
+    description: 'Get started with essential collaboration tools.',
     monthly: 0,
     yearly: 0,
     cta: 'Start for Free',
     features: [
-      'Access to core tools with limited functionality',
-      'Community support via help center',
+      'Core C-Point experience',
+      'Community help center support',
       'Basic analytics dashboard',
-      'Single-user access with standard permissions',
-      'Limited storage and export options',
-    ],
-  },
-  {
-    id: 'business',
-    name: 'Business',
-    description: 'Recommended plan with personalized onboarding.',
-    monthly: 500,
-    yearly: 5500,
-    cta: 'Buy Now',
-    highlight: 'Recommended',
-    features: [
-      'Everything in Basic plus advanced workflows',
-      'Priority community support and office hours',
-      'Extended analytics and reporting suite',
-      'Role-based permissions for small teams',
-      'Increased storage and export allowances',
+      'Single-user seat',
+      'Shared storage pool',
     ],
   },
   {
     id: 'premium',
     name: 'Premium',
-    description: 'Advanced plan with white-glove assistance.',
+    description: 'Unlock advanced automation and priority support.',
+    monthly: 500,
+    yearly: 5500,
+    cta: 'Buy Now',
+    highlight: 'Popular',
+    features: [
+      'Everything in Free',
+      'Priority concierge onboarding',
+      'Advanced analytics suite',
+      'Role-based permissions',
+      'Expanded secure storage',
+    ],
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise',
+    description: 'Tailored partnership with dedicated experts.',
     monthly: 900,
     yearly: 9900,
     cta: 'Buy Now',
     features: [
-      'All Business features plus concierge onboarding',
-      'Dedicated success manager',
-      'Custom analytics dashboards and exports',
+      'White-glove onboarding',
+      'Dedicated success squad',
+      'Custom analytics and exports',
       'Unlimited storage and audit logging',
-      'Early access to experimental tooling',
+      'Preview access to new labs',
     ],
   },
 ]
@@ -88,12 +88,12 @@ export default function SubscriptionPlans() {
       PLAN_DATA.map(plan => (
         <article
           key={plan.id}
-          className={`rounded-3xl border border-white/10 bg-gradient-to-br from-[#14161e] via-[#0f1218] to-[#090b10] p-5 text-white shadow-[0_30px_60px_rgba(0,0,0,0.45)] ${
-            plan.highlight ? 'ring-1 ring-[#d09bff]' : ''
+          className={`snap-center min-w-[280px] sm:min-w-[320px] rounded-3xl border border-white/10 bg-gradient-to-br from-[#020406] via-[#040b0f] to-[#010203] p-5 text-white shadow-[0_30px_60px_rgba(0,0,0,0.45)] ${
+            plan.highlight ? 'ring-1 ring-[#4db6ac]' : ''
           }`}
         >
           {plan.highlight ? (
-            <div className="mb-4 inline-flex items-center rounded-full bg-[#d09bff]/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-[#d09bff]">
+            <div className="mb-4 inline-flex items-center rounded-full bg-[#4db6ac]/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-[#4db6ac]">
               {plan.highlight}
             </div>
           ) : null}
@@ -102,13 +102,13 @@ export default function SubscriptionPlans() {
             <div className="text-3xl font-semibold">{formatPrice(plan, billingCycle)}</div>
             <p className="text-sm text-white/70">{plan.description}</p>
           </div>
-          <button className="mt-4 w-full rounded-2xl border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:border-white/40 hover:bg-white/5">
+          <button className="mt-4 w-full rounded-2xl border border-[#4db6ac]/30 px-4 py-2 text-sm font-semibold text-white hover:border-[#4db6ac]/60 hover:bg-[#4db6ac]/10">
             {plan.cta}
           </button>
           <ul className="mt-5 space-y-2 text-sm text-white/80">
             {plan.features.map(feature => (
               <li key={feature} className="flex items-start gap-2">
-                <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-[#8f8fff]" />
+                <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-[#4db6ac]" />
                 <span>{feature}</span>
               </li>
             ))}
@@ -145,7 +145,7 @@ export default function SubscriptionPlans() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">{cards}</section>
+        <section className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-4 snap-x snap-mandatory">{cards}</section>
 
         <section className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm text-white/70">
           Looking for something more custom? Contact our team and we&#39;ll help craft a tailored plan.
