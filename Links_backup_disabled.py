@@ -566,8 +566,8 @@ def chat():
             print(f"API error: {str(e)}")
             return jsonify({'response': f"Whoa, hit a snag—tech gremlins at work! (Error: {str(e)})"})
 
-    print(f"Rendering chat_with_grok for {username}")
-    return render_template('chat_with_grok.html', name=username)
+    print(f"Chat HTML disabled for {username}, returning JSON notice")
+    return jsonify({'success': False, 'message': 'Chat UI has moved to the React dashboard. Please update your client.'}), 410
 
 @app.route('/subscribe', methods=['GET', 'POST'])
 def subscribe():

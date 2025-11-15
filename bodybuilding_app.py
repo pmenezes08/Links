@@ -10212,6 +10212,8 @@ def chat():
             c.execute("SELECT subscription FROM users WHERE username=?", (username,))
             user = c.fetchone()
         if not user or user['subscription'] != 'premium':
+            if prefers_json_response():
+                return jsonify({'success': False, 'error': 'Premium subscription required!'}), 403
             return render_template('index.html', error="Premium subscription required!")
         if request.method == 'POST':
             if not check_api_limit(username):
@@ -10243,7 +10245,14 @@ def chat():
             except requests.RequestException as e:
                 logger.error(f"API error in chat for {username}: {str(e)}")
                 return jsonify({'error': 'API error. Please try again later.'}), 500
-        return render_template('chat_with_grok.html', name=username, subscription=user['subscription'])
+        resp = serve_react_index()
+        if resp:
+            return resp
+        message = 'Chat with Grok has moved to the React dashboard.'
+        if prefers_json_response():
+            return jsonify({'success': False, 'message': message, 'redirect': '/premium_dashboard'}), 410
+        flash(message, 'info')
+        return redirect(url_for('premium_dashboard'))
     except Exception as e:
         logger.error(f"Error in chat for {username}: {str(e)}")
         abort(500)
