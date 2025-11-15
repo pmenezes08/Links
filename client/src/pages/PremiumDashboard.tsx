@@ -387,8 +387,8 @@ export default function PremiumDashboard() {
 
       {/* Mobile dropdown menu */}
         {mobileMenuOpen && (
-          <div className="fixed top-14 left-0 right-0 z-40 border-t border-[#333] bg-[#1a1a1a] md:hidden">
-            <nav className="flex flex-col">
+          <div className="fixed top-14 left-0 right-0 bottom-0 z-40 border-t border-[#333] bg-[#1a1a1a] md:hidden flex flex-col">
+            <nav className="flex-1 overflow-y-auto flex flex-col">
               <a className="px-5 py-3 border-b border-[#222]" href="/dashboard" onClick={() => setMobileMenuOpen(false)}>Dashboard</a>
               <a className="px-5 py-3 border-b border-[#222]" href="/profile" onClick={() => setMobileMenuOpen(false)}>Profile</a>
                 <a className="px-5 py-3 border-b border-[#222]" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>Messages</a>
@@ -400,7 +400,7 @@ export default function PremiumDashboard() {
             <div className="px-4 py-4 border-t border-[#222] bg-gradient-to-r from-[#0a4e4e] via-[#0e6d6d] to-[#0a4e4e]">
               <button
                 type="button"
-                className="w-full rounded-2xl border border-teal-200/50 bg-white/10 px-4 py-3 text-sm font-semibold text-teal-50 tracking-[0.2em] uppercase shadow-[0_5px_25px_rgba(0,255,255,0.25)] hover:shadow-[0_10px_30px_rgba(0,255,255,0.35)] backdrop-blur"
+                  className="w-full rounded-2xl border border-teal-200/50 bg-white/10 px-4 py-3 text-sm font-semibold text-teal-50 tracking-[0.2em] uppercase shadow-[0_5px_25px_rgba(0,255,255,0.25)] hover:shadow-[0_10px_30px_rgba(0,255,255,0.35)] backdrop-blur transition"
                 onClick={() => {
                   setMobileMenuOpen(false)
                   navigate('/subscription_plans')
