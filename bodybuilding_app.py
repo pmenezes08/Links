@@ -4629,10 +4629,6 @@ def is_blood_test_related(message):
                       'vitamin', 'hormone', 'testosterone', 'cortisol', 'thyroid', 'platelets', 'rbc', 'wbc', 'lipid']
     return any(keyword in message.lower() for keyword in blood_keywords)
 
-def is_nutrition_related(message):
-    nutrition_keywords = ['plan', 'diet', 'nutrition', 'calories', 'protein', 'fat', 'carb', 'carbs', 'meal', 'food']
-    return any(keyword in message.lower() for keyword in nutrition_keywords)
-
 # Routes
 @app.route('/', methods=['GET'])
 def index():
@@ -10200,61 +10196,6 @@ def blood_test_analysis():
         return render_template('blood_test_analysis.html', name=username, subscription=user['subscription'])
     except Exception as e:
         logger.error(f"Error in blood_test_analysis for {username}: {str(e)}")
-        abort(500)
-
-@app.route('/chat', methods=['GET', 'POST'])
-@login_required
-def chat():
-    username = session['username']
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-        if not user or user['subscription'] != 'premium':
-            if prefers_json_response():
-                return jsonify({'success': False, 'error': 'Premium subscription required!'}), 403
-            return render_template('index.html', error="Premium subscription required!")
-        if request.method == 'POST':
-            if not check_api_limit(username):
-                return jsonify({'response': "Daily chat limit reached!"})
-            message = request.form.get('message', '')
-            file = request.files.get('file')
-            combined_message = ""
-            if file:
-                file_content = file.read().decode('utf-8', errors='ignore')
-                combined_message = f"Here's some info: {file_content}"
-            if message:
-                combined_message = f"{message}\n{combined_message}" if combined_message else message
-            if not combined_message:
-                return jsonify({'response': "Please provide text or a file!"})
-            headers = {'Authorization': f'Bearer {XAI_API_KEY}', 'Content-Type': 'application/json'}
-            payload = {
-                'model': 'grok-beta',
-                'messages': [
-                    {'role': 'system', 'content': "You're Grok, built by xAI - keep it helpful and redirect blood test or nutrition queries."},
-                    {'role': 'user', 'content': combined_message}
-                ],
-                'max_tokens': 1000
-            }
-            try:
-                response = requests.post(XAI_API_URL, headers=headers, json=payload)
-                response.raise_for_status()
-                grok_response = response.json()['choices'][0]['message']['content']
-                return jsonify({'response': grok_response})
-            except requests.RequestException as e:
-                logger.error(f"API error in chat for {username}: {str(e)}")
-                return jsonify({'error': 'API error. Please try again later.'}), 500
-        resp = serve_react_index()
-        if resp:
-            return resp
-        message = 'Chat with Grok has moved to the React dashboard.'
-        if prefers_json_response():
-            return jsonify({'success': False, 'message': message, 'redirect': '/premium_dashboard'}), 410
-        flash(message, 'info')
-        return redirect(url_for('premium_dashboard'))
-    except Exception as e:
-        logger.error(f"Error in chat for {username}: {str(e)}")
         abort(500)
 
 @app.route('/subscribe', methods=['GET', 'POST'])
