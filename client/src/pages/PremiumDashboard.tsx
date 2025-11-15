@@ -386,19 +386,31 @@ export default function PremiumDashboard() {
       {/* page content starts below header via pt-14 */}
 
       {/* Mobile dropdown menu */}
-      {mobileMenuOpen && (
-        <div className="fixed top-14 left-0 right-0 z-40 border-t border-[#333] bg-[#1a1a1a] md:hidden">
-          <nav className="flex flex-col">
-            <a className="px-5 py-3 border-b border-[#222]" href="/dashboard" onClick={() => setMobileMenuOpen(false)}>Dashboard</a>
-            <a className="px-5 py-3 border-b border-[#222]" href="/profile" onClick={() => setMobileMenuOpen(false)}>Profile</a>
-              <a className="px-5 py-3 border-b border-[#222]" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>Messages</a>
-              <a className="px-5 py-3 border-b border-[#222]" href="/followers" onClick={() => setMobileMenuOpen(false)}>Followers</a>
-            {hasGymAccess && <a className="px-5 py-3 border-b border-[#222]" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>Your Sports</a>}
-            <a className="px-5 py-3 border-b border-[#222]" href="/logout" onClick={() => setMobileMenuOpen(false)}>Logout</a>
-            <a className="px-5 py-3" href="/account_settings" onClick={() => setMobileMenuOpen(false)}><i className="fa-solid fa-cog mr-2" />Settings</a>
-          </nav>
-        </div>
-      )}
+        {mobileMenuOpen && (
+          <div className="fixed top-14 left-0 right-0 z-40 border-t border-[#333] bg-[#1a1a1a] md:hidden">
+            <nav className="flex flex-col">
+              <a className="px-5 py-3 border-b border-[#222]" href="/dashboard" onClick={() => setMobileMenuOpen(false)}>Dashboard</a>
+              <a className="px-5 py-3 border-b border-[#222]" href="/profile" onClick={() => setMobileMenuOpen(false)}>Profile</a>
+                <a className="px-5 py-3 border-b border-[#222]" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>Messages</a>
+                <a className="px-5 py-3 border-b border-[#222]" href="/followers" onClick={() => setMobileMenuOpen(false)}>Followers</a>
+              {hasGymAccess && <a className="px-5 py-3 border-b border-[#222]" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>Your Sports</a>}
+              <a className="px-5 py-3 border-b border-[#222]" href="/logout" onClick={() => setMobileMenuOpen(false)}>Logout</a>
+              <a className="px-5 py-3" href="/account_settings" onClick={() => setMobileMenuOpen(false)}><i className="fa-solid fa-cog mr-2" />Settings</a>
+            </nav>
+            <div className="px-4 py-4 border-t border-[#222] bg-gradient-to-r from-[#0a4e4e] via-[#0e6d6d] to-[#0a4e4e]">
+              <button
+                type="button"
+                className="w-full rounded-2xl border border-teal-200/50 bg-white/10 px-4 py-3 text-sm font-semibold text-teal-50 tracking-[0.2em] uppercase shadow-[0_5px_25px_rgba(0,255,255,0.25)] hover:shadow-[0_10px_30px_rgba(0,255,255,0.35)] backdrop-blur"
+                onClick={() => {
+                  setMobileMenuOpen(false)
+                  navigate('/subscription_plans')
+                }}
+              >
+                Premium
+              </button>
+            </div>
+          </div>
+        )}
 
       <div className="">
         {/* Desktop profile summary (kept, but edit profile removed) */}
