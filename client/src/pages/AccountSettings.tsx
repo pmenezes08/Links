@@ -28,6 +28,7 @@ export default function AccountSettings(){
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordMessage, setPasswordMessage] = useState<{type: 'success'|'error', text: string}|null>(null)
+  const [privacyTab, setPrivacyTab] = useState<'security' | 'encryption' | 'privacy'>('security')
 
   useEffect(() => { setTitle('Account Settings') }, [setTitle])
 
@@ -138,7 +139,7 @@ export default function AccountSettings(){
           </div>
         )}
 
-        <form onSubmit={handleSave} className="space-y-6">
+          <form onSubmit={handleSave} className="space-y-6">
           {/* Account Information */}
           <div className="space-y-4 rounded-xl border border-white/10 bg-black p-6">
             <div>
@@ -269,116 +270,214 @@ export default function AccountSettings(){
 
           {/* Privacy & Security */}
           <div className="rounded-xl border border-white/10 bg-black p-6">
-            <h2 className="text-lg font-semibold mb-4">Privacy & Security</h2>
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={() => navigate('/encryption_settings')}
-                className="group flex w-full items-center justify-between rounded-lg border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#4db6ac]/20">
-                    <i className="fa-solid fa-lock text-[#4db6ac]" />
-                  </div>
-                  <div className="text-left">
-                    <div className="font-medium">Encryption Settings</div>
-                    <div className="text-sm text-white/60">Manage your end-to-end encryption keys</div>
-                  </div>
-                </div>
-                <i className="fa-solid fa-chevron-right text-white/40 group-hover:text-white/60" />
-              </button>
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">
+                Privacy & Security
+              </p>
+              <h2 className="text-xl font-semibold text-white">Keep your data protected</h2>
+              <p className="text-sm text-white/60">
+                Review your security preferences, encryption, and privacy controls.
+              </p>
             </div>
-          </div>
 
-          {/* Password Update */}
-          <div className="rounded-xl border border-white/10 bg-black p-6">
-            <h2 className="text-lg font-semibold mb-4">Change Password</h2>
-            {passwordMessage && (
-              <div
-                className={`mb-4 rounded-lg border p-4 ${
-                  passwordMessage.type === 'success'
-                    ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                    : 'bg-red-500/10 border-red-500/30 text-red-400'
-                }`}
-              >
-                {passwordMessage.text}
-              </div>
-            )}
-            <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium">Current Password</label>
-                <input
-                  type="password"
-                  value={currentPassword}
-                  onChange={e => setCurrentPassword(e.target.value)}
-                  placeholder="Enter current password"
-                  className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white focus:border-[#4db6ac] focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium">New Password</label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  placeholder="Enter new password"
-                  className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white focus:border-[#4db6ac] focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium">Confirm New Password</label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={e => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm new password"
-                  className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white focus:border-[#4db6ac] focus:outline-none"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  setPasswordMessage(null)
+            <div className="mt-4 flex gap-2 rounded-full border border-white/10 bg-white/5 p-1">
+              {[
+                { key: 'security', label: 'Security' },
+                { key: 'encryption', label: 'Encryption' },
+                { key: 'privacy', label: 'Privacy' },
+              ].map(tab => {
+                const isActive = privacyTab === tab.key
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    className={`flex-1 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] transition ${
+                      isActive ? 'bg-white text-black' : 'text-white/70'
+                    }`}
+                    onClick={() => setPrivacyTab(tab.key as typeof privacyTab)}
+                  >
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
 
-                  if (!currentPassword || !newPassword || !confirmPassword) {
-                    setPasswordMessage({ type: 'error', text: 'Please fill in all password fields' })
-                    return
-                  }
+            <div className="mt-4 space-y-4">
+              {privacyTab === 'security' ? (
+                <>
+                  {passwordMessage && (
+                    <div
+                      className={`rounded-lg border p-4 ${
+                        passwordMessage.type === 'success'
+                          ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                          : 'bg-red-500/10 border-red-500/30 text-red-400'
+                      }`}
+                    >
+                      {passwordMessage.text}
+                    </div>
+                  )}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium">Current Password</label>
+                      <input
+                        type="password"
+                        value={currentPassword}
+                        onChange={e => setCurrentPassword(e.target.value)}
+                        placeholder="Enter current password"
+                        className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white focus:border-[#4db6ac] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium">New Password</label>
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={e => setNewPassword(e.target.value)}
+                        placeholder="Enter new password"
+                        className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white focus:border-[#4db6ac] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium">Confirm New Password</label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={e => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm new password"
+                        className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-3 text-white focus:border-[#4db6ac] focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setPasswordMessage(null)
 
-                  if (newPassword !== confirmPassword) {
-                    setPasswordMessage({ type: 'error', text: 'New passwords do not match' })
-                    return
-                  }
+                        if (!currentPassword || !newPassword || !confirmPassword) {
+                          setPasswordMessage({ type: 'error', text: 'Please fill in all password fields' })
+                          return
+                        }
 
-                  if (newPassword.length < 6) {
-                    setPasswordMessage({ type: 'error', text: 'New password must be at least 6 characters' })
-                    return
-                  }
+                        if (newPassword !== confirmPassword) {
+                          setPasswordMessage({ type: 'error', text: 'New passwords do not match' })
+                          return
+                        }
 
-                  try {
-                    const fd = new FormData()
-                    fd.append('current_password', currentPassword)
-                    fd.append('new_password', newPassword)
+                        if (newPassword.length < 6) {
+                          setPasswordMessage({ type: 'error', text: 'New password must be at least 6 characters' })
+                          return
+                        }
 
-                    const r = await fetch('/update_password', { method: 'POST', credentials: 'include', body: fd })
-                    const j = await r.json()
+                        try {
+                          const fd = new FormData()
+                          fd.append('current_password', currentPassword)
+                          fd.append('new_password', newPassword)
 
-                    if (j?.success) {
-                      setPasswordMessage({ type: 'success', text: 'Password updated successfully!' })
-                      setCurrentPassword('')
-                      setNewPassword('')
-                      setConfirmPassword('')
-                    } else {
-                      setPasswordMessage({ type: 'error', text: j?.error || 'Failed to update password' })
-                    }
-                  } catch (err) {
-                    setPasswordMessage({ type: 'error', text: 'Network error. Please try again.' })
-                  }
-                }}
-                className="rounded-lg bg-[#4db6ac] px-6 py-3 font-medium text-black transition-colors hover:bg-[#45a99c]"
-              >
-                Update Password
-              </button>
+                          const r = await fetch('/update_password', { method: 'POST', credentials: 'include', body: fd })
+                          const j = await r.json()
+
+                          if (j?.success) {
+                            setPasswordMessage({ type: 'success', text: 'Password updated successfully!' })
+                            setCurrentPassword('')
+                            setNewPassword('')
+                            setConfirmPassword('')
+                          } else {
+                            setPasswordMessage({ type: 'error', text: j?.error || 'Failed to update password' })
+                          }
+                        } catch (err) {
+                          setPasswordMessage({ type: 'error', text: 'Network error. Please try again.' })
+                        }
+                      }}
+                      className="rounded-lg bg-[#4db6ac] px-6 py-3 font-medium text-black transition-colors hover:bg-[#45a99c]"
+                    >
+                      Update Password
+                    </button>
+                  </div>
+                  <div className="border-t border-white/10 pt-4">
+                    <h3 className="mb-2 text-sm font-semibold text-red-400">Delete Account</h3>
+                    <button
+                      type="button"
+                      className="rounded-md bg-red-600 px-4 py-2 text-white hover:bg-red-500"
+                      onClick={async event => {
+                        if (!confirm('Permanently delete your account? This cannot be undone.')) return
+
+                        const btn = event?.currentTarget as HTMLButtonElement
+                        const originalText = btn?.textContent || ''
+                        if (btn) btn.textContent = 'Deleting...'
+
+                        try {
+                          const allKeys = Object.keys(localStorage)
+                          allKeys.forEach(key => {
+                            if (key.includes('onboarding') || key.includes('first_login')) {
+                              localStorage.removeItem(key)
+                            }
+                          })
+                          localStorage.clear()
+                        } catch (e) {
+                          console.error('Failed to clear localStorage:', e)
+                        }
+
+                        try {
+                          const r = await fetch('/delete_account', { method: 'POST', credentials: 'include' })
+                          if (!r.ok) {
+                            alert('Server error: ' + r.status)
+                            if (btn) btn.textContent = originalText
+                            return
+                          }
+
+                          const j = await r.json().catch(() => null)
+                          if (j?.success) {
+                            alert('✅ Account deleted! You can now create a new account.')
+                            try {
+                              localStorage.clear()
+                            } catch (e) {}
+                            setTimeout(() => {
+                              window.location.replace('/signup')
+                            }, 1000)
+                            return
+                          }
+
+                          if (j?.error) {
+                            alert('Error: ' + j.error)
+                          } else {
+                            alert('Failed to delete account. Please try again.')
+                          }
+                          if (btn) btn.textContent = originalText
+                        } catch (e) {
+                          console.error('Delete account error:', e)
+                          alert('Network error: ' + (e instanceof Error ? e.message : 'Please try again.'))
+                          if (btn) btn.textContent = originalText
+                        }
+                      }}
+                    >
+                      Delete Account
+                    </button>
+                  </div>
+                </>
+              ) : privacyTab === 'encryption' ? (
+                <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+                  <p className="text-sm text-white/70">
+                    Manage end-to-end encryption keys for your messages and secure conversations.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/encryption_settings')}
+                    className="mt-4 flex w-full items-center justify-between rounded-lg border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10"
+                  >
+                    <div>
+                      <div className="font-semibold text-white">Encryption Settings</div>
+                      <div className="text-sm text-white/60">Review keys, regenerate secrets, and export backups.</div>
+                    </div>
+                    <i className="fa-solid fa-chevron-right text-white/40" />
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-white/70">
+                  <p>
+                    Fine-tune what personal details are visible to communities and followers. Additional privacy controls
+                    are coming soon.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </form>
