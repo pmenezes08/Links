@@ -246,7 +246,7 @@ export default function SubscriptionPlans() {
   return (
     <div className="min-h-screen bg-black text-white pt-16 pb-12">
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4">
-        <section className="flex justify-center">
+          <section className="flex justify-center mb-6">
           <div className="inline-flex rounded-full border border-white/15 bg-white/5 p-1">
             {(['monthly', 'yearly'] as BillingCycle[]).map(option => {
               const isActive = billingCycle === option
@@ -270,7 +270,7 @@ export default function SubscriptionPlans() {
               {actionError}
             </div>
           ) : null}
-          <section className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-8 snap-x snap-mandatory">
+          <section className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-4 snap-x snap-mandatory">
             {PLAN_DATA.map(plan => {
               const isProcessing = processingPlan === plan.id
               return (
