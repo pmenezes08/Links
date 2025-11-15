@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
+const PENDING_INVITE_KEY = 'cpoint_pending_invite'
+
 export default function MobileLogin() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -14,20 +16,35 @@ export default function MobileLogin() {
 
   // Check invitation token
   useEffect(() => {
-    if (inviteToken) {
-      fetch(`/api/invitation/verify?token=${inviteToken}`, { credentials: 'include' })
-        .then(r => r.json())
-        .then(j => {
-          if (j?.success) {
-            // Check if it's a QR code invite (not email-specific)
-            const isQRInvite = j.email?.startsWith('qr-invite-') && j.email?.endsWith('@placeholder.local')
-            if (isQRInvite) {
-              setInvitationInfo({ community_name: j.community_name, invited_by: j.invited_by })
-            }
-          }
-        })
-        .catch(err => console.error('Error verifying invitation:', err))
+    if (!inviteToken) {
+      try {
+        if (typeof window !== 'undefined') sessionStorage.removeItem(PENDING_INVITE_KEY)
+      } catch {}
+      return
     }
+    fetch(`/api/invitation/verify?token=${inviteToken}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success) {
+          const payload = {
+            communityId: j.community_id ?? null,
+            communityName: j.community_name,
+            inviteToken,
+          }
+          try {
+            if (typeof window !== 'undefined') sessionStorage.setItem(PENDING_INVITE_KEY, JSON.stringify(payload))
+          } catch {}
+          const isQRInvite = j.email?.startsWith('qr-invite-') && j.email?.endsWith('@placeholder.local')
+          if (isQRInvite) {
+            setInvitationInfo({ community_name: j.community_name, invited_by: j.invited_by })
+          }
+        } else {
+          try {
+            if (typeof window !== 'undefined') sessionStorage.removeItem(PENDING_INVITE_KEY)
+          } catch {}
+        }
+      })
+      .catch(err => console.error('Error verifying invitation:', err))
   }, [inviteToken])
 
   // If already authenticated, auto-join community if invited

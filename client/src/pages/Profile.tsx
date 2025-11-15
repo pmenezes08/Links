@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
 import Avatar from '../components/Avatar'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { useNavigate } from 'react-router-dom'
+
+const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
+const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
 
 type PersonalForm = {
   bio: string
@@ -264,6 +268,26 @@ function SelectField({
 }
 
 export default function Profile() {
+  const navigate = useNavigate()
+  const [showOnboardingReturn, setShowOnboardingReturn] = useState(false)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const flag = sessionStorage.getItem(ONBOARDING_PROFILE_HINT_KEY)
+      if (flag === '1') setShowOnboardingReturn(true)
+    } catch {}
+  }, [])
+
+  const handleReturnToOnboarding = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(ONBOARDING_RESUME_KEY, '4')
+        sessionStorage.removeItem(ONBOARDING_PROFILE_HINT_KEY)
+      }
+    } catch {}
+    navigate('/premium_dashboard')
+  }
+
   const [summary, setSummary] = useState<ProfileSummary | null>(null)
   const [personal, setPersonal] = useState<PersonalForm>(PERSONAL_DEFAULT)
   const [professional, setProfessional] = useState<ProfessionalForm>(PROFESSIONAL_DEFAULT)
@@ -773,6 +797,20 @@ export default function Profile() {
             />
           </div>
         ) : null}
+          {showOnboardingReturn && (
+            <div className="rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-white">
+                Finished updating your profile? Jump back to onboarding to complete the setup.
+              </div>
+              <button
+                type="button"
+                className="rounded-full border border-[#4db6ac]/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white hover:bg-[#4db6ac]/20"
+                onClick={handleReturnToOnboarding}
+              >
+                Return to onboarding
+              </button>
+            </div>
+          )}
 
         <div className="flex items-center gap-3">
           <div className="relative">

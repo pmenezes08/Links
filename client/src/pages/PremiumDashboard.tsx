@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 
+const PENDING_INVITE_KEY = 'cpoint_pending_invite'
+const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
+const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
+
 // type Community = { id: number; name: string; type: string }
 
 export default function PremiumDashboard() {
@@ -37,6 +41,8 @@ export default function PremiumDashboard() {
   const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
   const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)
+  const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)
+  const [pendingInviteTarget, setPendingInviteTarget] = useState<{ communityId: number; communityName?: string | null } | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)  // Success modal for join
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
   const { setTitle } = useHeader()
@@ -49,6 +55,36 @@ export default function PremiumDashboard() {
     setNewCommType('General')
   }
 
+  const storePendingInviteTarget = (info: { communityId?: number | null; communityName?: string | null }) => {
+    if (!info?.communityId) return
+    setPendingInviteTarget({ communityId: Number(info.communityId), communityName: info.communityName ?? null })
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(
+          PENDING_INVITE_KEY,
+          JSON.stringify({ communityId: Number(info.communityId), communityName: info.communityName ?? null }),
+        )
+      }
+    } catch {}
+  }
+
+  const clearPendingInviteTarget = () => {
+    setPendingInviteTarget(null)
+    setJoinedCommunityId(null)
+    try {
+      if (typeof window !== 'undefined') sessionStorage.removeItem(PENDING_INVITE_KEY)
+    } catch {}
+  }
+
+  const clearOnboardingProfileHint = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(ONBOARDING_PROFILE_HINT_KEY)
+        sessionStorage.removeItem(ONBOARDING_RESUME_KEY)
+      }
+    } catch {}
+  }
+
   const resolveAvatar = (value?: string | null) => {
     if (!value) return ''
     const trimmed = value.trim()
@@ -59,12 +95,72 @@ export default function PremiumDashboard() {
     return `/uploads/${trimmed}`
   }
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const stored = sessionStorage.getItem(PENDING_INVITE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (parsed?.communityId) {
+          setPendingInviteTarget({
+            communityId: Number(parsed.communityId),
+            communityName: parsed.communityName ?? null,
+          })
+        }
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const resume = sessionStorage.getItem(ONBOARDING_RESUME_KEY)
+      if (resume) {
+        sessionStorage.removeItem(ONBOARDING_RESUME_KEY)
+        const stepNumber = Number(resume)
+        if ([1, 2, 3, 4, 5].includes(stepNumber)) {
+          onboardingTriggeredRef.current = true
+          setOnbStep(stepNumber as 0 | 1 | 2 | 3 | 4 | 5)
+        }
+      }
+    } catch {}
+  }, [])
+
   function handleExitConfirm(){
     try { localStorage.setItem(doneKey, '1') } catch {}
+    clearPendingInviteTarget()
+    clearOnboardingProfileHint()
     setOnbStep(0)
     setConfirmExit(false)
     onboardingTriggeredRef.current = false  // Reset so it can trigger again if flag is cleared
     window.location.href = '/premium_dashboard'
+  }
+
+  const handleGoToCommunity = () => {
+    try { localStorage.setItem(doneKey, '1') } catch {}
+    const fallbackCommunityId = communities[0]?.id
+    const targetId = pendingInviteTarget?.communityId ?? joinedCommunityId ?? (fallbackCommunityId ?? null)
+    clearOnboardingProfileHint()
+    clearPendingInviteTarget()
+    if (targetId) {
+      window.location.href = `/community_feed_react/${targetId}`
+      return
+    }
+    window.location.href = '/premium_dashboard'
+  }
+
+  const handleOpenProfile = () => {
+    const profileUrl = '/profile'
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(ONBOARDING_PROFILE_HINT_KEY, '1')
+        sessionStorage.setItem(ONBOARDING_RESUME_KEY, '4')
+      }
+      const newTab = window.open(profileUrl, '_blank', 'noopener')
+      if (!newTab) window.location.href = profileUrl
+    } catch {
+      window.location.href = profileUrl
+    }
   }
 
   async function fetchJson(url: string){
@@ -257,6 +353,16 @@ export default function PremiumDashboard() {
 
 
   const hasAnyCommunity = communities.length > 0
+  const resolvedCommunityName = (() => {
+    if (pendingInviteTarget?.communityName) return pendingInviteTarget.communityName
+    if (joinedCommunityName) return joinedCommunityName
+    const targetId = pendingInviteTarget?.communityId ?? joinedCommunityId
+    if (targetId) {
+      const found = communities.find(c => c.id === targetId)
+      if (found?.name) return found.name
+    }
+    return communities[0]?.name || 'your community'
+  })()
   const profilePreviewSrc = picPreview || existingProfilePic
 
   return (
@@ -465,16 +571,10 @@ export default function PremiumDashboard() {
                 </div>
               </div>
               <div className="space-y-3">
-                <button
-                  className="w-full px-4 py-3 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110 transition"
-                  onClick={() => {
-                    try {
-                      window.open('/profile', '_blank', 'noopener');
-                    } catch {
-                      window.location.href = '/profile';
-                    }
-                  }}
-                >
+                  <button
+                    className="w-full px-4 py-3 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110 transition"
+                    onClick={handleOpenProfile}
+                  >
                   Open My Profile in a new tab
                 </button>
                 <div className="text-xs text-[#9fb0b5] text-center">
@@ -495,10 +595,13 @@ export default function PremiumDashboard() {
                   >
                     Exit
                   </button>
-                  <button
-                    className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold"
-                    onClick={() => setOnbStep(5)}
-                  >
+                    <button
+                      className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold"
+                      onClick={() => {
+                        clearOnboardingProfileHint()
+                        setOnbStep(5)
+                      }}
+                    >
                     Continue
                   </button>
                 </div>
@@ -515,10 +618,10 @@ export default function PremiumDashboard() {
                 <>
                   <div className="text-center mb-4">
                     <div className="text-4xl mb-3">✍️</div>
-                    <div className="text-lg font-semibold mb-2">Create or React to Your First Post!</div>
-                    <div className="text-sm text-[#9fb0b5] mb-4">
-                      Welcome to {joinedCommunityName || 'your community'}! Share your thoughts, introduce yourself, or start a conversation.
-                    </div>
+                      <div className="text-lg font-semibold mb-2">Create or React to Your First Post!</div>
+                      <div className="text-sm text-[#9fb0b5] mb-4">
+                        Welcome to {resolvedCommunityName}! Share your thoughts, introduce yourself, or start a conversation.
+                      </div>
                   </div>
                   <div className="flex justify-between gap-2">
                     <div>
@@ -526,13 +629,10 @@ export default function PremiumDashboard() {
                     </div>
                     <div className="flex gap-2">
                       <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
-                      <button
-                        className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold"
-                        onClick={() => {
-                          try { localStorage.setItem(doneKey, '1') } catch {}
-                          window.location.href = '/premium_dashboard'
-                        }}
-                      >
+                        <button
+                          className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold"
+                          onClick={handleGoToCommunity}
+                        >
                         Go to Community
                       </button>
                     </div>
@@ -556,6 +656,8 @@ export default function PremiumDashboard() {
                       <button
                         className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold"
                         onClick={() => {
+                            clearPendingInviteTarget()
+                            clearOnboardingProfileHint()
                           setFabOpen(false)
                           setShowCreateModal(true)
                           setOnbStep(0)
@@ -685,13 +787,15 @@ export default function PremiumDashboard() {
                     const r = await fetch('/join_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                     const j = await r.json().catch(()=>null)
                     
-                    if (j?.success){ 
-                      setJoinedCommunityName(j.community_name || 'community');
-                      setShowJoinModal(false); 
+                      if (j?.success){ 
+                        setJoinedCommunityName(j.community_name || 'community')
+                        setJoinedCommunityId(j.community_id ?? null)
+                        storePendingInviteTarget({ communityId: j.community_id ?? null, communityName: j.community_name ?? null })
+                        setShowJoinModal(false); 
                       setJoinCode('');
                       setShowSuccessModal(true);
                     }
-                    else alert(j?.error || 'Failed to join community')
+                      else alert(j?.error || 'Failed to join community')
                   }catch(err){ 
                     alert('Failed to join community') 
                   }

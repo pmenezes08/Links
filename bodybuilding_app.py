@@ -20704,7 +20704,8 @@ def verify_invitation():
                 'success': True,
                 'email': invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[2],
                 'community_name': invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4],
-                'invited_by': invitation['invited_by_username'] if hasattr(invitation, 'keys') else invitation[5]
+                'invited_by': invitation['invited_by_username'] if hasattr(invitation, 'keys') else invitation[5],
+                'community_id': invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1],
             })
             
     except Exception as e:

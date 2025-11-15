@@ -6,6 +6,8 @@ export default function Signup(){
   const [searchParams] = useSearchParams()
   const inviteToken = searchParams.get('invite')
   
+  const PENDING_INVITE_KEY = 'cpoint_pending_invite'
+
   const [formData, setFormData] = useState({
     username: '',
     first_name: '',
@@ -25,27 +27,42 @@ export default function Signup(){
   
   // Check invitation token on mount
   useEffect(() => {
-    if (inviteToken) {
-      fetch(`/api/invitation/verify?token=${inviteToken}`, { credentials: 'include' })
-        .then(r => r.json())
-        .then(j => {
-          if (j?.success) {
-            setInvitationInfo(j)
-            // Only pre-fill email if it's not a QR code placeholder
-            const isQRInvite = j.email?.startsWith('qr-invite-') && j.email?.endsWith('@placeholder.local')
-            if (!isQRInvite) {
-              setFormData(prev => ({ ...prev, email: j.email }))
-              setEmailLocked(true)
-            }
-          } else {
-            setError(j?.error || 'Invalid invitation link')
-          }
-        })
-        .catch(err => {
-          console.error('Error verifying invitation:', err)
-          setError('Failed to verify invitation')
-        })
+    if (!inviteToken) {
+      try {
+        if (typeof window !== 'undefined') sessionStorage.removeItem(PENDING_INVITE_KEY)
+      } catch {}
+      return
     }
+    fetch(`/api/invitation/verify?token=${inviteToken}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success) {
+          setInvitationInfo(j)
+          const payload = {
+            communityId: j.community_id ?? null,
+            communityName: j.community_name,
+            inviteToken,
+          }
+          try {
+            if (typeof window !== 'undefined') sessionStorage.setItem(PENDING_INVITE_KEY, JSON.stringify(payload))
+          } catch {}
+          // Only pre-fill email if it's not a QR code placeholder
+          const isQRInvite = j.email?.startsWith('qr-invite-') && j.email?.endsWith('@placeholder.local')
+          if (!isQRInvite) {
+            setFormData(prev => ({ ...prev, email: j.email }))
+            setEmailLocked(true)
+          }
+        } else {
+          setError(j?.error || 'Invalid invitation link')
+          try {
+            if (typeof window !== 'undefined') sessionStorage.removeItem(PENDING_INVITE_KEY)
+          } catch {}
+        }
+      })
+      .catch(err => {
+        console.error('Error verifying invitation:', err)
+        setError('Failed to verify invitation')
+      })
   }, [inviteToken])
   
   // Lock body scroll when modals are shown
