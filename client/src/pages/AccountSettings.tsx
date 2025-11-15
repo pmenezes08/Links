@@ -125,12 +125,7 @@ export default function AccountSettings(){
 
     return (
       <div className="min-h-screen bg-black text-white">
-        {/* Header */}
-        <div className="sticky top-14 bg-black/90 backdrop-blur border-b border-white/10 px-4 py-3">
-          <h1 className="text-lg font-semibold">Account Settings</h1>
-        </div>
-
-      <div className="max-w-2xl mx-auto px-4 py-6">
+        <div className="max-w-2xl mx-auto px-4 py-6">
         {/* Message */}
         {message && (
           <div className={`mb-6 p-4 rounded-lg border ${
