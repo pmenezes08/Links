@@ -63,16 +63,33 @@ const PLAN_DATA: Plan[] = [
   },
 ]
 
+function getCurrencySymbol(): string {
+  try {
+    const region = (navigator.language || 'en-US').split('-')[1] || 'US'
+    const numberFormat = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' })
+    const parts = numberFormat.formatToParts(1)
+    const currencyPart = parts.find(part => part.type === 'currency')
+    if (currencyPart?.value) return currencyPart.value
+    const fallback = region === 'IN' ? '₹' : region === 'GB' ? '£' : '$'
+    return fallback
+  } catch {
+    return '$'
+  }
+}
+
+const currencySymbol = getCurrencySymbol()
+
 function formatPrice(plan: Plan, cycle: BillingCycle) {
   const amount = cycle === 'monthly' ? plan.monthly : plan.yearly
   const suffix = cycle === 'monthly' ? 'per month' : 'per year'
-  if (amount === 0) return <>₹0 <span className="text-sm font-normal text-white/70">{suffix}</span></>
-  return (
-    <>
-      ₹{amount.toLocaleString('en-IN')}
-      <span className="text-sm font-normal text-white/70"> {suffix}</span>
-    </>
-  )
+  if (amount === 0) return <>
+    {currencySymbol}0 <span className="text-sm font-normal text-white/70">{suffix}</span>
+  </>
+  return <>
+    {currencySymbol}
+    {amount.toLocaleString(undefined)}
+    <span className="text-sm font-normal text-white/70"> {suffix}</span>
+  </>
 }
 
 export default function SubscriptionPlans() {
@@ -122,11 +139,7 @@ export default function SubscriptionPlans() {
     <div className="min-h-screen bg-black text-white pt-16 pb-12">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4">
         <section className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Manage your subscription</h1>
-            <p className="text-sm text-white/70">Compare plans and switch billing frequency at any time.</p>
-          </div>
-          <div className="inline-flex rounded-full border border-white/15 bg-white/5 p-1">
+          <div className="inline-flex rounded-full border border-white/15 bg-white/5 p-1 ml-auto">
             {(['monthly', 'yearly'] as BillingCycle[]).map(option => {
               const isActive = billingCycle === option
               return (
