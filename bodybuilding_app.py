@@ -762,6 +762,47 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
+def prefers_json_response() -> bool:
+    """Determine if the current request prefers a JSON response."""
+    try:
+        if request.is_json:
+            return True
+    except RuntimeError:
+        return False
+
+    xhr = request.headers.get('X-Requested-With', '')
+    if xhr and xhr.lower() == 'xmlhttprequest':
+        return True
+
+    try:
+        accept = request.accept_mimetypes
+        return accept['application/json'] >= accept['text/html']
+    except Exception:
+        return False
+
+
+def serve_react_index() -> Optional[Response]:
+    """Serve the built React single page app, if available."""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        index_path = os.path.join(dist_dir, 'index.html')
+        if not os.path.exists(index_path):
+            logger.warning("React build missing at %s", index_path)
+            return None
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
+    except Exception as exc:
+        logger.error(f"Failed to serve React index: {exc}")
+        return None
+
+
 # Stripe setup (optional)
 try:
     import stripe
@@ -10219,6 +10260,8 @@ def nutrition():
             c.execute("SELECT subscription, gender, weight, height, nutrition_goal, nutrition_restrictions FROM users WHERE username=?", (username,))
             user = c.fetchone()
         if not user or user['subscription'] != 'premium':
+            if prefers_json_response():
+                return jsonify({'success': False, 'error': 'Premium subscription required!'}), 403
             return render_template('index.html', error="Premium subscription required!")
         if request.method == 'POST':
             action = request.form.get('action')
@@ -10314,7 +10357,11 @@ def nutrition():
             except Exception as e:
                 logger.error(f"Unexpected error in nutrition for {username}: {str(e)}")
                 return jsonify({'error': 'Unexpected error. Please try again later.'}), 500
-        return render_template('nutrition.html', name=username, subscription=user['subscription'])
+        message = 'Nutrition planning has moved to the React dashboard.'
+        if prefers_json_response():
+            return jsonify({'success': False, 'message': message, 'redirect': '/premium_dashboard'}), 410
+        flash(message, 'info')
+        return redirect(url_for('premium_dashboard'))
     except Exception as e:
         logger.error(f"Error in nutrition for {username}: {str(e)}")
         abort(500)
@@ -10329,6 +10376,8 @@ def nutrition_plan():
             c.execute("SELECT subscription, gender, weight, height, nutrition_goal, nutrition_restrictions FROM users WHERE username=?", (username,))
             user = c.fetchone()
         if not user or user['subscription'] != 'premium':
+            if prefers_json_response():
+                return jsonify({'success': False, 'error': 'Premium subscription required!'}), 403
             return render_template('index.html', error="Premium subscription required!")
         if request.method == 'POST' and request.form.get('action') == 'new':
             return redirect(url_for('nutrition'))
@@ -10337,9 +10386,23 @@ def nutrition_plan():
         restrictions = user['nutrition_restrictions'] or ''
         try:
             plan = nutrition_plans[gender][goal][restrictions]
-            return render_template('nutrition_plan.html', name=username, plan=plan, goal=goal, restrictions=restrictions, subscription=user['subscription'])
+            response_payload = {
+                'success': True,
+                'plan': plan,
+                'goal': goal,
+                'restrictions': restrictions,
+                'subscription': user['subscription']
+            }
+            if prefers_json_response():
+                return jsonify(response_payload)
+            flash('Nutrition plans are now available in the React experience.', 'info')
+            return redirect(url_for('premium_dashboard'))
         except KeyError:
-            return render_template('index.html', error="No plan available - try chatting with Grok!")
+            error_message = "No plan available - try chatting with Grok!"
+            if prefers_json_response():
+                return jsonify({'success': False, 'error': error_message}), 404
+            flash(error_message, 'error')
+            return redirect(url_for('premium_dashboard'))
     except Exception as e:
         logger.error(f"Error in nutrition_plan for {username}: {str(e)}")
         abort(500)
@@ -17503,6 +17566,10 @@ def deactivate_community(community_id):
 @app.route('/gym')
 @login_required
 def gym():
+    resp = serve_react_index()
+    if resp:
+        return resp
+    logger.warning("React build missing for /gym; redirecting to /workout_tracking")
     return redirect(url_for('workout_tracking'))
 
 @app.route('/admin/user_statistics')
@@ -23178,15 +23245,14 @@ def your_sports():
         pass
     
     try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-        return render_template('your_sports.html', username=username)
-    except Exception:
-        return render_template('your_sports.html', username=username)
+        resp = serve_react_index()
+        if resp:
+            return resp
+        logger.warning("React build missing for /your_sports; redirecting to premium dashboard")
+        return redirect(url_for('premium_dashboard'))
+    except Exception as e:
+        logger.error(f"Error serving /your_sports for {username}: {e}")
+        return redirect(url_for('premium_dashboard'))
 
 @app.route('/api/check_gym_membership')
 @login_required
@@ -24836,7 +24902,7 @@ def group_feed_react(group_id):
 @app.route('/gym_react')
 @login_required
 def gym_react():
-    return redirect(url_for('workout_tracking'))
+    return gym()
 
 @app.route('/crossfit')
 @login_required
@@ -25105,22 +25171,25 @@ def cf_compare_item_in_box():
 @login_required
 def workout_generator():
     username = session.get('username')
-    return render_template('workout_generator.html', username=username)
+    logger.info(f"Redirecting {username} from legacy workout generator to workout_tracking React page")
+    return redirect(url_for('workout_tracking'))
 
 @app.route('/workout_tracking')
 @login_required
 def workout_tracking():
     username = session.get('username')
     try:
-        # Always serve the React app for this page so latest UI changes are visible
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        resp = serve_react_index()
+        if resp:
+            return resp
+        logger.error("React build missing while serving /workout_tracking; returning error response")
+        return ("React build missing", 503)
     except Exception as e:
         logger.error(f"Error in workout_tracking smart route: {e}")
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+        resp = serve_react_index()
+        if resp:
+            return resp
+        return ("React build missing", 503)
 
 # ===== WORKOUT TRACKING ROUTES =====
 

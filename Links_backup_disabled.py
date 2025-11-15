@@ -660,8 +660,8 @@ def nutrition():
             print(f"API error: {str(e)}")
             return jsonify({'response': f"Whoa, hit a snag—tech gremlins at work! (Error: {str(e)})"})
 
-    print(f"Rendering nutrition for {username}")
-    return render_template('nutrition.html', name=username)
+    print(f"Nutrition HTML disabled for {username}, returning JSON notice")
+    return jsonify({'success': False, 'message': 'Nutrition UI has moved to the React dashboard. Please update your client.'}), 410
 
 @app.route('/nutrition_plan', methods=['GET', 'POST'])
 def nutrition_plan():
@@ -689,11 +689,11 @@ def nutrition_plan():
 
     try:
         plan = nutrition_plans[gender][goal][restrictions]
-        print(f"Rendering nutrition_plan for {username}")
-        return render_template('nutrition_plan.html', name=username, plan=plan, goal=goal, restrictions=restrictions)
+        print(f"Returning nutrition_plan JSON for {username}")
+        return jsonify({'success': True, 'plan': plan, 'goal': goal, 'restrictions': restrictions})
     except KeyError:
         print(f"No plan available for {username}")
-        return render_template('nutrition_plan.html', name=username, error="No plan available for your selections. Try chatting with Grok!")
+        return jsonify({'success': False, 'error': "No plan available for your selections. Try chatting with Grok!"}), 404
 
 @app.route('/health_news')
 def health_news():
