@@ -22,13 +22,12 @@ const PLAN_DATA: Plan[] = [
     monthly: 0,
     yearly: 0,
     cta: 'Start for Free',
-    features: [
-      'Core C-Point experience',
-      'Community help center support',
-      'Basic analytics dashboard',
-      'Single-user seat',
-      'Shared storage pool',
-    ],
+      features: [
+        'Core CPoint experience. Connect with your Community',
+        'Create up to 2 Communities and 2 sub-communities under each Community (limited to 20 people per community)',
+        'Create Groups at Community level',
+        'E2E encryption messaging',
+      ],
   },
   {
     id: 'premium',
@@ -38,13 +37,13 @@ const PLAN_DATA: Plan[] = [
     yearly: 100,
     cta: 'Buy Now',
     highlight: 'Popular',
-    features: [
-      'Everything in Free',
-      'Priority concierge onboarding',
-      'Advanced analytics suite',
-      'Role-based permissions',
-      'Expanded secure storage',
-    ],
+      features: [
+        'All features available for free users',
+        'Expand your Community size to up to 50 people',
+        'Access CPoint AI features',
+        'Receive networking recommendations',
+        'Get a Premium badge',
+      ],
   },
   {
     id: 'enterprise',
