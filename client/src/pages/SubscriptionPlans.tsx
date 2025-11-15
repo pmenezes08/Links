@@ -23,10 +23,9 @@ const PLAN_DATA: Plan[] = [
     yearly: 0,
     cta: 'Start for Free',
       features: [
-        'Core CPoint experience. Connect with your Community',
-        'Create up to 2 Communities and 2 sub-communities under each Community (limited to 20 people per community)',
-        'Create Groups at Community level',
-        'E2E encryption messaging',
+        'Core CPoint experience. Connect with your community.',
+        'Create up to 2 communities and 2 sub-communities under each community (limited to 20 people per community).',
+        'E2E encrypted messaging.',
       ],
   },
   {
@@ -38,11 +37,12 @@ const PLAN_DATA: Plan[] = [
     cta: 'Buy Now',
     highlight: 'Popular',
       features: [
-        'All features available for free users',
-        'Expand your Community size to up to 50 people',
-        'Access CPoint AI features',
-        'Receive networking recommendations',
-        'Get a Premium badge',
+        'All features available for free users.',
+        'Access CPoint AI features.',
+        'Expand your community size to up to 50 people.',
+        'Create groups at the community level.',
+        'Receive networking recommendations.',
+        'Get a Premium badge.',
       ],
   },
   {
