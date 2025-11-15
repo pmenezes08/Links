@@ -299,7 +299,7 @@ export default function AccountSettings(){
 
             {/* Subscription + Danger Zone */}
             <div className="bg-black rounded-xl p-6 border border-white/10">
-            <h2 className="text-lg font-semibold mb-4">Account Information</h2>
+              <h2 className="text-lg font-semibold mb-4">Subscription Area</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Subscription</label>
