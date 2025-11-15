@@ -270,7 +270,7 @@ export default function SubscriptionPlans() {
               {actionError}
             </div>
           ) : null}
-          <section className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-4 snap-x snap-mandatory">
+          <section className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-8 snap-x snap-mandatory">
             {PLAN_DATA.map(plan => {
               const isProcessing = processingPlan === plan.id
               return (
