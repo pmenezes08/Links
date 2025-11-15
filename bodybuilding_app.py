@@ -628,9 +628,41 @@ def ensure_post_views_table(c):
     except Exception as e:
         logger.warning(f"Could not ensure post_views table: {e}")
 
-def upsert_post_view(c, post_id: int, username: str) -> Optional[int]:
-    """Create the post_views table if needed and ensure a unique view for username/post_id."""
+def _count_post_views_excluding_admin(c, post_id: int) -> Optional[int]:
+    """Return the number of views for a post ignoring admin activity."""
+    try:
+        post_ph = get_sql_placeholder()
+        admin_ph = get_sql_placeholder()
+        c.execute(
+            f"SELECT COUNT(*) as cnt FROM post_views WHERE post_id = {post_ph} AND LOWER(username) <> LOWER({admin_ph})",
+            (post_id, 'admin'),
+        )
+        row = c.fetchone()
+        count = row['cnt'] if hasattr(row, 'keys') else (row[0] if row else 0)
+        return int(count or 0)
+    except Exception as count_err:
+        logger.warning(f"Failed counting post views for post {post_id}: {count_err}")
+        return None
+
+
+def upsert_post_view(c, post_id: int, username: Optional[str]) -> Optional[int]:
+    """Ensure a unique view record for username/post_id, excluding the admin user."""
     ensure_post_views_table(c)
+    if not username:
+        return _count_post_views_excluding_admin(c, post_id)
+
+    if username.lower() == 'admin':
+        try:
+            post_ph = get_sql_placeholder()
+            admin_ph = get_sql_placeholder()
+            c.execute(
+                f"DELETE FROM post_views WHERE post_id = {post_ph} AND LOWER(username) = LOWER({admin_ph})",
+                (post_id, 'admin'),
+            )
+        except Exception as cleanup_err:
+            logger.warning(f"Failed cleaning admin views for post {post_id}: {cleanup_err}")
+        return _count_post_views_excluding_admin(c, post_id)
+
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         if USE_MYSQL:
@@ -639,15 +671,7 @@ def upsert_post_view(c, post_id: int, username: str) -> Optional[int]:
             c.execute("INSERT OR IGNORE INTO post_views (post_id, username, viewed_at) VALUES (?,?,?)", (post_id, username, now_str))
     except Exception as insert_err:
         logger.warning(f"Failed inserting post_view for post {post_id} and user {username}: {insert_err}")
-    try:
-        placeholder = get_sql_placeholder()
-        c.execute(f"SELECT COUNT(*) as cnt FROM post_views WHERE post_id = {placeholder}", (post_id,))
-        row = c.fetchone()
-        count = row['cnt'] if hasattr(row, 'keys') else (row[0] if row else 0)
-        return int(count or 0)
-    except Exception as count_err:
-        logger.warning(f"Failed counting post views for post {post_id}: {count_err}")
-        return None
+    return _count_post_views_excluding_admin(c, post_id)
 
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
@@ -14869,18 +14893,8 @@ def get_post_reactors(post_id: int):
                     normalized = _normalize_pic(u.get('profile_picture'))
                     u['profile_picture'] = normalized
 
-            view_count = 0
+            view_count = _count_post_views_excluding_admin(c, post_id) or 0
             viewers: List[Dict[str, Any]] = []
-            try:
-                c.execute("SELECT COUNT(*) as cnt FROM post_views WHERE post_id = ?", (post_id,))
-                row = c.fetchone()
-                if row:
-                    if hasattr(row, 'keys'):
-                        view_count = int(row.get('cnt', 0) or 0)
-                    else:
-                        view_count = int(row[0] if len(row) > 0 else 0)
-            except Exception as count_err:
-                logger.warning(f"Could not count views for post {post_id}: {count_err}")
 
             viewer_rows = []
             try:
@@ -14890,10 +14904,11 @@ def get_post_reactors(post_id: int):
                     FROM post_views pv
                     LEFT JOIN user_profiles up ON up.username = pv.username
                     WHERE pv.post_id = ?
+                      AND LOWER(pv.username) <> LOWER(?)
                     ORDER BY pv.viewed_at DESC
                     LIMIT 100
                     """,
-                    (post_id,),
+                    (post_id, 'admin'),
                 )
                 viewer_rows = c.fetchall() or []
             except Exception as viewer_err:
@@ -21540,7 +21555,12 @@ def api_community_feed(community_id):
             if post_ids:
                 placeholders = ','.join([get_sql_placeholder()] * len(post_ids))
                 try:
-                    c.execute(f"SELECT post_id, COUNT(*) as cnt FROM post_views WHERE post_id IN ({placeholders}) GROUP BY post_id", tuple(post_ids))
+                    params = list(post_ids)
+                    params.append('admin')
+                    c.execute(
+                        f"SELECT post_id, COUNT(*) as cnt FROM post_views WHERE post_id IN ({placeholders}) AND LOWER(username) <> LOWER({get_sql_placeholder()}) GROUP BY post_id",
+                        tuple(params),
+                    )
                     for row in c.fetchall() or []:
                         pid = row['post_id'] if hasattr(row, 'keys') else row[0]
                         cnt = row['cnt'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else 0)
