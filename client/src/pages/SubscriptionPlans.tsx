@@ -34,8 +34,8 @@ const PLAN_DATA: Plan[] = [
     id: 'premium',
     name: 'Premium',
     description: 'Unlock advanced automation and priority support.',
-    monthly: 500,
-    yearly: 5500,
+    monthly: 10,
+    yearly: 100,
     cta: 'Buy Now',
     highlight: 'Popular',
     features: [
@@ -50,9 +50,9 @@ const PLAN_DATA: Plan[] = [
     id: 'enterprise',
     name: 'Enterprise',
     description: 'Tailored partnership with dedicated experts.',
-    monthly: 900,
-    yearly: 9900,
-    cta: 'Buy Now',
+    monthly: 0,
+    yearly: 0,
+    cta: 'Contact Sales',
     features: [
       'White-glove onboarding',
       'Dedicated success squad',
@@ -76,9 +76,17 @@ const currencySymbol = detectCurrencySymbol()
 function formatPrice(plan: Plan, cycle: BillingCycle, currencySymbol: string) {
   const amount = cycle === 'monthly' ? plan.monthly : plan.yearly
   const suffix = cycle === 'monthly' ? 'per month' : 'per year'
-  if (amount === 0) return <>
-    {currencySymbol}0 <span className="text-sm font-normal text-white/70">{suffix}</span>
-  </>
+  if (plan.id === 'enterprise') {
+    return (
+      <span className="text-sm font-medium text-[#4db6ac]">Contact us</span>
+    )
+  }
+  if (amount === 0)
+    return (
+      <>
+        {currencySymbol}0 <span className="text-sm font-normal text-white/70">{suffix}</span>
+      </>
+    )
   return <>
     {currencySymbol}
     {amount.toLocaleString(undefined)}
@@ -125,7 +133,7 @@ export default function SubscriptionPlans() {
   const cards = useMemo(
     () =>
       PLAN_DATA.map(plan => (
-        <article
+          <article
           key={plan.id}
           className={`snap-center min-w-[280px] sm:min-w-[320px] rounded-3xl border border-white/10 bg-gradient-to-br from-[#020406] via-[#040b0f] to-[#010203] p-5 text-white shadow-[0_30px_60px_rgba(0,0,0,0.45)] ${
             plan.highlight ? 'ring-1 ring-[#4db6ac]' : ''
@@ -183,10 +191,6 @@ export default function SubscriptionPlans() {
         </section>
 
         <section className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-4 snap-x snap-mandatory">{cards}</section>
-
-        <section className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center text-sm text-white/70">
-          Looking for something more custom? Contact our team and we&#39;ll help craft a tailored plan.
-        </section>
       </div>
     </div>
   )
