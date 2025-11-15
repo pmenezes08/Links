@@ -63,23 +63,17 @@ const PLAN_DATA: Plan[] = [
   },
 ]
 
-function getCurrencySymbol(): string {
+function detectCurrencySymbol() {
   try {
-    const region = (navigator.language || 'en-US').split('-')[1] || 'US'
-    const numberFormat = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' })
-    const parts = numberFormat.formatToParts(1)
-    const currencyPart = parts.find(part => part.type === 'currency')
-    if (currencyPart?.value) return currencyPart.value
-    const fallback = region === 'IN' ? '₹' : region === 'GB' ? '£' : '$'
-    return fallback
-  } catch {
-    return '$'
-  }
+    const stored = sessionStorage.getItem('cpoint_currency_symbol')
+    if (stored) return stored
+  } catch {}
+  return '$'
 }
 
-const currencySymbol = getCurrencySymbol()
+const currencySymbol = detectCurrencySymbol()
 
-function formatPrice(plan: Plan, cycle: BillingCycle) {
+function formatPrice(plan: Plan, cycle: BillingCycle, currencySymbol: string) {
   const amount = cycle === 'monthly' ? plan.monthly : plan.yearly
   const suffix = cycle === 'monthly' ? 'per month' : 'per year'
   if (amount === 0) return <>
@@ -95,10 +89,38 @@ function formatPrice(plan: Plan, cycle: BillingCycle) {
 export default function SubscriptionPlans() {
   const { setTitle } = useHeader()
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly')
+  const [currency, setCurrency] = useState(currencySymbol)
 
   useEffect(() => {
     setTitle('Subscription Plans')
   }, [setTitle])
+
+  useEffect(() => {
+    let cancelled = false
+    async function detectCurrency() {
+      try {
+        const stored = sessionStorage.getItem('cpoint_currency_symbol')
+        if (stored) {
+          if (!cancelled) setCurrency(stored)
+          return
+        }
+        const resp = await fetch('https://ipapi.co/json/')
+        const data = await resp.json().catch(() => null)
+        const symbol = data?.currency_symbol || (data?.country_code === 'IN' ? '₹' : data?.country_code === 'GB' ? '£' : '€')
+        sessionStorage.setItem('cpoint_currency_symbol', symbol)
+        if (!cancelled) setCurrency(symbol)
+      } catch {
+        // fallback to euro for EU or default dollar
+        const fallback = navigator.language?.includes('en-US') ? '$' : '€'
+        sessionStorage.setItem('cpoint_currency_symbol', fallback)
+        if (!cancelled) setCurrency(fallback)
+      }
+    }
+    detectCurrency()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const cards = useMemo(
     () =>
@@ -116,7 +138,9 @@ export default function SubscriptionPlans() {
           ) : null}
           <div className="flex flex-col gap-1">
             <div className="text-sm font-semibold uppercase tracking-[0.2em] text-white/70">{plan.name}</div>
-            <div className="text-3xl font-semibold">{formatPrice(plan, billingCycle)}</div>
+              <div className="text-3xl font-semibold">
+                {formatPrice(plan, billingCycle, currency)}
+              </div>
             <p className="text-sm text-white/70">{plan.description}</p>
           </div>
           <button className="mt-4 w-full rounded-2xl border border-[#4db6ac]/30 px-4 py-2 text-sm font-semibold text-white hover:border-[#4db6ac]/60 hover:bg-[#4db6ac]/10">
@@ -138,8 +162,8 @@ export default function SubscriptionPlans() {
   return (
     <div className="min-h-screen bg-black text-white pt-16 pb-12">
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4">
-        <section className="flex flex-wrap items-center justify-between gap-4">
-          <div className="inline-flex rounded-full border border-white/15 bg-white/5 p-1 ml-auto">
+        <section className="flex justify-center">
+          <div className="inline-flex rounded-full border border-white/15 bg-white/5 p-1">
             {(['monthly', 'yearly'] as BillingCycle[]).map(option => {
               const isActive = billingCycle === option
               return (
