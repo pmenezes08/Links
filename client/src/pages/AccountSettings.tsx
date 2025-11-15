@@ -207,8 +207,8 @@ export default function AccountSettings(){
             </div>
           </div>
 
-          {/* Password Update */}
-          <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+            {/* Password Update */}
+            <div className="bg-black rounded-xl p-6 border border-white/10">
             <h2 className="text-lg font-semibold mb-4">Change Password</h2>
             {passwordMessage && (
               <div className={`mb-4 p-4 rounded-lg border ${
@@ -297,8 +297,8 @@ export default function AccountSettings(){
             </div>
           </div>
 
-          {/* Account Information */}
-          <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+            {/* Subscription + Danger Zone */}
+            <div className="bg-black rounded-xl p-6 border border-white/10">
             <h2 className="text-lg font-semibold mb-4">Account Information</h2>
             <div className="space-y-4">
               <div>
