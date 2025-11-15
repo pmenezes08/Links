@@ -142,9 +142,9 @@ export default function AccountSettings(){
           </div>
         )}
 
-        <form onSubmit={handleSave} className="space-y-6">
+          <form onSubmit={handleSave} className="space-y-6">
           {/* Basic Information */}
-          <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+            <div className="bg-black rounded-xl p-6 border border-white/10">
             <h2 className="text-lg font-semibold mb-4">Basic Information</h2>
             <div className="space-y-4">
               <div>
@@ -172,7 +172,7 @@ export default function AccountSettings(){
           </div>
 
           {/* Privacy & Security */}
-          <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+            <div className="bg-black rounded-xl p-6 border border-white/10">
             <h2 className="text-lg font-semibold mb-4">Privacy & Security</h2>
             
             <div className="space-y-3">
