@@ -35,6 +35,7 @@ import ChatThread from './pages/ChatThread'
 import Profile from './pages/Profile'
 import PublicProfile from './pages/PublicProfile'
 import AccountSettings from './pages/AccountSettings'
+import SubscriptionPlans from './pages/SubscriptionPlans'
 import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
@@ -232,13 +233,14 @@ function AppRoutes(){
                 <Route path="/your_sports" element={<YourSports />} />
                 <Route path="/gym" element={<Gym />} />
                 <Route path="/user_chat" element={<Messages />} />
-                <Route path="/user_chat/new" element={<NewMessage />} />
-                <Route path="/user_chat/chat/:username" element={<ChatThread />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/profile_react" element={<Profile />} />
-                <Route path="/profile/:username" element={<PublicProfile />} />
-                <Route path="/account_settings" element={<AccountSettings />} />
-                <Route path="/account_settings_react" element={<AccountSettings />} />
+                  <Route path="/user_chat/new" element={<NewMessage />} />
+                  <Route path="/user_chat/chat/:username" element={<ChatThread />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/profile_react" element={<Profile />} />
+                  <Route path="/profile/:username" element={<PublicProfile />} />
+                  <Route path="/account_settings" element={<AccountSettings />} />
+                  <Route path="/account_settings_react" element={<AccountSettings />} />
+                  <Route path="/subscription_plans" element={<SubscriptionPlans />} />
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin_dashboard" element={<AdminDashboard />} />

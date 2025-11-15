@@ -295,7 +295,7 @@ export default function AccountSettings(){
             {/* Subscription + Danger Zone */}
             <div className="bg-black rounded-xl p-6 border border-white/10">
               <h2 className="text-lg font-semibold mb-4">Subscription Area</h2>
-            <div className="space-y-4">
+              <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Subscription</label>
                 <div className={`px-4 py-3 rounded-lg border ${
@@ -306,6 +306,14 @@ export default function AccountSettings(){
                   {profile.subscription === 'premium' ? '⭐ Premium' : '🆓 Free'}
                 </div>
               </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/subscription_plans')}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white hover:border-white/40"
+                >
+                  <i className="fa-regular fa-credit-card" />
+                  Manage your subscription
+                </button>
               <div className="pt-3 border-t border-white/10">
                 <h3 className="text-sm font-semibold mb-2 text-red-400">Danger zone</h3>
                 <button type="button" className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-500" onClick={async(event)=>{
