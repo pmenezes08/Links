@@ -13,6 +13,7 @@ import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import LazyVideo from '../components/LazyVideo'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -495,6 +496,14 @@ export default function CommunityFeed() {
   }
 
   const postsOnly = useMemo(() => Array.isArray(data?.posts) ? data.posts : [], [data])
+  const INITIAL_POST_LIMIT = 40
+  const LOAD_MORE_STEP = 20
+  const [visiblePostCount, setVisiblePostCount] = useState(INITIAL_POST_LIMIT)
+  useEffect(() => {
+    setVisiblePostCount(INITIAL_POST_LIMIT)
+    recordedViewsRef.current.clear()
+  }, [data?.posts])
+  const visiblePosts = useMemo(() => postsOnly.slice(0, visiblePostCount), [postsOnly, visiblePostCount])
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
   if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>
@@ -599,67 +608,77 @@ export default function CommunityFeed() {
             </div>
           ) : null}
 
-          {/* Feed items */}
-          {postsOnly.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 px-4">
-              <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
-                <i className="fa-regular fa-comment-dots text-3xl text-white/30" />
+            {/* Feed items */}
+            {postsOnly.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 px-4">
+                <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                  <i className="fa-regular fa-comment-dots text-3xl text-white/30" />
+                </div>
+                <h3 className="text-lg font-medium text-white/80 mb-2">No posts yet</h3>
+                <p className="text-sm text-white/50 text-center max-w-xs mb-6">
+                  Be the first to share something with this community!
+                </p>
+                <button
+                  onClick={() => {
+                    const createBtn = document.getElementById('create-post-button')
+                    if (createBtn) createBtn.click()
+                  }}
+                  className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:brightness-110"
+                >
+                  <i className="fa-solid fa-plus mr-2" />
+                  Create First Post
+                </button>
               </div>
-              <h3 className="text-lg font-medium text-white/80 mb-2">No posts yet</h3>
-              <p className="text-sm text-white/50 text-center max-w-xs mb-6">
-                Be the first to share something with this community!
-              </p>
-              <button
-                onClick={() => {
-                  const createBtn = document.getElementById('create-post-button')
-                  if (createBtn) createBtn.click()
-                }}
-                className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:brightness-110"
-              >
-                <i className="fa-solid fa-plus mr-2" />
-                Create First Post
-              </button>
-            </div>
-          ) : postsOnly.map((p: Post, idx: number) => (
-            <div key={p.id} className="relative">
-              <PostCard
-                post={p}
-                idx={idx}
-                currentUser={data.username}
-                isAdmin={!!(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin')}
-                highlightStep={highlightStep}
-                onOpen={() => {
-                  markPostViewed(p.id, p.has_viewed)
-                  navigate(`/post/${p.id}`)
-                }}
-                onToggleReaction={handleToggleReaction}
-                onPollVote={handlePollVote}
-                communityId={community_id}
-                navigate={navigate}
-                onSummaryUpdate={(postId, summary) => {
-                  setData((prevData: any) => ({
-                    ...prevData,
-                    posts: prevData.posts.map((p: any) => 
-                      p.id === postId ? {...p, audio_summary: summary} : p
-                    )
-                  }));
-                }}
-                onPollClick={() => navigate(`/community/${community_id}/polls_react`)}
-                onOpenVoters={openVoters}
-                onAddReply={onAddReply}
-                onOpenReactions={() => {
-                  markPostViewed(p.id, p.has_viewed)
-                  openReactors(p.id)
-                }}
-                onPreviewImage={(src)=> setPreviewImageSrc(src)}
-                onMarkViewed={markPostViewed}
-              />
-              {/* Dark overlay for all posts except first one during reaction highlight */}
-              {highlightStep === 'reaction' && idx !== 0 && (
-                <div className="absolute inset-0 bg-black/90 z-[45] pointer-events-none" />
-              )}
-            </div>
-          ))}
+            ) : visiblePosts.map((p: Post, idx: number) => (
+              <div key={p.id} className="relative">
+                <PostCard
+                  post={p}
+                  idx={idx}
+                  currentUser={data.username}
+                  isAdmin={!!(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin')}
+                  highlightStep={highlightStep}
+                  onOpen={() => {
+                    markPostViewed(p.id, p.has_viewed)
+                    navigate(`/post/${p.id}`)
+                  }}
+                  onToggleReaction={handleToggleReaction}
+                  onPollVote={handlePollVote}
+                  communityId={community_id}
+                  navigate={navigate}
+                  onSummaryUpdate={(postId, summary) => {
+                    setData((prevData: any) => ({
+                      ...prevData,
+                      posts: prevData.posts.map((postEntry: any) =>
+                        postEntry.id === postId ? { ...postEntry, audio_summary: summary } : postEntry,
+                      ),
+                    }))
+                  }}
+                  onPollClick={() => navigate(`/community/${community_id}/polls_react`)}
+                  onOpenVoters={openVoters}
+                  onAddReply={onAddReply}
+                  onOpenReactions={() => {
+                    markPostViewed(p.id, p.has_viewed)
+                    openReactors(p.id)
+                  }}
+                  onPreviewImage={setPreviewImageSrc}
+                  onMarkViewed={markPostViewed}
+                />
+                {/* Dark overlay for all posts except first one during reaction highlight */}
+                {highlightStep === 'reaction' && idx !== 0 && (
+                  <div className="absolute inset-0 bg-black/90 z-[45] pointer-events-none" />
+                )}
+              </div>
+            ))}
+            {visiblePostCount < postsOnly.length && (
+              <div className="flex justify-center py-6">
+                <button
+                  className="px-4 py-2 rounded-full border border-white/20 text-sm hover:bg-white/5"
+                  onClick={() => setVisiblePostCount(count => Math.min(count + LOAD_MORE_STEP, postsOnly.length))}
+                >
+                  Load older posts
+                </button>
+              </div>
+            )}
         </div>
       </div>
 
@@ -1212,10 +1231,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           </div>
         ) : post.video_path ? (
           <div className="px-3" onClick={(e)=> e.stopPropagation()}>
-            <video
-              className="w-full max-h-[420px] rounded border border-white/10 bg-black"
+            <LazyVideo
               src={normalizeMediaPath(post.video_path)}
-              controls
+              className="w-full max-h-[420px] rounded border border-white/10 bg-black"
               playsInline
             />
           </div>
