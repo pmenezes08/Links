@@ -11133,7 +11133,7 @@ def get_community_members():
             c.execute("""
                 SELECT 1 FROM user_communities uc
                 INNER JOIN users u ON uc.user_id = u.id
-                WHERE uc.community_id = ? AND u.username = ?
+                WHERE uc.community_id = ? AND LOWER(u.username) = LOWER(?)
             """, (community_id, username))
             if not c.fetchone():
                 return jsonify({'success': False, 'error': 'Not a member of this community'})
@@ -11238,7 +11238,7 @@ def add_community_member():
             c.execute("""
                 SELECT 1 FROM user_communities uc
                 INNER JOIN users u ON uc.user_id = u.id
-                WHERE uc.community_id = ? AND u.username = ?
+                WHERE uc.community_id = ? AND LOWER(u.username) = LOWER(?)
             """, (community_id_int, new_member_username))
             if c.fetchone():
                 return jsonify({'success': False, 'error': 'User is already a member'})
