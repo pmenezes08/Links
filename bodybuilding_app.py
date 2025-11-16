@@ -46,6 +46,20 @@ from backend.services.notifications import (
     create_notification,
     send_push_to_user,
 )
+from backend.services.media import (
+    DEFAULT_ALLOWED_EXTENSIONS,
+    allowed_file,
+    get_public_upload_url,
+    load_upload_bytes,
+    normalize_upload_reference,
+    optimize_image,
+    resolve_upload_abspath,
+    save_uploaded_file,
+)
+from backend.services.tasks import (
+    ensure_tasks_table as ensure_tasks_table_service,
+    is_community_admin_or_owner as service_is_community_admin_or_owner,
+)
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -215,12 +229,9 @@ def nl2br_filter(text):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 # Allow common image, video, and audio types
-ALLOWED_EXTENSIONS = {
-    'png', 'jpg', 'jpeg', 'gif', 'webp',
-    'mp4', 'webm', 'mov', 'm4v', 'avi',
-    'm4a', 'mp3', 'ogg', 'wav', 'opus'
-}
+ALLOWED_EXTENSIONS = set(DEFAULT_ALLOWED_EXTENSIONS)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['ALLOWED_EXTENSIONS'] = ALLOWED_EXTENSIONS
 
 IMAGINE_OUTPUT_SUBDIR = 'imagine'
 IMAGINE_OUTPUT_DIR = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SUBDIR)
@@ -236,6 +247,7 @@ KLING_API_URL = 'https://api.klingai.com/v1'
 KLING_TIMEOUT_SECONDS = int(os.environ.get('KLING_TIMEOUT_SECONDS', '600'))
 KLING_POLL_INTERVAL_SECONDS = int(os.environ.get('KLING_POLL_INTERVAL_SECONDS', '10'))
 PUBLIC_BASE_URL = (os.environ.get('PUBLIC_BASE_URL') or '').rstrip('/') or None
+app.config['PUBLIC_BASE_URL'] = PUBLIC_BASE_URL
 try:
     imagine_executor = ThreadPoolExecutor(max_workers=int(os.environ.get('IMAGINE_MAX_WORKERS', '2')))
 except Exception:
@@ -275,44 +287,6 @@ RUNWAY_MODEL_RATIO_OPTIONS: Dict[str, Dict[str, Any]] = {
         'square': ['1280:720']
     }
 }
-
-def optimize_image(file_path, max_width=1920, quality=85):
-    """Optimize image for web - compress and resize if needed, preserving format when possible."""
-    if not PIL_AVAILABLE:
-        return False
-
-    try:
-        ext = os.path.splitext(file_path)[1].lower()
-        with Image.open(file_path) as img:
-            # Resize if image is too large
-            if img.width > max_width:
-                ratio = max_width / img.width
-                new_height = int(img.height * ratio)
-                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-
-            if ext in ('.jpg', '.jpeg'):
-                # Convert to RGB for JPEG
-                if img.mode not in ('RGB', 'L'):
-                    img = img.convert('RGB')
-                img.save(file_path, format='JPEG', quality=quality, optimize=True, progressive=True)
-            elif ext == '.png':
-                # Preserve transparency if present
-                save_params = {'optimize': True}
-                try:
-                    # Use maximum compression level if available
-                    save_params['compress_level'] = 9
-                except Exception:
-                    pass
-                img.save(file_path, format='PNG', **save_params)
-            elif ext == '.webp':
-                img.save(file_path, format='WEBP', quality=quality, method=6)
-            else:
-                # For GIF and other formats, skip heavy processing
-                return False
-            return True
-    except Exception as e:
-        logger.warning(f"Could not optimize image {file_path}: {e}")
-        return False
 
 # Session configuration: persist login for 30 days
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -3341,94 +3315,6 @@ def format_date(date_str, format_str):
     except Exception as e:
         logger.error(f"Error formatting date {date_str}: {str(e)}")
         return date_str
-
-# --- File upload helpers ---
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def save_uploaded_file(file, subfolder=None):
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        # Add timestamp to make filename unique
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        name, ext = os.path.splitext(filename)
-        unique_filename = f"{name}_{timestamp}{ext}"
-        
-        # Create subfolder if specified
-        if subfolder:
-            upload_path = os.path.join(app.config['UPLOAD_FOLDER'], subfolder)
-            os.makedirs(upload_path, exist_ok=True)
-            filepath = os.path.join(upload_path, unique_filename)
-            return_path = f"uploads/{subfolder}/{unique_filename}"
-        else:
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-            return_path = f"uploads/{unique_filename}"
-        
-        file.save(filepath)
-        # Optimize only if this is an image
-        try:
-            ext = (os.path.splitext(filename)[1] or '').lower().lstrip('.')
-            if ext in {'png', 'jpg', 'jpeg', 'gif', 'webp'}:
-                optimize_image(filepath, max_width=1280, quality=80)
-        except Exception:
-            # Never fail the request due to optimization issues
-            pass
-        return return_path
-    return None
-
-
-def normalize_upload_reference(path: Optional[str]) -> Optional[str]:
-    if not path:
-        return None
-    p = str(path).strip()
-    if not p:
-        return None
-    if p.startswith('static/uploads/'):
-        p = p[len('static/'):]  # drop static/
-    if p.startswith('/static/uploads/'):
-        p = p[len('/static/'):]  # leading slash variant
-    if p.startswith('/uploads/'):
-        p = p[1:]
-    if not p.startswith('uploads/'):
-        p = f"uploads/{p.lstrip('/')}"
-    return p
-
-
-def resolve_upload_abspath(path: Optional[str]) -> Optional[str]:
-    rel = normalize_upload_reference(path)
-    if not rel:
-        return None
-    relative_inside_uploads = rel.split('uploads/', 1)[1] if 'uploads/' in rel else rel
-    abs_path = os.path.join(app.config['UPLOAD_FOLDER'], relative_inside_uploads)
-    return abs_path
-
-
-def load_upload_bytes(path: Optional[str]) -> Optional[bytes]:
-    abs_path = resolve_upload_abspath(path)
-    if not abs_path or not os.path.exists(abs_path):
-        return None
-    try:
-        with open(abs_path, 'rb') as fh:
-            return fh.read()
-    except Exception as e:
-        logger.error(f"Failed reading upload file {abs_path}: {e}")
-        return None
-
-
-def get_public_upload_url(path: Optional[str]) -> Optional[str]:
-    rel = normalize_upload_reference(path)
-    if not rel:
-        return None
-    rel_url = f"/{rel}"
-    if PUBLIC_BASE_URL:
-        return urljoin(PUBLIC_BASE_URL + '/', rel)
-    try:
-        base = request.host_url.rstrip('/')
-        return f"{base}{rel_url}"
-    except Exception:
-        return rel_url
-
 
 def transcribe_audio_file(audio_file_path):
     """
@@ -11550,110 +11436,11 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
 
 # ---- Community Tasks: DB helpers ----
 def ensure_tasks_table():
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            if 'USE_MYSQL' in globals() and USE_MYSQL:
-                c.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS tasks (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        community_id INT NOT NULL,
-                        title VARCHAR(255) NOT NULL,
-                        description TEXT,
-                        due_date DATE NULL,
-                        assigned_to_username VARCHAR(255) NULL,
-                        created_by_username VARCHAR(255) NOT NULL,
-                        created_at DATETIME NOT NULL DEFAULT NOW(),
-                        completed TINYINT(1) NOT NULL DEFAULT 0,
-                        INDEX idx_tasks_comm (community_id),
-                        INDEX idx_tasks_assignee (assigned_to_username)
-                    )
-                    """
-                )
-            else:
-                c.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS tasks (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        community_id INTEGER NOT NULL,
-                        title TEXT NOT NULL,
-                        description TEXT,
-                        due_date TEXT,
-                        assigned_to_username TEXT,
-                        created_by_username TEXT NOT NULL,
-                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                        completed INTEGER NOT NULL DEFAULT 0
-                    )
-                    """
-                )
-            conn.commit()
-            # Try to add status column if missing
-            try:
-                if 'USE_MYSQL' in globals() and USE_MYSQL:
-                    c.execute("ALTER TABLE tasks ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'not_started'")
-                else:
-                    c.execute("ALTER TABLE tasks ADD COLUMN status TEXT NOT NULL DEFAULT 'not_started'")
-                conn.commit()
-                # Backfill completed->status
-                try:
-                    if 'USE_MYSQL' in globals() and USE_MYSQL:
-                        c.execute("UPDATE tasks SET status='completed' WHERE completed=1")
-                    else:
-                        c.execute("UPDATE tasks SET status='completed' WHERE completed=1")
-                    conn.commit()
-                except Exception:
-                    pass
-            except Exception:
-                # Column likely exists
-                pass
-    except Exception as e:
-        logger.error(f"ensure_tasks_table error: {e}")
+    ensure_tasks_table_service()
 
 
 def is_community_admin_or_owner(username: str, community_id: int) -> bool:
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Global app admin
-            if username == 'admin':
-                return True
-
-            # Owner by creator_username
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
-            row = c.fetchone()
-            owner = row['creator_username'] if row else None
-            if owner and username == owner:
-                return True
-
-            # Get user's id
-            c.execute("SELECT id FROM users WHERE username = ?", (username,))
-            uid_row = c.fetchone()
-            user_id = uid_row['id'] if hasattr(uid_row, 'keys') and uid_row else (uid_row[0] if uid_row else None)
-
-            # Role in user_communities (admin/owner)
-            if user_id is not None:
-                try:
-                    c.execute(
-                        """
-                        SELECT role FROM user_communities
-                        WHERE user_id = ? AND community_id = ?
-                        """,
-                        (user_id, community_id),
-                    )
-                    role_row = c.fetchone()
-                    role = role_row['role'] if hasattr(role_row, 'keys') and role_row else (role_row[0] if role_row else None)
-                    if role and str(role).lower() in ('admin', 'owner'):
-                        return True
-                except Exception:
-                    pass
-
-            # Legacy/fallback table community_admins (case-insensitive username match)
-            c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND LOWER(username) = LOWER(?)", (community_id, username))
-            return bool(c.fetchone())
-    except Exception as e:
-        logger.warning(f"is_community_admin_or_owner check failed: {e}")
-        return False
+    return bool(is_app_admin(username) or service_is_community_admin_or_owner(username, community_id))
 
 
 @app.route('/api/community_tasks')
