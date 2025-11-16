@@ -60,6 +60,10 @@ from backend.services.tasks import (
     ensure_tasks_table as ensure_tasks_table_service,
     is_community_admin_or_owner as service_is_community_admin_or_owner,
 )
+from backend.services.reactions import (
+    get_post_reaction_summary,
+    get_reply_reaction_summary,
+)
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -11168,19 +11172,9 @@ def feed():
 
                 # --- NEW: Fetch reactions for each post ---
                 # Get reaction counts (e.g., {'heart': 5, 'thumbs-up': 2})
-                c.execute("""
-                    SELECT reaction_type, COUNT(*) as count
-                    FROM reactions
-                    WHERE post_id = ?
-                    GROUP BY reaction_type
-                """, (post['id'],))
-                reactions_raw = c.fetchall()
-                post['reactions'] = {r['reaction_type']: r['count'] for r in reactions_raw}
-
-                # Get the current logged-in user's reaction to this post
-                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post['id'], username))
-                user_reaction_raw = c.fetchone()
-                post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+                reaction_counts, user_reaction = get_post_reaction_summary(c, post['id'], username)
+                post['reactions'] = reaction_counts
+                post['user_reaction'] = user_reaction
 
                 # Fetch poll data for this post
                 c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post['id'],))
@@ -11207,17 +11201,9 @@ def feed():
 
                 # Add reaction counts for each reply and user reaction
                 for reply in post['replies']:
-                    c.execute("""
-                        SELECT reaction_type, COUNT(*) as count
-                        FROM reply_reactions
-                        WHERE reply_id = ?
-                        GROUP BY reaction_type
-                    """, (reply['id'],))
-                    rr = c.fetchall()
-                    reply['reactions'] = {r['reaction_type']: r['count'] for r in rr}
-                    c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply['id'], username))
-                    ur = c.fetchone()
-                    reply['user_reaction'] = ur['reaction_type'] if ur else None
+                    counts, user_reaction = get_reply_reaction_summary(c, reply['id'], username)
+                    reply['reactions'] = counts
+                    reply['user_reaction'] = user_reaction
 
         return render_template('feed.html', posts=posts, username=username)
     except Exception as e:
@@ -11305,20 +11291,7 @@ def add_reaction():
             
             conn.commit()
 
-            # After changes, fetch the new reaction counts for the post
-            c.execute("""
-                SELECT reaction_type, COUNT(*) as count
-                FROM reactions
-                WHERE post_id = ?
-                GROUP BY reaction_type
-            """, (post_id,))
-            counts_raw = c.fetchall()
-            new_counts = {r['reaction_type']: r['count'] for r in counts_raw}
-
-            # Also get the user's new reaction state to send back to the UI
-            c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
-            user_reaction_raw = c.fetchone()
-            new_user_reaction = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+            new_counts, new_user_reaction = get_post_reaction_summary(c, post_id, username)
 
             try:
                 view_count = upsert_post_view(c, int(post_id), username)
@@ -16688,17 +16661,7 @@ def add_reply_reaction():
             else:
                 c.execute("INSERT INTO reply_reactions (reply_id, username, reaction_type) VALUES (?, ?, ?)", (reply_id, username, reaction_type))
             conn.commit()
-            c.execute("""
-                SELECT reaction_type, COUNT(*) as count
-                FROM reply_reactions
-                WHERE reply_id = ?
-                GROUP BY reaction_type
-            """, (reply_id,))
-            counts_raw = c.fetchall()
-            new_counts = {r['reaction_type']: r['count'] for r in counts_raw}
-            c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply_id, username))
-            user_reaction_raw = c.fetchone()
-            new_user_reaction = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+            new_counts, new_user_reaction = get_reply_reaction_summary(c, reply_id, username)
             return jsonify({'success': True, 'counts': new_counts, 'user_reaction': new_user_reaction})
     except Exception as e:
         logger.error(f"Error adding reply reaction: {str(e)}")
@@ -16760,20 +16723,9 @@ def get_post():
                 return arr
             post['replies'] = build_tree(None)
             
-            # Fetch reactions for the post
-            c.execute("""
-                SELECT reaction_type, COUNT(*) as count
-                FROM reactions
-                WHERE post_id = ?
-                GROUP BY reaction_type
-            """, (post_id,))
-            reactions_raw = c.fetchall()
-            post['reactions'] = {r['reaction_type']: r['count'] for r in reactions_raw}
-            
-            # Get the current user's reaction to this post
-            c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
-            user_reaction_raw = c.fetchone()
-            post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+            reaction_counts, user_reaction = get_post_reaction_summary(c, post_id, username)
+            post['reactions'] = reaction_counts
+            post['user_reaction'] = user_reaction
             
             # Add reaction counts for each reply and user reaction
             def hydrate_reply_metrics(reply):
@@ -16784,17 +16736,9 @@ def get_post():
                     reply['profile_picture'] = pr['profile_picture'] if pr and 'profile_picture' in pr.keys() else None
                 except Exception:
                     reply['profile_picture'] = None
-                c.execute("""
-                    SELECT reaction_type, COUNT(*) as count
-                    FROM reply_reactions
-                    WHERE reply_id = ?
-                    GROUP BY reaction_type
-                """, (reply['id'],))
-                rr = c.fetchall()
-                reply['reactions'] = {r['reaction_type']: r['count'] for r in rr}
-                c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply['id'], username))
-                ur = c.fetchone()
-                reply['user_reaction'] = ur['reaction_type'] if ur else None
+                counts, user_reaction = get_reply_reaction_summary(c, reply['id'], username)
+                reply['reactions'] = counts
+                reply['user_reaction'] = user_reaction
                 for ch in reply.get('children', []):
                     hydrate_reply_metrics(ch)
             for reply in post['replies']:
