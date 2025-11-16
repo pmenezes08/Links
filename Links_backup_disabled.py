@@ -153,13 +153,13 @@ def logout():
     print("Logging out")
     session.pop('username', None)
     session.pop('x_token', None)
-    return redirect(url_for('index'))
+    return redirect(url_for('public.index'))
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if 'username' not in session:
         print("No username in session, redirecting to index")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     
     username = session['username']
     print(f"Signup for username: {username}")
@@ -185,7 +185,7 @@ def signup():
 def login_password():
     if 'username' not in session:
         print("No username in session, redirecting to /")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     
     username = session['username']
     print(f"Username from session: {username}")
@@ -229,7 +229,7 @@ def login_password():
 def dashboard():
     if 'username' not in session:
         print("No username in session, redirecting to index")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     username = session['username']
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
@@ -246,7 +246,7 @@ def dashboard():
 def premium_dashboard():
     if 'username' not in session:
         print("No username in session, redirecting to index")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     username = session['username']
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
@@ -263,7 +263,7 @@ def premium_dashboard():
 def admin():
     if 'username' not in session or session['username'] != 'admin':
         print("Unauthorized access to admin, redirecting to index")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     
     username = session['username']
     print(f"Admin page accessed by {username}")
@@ -303,7 +303,7 @@ def admin():
 def profile():
     if 'username' not in session:
         print("No username in session, redirecting to index")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     username = session['username']
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
@@ -328,13 +328,13 @@ def profile():
         print(f"Rendering profile for {username}")
         return render_template('profile.html', profile_data=profile_data, saved_items=saved_items)
     print(f"No user data for {username}, redirecting to index")
-    return redirect(url_for('index'))
+    return redirect(url_for('public.index'))
 
 @app.route('/edit_profile', methods=['GET', 'POST'])
 def edit_profile():
     if 'username' not in session:
         print("No username in session, redirecting to index")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     username = session['username']
     print(f"Edit profile for {username}")
 
@@ -368,7 +368,7 @@ def edit_profile():
 def generate_workout():
     if 'username' not in session:
         print("No username in session, redirecting to index")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     username = session['username']
     muscle = request.form.get('muscle')
     training_type = request.form.get('training_type')
@@ -408,7 +408,7 @@ def generate_workout():
 def subscribe():
     if 'username' not in session:
         print("No username in session, redirecting to index")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     username = session['username']
     print(f"Subscribe page for {username}")
     if request.method == 'POST':
@@ -441,7 +441,7 @@ def subscribe():
 def success():
     if 'username' not in session:
         print("No username in session, redirecting to index")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     username = session['username']
     conn = sqlite3.connect('users.db')
     c = conn.cursor()

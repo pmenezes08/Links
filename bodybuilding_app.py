@@ -30,6 +30,7 @@ from urllib.parse import urlencode, urljoin, quote_plus
 from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
+from backend import init_app
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -48,6 +49,7 @@ except ImportError as e:
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
+init_app(app)
 MISSING_UPLOAD_CACHE = deque(maxlen=200)
 
 COUNTRY_CACHE_TTL = 60 * 60 * 24  # 24 hours
@@ -4649,61 +4651,6 @@ def check_api_limit(username):
         abort(500)
 
 # Routes
-@app.route('/', methods=['GET'])
-def index():
-    # Guests: mobile -> React welcome (serve SPA directly), desktop -> HTML
-    # Logged-in users -> dashboard
-    try:
-        if session.get('username'):
-            return redirect(url_for('premium_dashboard'))
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            try:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                dist_dir = os.path.join(base_dir, 'client', 'dist')
-                index_path = os.path.join(dist_dir, 'index.html')
-                if os.path.exists(index_path):
-                    resp = send_from_directory(dist_dir, 'index.html')
-                    try:
-                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                        resp.headers['Pragma'] = 'no-cache'
-                        resp.headers['Expires'] = '0'
-                    except Exception:
-                        pass
-                    return resp
-            except Exception as e:
-                logger.warning(f"React mobile index not available: {e}")
-        return render_template('index.html')
-    except Exception as e:
-        logger.error(f"Error in / route: {str(e)}")
-        return ("Internal Server Error", 500)
-
-@app.route('/welcome', methods=['GET'])
-def welcome():
-    # Public React entry for welcome (mobile only). Desktop users go to '/' (HTML).
-    try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if not is_mobile:
-            return redirect(url_for('index'))
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        index_path = os.path.join(dist_dir, 'index.html')
-        if os.path.exists(index_path):
-            resp = send_from_directory(dist_dir, 'index.html')
-            try:
-                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                resp.headers['Pragma'] = 'no-cache'
-                resp.headers['Expires'] = '0'
-            except Exception:
-                pass
-            return resp
-        # Fallback: HTML welcome if React build missing
-        return render_template('onboarding_welcome.html', username=session.get('username'))
-    except Exception as e:
-        logger.error(f"Error in /welcome: {e}")
-        return ("Internal Server Error", 500)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -4795,7 +4742,7 @@ def login_x():
     # 3. Install authlib: pip install authlib
     # 4. Configure OAuth in the app
     flash('Sign in with X is not available yet. This feature requires API configuration.', 'error')
-    return redirect(url_for('index'))
+    return redirect(url_for('public.index'))
     # When configured, uncomment the following:
     # return x_auth.authorize(callback=url_for('authorized', _external=True))
 
@@ -4804,7 +4751,7 @@ def authorized():
     # This is the OAuth callback route for X/Twitter login
     # Currently disabled as OAuth is not configured
     flash('Sign in with X is not available yet. This feature requires API configuration.', 'error')
-    return redirect(url_for('index'))
+    return redirect(url_for('public.index'))
     
     # When OAuth is configured, uncomment the following:
     # try:
@@ -5158,7 +5105,7 @@ def logout():
     session.permanent = False
     # Clear remember token cookie
     from flask import make_response
-    resp = make_response(redirect(url_for('index')))
+    resp = make_response(redirect(url_for('public.index')))
     resp.set_cookie('remember_token', '', max_age=0, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN') or None)
     return resp
 @app.route('/login_password', methods=['GET', 'POST'])
@@ -5198,7 +5145,7 @@ def login_password():
                 if not is_active:
                     flash('Your account has been deactivated. Please contact the administrator.', 'error')
                     session.clear()
-                    return redirect(url_for('index'))
+                    return redirect(url_for('public.index'))
                 
                 # Check if password is hashed (bcrypt hashes start with $2b$, $2a$, or $2y$)
                 # or scrypt/pbkdf2 hashes from werkzeug start with 'scrypt:' or 'pbkdf2:'
@@ -7571,7 +7518,7 @@ def admin():
     print(f"Admin route accessed by user: {session.get('username')}")
     if session['username'] != 'admin':
         print("User is not admin, redirecting")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     print("User is admin, proceeding")
 
     # Check if request is from mobile and serve React
@@ -7844,7 +7791,7 @@ def admin():
 @login_required
 def admin_test():
     if session['username'] != 'admin':
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     return "Admin test route is working!"
                     
 
@@ -10208,7 +10155,7 @@ def success():
 def business_login():
     # Business login temporarily disabled
     flash('Business login is not available at this time.', 'error')
-    return redirect(url_for('index'))
+    return redirect(url_for('public.index'))
 
 @app.route('/business_logout')
 def business_logout():
@@ -11668,17 +11615,17 @@ def reset_password(token):
             
             if not result:
                 flash('Invalid or expired reset link.', 'error')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
             
             if result['used']:
                 flash('This reset link has already been used.', 'error')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
             
             # Check if token is expired (24 hours)
             created_at = datetime.fromisoformat(result['created_at'])
             if datetime.now() - created_at > timedelta(hours=24):
                 flash('This reset link has expired.', 'error')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
             
             return render_template('reset_password.html', token=token, username=result['username'])
     
@@ -11713,13 +11660,13 @@ def reset_password(token):
                 
                 if not result or result['used']:
                     flash('Invalid or expired reset link.', 'error')
-                    return redirect(url_for('index'))
+                    return redirect(url_for('public.index'))
                 
                 # Check expiration again
                 created_at = datetime.fromisoformat(result['created_at'])
                 if datetime.now() - created_at > timedelta(hours=24):
                     flash('This reset link has expired.', 'error')
-                    return redirect(url_for('index'))
+                    return redirect(url_for('public.index'))
                 
                 # Update password
                 hashed_password = generate_password_hash(new_password)
@@ -11731,7 +11678,7 @@ def reset_password(token):
                 conn.commit()
                 
                 flash('Your password has been successfully reset. You can now log in with your new password.', 'success')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
                 
         except Exception as e:
             logger.error(f"Error resetting password: {e}")
@@ -17321,7 +17268,7 @@ def admin_ads_overview():
     # Check if user is admin
     if username != 'admin':
         flash('Access denied. Admin only.', 'error')
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     
     try:
         with get_db_connection() as conn:
