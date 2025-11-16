@@ -18,6 +18,11 @@ from flask import (
     url_for,
 )
 
+from backend.services.notifications import (
+    check_single_event_notifications,
+    check_single_poll_notifications,
+)
+
 
 notifications_bp = Blueprint("notifications", __name__)
 
@@ -357,7 +362,7 @@ def api_poll_notification_check():
     Cron job endpoint to check poll deadlines and send notifications.
     Public endpoint with optional API key protection.
     """
-    from bodybuilding_app import USE_MYSQL, check_single_poll_notifications, get_db_connection
+    from bodybuilding_app import USE_MYSQL, get_db_connection
 
     api_key = request.headers.get("X-API-Key") or request.form.get("api_key")
     expected_key = os.getenv("POLL_CRON_API_KEY")
@@ -432,7 +437,7 @@ def api_event_notification_check():
     Cron job endpoint that checks upcoming events and sends reminders.
     Public endpoint invoked by cron.
     """
-    from bodybuilding_app import USE_MYSQL, check_single_event_notifications, get_db_connection
+    from bodybuilding_app import USE_MYSQL, get_db_connection
 
     try:
         logger = current_app.logger
