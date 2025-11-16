@@ -41,7 +41,7 @@
     }
     async function proceed(){
       // After first login, direct to onboarding; otherwise fallback to dashboard
-      window.location.href = '/onboarding'
+      window.location.href = '{{ url_for('onboarding.onboarding_react') }}'
     }
   </script>
 </body>

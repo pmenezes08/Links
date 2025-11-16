@@ -334,7 +334,7 @@
             <a href="{{ url_for('communities') }}">Your Communities</a>
             <a href="{{ url_for('your_sports') }}">Your Sports</a>
             {% if username %}
-            <a href="{{ url_for('logout') }}">Logout</a>
+            <a href="{{ url_for('auth.logout') }}">Logout</a>
             {% else %}
             <a href="{{ url_for('user_login') }}">Login</a>
             {% endif %}
