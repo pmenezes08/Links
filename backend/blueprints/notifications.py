@@ -18,6 +18,7 @@ from flask import (
     url_for,
 )
 
+from backend.services.database import USE_MYSQL, get_db_connection
 from backend.services.notifications import (
     check_single_event_notifications,
     check_single_poll_notifications,
@@ -66,8 +67,6 @@ def notifications_page():
 @_login_required
 def check_new_notifications():
     """Check for new notifications since last check timestamp."""
-    from bodybuilding_app import get_db_connection
-
     username = session["username"]
     last_check = request.args.get("since", "")
 
@@ -120,8 +119,6 @@ def check_new_notifications():
 @_login_required
 def get_notifications():
     """Get notifications for the current user."""
-    from bodybuilding_app import USE_MYSQL, get_db_connection
-
     username = session["username"]
     show_all = request.args.get("all", "false").lower() == "true"
 
@@ -210,8 +207,6 @@ def get_notifications():
 @_login_required
 def mark_notification_read(notification_id: int):
     """Mark a notification as read."""
-    from bodybuilding_app import get_db_connection
-
     username = session["username"]
 
     try:
@@ -236,8 +231,6 @@ def mark_notification_read(notification_id: int):
 @_login_required
 def mark_all_notifications_read():
     """Mark all notifications as read for the current user."""
-    from bodybuilding_app import get_db_connection
-
     username = session["username"]
     try:
         with get_db_connection() as conn:
@@ -261,8 +254,6 @@ def mark_all_notifications_read():
 @_login_required
 def delete_read_notifications():
     """Delete all read notifications for the current user."""
-    from bodybuilding_app import get_db_connection
-
     username = session["username"]
     try:
         with get_db_connection() as conn:
@@ -286,7 +277,7 @@ def delete_read_notifications():
 @_login_required
 def admin_broadcast_notification():
     """Send a platform-wide notification from the admin dashboard."""
-    from bodybuilding_app import USE_MYSQL, get_db_connection, is_app_admin
+    from bodybuilding_app import is_app_admin
 
     username = session.get("username")
     if not is_app_admin(username):
@@ -362,8 +353,6 @@ def api_poll_notification_check():
     Cron job endpoint to check poll deadlines and send notifications.
     Public endpoint with optional API key protection.
     """
-    from bodybuilding_app import USE_MYSQL, get_db_connection
-
     api_key = request.headers.get("X-API-Key") or request.form.get("api_key")
     expected_key = os.getenv("POLL_CRON_API_KEY")
 
@@ -437,8 +426,6 @@ def api_event_notification_check():
     Cron job endpoint that checks upcoming events and sends reminders.
     Public endpoint invoked by cron.
     """
-    from bodybuilding_app import USE_MYSQL, get_db_connection
-
     try:
         logger = current_app.logger
         logger.info("🔍 Event notification check starting - USE_MYSQL=%s", USE_MYSQL)

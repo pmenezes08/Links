@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
-from typing import Optional
 
 from pywebpush import WebPushException, webpush
 
+from backend.services.database import USE_MYSQL, get_db_connection
+
 
 logger = logging.getLogger(__name__)
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "https://www.c-point.co")
 
 
 def create_notification(
@@ -23,8 +28,6 @@ def create_notification(
     link=None,
 ):
     """Create or refresh an in-app notification entry."""
-    from bodybuilding_app import USE_MYSQL, get_db_connection
-
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -63,14 +66,6 @@ def create_notification(
 
 def send_push_to_user(target_username: str, payload: dict):
     """Send a web push notification to the given user (best-effort)."""
-    from bodybuilding_app import (
-        USE_MYSQL,
-        VAPID_PRIVATE_KEY,
-        VAPID_PUBLIC_KEY,
-        VAPID_SUBJECT,
-        get_db_connection,
-    )
-
     if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
         logger.warning("VAPID keys missing; push disabled")
         return
@@ -175,8 +170,6 @@ def check_single_poll_notifications(poll_id, conn=None):
 
     Returns number of notifications issued.
     """
-    from bodybuilding_app import USE_MYSQL, get_db_connection
-
     should_close_conn = False
     if conn is None:
         conn = get_db_connection()
@@ -387,8 +380,6 @@ def check_single_event_notifications(event_id, conn=None):
 
     Returns number of notifications issued.
     """
-    from bodybuilding_app import USE_MYSQL, get_db_connection
-
     should_close_conn = False
     if conn is None:
         conn = get_db_connection()

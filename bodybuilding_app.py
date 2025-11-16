@@ -30,6 +30,16 @@ from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
 from backend import init_app
+from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services.community import (
+    fetch_community_names,
+    get_community_ancestors,
+    get_community_basic,
+    get_descendant_community_ids,
+    get_parent_chain_ids,
+    is_community_admin,
+    is_community_owner,
+)
 from backend.services.notifications import (
     check_single_event_notifications,
     check_single_poll_notifications,
@@ -794,13 +804,7 @@ except ImportError as e:
 XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
 DAILY_API_LIMIT = 10
 
-USE_MYSQL = (os.getenv('DB_BACKEND', 'sqlite').lower() == 'mysql')
 MENTIONS_ENABLED = os.getenv('MENTIONS_ENABLED', 'false').lower() == 'true'
-
-# Database connection helper: MySQL in production (if configured), SQLite locally
-def get_sql_placeholder():
-    """Get the correct SQL placeholder based on database type"""
-    return '%s' if USE_MYSQL else '?'
 
 def normalize_id_list(raw) -> List[int]:
     """Normalize incoming payload (list or JSON string) into a unique list of ints preserving order."""
@@ -823,41 +827,6 @@ def normalize_id_list(raw) -> List[int]:
             except Exception:
                 pass
     return result
-
-def get_parent_chain_ids(cursor, community_id: int) -> List[int]:
-    """Return ordered list of parent community IDs (direct parent first) up to root."""
-    parents: List[int] = []
-    visited: set[int] = set()
-    current = community_id
-    placeholder = get_sql_placeholder()
-    while current:
-        cursor.execute(f"SELECT parent_community_id FROM communities WHERE id = {placeholder}", (current,))
-        row = cursor.fetchone()
-        if not row:
-            break
-        parent_id = row['parent_community_id'] if hasattr(row, 'keys') else row[0]
-        if not parent_id or parent_id in visited:
-            break
-        visited.add(parent_id)
-        parents.append(parent_id)
-        current = parent_id
-    return parents
-
-def fetch_community_names(cursor, community_ids: List[int]) -> List[str]:
-    """Fetch community names preserving order of provided IDs."""
-    ids = [cid for cid in community_ids if cid is not None]
-    if not ids:
-        return []
-    placeholders = ','.join([get_sql_placeholder()] * len(ids))
-    cursor.execute(f"SELECT id, name FROM communities WHERE id IN ({placeholders})", tuple(ids))
-    rows = cursor.fetchall()
-    id_to_name: Dict[int, str] = {}
-    for row in rows:
-        cid = row['id'] if hasattr(row, 'keys') else row[0]
-        name = row['name'] if hasattr(row, 'keys') else row[1]
-        id_to_name[cid] = name
-    return [id_to_name[cid] for cid in ids if cid in id_to_name]
-
 
 class CommunityMembershipLimitError(Exception):
     """Raised when a free-plan community exceeds its member capacity."""
@@ -883,89 +852,6 @@ def fetch_user_subscription(cursor, username: Optional[str]) -> str:
 
 def is_free_subscription(subscription_value: str) -> bool:
     return subscription_value not in {'premium'}
-
-
-def get_community_basic(cursor, community_id: int) -> Optional[Dict[str, Any]]:
-    placeholder = get_sql_placeholder()
-    cursor.execute(f"SELECT id, creator_username, parent_community_id FROM communities WHERE id = {placeholder}", (community_id,))
-    row = cursor.fetchone()
-    if not row:
-        return None
-    if hasattr(row, 'keys'):
-        return {
-            'id': row.get('id'),
-            'creator_username': row.get('creator_username'),
-            'parent_community_id': row.get('parent_community_id'),
-        }
-    return {
-        'id': row[0] if len(row) > 0 else None,
-        'creator_username': row[1] if len(row) > 1 else None,
-        'parent_community_id': row[2] if len(row) > 2 else None,
-    }
-
-
-def get_community_ancestors(cursor, community_id: int) -> List[Dict[str, Any]]:
-    """Return list of ancestor community records starting from the specified community."""
-    ancestors: List[Dict[str, Any]] = []
-    current_id = community_id
-    visited: Set[int] = set()
-    while current_id:
-        if current_id in visited:
-            break
-        visited.add(current_id)
-        info = get_community_basic(cursor, current_id)
-        if not info:
-            break
-        ancestors.append(info)
-        current_id = info.get('parent_community_id')
-    return ancestors
-
-
-def get_descendant_community_ids(cursor, community_id: int) -> List[int]:
-    """Return descendant community IDs (including the provided one) ordered deepest-first."""
-    try:
-        from collections import deque
-        queue = deque([(community_id, 0)])
-        pop_left = True
-    except Exception:
-        queue = [(community_id, 0)]  # type: ignore
-        pop_left = False
-
-    seen: Set[int] = set()
-    results: List[Tuple[int, int]] = []
-
-    while queue:
-        if pop_left:
-            current_id, depth = queue.popleft()  # type: ignore
-        else:
-            current_id, depth = queue.pop(0)  # type: ignore
-
-        if current_id in seen:
-            continue
-        seen.add(current_id)
-        results.append((current_id, depth))
-
-        placeholder = get_sql_placeholder()
-        try:
-            cursor.execute(f"SELECT id FROM communities WHERE parent_community_id = {placeholder}", (current_id,))
-            rows = cursor.fetchall() or []
-        except Exception as child_err:
-            logger.warning(f"Failed to load child communities for {current_id}: {child_err}")
-            rows = []
-
-        for row in rows:
-            try:
-                child_id = row['id'] if hasattr(row, 'keys') else row[0]
-            except Exception:
-                child_id = None
-            if child_id and child_id not in seen:
-                if pop_left:
-                    queue.append((child_id, depth + 1))  # type: ignore
-                else:
-                    queue.append((child_id, depth + 1))  # type: ignore
-
-    results.sort(key=lambda item: item[1], reverse=True)
-    return [cid for cid, _ in results]
 
 
 def delete_community_records(cursor, community_id: int) -> None:
@@ -1265,126 +1151,6 @@ def filter_major_cities(country_name: str, incoming: List[str]) -> List[str]:
         if len(unique) >= 24:
             break
     return unique
-
-def get_db_connection():
-    if USE_MYSQL:
-        try:
-            try:
-                import pymysql
-                from pymysql.cursors import DictCursor
-            except Exception as imp_err:
-                logger.error(f"PyMySQL not installed or failed to import: {imp_err}")
-                raise
-
-            host = os.environ.get('MYSQL_HOST')
-            user = os.environ.get('MYSQL_USER')
-            password = os.environ.get('MYSQL_PASSWORD')
-            database = os.environ.get('MYSQL_DB')
-            if not all([host, user, password, database]):
-                raise RuntimeError('Missing MySQL env vars: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB')
-
-            conn = pymysql.connect(
-                host=host,
-                user=user,
-                password=password,
-                database=database,
-                charset='utf8mb4',
-                autocommit=True,
-                cursorclass=DictCursor,
-                connect_timeout=int(os.environ.get('MYSQL_CONNECT_TIMEOUT', '5')),
-                read_timeout=int(os.environ.get('MYSQL_READ_TIMEOUT', '15')),
-                write_timeout=int(os.environ.get('MYSQL_WRITE_TIMEOUT', '15')),
-            )
-            # Wrap cursor to adapt SQLite-style SQL to MySQL at runtime
-            try:
-                orig_cursor = conn.cursor
-
-                def _adapt_sql(sql: str) -> str:
-                    s = sql
-                    # Common cross-db adaptations
-                    s = s.replace('INSERT IGNORE', 'INSERT IGNORE')
-                    s = s.replace("NOW()", 'NOW()')
-                    return s
-
-                class _ProxyCursor:
-                    def __init__(self, real):
-                        self._real = real
-                    def execute(self, query, params=None):
-                        q = _adapt_sql(query)
-                        if params is not None:
-                            # Convert SQLite qmark '?' to MySQL '%s'
-                            q = q.replace('?', '%s')
-                            return self._real.execute(q, params)
-                        return self._real.execute(q)
-                    def executemany(self, query, param_seq):
-                        q = _adapt_sql(query).replace('?', '%s')
-                        return self._real.executemany(q, param_seq)
-                    def __getattr__(self, name):
-                        return getattr(self._real, name)
-
-                def _patched_cursor(*args, **kwargs):
-                    return _ProxyCursor(orig_cursor(*args, **kwargs))
-
-                conn.cursor = _patched_cursor  # type: ignore[attr-defined]
-            except Exception as _wrap_err:
-                logger.warning(f"Could not wrap MySQL cursor for SQL adaptation: {_wrap_err}")
-            return conn
-        except Exception as e:
-            logger.error(f"Failed to connect to MySQL: {e}")
-            raise
-    else:
-        # SQLite (default for local dev)
-        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.db')
-        try:
-            conn = sqlite3.connect(db_path)
-            conn.row_factory = sqlite3.Row
-            # Wrap cursor to adapt MySQL-flavored SQL to SQLite at runtime
-            try:
-                orig_cursor = conn.cursor
-
-                def _adapt_sqlite_sql(sql: str) -> str:
-                    s = sql
-                    # Convert INSERT IGNORE -> INSERT OR IGNORE
-                    s = s.replace('INSERT IGNORE', 'INSERT OR IGNORE')
-                    # Convert AUTO_INCREMENT -> AUTOINCREMENT
-                    s = s.replace('PRIMARY KEY AUTO_INCREMENT', 'PRIMARY KEY AUTOINCREMENT')
-                    s = s.replace('AUTO_INCREMENT', 'AUTOINCREMENT')
-                    # Normalize NOW() -> datetime('now')
-                    s = s.replace('NOW()', "datetime('now')")
-                    return s
-
-                class _ProxyCursor:
-                    def __init__(self, real):
-                        self._real = real
-                    def execute(self, query, params=None):
-                        q = _adapt_sqlite_sql(query)
-                        if params is not None:
-                            return self._real.execute(q, params)
-                        return self._real.execute(q)
-                    def executemany(self, query, param_seq):
-                        q = _adapt_sqlite_sql(query)
-                        return self._real.executemany(q, param_seq)
-                    def __getattr__(self, name):
-                        return getattr(self._real, name)
-
-                def _patched_cursor(*args, **kwargs):
-                    return _ProxyCursor(orig_cursor(*args, **kwargs))
-
-                conn.cursor = _patched_cursor  # type: ignore[attr-defined]
-            except Exception as _wrap_err:
-                logger.warning(f"Could not wrap SQLite cursor for SQL adaptation: {_wrap_err}")
-            return conn
-        except Exception as e:
-            logger.error(f"Failed to connect to database at {db_path}: {e}")
-            # Try to ensure database exists and retry
-            try:
-                ensure_database_exists()
-                conn = sqlite3.connect(db_path)
-                conn.row_factory = sqlite3.Row
-                return conn
-            except Exception as e2:
-                logger.error(f"Failed to create database and connect: {e2}")
-                raise
 
 def ensure_database_exists():
     """Ensure the database and all tables exist."""
@@ -3371,76 +3137,23 @@ def ensure_indexes():
         logger.error(f"Error ensuring indexes: {e}")
         abort(500)
 
-# Permission helper functions
-def is_app_admin(username):
-    """Check if user is the app admin"""
-    try:
-        return bool(username) and username.lower() in ('admin', 'paulo')
-    except Exception:
-        return False
-
-def is_community_owner(username, community_id):
-    """Check if user is the owner of a community (MySQL/SQLite-safe)."""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT creator_username FROM communities WHERE id = {ph}", (community_id,))
-            result = c.fetchone()
-            if not result:
-                return False
-            creator = result['creator_username'] if hasattr(result, 'keys') else result[0]
-            return creator == username
-    except Exception as _e:
-        return False
-
-def is_community_admin(username, community_id):
-    """Check if user is an admin of a community (MySQL/SQLite-safe).
-    Accept admin via user_communities.role = 'admin' OR community_admins entry.
-    """
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            # Check user_communities role
-            try:
-                c.execute(
-                    f"""
-                    SELECT uc.role
-                    FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.id
-                    WHERE u.username = {ph} AND uc.community_id = {ph}
-                    """,
-                    (username, community_id),
-                )
-                row = c.fetchone()
-                if row:
-                    role = row['role'] if hasattr(row, 'keys') else row[0]
-                    if (role or '').lower() == 'admin':
-                        return True
-            except Exception:
-                pass
-
-            # Fallback: explicit community_admins table
-            c.execute(
-                f"SELECT 1 FROM community_admins WHERE community_id = {ph} AND username = {ph}",
-                (community_id, username),
-            )
-            return c.fetchone() is not None
-    except Exception as _e:
-        return False
-
 def has_community_management_permission(username, community_id):
     """Check if user can manage a community (app admin, owner, or community admin)"""
-    return (is_app_admin(username) or 
-            is_community_owner(username, community_id) or 
-            is_community_admin(username, community_id))
+    return (
+        is_app_admin(username)
+        or is_community_owner(username, community_id)
+        or is_community_admin(username, community_id)
+    )
+
+
 def has_post_delete_permission(username, post_username, community_id):
     """Check if user can delete a post"""
-    return (is_app_admin(username) or 
-            username == post_username or
-            is_community_owner(username, community_id) or 
-            is_community_admin(username, community_id))
+    return (
+        is_app_admin(username)
+        or username == post_username
+        or is_community_owner(username, community_id)
+        or is_community_admin(username, community_id)
+    )
 
 if not USE_MYSQL:
     init_db()
@@ -5907,22 +5620,6 @@ def is_app_admin(username):
         return bool(username) and username.lower() == 'admin'
     except Exception:
         return False
-
-def is_community_owner(username, community_id):
-    """Check if a user owns a community"""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
-            result = c.fetchone()
-            if result:
-                creator = result['creator_username'] if hasattr(result, 'keys') else result[0]
-                return creator == username
-    except Exception as e:
-        logger.error(f"Error checking community owner: {e}")
-    return False
-
-# --- Account deletion ---
 @app.route('/delete_account', methods=['POST'])
 @login_required
 def delete_account():
