@@ -5451,11 +5451,6 @@ def dashboard():
         logger.error(f"Error in dashboard for {username}: {str(e)}")
         abort(500)
 
-@app.route('/free_workouts')
-@login_required
-def free_workouts():
-    return render_template('free_workouts.html', name=session['username'])
-
 @app.route('/premium_dashboard')
 @login_required
 def premium_dashboard():

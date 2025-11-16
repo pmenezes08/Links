@@ -242,15 +242,6 @@ def dashboard():
     print(f"Rendering dashboard for {username}")
     return render_template('dashboard.html', name=username)
 
-@app.route('/free_workouts')
-def free_workouts():
-    if 'username' not in session:
-        print("No username in session, redirecting to index")
-        return redirect(url_for('index'))
-    username = session['username']
-    print(f"Rendering free_workouts for {username}")
-    return render_template('free_workouts.html', name=username)
-
 @app.route('/premium_dashboard')
 def premium_dashboard():
     if 'username' not in session:
