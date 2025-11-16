@@ -27416,10 +27416,15 @@ def save_community_announcement():
             return jsonify({'success': False, 'error': 'Not logged in'})
         
         content = request.form.get('content')
-        community_id = request.form.get('community_id')
+        community_id_raw = request.form.get('community_id')
         
-        if not content or not community_id:
+        if not content or not community_id_raw:
             return jsonify({'success': False, 'error': 'Missing required fields'})
+        
+        try:
+            community_id = int(community_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid community ID'})
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -27461,17 +27466,7 @@ def save_community_announcement():
             return jsonify({'success': False, 'error': 'Community not found'})
 
         current_user = session['username']
-        is_owner = current_user == community['creator_username']
-        is_app_admin = current_user == 'admin'
-        # community admin?
-        is_comm_admin = False
-        try:
-            cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
-            is_comm_admin = cursor.fetchone() is not None
-        except Exception:
-            is_comm_admin = False
-
-        if not (is_owner or is_app_admin or is_comm_admin):
+        if not has_community_management_permission(current_user, community_id):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Save announcement to database
@@ -27648,7 +27643,12 @@ def delete_community_announcement():
             return jsonify({'success': False, 'error': 'Not logged in'})
         
         announcement_id = request.form.get('announcement_id')
-        community_id = request.form.get('community_id')
+        community_id_raw = request.form.get('community_id')
+        
+        try:
+            community_id = int(community_id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Invalid community ID'})
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -27663,15 +27663,7 @@ def delete_community_announcement():
             return jsonify({'success': False, 'error': 'Community not found'})
 
         current_user = session['username']
-        is_owner = current_user == community['creator_username']
-        is_app_admin = current_user == 'admin'
-        is_comm_admin = False
-        try:
-            cursor.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND username = ?", (community_id, current_user))
-            is_comm_admin = cursor.fetchone() is not None
-        except Exception:
-            is_comm_admin = False
-        if not (is_owner or is_app_admin or is_comm_admin):
+        if not has_community_management_permission(current_user, community_id):
             return jsonify({'success': False, 'error': 'Unauthorized'})
         
         # Delete announcement from database
