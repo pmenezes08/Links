@@ -10204,15 +10204,6 @@ def success():
 
 
 
-@app.route('/business_register', methods=['GET', 'POST'])
-def business_register():
-    """Legacy business onboarding is no longer available."""
-    message = 'Business onboarding has moved to our new React experience.'
-    if request.is_json:
-        return jsonify({'success': False, 'message': message, 'redirect': '/premium_dashboard'}), 410
-    flash(message, 'info')
-    return redirect(url_for('index'))
-
 @app.route('/business_login', methods=['GET', 'POST'])
 def business_login():
     # Business login temporarily disabled
