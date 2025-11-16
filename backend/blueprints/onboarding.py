@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
+from functools import wraps
+
 from flask import (
     Blueprint,
     abort,
@@ -22,10 +24,19 @@ onboarding_bp = Blueprint("onboarding", __name__)
 
 
 def _login_required(view_func):
-    """Defer importing login_required to avoid circular imports."""
-    from bodybuilding_app import login_required as _login_required  # pylint: disable=import-outside-toplevel
+    """Simple login_required decorator that avoids circular imports."""
 
-    return _login_required(view_func)
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if "username" not in session:
+            try:
+                current_app.logger.info("No username in session for %s, redirecting to login", request.path)
+            except Exception:
+                pass
+            return redirect(url_for("auth.login"))
+        return view_func(*args, **kwargs)
+
+    return wrapper
 
 
 @onboarding_bp.route("/onboarding")
