@@ -85,11 +85,6 @@ def check_api_limit(username):
     conn.close()
     return True
 
-def is_blood_test_related(message):
-    blood_keywords = ['blood', 'test', 'results', 'lab', 'hemoglobin', 'glucose', 'cholesterol', 'triglycerides', 'iron',
-                      'vitamin', 'hormone', 'testosterone', 'cortisol', 'thyroid', 'platelets', 'rbc', 'wbc', 'lipid']
-    return any(keyword in message.lower() for keyword in blood_keywords)
-
 @app.route('/', methods=['GET', 'POST'])
 def index():
     print("Entering index route")
@@ -417,88 +412,6 @@ def generate_workout():
     except KeyError:
         print(f"No workout data for {muscle} - {training_type}")
         return jsonify({'error': f'Sorry {username}, no data for {muscle} - {training_type}!'})
-
-@app.route('/blood_test_analysis', methods=['GET', 'POST'])
-def blood_test_analysis():
-    if 'username' not in session:
-        print("No username in session, redirecting to index")
-        return redirect(url_for('index'))
-    username = session['username']
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    user = c.fetchone()
-    conn.close()
-    if not user or user[0] != 'premium':
-        print(f"{username} not premium, redirecting to index")
-        return redirect(url_for('index'))
-
-    if request.method == 'POST':
-        action = request.form.get('action')
-        if action == 'save' and 'response' in request.form:
-            response = request.form['response']
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            conn = sqlite3.connect('users.db')
-            c = conn.cursor()
-            c.execute("INSERT INTO saved_data (username, type, data, timestamp) VALUES (?, ?, ?, ?)",
-                      (username, 'blood_test', response, timestamp))
-            conn.commit()
-            conn.close()
-            print(f"Blood test analysis saved for {username}")
-            return jsonify({'message': 'Blood test analysis saved, my dude!'})
-
-        if not check_api_limit(username):
-            print(f"{username} hit API limit")
-            return jsonify({'response': "Yo, you’ve hit your daily chat limit—chill out till tomorrow, champ!"})
-
-        message = request.form.get('message', '')
-        file = request.files.get('file')
-        print(f"Blood test analysis request for {username}, message: {message}, file: {file}")
-
-        combined_message = ""
-        if file:
-            try:
-                file_content = file.read().decode('utf-8', errors='ignore')
-                combined_message = f"Analyze this blood test: {file_content}"
-            except Exception as e:
-                print(f"File read error: {str(e)}")
-                return jsonify({'response': f"Whoops, couldn’t read that file—tech gremlins! (Error: {str(e)})"})
-
-        if message:
-            combined_message = f"{message}\n{combined_message}" if combined_message else message
-
-        if not combined_message:
-            print("No input provided")
-            return jsonify({'response': "Yo, give me something—text or a file, what’s up?"})
-
-        if not is_blood_test_related(combined_message):
-            print("Not blood test related")
-            return jsonify({'response': "Yo, this ain’t about blood tests—hit up Nutrition for diet vibes!"})
-
-        headers = {
-            'Authorization': f'Bearer {XAI_API_KEY}',
-            'Content-Type': 'application/json'
-        }
-        payload = {
-            'model': 'grok-beta',
-            'messages': [
-                {'role': 'system', 'content': 'You’re Grok, built by xAI—keep it chill, witty, and analyze blood tests from a functional medicine perspective when given data. Explain what each test measures, spot issues, and give actionable recs. Stick to blood test analysis only.'},
-                {'role': 'user', 'content': combined_message}
-            ],
-            'max_tokens': 1000
-        }
-        try:
-            response = requests.post(XAI_API_URL, headers=headers, json=payload)
-            response.raise_for_status()
-            grok_response = response.json()['choices'][0]['message']['content']
-            print(f"Blood test analysis response for {username}")
-            return jsonify({'response': grok_response})
-        except requests.RequestException as e:
-            print(f"API error: {str(e)}")
-            return jsonify({'response': f"Whoa, hit a snag—tech gremlins at work! (Error: {str(e)})"})
-
-    print(f"Rendering blood_test_analysis for {username}")
-    return render_template('blood_test_analysis.html', name=username)
 
 @app.route('/subscribe', methods=['GET', 'POST'])
 def subscribe():

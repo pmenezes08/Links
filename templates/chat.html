@@ -135,11 +135,23 @@
     </div>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
     <script>
+        function appendBotMessage(text) {
+            const chatMessages = document.getElementById('chat-messages');
+            chatMessages.innerHTML += `
+                <div class="message bot-message">
+                    <img src="" class="message-image" style="display: none;">
+                    <div class="message-content">
+                        <p>${text}</p>
+                    </div>
+                </div>`;
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
         function sendMessage() {
             const input = document.getElementById('message-input');
             const message = input.value.trim();
             if (!message) return;
-            
+
             const chatMessages = document.getElementById('chat-messages');
             chatMessages.innerHTML += `
                 <div class="message user-message">
@@ -149,39 +161,15 @@
                     </div>
                 </div>`;
             input.value = '';
-            
-            $.ajax({
-                url: '/blood_test_analysis',
-                type: 'POST',
-                data: { message: message },
-                success: function(response) {
-                    chatMessages.innerHTML += `
-                        <div class="message bot-message">
-                            <img src="" class="message-image" style="display: none;">
-                            <div class="message-content">
-                                <p>${response.response.replace(/\n/g, '<br>')}</p>
-                            </div>
-                        </div>`;
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                },
-                error: function(xhr, status, error) {
-                    chatMessages.innerHTML += `
-                        <div class="message bot-message">
-                            <img src="" class="message-image" style="display: none;">
-                            <div class="message-content">
-                                <p style="color: #ff3b30;">Whoa, tech hiccup—try again!</p>
-                            </div>
-                        </div>`;
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
-            });
+
+            appendBotMessage('Blood test analysis has moved to the React dashboard. Please visit your premium dashboard to continue.');
         }
 
         function sendFile() {
             const fileInput = document.getElementById('file-input');
             const file = fileInput.files[0];
             if (!file) return;
-            
+
             const chatMessages = document.getElementById('chat-messages');
             const fileUrl = URL.createObjectURL(file);
             chatMessages.innerHTML += `
@@ -191,37 +179,8 @@
                         <p>Uploaded: ${file.name}</p>
                     </div>
                 </div>`;
-            
-            const formData = new FormData();
-            formData.append('file', file);
-            
-            $.ajax({
-                url: '/blood_test_analysis',
-                type: 'POST',
-                data: formData,
-                processData: false,
-                contentType: false,
-                success: function(response) {
-                    chatMessages.innerHTML += `
-                        <div class="message bot-message">
-                            <img src="" class="message-image" style="display: none;">
-                            <div class="message-content">
-                                <p>${response.response.replace(/\n/g, '<br>')}</p>
-                            </div>
-                        </div>`;
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                },
-                error: function(xhr, status, error) {
-                    chatMessages.innerHTML += `
-                        <div class="message bot-message">
-                            <img src="" class="message-image" style="display: none;">
-                            <div class="message-content">
-                                <p style="color: #ff3b30;">Whoops, couldn’t process that—try again!</p>
-                            </div>
-                        </div>`;
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
-            });
+
+            appendBotMessage('File uploads for blood test analysis are now handled in the React dashboard. Please switch there to continue.');
             fileInput.value = '';
         }
 
