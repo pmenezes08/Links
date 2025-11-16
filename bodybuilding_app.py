@@ -22,7 +22,6 @@ from markupsafe import escape
 import secrets
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
-from pywebpush import webpush, WebPushException
 from hashlib import sha256
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -30,6 +29,41 @@ from urllib.parse import urlencode, urljoin, quote_plus
 from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
+from backend import init_app
+from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
+from backend.services.community import (
+    fetch_community_names,
+    get_community_ancestors,
+    get_community_basic,
+    get_descendant_community_ids,
+    get_parent_chain_ids,
+    is_community_admin,
+    is_community_owner,
+)
+from backend.services.notifications import (
+    check_single_event_notifications,
+    check_single_poll_notifications,
+    create_notification,
+    send_push_to_user,
+)
+from backend.services.media import (
+    DEFAULT_ALLOWED_EXTENSIONS,
+    allowed_file,
+    get_public_upload_url,
+    load_upload_bytes,
+    normalize_upload_reference,
+    optimize_image,
+    resolve_upload_abspath,
+    save_uploaded_file,
+)
+from backend.services.tasks import (
+    ensure_tasks_table as ensure_tasks_table_service,
+    is_community_admin_or_owner as service_is_community_admin_or_owner,
+)
+from backend.services.reactions import (
+    get_post_reaction_summary,
+    get_reply_reaction_summary,
+)
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -48,6 +82,7 @@ except ImportError as e:
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
+init_app(app)
 MISSING_UPLOAD_CACHE = deque(maxlen=200)
 
 COUNTRY_CACHE_TTL = 60 * 60 * 24  # 24 hours
@@ -132,7 +167,7 @@ def login_required(f):
                 logger.info("No username in session, redirecting to login")
             except Exception:
                 pass
-            return redirect(url_for('login'))
+            return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -198,12 +233,9 @@ def nl2br_filter(text):
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 # Allow common image, video, and audio types
-ALLOWED_EXTENSIONS = {
-    'png', 'jpg', 'jpeg', 'gif', 'webp',
-    'mp4', 'webm', 'mov', 'm4v', 'avi',
-    'm4a', 'mp3', 'ogg', 'wav', 'opus'
-}
+ALLOWED_EXTENSIONS = set(DEFAULT_ALLOWED_EXTENSIONS)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['ALLOWED_EXTENSIONS'] = ALLOWED_EXTENSIONS
 
 IMAGINE_OUTPUT_SUBDIR = 'imagine'
 IMAGINE_OUTPUT_DIR = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SUBDIR)
@@ -219,6 +251,7 @@ KLING_API_URL = 'https://api.klingai.com/v1'
 KLING_TIMEOUT_SECONDS = int(os.environ.get('KLING_TIMEOUT_SECONDS', '600'))
 KLING_POLL_INTERVAL_SECONDS = int(os.environ.get('KLING_POLL_INTERVAL_SECONDS', '10'))
 PUBLIC_BASE_URL = (os.environ.get('PUBLIC_BASE_URL') or '').rstrip('/') or None
+app.config['PUBLIC_BASE_URL'] = PUBLIC_BASE_URL
 try:
     imagine_executor = ThreadPoolExecutor(max_workers=int(os.environ.get('IMAGINE_MAX_WORKERS', '2')))
 except Exception:
@@ -258,44 +291,6 @@ RUNWAY_MODEL_RATIO_OPTIONS: Dict[str, Dict[str, Any]] = {
         'square': ['1280:720']
     }
 }
-
-def optimize_image(file_path, max_width=1920, quality=85):
-    """Optimize image for web - compress and resize if needed, preserving format when possible."""
-    if not PIL_AVAILABLE:
-        return False
-
-    try:
-        ext = os.path.splitext(file_path)[1].lower()
-        with Image.open(file_path) as img:
-            # Resize if image is too large
-            if img.width > max_width:
-                ratio = max_width / img.width
-                new_height = int(img.height * ratio)
-                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
-
-            if ext in ('.jpg', '.jpeg'):
-                # Convert to RGB for JPEG
-                if img.mode not in ('RGB', 'L'):
-                    img = img.convert('RGB')
-                img.save(file_path, format='JPEG', quality=quality, optimize=True, progressive=True)
-            elif ext == '.png':
-                # Preserve transparency if present
-                save_params = {'optimize': True}
-                try:
-                    # Use maximum compression level if available
-                    save_params['compress_level'] = 9
-                except Exception:
-                    pass
-                img.save(file_path, format='PNG', **save_params)
-            elif ext == '.webp':
-                img.save(file_path, format='WEBP', quality=quality, method=6)
-            else:
-                # For GIF and other formats, skip heavy processing
-                return False
-            return True
-    except Exception as e:
-        logger.warning(f"Could not optimize image {file_path}: {e}")
-        return False
 
 # Session configuration: persist login for 30 days
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -396,28 +391,6 @@ def verify_required():
         return render_template('verify_required.html')
     except Exception:
         return render_template('verify_required.html')
-
-@app.route('/onboarding')
-@login_required
-def onboarding_react():
-    try:
-        try:
-            logger.info(f"Serving /onboarding for user={session.get('username')}, referer={request.headers.get('Referer')}")
-        except Exception:
-            pass
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
-        return resp
-    except Exception as e:
-        logger.error(f"Error serving React onboarding: {str(e)}")
-        abort(500)
 
 def generate_email_token(email: str) -> str:
     s = _get_serializer()
@@ -698,57 +671,6 @@ def enforce_canonical_host():
         # Never block request on redirect failure
         return None
 
-def _issue_remember_token(response, username: str):
-    try:
-        # random 32-byte token -> hash stored; raw token in cookie
-        raw = secrets.token_urlsafe(48)
-        token_hash = sha256(raw.encode()).hexdigest()
-        now = datetime.utcnow()
-        expires = now + timedelta(days=30)
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("INSERT INTO remember_tokens (username, token_hash, created_at, expires_at) VALUES (?,?,?,?)",
-                      (username, token_hash, now.isoformat(), expires.isoformat()))
-            conn.commit()
-        # Set cookie
-        response.set_cookie(
-            'remember_token', raw,
-            max_age=30*24*60*60,
-            secure=True,
-            httponly=True,
-            samesite='Lax',
-            domain=app.config.get('SESSION_COOKIE_DOMAIN') or None,
-            path='/'
-        )
-    except Exception as e:
-        logger.warning(f"Failed to issue remember token: {e}")
-
-@app.before_request
-def auto_login_from_remember_token():
-    try:
-        if 'username' in session:
-            return
-        raw = request.cookies.get('remember_token')
-        if not raw:
-            return
-        token_hash = sha256(raw.encode()).hexdigest()
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT username, expires_at FROM remember_tokens WHERE token_hash=? ORDER BY id DESC LIMIT 1", (token_hash,))
-            row = c.fetchone()
-        if not row:
-            return
-        username = row['username'] if hasattr(row, 'keys') else row[0]
-        expires_at = row['expires_at'] if hasattr(row, 'keys') else row[1]
-        if datetime.fromisoformat(expires_at) < datetime.utcnow():
-            return
-        # restore session
-        session.permanent = True
-        session['username'] = username
-    except Exception as e:
-        # logger not yet defined here, use print for now
-        print(f"WARNING: auto_login_from_remember_token failed: {e}")
-
 # Create uploads directory if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -860,13 +782,7 @@ except ImportError as e:
 XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
 DAILY_API_LIMIT = 10
 
-USE_MYSQL = (os.getenv('DB_BACKEND', 'sqlite').lower() == 'mysql')
 MENTIONS_ENABLED = os.getenv('MENTIONS_ENABLED', 'false').lower() == 'true'
-
-# Database connection helper: MySQL in production (if configured), SQLite locally
-def get_sql_placeholder():
-    """Get the correct SQL placeholder based on database type"""
-    return '%s' if USE_MYSQL else '?'
 
 def normalize_id_list(raw) -> List[int]:
     """Normalize incoming payload (list or JSON string) into a unique list of ints preserving order."""
@@ -889,41 +805,6 @@ def normalize_id_list(raw) -> List[int]:
             except Exception:
                 pass
     return result
-
-def get_parent_chain_ids(cursor, community_id: int) -> List[int]:
-    """Return ordered list of parent community IDs (direct parent first) up to root."""
-    parents: List[int] = []
-    visited: set[int] = set()
-    current = community_id
-    placeholder = get_sql_placeholder()
-    while current:
-        cursor.execute(f"SELECT parent_community_id FROM communities WHERE id = {placeholder}", (current,))
-        row = cursor.fetchone()
-        if not row:
-            break
-        parent_id = row['parent_community_id'] if hasattr(row, 'keys') else row[0]
-        if not parent_id or parent_id in visited:
-            break
-        visited.add(parent_id)
-        parents.append(parent_id)
-        current = parent_id
-    return parents
-
-def fetch_community_names(cursor, community_ids: List[int]) -> List[str]:
-    """Fetch community names preserving order of provided IDs."""
-    ids = [cid for cid in community_ids if cid is not None]
-    if not ids:
-        return []
-    placeholders = ','.join([get_sql_placeholder()] * len(ids))
-    cursor.execute(f"SELECT id, name FROM communities WHERE id IN ({placeholders})", tuple(ids))
-    rows = cursor.fetchall()
-    id_to_name: Dict[int, str] = {}
-    for row in rows:
-        cid = row['id'] if hasattr(row, 'keys') else row[0]
-        name = row['name'] if hasattr(row, 'keys') else row[1]
-        id_to_name[cid] = name
-    return [id_to_name[cid] for cid in ids if cid in id_to_name]
-
 
 class CommunityMembershipLimitError(Exception):
     """Raised when a free-plan community exceeds its member capacity."""
@@ -949,89 +830,6 @@ def fetch_user_subscription(cursor, username: Optional[str]) -> str:
 
 def is_free_subscription(subscription_value: str) -> bool:
     return subscription_value not in {'premium'}
-
-
-def get_community_basic(cursor, community_id: int) -> Optional[Dict[str, Any]]:
-    placeholder = get_sql_placeholder()
-    cursor.execute(f"SELECT id, creator_username, parent_community_id FROM communities WHERE id = {placeholder}", (community_id,))
-    row = cursor.fetchone()
-    if not row:
-        return None
-    if hasattr(row, 'keys'):
-        return {
-            'id': row.get('id'),
-            'creator_username': row.get('creator_username'),
-            'parent_community_id': row.get('parent_community_id'),
-        }
-    return {
-        'id': row[0] if len(row) > 0 else None,
-        'creator_username': row[1] if len(row) > 1 else None,
-        'parent_community_id': row[2] if len(row) > 2 else None,
-    }
-
-
-def get_community_ancestors(cursor, community_id: int) -> List[Dict[str, Any]]:
-    """Return list of ancestor community records starting from the specified community."""
-    ancestors: List[Dict[str, Any]] = []
-    current_id = community_id
-    visited: Set[int] = set()
-    while current_id:
-        if current_id in visited:
-            break
-        visited.add(current_id)
-        info = get_community_basic(cursor, current_id)
-        if not info:
-            break
-        ancestors.append(info)
-        current_id = info.get('parent_community_id')
-    return ancestors
-
-
-def get_descendant_community_ids(cursor, community_id: int) -> List[int]:
-    """Return descendant community IDs (including the provided one) ordered deepest-first."""
-    try:
-        from collections import deque
-        queue = deque([(community_id, 0)])
-        pop_left = True
-    except Exception:
-        queue = [(community_id, 0)]  # type: ignore
-        pop_left = False
-
-    seen: Set[int] = set()
-    results: List[Tuple[int, int]] = []
-
-    while queue:
-        if pop_left:
-            current_id, depth = queue.popleft()  # type: ignore
-        else:
-            current_id, depth = queue.pop(0)  # type: ignore
-
-        if current_id in seen:
-            continue
-        seen.add(current_id)
-        results.append((current_id, depth))
-
-        placeholder = get_sql_placeholder()
-        try:
-            cursor.execute(f"SELECT id FROM communities WHERE parent_community_id = {placeholder}", (current_id,))
-            rows = cursor.fetchall() or []
-        except Exception as child_err:
-            logger.warning(f"Failed to load child communities for {current_id}: {child_err}")
-            rows = []
-
-        for row in rows:
-            try:
-                child_id = row['id'] if hasattr(row, 'keys') else row[0]
-            except Exception:
-                child_id = None
-            if child_id and child_id not in seen:
-                if pop_left:
-                    queue.append((child_id, depth + 1))  # type: ignore
-                else:
-                    queue.append((child_id, depth + 1))  # type: ignore
-
-    results.sort(key=lambda item: item[1], reverse=True)
-    return [cid for cid, _ in results]
 
 
 def delete_community_records(cursor, community_id: int) -> None:
@@ -1331,126 +1129,6 @@ def filter_major_cities(country_name: str, incoming: List[str]) -> List[str]:
         if len(unique) >= 24:
             break
     return unique
-
-def get_db_connection():
-    if USE_MYSQL:
-        try:
-            try:
-                import pymysql
-                from pymysql.cursors import DictCursor
-            except Exception as imp_err:
-                logger.error(f"PyMySQL not installed or failed to import: {imp_err}")
-                raise
-
-            host = os.environ.get('MYSQL_HOST')
-            user = os.environ.get('MYSQL_USER')
-            password = os.environ.get('MYSQL_PASSWORD')
-            database = os.environ.get('MYSQL_DB')
-            if not all([host, user, password, database]):
-                raise RuntimeError('Missing MySQL env vars: MYSQL_HOST, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB')
-
-            conn = pymysql.connect(
-                host=host,
-                user=user,
-                password=password,
-                database=database,
-                charset='utf8mb4',
-                autocommit=True,
-                cursorclass=DictCursor,
-                connect_timeout=int(os.environ.get('MYSQL_CONNECT_TIMEOUT', '5')),
-                read_timeout=int(os.environ.get('MYSQL_READ_TIMEOUT', '15')),
-                write_timeout=int(os.environ.get('MYSQL_WRITE_TIMEOUT', '15')),
-            )
-            # Wrap cursor to adapt SQLite-style SQL to MySQL at runtime
-            try:
-                orig_cursor = conn.cursor
-
-                def _adapt_sql(sql: str) -> str:
-                    s = sql
-                    # Common cross-db adaptations
-                    s = s.replace('INSERT IGNORE', 'INSERT IGNORE')
-                    s = s.replace("NOW()", 'NOW()')
-                    return s
-
-                class _ProxyCursor:
-                    def __init__(self, real):
-                        self._real = real
-                    def execute(self, query, params=None):
-                        q = _adapt_sql(query)
-                        if params is not None:
-                            # Convert SQLite qmark '?' to MySQL '%s'
-                            q = q.replace('?', '%s')
-                            return self._real.execute(q, params)
-                        return self._real.execute(q)
-                    def executemany(self, query, param_seq):
-                        q = _adapt_sql(query).replace('?', '%s')
-                        return self._real.executemany(q, param_seq)
-                    def __getattr__(self, name):
-                        return getattr(self._real, name)
-
-                def _patched_cursor(*args, **kwargs):
-                    return _ProxyCursor(orig_cursor(*args, **kwargs))
-
-                conn.cursor = _patched_cursor  # type: ignore[attr-defined]
-            except Exception as _wrap_err:
-                logger.warning(f"Could not wrap MySQL cursor for SQL adaptation: {_wrap_err}")
-            return conn
-        except Exception as e:
-            logger.error(f"Failed to connect to MySQL: {e}")
-            raise
-    else:
-        # SQLite (default for local dev)
-        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'users.db')
-        try:
-            conn = sqlite3.connect(db_path)
-            conn.row_factory = sqlite3.Row
-            # Wrap cursor to adapt MySQL-flavored SQL to SQLite at runtime
-            try:
-                orig_cursor = conn.cursor
-
-                def _adapt_sqlite_sql(sql: str) -> str:
-                    s = sql
-                    # Convert INSERT IGNORE -> INSERT OR IGNORE
-                    s = s.replace('INSERT IGNORE', 'INSERT OR IGNORE')
-                    # Convert AUTO_INCREMENT -> AUTOINCREMENT
-                    s = s.replace('PRIMARY KEY AUTO_INCREMENT', 'PRIMARY KEY AUTOINCREMENT')
-                    s = s.replace('AUTO_INCREMENT', 'AUTOINCREMENT')
-                    # Normalize NOW() -> datetime('now')
-                    s = s.replace('NOW()', "datetime('now')")
-                    return s
-
-                class _ProxyCursor:
-                    def __init__(self, real):
-                        self._real = real
-                    def execute(self, query, params=None):
-                        q = _adapt_sqlite_sql(query)
-                        if params is not None:
-                            return self._real.execute(q, params)
-                        return self._real.execute(q)
-                    def executemany(self, query, param_seq):
-                        q = _adapt_sqlite_sql(query)
-                        return self._real.executemany(q, param_seq)
-                    def __getattr__(self, name):
-                        return getattr(self._real, name)
-
-                def _patched_cursor(*args, **kwargs):
-                    return _ProxyCursor(orig_cursor(*args, **kwargs))
-
-                conn.cursor = _patched_cursor  # type: ignore[attr-defined]
-            except Exception as _wrap_err:
-                logger.warning(f"Could not wrap SQLite cursor for SQL adaptation: {_wrap_err}")
-            return conn
-        except Exception as e:
-            logger.error(f"Failed to connect to database at {db_path}: {e}")
-            # Try to ensure database exists and retry
-            try:
-                ensure_database_exists()
-                conn = sqlite3.connect(db_path)
-                conn.row_factory = sqlite3.Row
-                return conn
-            except Exception as e2:
-                logger.error(f"Failed to create database and connect: {e2}")
-                raise
 
 def ensure_database_exists():
     """Ensure the database and all tables exist."""
@@ -3437,76 +3115,23 @@ def ensure_indexes():
         logger.error(f"Error ensuring indexes: {e}")
         abort(500)
 
-# Permission helper functions
-def is_app_admin(username):
-    """Check if user is the app admin"""
-    try:
-        return bool(username) and username.lower() in ('admin', 'paulo')
-    except Exception:
-        return False
-
-def is_community_owner(username, community_id):
-    """Check if user is the owner of a community (MySQL/SQLite-safe)."""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT creator_username FROM communities WHERE id = {ph}", (community_id,))
-            result = c.fetchone()
-            if not result:
-                return False
-            creator = result['creator_username'] if hasattr(result, 'keys') else result[0]
-            return creator == username
-    except Exception as _e:
-        return False
-
-def is_community_admin(username, community_id):
-    """Check if user is an admin of a community (MySQL/SQLite-safe).
-    Accept admin via user_communities.role = 'admin' OR community_admins entry.
-    """
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            # Check user_communities role
-            try:
-                c.execute(
-                    f"""
-                    SELECT uc.role
-                    FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.id
-                    WHERE u.username = {ph} AND uc.community_id = {ph}
-                    """,
-                    (username, community_id),
-                )
-                row = c.fetchone()
-                if row:
-                    role = row['role'] if hasattr(row, 'keys') else row[0]
-                    if (role or '').lower() == 'admin':
-                        return True
-            except Exception:
-                pass
-
-            # Fallback: explicit community_admins table
-            c.execute(
-                f"SELECT 1 FROM community_admins WHERE community_id = {ph} AND username = {ph}",
-                (community_id, username),
-            )
-            return c.fetchone() is not None
-    except Exception as _e:
-        return False
-
 def has_community_management_permission(username, community_id):
     """Check if user can manage a community (app admin, owner, or community admin)"""
-    return (is_app_admin(username) or 
-            is_community_owner(username, community_id) or 
-            is_community_admin(username, community_id))
+    return (
+        is_app_admin(username)
+        or is_community_owner(username, community_id)
+        or is_community_admin(username, community_id)
+    )
+
+
 def has_post_delete_permission(username, post_username, community_id):
     """Check if user can delete a post"""
-    return (is_app_admin(username) or 
-            username == post_username or
-            is_community_owner(username, community_id) or 
-            is_community_admin(username, community_id))
+    return (
+        is_app_admin(username)
+        or username == post_username
+        or is_community_owner(username, community_id)
+        or is_community_admin(username, community_id)
+    )
 
 if not USE_MYSQL:
     init_db()
@@ -3694,94 +3319,6 @@ def format_date(date_str, format_str):
     except Exception as e:
         logger.error(f"Error formatting date {date_str}: {str(e)}")
         return date_str
-
-# --- File upload helpers ---
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def save_uploaded_file(file, subfolder=None):
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        # Add timestamp to make filename unique
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        name, ext = os.path.splitext(filename)
-        unique_filename = f"{name}_{timestamp}{ext}"
-        
-        # Create subfolder if specified
-        if subfolder:
-            upload_path = os.path.join(app.config['UPLOAD_FOLDER'], subfolder)
-            os.makedirs(upload_path, exist_ok=True)
-            filepath = os.path.join(upload_path, unique_filename)
-            return_path = f"uploads/{subfolder}/{unique_filename}"
-        else:
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-            return_path = f"uploads/{unique_filename}"
-        
-        file.save(filepath)
-        # Optimize only if this is an image
-        try:
-            ext = (os.path.splitext(filename)[1] or '').lower().lstrip('.')
-            if ext in {'png', 'jpg', 'jpeg', 'gif', 'webp'}:
-                optimize_image(filepath, max_width=1280, quality=80)
-        except Exception:
-            # Never fail the request due to optimization issues
-            pass
-        return return_path
-    return None
-
-
-def normalize_upload_reference(path: Optional[str]) -> Optional[str]:
-    if not path:
-        return None
-    p = str(path).strip()
-    if not p:
-        return None
-    if p.startswith('static/uploads/'):
-        p = p[len('static/'):]  # drop static/
-    if p.startswith('/static/uploads/'):
-        p = p[len('/static/'):]  # leading slash variant
-    if p.startswith('/uploads/'):
-        p = p[1:]
-    if not p.startswith('uploads/'):
-        p = f"uploads/{p.lstrip('/')}"
-    return p
-
-
-def resolve_upload_abspath(path: Optional[str]) -> Optional[str]:
-    rel = normalize_upload_reference(path)
-    if not rel:
-        return None
-    relative_inside_uploads = rel.split('uploads/', 1)[1] if 'uploads/' in rel else rel
-    abs_path = os.path.join(app.config['UPLOAD_FOLDER'], relative_inside_uploads)
-    return abs_path
-
-
-def load_upload_bytes(path: Optional[str]) -> Optional[bytes]:
-    abs_path = resolve_upload_abspath(path)
-    if not abs_path or not os.path.exists(abs_path):
-        return None
-    try:
-        with open(abs_path, 'rb') as fh:
-            return fh.read()
-    except Exception as e:
-        logger.error(f"Failed reading upload file {abs_path}: {e}")
-        return None
-
-
-def get_public_upload_url(path: Optional[str]) -> Optional[str]:
-    rel = normalize_upload_reference(path)
-    if not rel:
-        return None
-    rel_url = f"/{rel}"
-    if PUBLIC_BASE_URL:
-        return urljoin(PUBLIC_BASE_URL + '/', rel)
-    try:
-        base = request.host_url.rstrip('/')
-        return f"{base}{rel_url}"
-    except Exception:
-        return rel_url
-
 
 def transcribe_audio_file(audio_file_path):
     """
@@ -4649,495 +4186,10 @@ def check_api_limit(username):
         abort(500)
 
 # Routes
-@app.route('/', methods=['GET'])
-def index():
-    # Guests: mobile -> React welcome (serve SPA directly), desktop -> HTML
-    # Logged-in users -> dashboard
-    try:
-        if session.get('username'):
-            return redirect(url_for('premium_dashboard'))
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            try:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                dist_dir = os.path.join(base_dir, 'client', 'dist')
-                index_path = os.path.join(dist_dir, 'index.html')
-                if os.path.exists(index_path):
-                    resp = send_from_directory(dist_dir, 'index.html')
-                    try:
-                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                        resp.headers['Pragma'] = 'no-cache'
-                        resp.headers['Expires'] = '0'
-                    except Exception:
-                        pass
-                    return resp
-            except Exception as e:
-                logger.warning(f"React mobile index not available: {e}")
-        return render_template('index.html')
-    except Exception as e:
-        logger.error(f"Error in / route: {str(e)}")
-        return ("Internal Server Error", 500)
-
-@app.route('/welcome', methods=['GET'])
-def welcome():
-    # Public React entry for welcome (mobile only). Desktop users go to '/' (HTML).
-    try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if not is_mobile:
-            return redirect(url_for('index'))
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        index_path = os.path.join(dist_dir, 'index.html')
-        if os.path.exists(index_path):
-            resp = send_from_directory(dist_dir, 'index.html')
-            try:
-                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                resp.headers['Pragma'] = 'no-cache'
-                resp.headers['Expires'] = '0'
-            except Exception:
-                pass
-            return resp
-        # Fallback: HTML welcome if React build missing
-        return render_template('onboarding_welcome.html', username=session.get('username'))
-    except Exception as e:
-        logger.error(f"Error in /welcome: {e}")
-        return ("Internal Server Error", 500)
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    # Dedicated login route: handles username submission -> login_password
-    try:
-        if request.method == 'GET':
-            # Starting (or returning to) username entry: clear any staged or active login
-            try:
-                session.pop('pending_username', None)
-                session.pop('username', None)
-                session.permanent = False
-            except Exception:
-                pass
-            ua = request.headers.get('User-Agent', '')
-            is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-            if is_mobile:
-                # Serve React login for mobile
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                dist_dir = os.path.join(base_dir, 'client', 'dist')
-                index_path = os.path.join(dist_dir, 'index.html')
-                if os.path.exists(index_path):
-                    resp = send_from_directory(dist_dir, 'index.html')
-                    try:
-                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                        resp.headers['Pragma'] = 'no-cache'
-                        resp.headers['Expires'] = '0'
-                        # Clear remember token cookie so back/forward cannot revive stale auth
-                        resp.set_cookie('remember_token', '', max_age=0, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN') or None)
-                    except Exception:
-                        pass
-                    return resp
-            from flask import make_response
-            resp = make_response(render_template('index.html'))
-            try:
-                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                resp.headers['Pragma'] = 'no-cache'
-                resp.headers['Expires'] = '0'
-                resp.set_cookie('remember_token', '', max_age=0, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN') or None)
-            except Exception:
-                pass
-            return resp
-        # POST
-        username = (request.form.get('username') or '').strip()
-        invite_token = (request.form.get('invite_token') or '').strip()
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if not username:
-            if is_mobile:
-                return redirect('/login?' + urlencode({'error': 'Please enter a username!'}))
-            return render_template('index.html', error="Please enter a username!")
-        try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                placeholder = get_sql_placeholder()
-                c.execute(f"SELECT 1 FROM users WHERE username={placeholder} LIMIT 1", (username,))
-                exists = c.fetchone() is not None
-        except Exception as e:
-            logger.error(f"Database error validating username '{username}': {e}")
-            if is_mobile:
-                return redirect('/login?' + urlencode({'error': 'Server error. Please try again.'}))
-            return render_template('index.html', error=f"Database error: {str(e)}")
-        if not exists:
-            if is_mobile:
-                return redirect('/login?' + urlencode({'error': 'Username does not exist'}))
-            return render_template('index.html', error="Username does not exist")
-        # Stage username for password entry; do NOT authenticate yet.
-        # Also clear any previous active "username" to avoid remaining logged in during the flow.
-        try:
-            session.pop('username', None)
-        except Exception:
-            pass
-        session.permanent = False
-        session['pending_username'] = username
-        # Preserve invite token if present
-        if invite_token:
-            session['pending_invite_token'] = invite_token
-        session.modified = True
-        return redirect(url_for('login_password'))
-    except Exception as e:
-        logger.error(f"Error in /login: {e}")
-        return ("Internal Server Error", 500)
-
-@app.route('/login_x')
-def login_x():
-    # X/Twitter OAuth is not configured yet
-    # To enable this feature, you need to:
-    # 1. Register your app at https://developer.twitter.com/
-    # 2. Get API keys (consumer key and secret)
-    # 3. Install authlib: pip install authlib
-    # 4. Configure OAuth in the app
-    flash('Sign in with X is not available yet. This feature requires API configuration.', 'error')
-    return redirect(url_for('index'))
-    # When configured, uncomment the following:
-    # return x_auth.authorize(callback=url_for('authorized', _external=True))
-
-@app.route('/callback')
-def authorized():
-    # This is the OAuth callback route for X/Twitter login
-    # Currently disabled as OAuth is not configured
-    flash('Sign in with X is not available yet. This feature requires API configuration.', 'error')
-    return redirect(url_for('index'))
-    
-    # When OAuth is configured, uncomment the following:
-    # try:
-    #     resp = x_auth.authorized_response()
-    #     if resp is None or resp.get('access_token') is None:
-    #         error_msg = request.args.get('error_description', 'Unknown error')
-    #         return render_template('index.html', error=f"Login failed: {error_msg}")
-    #     session['x_token'] = (resp['access_token'], '')
-    #     headers = {'Authorization': f"Bearer {resp['access_token']}"}
-    #     user_info = requests.get('https://api.x.com/2/users/me', headers=headers, params={'user.fields': 'username'})
-    #     if user_info.status_code != 200:
-    #         return render_template('index.html', error=f"X API error: {user_info.text}")
-    #     user_data = user_info.json()['data']
-    #     username = user_data['username']
-    #     with get_db_connection() as conn:
-    #         c = conn.cursor()
-    #         c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    #         user = c.fetchone()
-    #         if not user:
-    #             c.execute("INSERT INTO users (username, subscription, password) VALUES (?, 'free', ?)",
-    #                       (username, 'default_password'))
-    #             conn.commit()
-    #     session['username'] = username
-    #     return redirect(url_for('premium_dashboard') if user and user['subscription'] == 'premium' else url_for('dashboard'))
-    # except Exception as e:
-    #     logger.error(f"Error in authorized route: {str(e)}")
-    #     abort(500)
-@app.route('/signup', methods=['GET', 'POST'])
-# @csrf.exempt
-def signup():
-    """User registration page"""
-    if request.method == 'GET':
-        # Smart UA: mobile -> React signup, desktop -> HTML
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-        else:
-            return render_template('signup.html')
-    
-    # Handle POST request for user registration (supports both React and HTML forms)
-    # React form sends individual fields, HTML form sends full_name
-    desired_username = request.form.get('username', '').strip()
-    first_name = request.form.get('first_name', '').strip()
-    last_name = request.form.get('last_name', '').strip()
-    full_name = request.form.get('full_name', '').strip()
-    email = request.form.get('email', '').strip()
-    mobile = request.form.get('mobile', '').strip()
-    password = request.form.get('password', '')
-    confirm_password = request.form.get('confirm_password', '')
-    invite_token = request.form.get('invite_token', '').strip()
-    
-    # Check if this is an invited signup
-    invitation = None
-    if invite_token:
-        try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                c.execute("""
-                    SELECT ci.id, ci.community_id, ci.invited_email, ci.used,
-                           c.name as community_name, ci.invited_by_username,
-                           ci.include_nested_ids, ci.include_parent_ids
-                    FROM community_invitations ci
-                    JOIN communities c ON ci.community_id = c.id
-                    WHERE ci.token = ? AND ci.used = 0
-                """, (invite_token,))
-                invitation = c.fetchone()
-                
-                if invitation:
-                    invited_email = invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[2]
-                    
-                    # Check if this is a QR code invitation (placeholder email)
-                    is_qr_invite = invited_email.startswith('qr-invite-') and invited_email.endswith('@placeholder.local')
-                    
-                    if not is_qr_invite:
-                        # Regular email invitation - email must match
-                        if email and email.lower() != invited_email.lower():
-                            error_msg = 'Email does not match invitation'
-                            if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-                                return jsonify({'success': False, 'error': error_msg}), 400
-                            else:
-                                return render_template('signup.html', error=error_msg)
-                        # Use email from invitation if not provided
-                        if not email:
-                            email = invited_email
-                    # For QR code invitations, user can use any email (don't pre-fill)
-        except Exception as e:
-            logger.error(f"Error checking invitation: {e}")
-            invitation = None
-    
-    # Handle both form types
-    if not first_name and not last_name and full_name:
-        # HTML form - split full name
-        parts = full_name.split()
-        first_name = parts[0] if parts else ''
-        last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
-    elif first_name and last_name:
-        # React form - use individual names
-        full_name = f"{first_name} {last_name}".strip()
-    
-    # Validation
-    if not all([first_name, email, password, confirm_password]):
-        error_msg = 'All required fields must be filled'
-        # Check if this is a React request (JSON or AJAX)
-        if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded' and any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-            return jsonify({'success': False, 'error': error_msg}), 400
-        else:
-            return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
-    
-    if password != confirm_password:
-        error_msg = 'Passwords do not match'
-        # Check if this is a React request
-        if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded' and any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-            return jsonify({'success': False, 'error': error_msg}), 400
-        else:
-            return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
-    
-    if len(password) < 6:
-        error_msg = 'Password must be at least 6 characters long'
-        # Check if this is a React request
-        if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-            return jsonify({'success': False, 'error': error_msg}), 400
-        else:
-            return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
-    
-    # Username handling: user-provided or auto-generate
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Check if email already exists
-            c.execute("SELECT 1 FROM users WHERE email = ?", (email,))
-            if c.fetchone():
-                error_msg = 'Email already registered'
-                # Check if this is a React request
-                if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-                    return jsonify({'success': False, 'error': error_msg}), 400
-                else:
-                    return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
-            
-            # If provided, validate uniqueness and allowed chars; else auto-generate
-            if desired_username:
-                candidate = re.sub(r'[^a-z0-9_]', '', desired_username.lower())
-                if not candidate:
-                    return jsonify({'success': False, 'error': 'Invalid username'}), 400
-                c.execute("SELECT 1 FROM users WHERE username = ?", (candidate,))
-                if c.fetchone():
-                    return jsonify({'success': False, 'error': 'Username already taken'}), 400
-                username = candidate
-            else:
-                base_username = (email.split('@')[0] if email else (first_name + last_name)).lower()
-                base_username = re.sub(r'[^a-z0-9_]', '', base_username) or 'user'
-                username = base_username
-                suffix = 1
-                while True:
-                    c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
-                    if not c.fetchone():
-                        break
-                    suffix += 1
-                    username = f"{base_username}{suffix}"
-            
-            # Hash the password (store in pending)
-            hashed_password = generate_password_hash(password)
-
-            # If invited, directly create user (email pre-verified)
-            if invitation:
-                try:
-                    invitation_id = invitation['id'] if hasattr(invitation, 'keys') else invitation[0]
-                    community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
-                    community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4]
-                    raw_nested_values = invitation['include_nested_ids'] if hasattr(invitation, 'keys') else (invitation[6] if len(invitation) > 6 else None)
-                    raw_parent_values = invitation['include_parent_ids'] if hasattr(invitation, 'keys') else (invitation[7] if len(invitation) > 7 else None)
-                    nested_ids = normalize_id_list(raw_nested_values) if raw_nested_values else []
-                    parent_ids_to_join = normalize_id_list(raw_parent_values) if raw_parent_values is not None else get_parent_chain_ids(c, community_id)
-                    
-                    # Create user directly (email already verified via invitation)
-                    c.execute("""
-                        INSERT INTO users (username, first_name, last_name, email, mobile, password, subscription, email_verified, email_verified_at)
-                        VALUES (?, ?, ?, ?, ?, ?, 'free', 1, ?)
-                    """, (username, first_name, last_name, email, mobile, hashed_password, datetime.now().isoformat()))
-                    
-                    # Get user ID
-                    c.execute("SELECT id FROM users WHERE username = ?", (username,))
-                    user_row = c.fetchone()
-                    user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-                    
-                    # Auto-join the community and all parent communities
-                    communities_to_join: List[int] = []
-                    seen: Set[int] = set()
-
-                    def add_community(target_id: Optional[int]):
-                        if not target_id:
-                            return
-                        if target_id not in seen:
-                            seen.add(target_id)
-                            communities_to_join.append(target_id)
-
-                    add_community(community_id)
-                    for pid in parent_ids_to_join:
-                        add_community(pid)
-                    for nid in nested_ids:
-                        add_community(nid)
-                        for ancestor_id in get_parent_chain_ids(c, nid):
-                            add_community(ancestor_id)
-                    
-                    # Join all communities (invited community + selected extras)
-                    for comm_id in communities_to_join:
-                        # Check if already a member
-                        c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
-                        if not c.fetchone():
-                            try:
-                                add_user_to_community(c, user_id, int(comm_id), role='member')
-                            except CommunityMembershipLimitError as limit_err:
-                                conn.rollback()
-                                error_msg = str(limit_err)
-                                is_mobile_request = any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-                                if is_mobile_request:
-                                    return jsonify({'success': False, 'error': error_msg}), 403
-                                flash(error_msg, 'error')
-                                return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
-                    
-                    # Mark invitation as used
-                    c.execute("""
-                        UPDATE community_invitations 
-                        SET used = 1, used_at = ?
-                        WHERE id = ?
-                    """, (datetime.now().isoformat(), invitation_id))
-                    
-                    # Send notifications to community admins/owners
-                    notify_community_new_member(community_id, username, conn)
-                    
-                    conn.commit()
-                    
-                    # Log the user in
-                    session['username'] = username
-                    session.permanent = True
-                    
-                    # Return success with community info
-                    ua = request.headers.get('User-Agent', '')
-                    is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-                    if is_mobile:
-                        return jsonify({
-                            'success': True, 
-                            'redirect': '/premium_dashboard',
-                            'invited_to_community': community_name,
-                            'needs_email_verification': False
-                        })
-                    else:
-                        flash(f'Welcome! You have been added to {community_name}', 'success')
-                        return redirect(url_for('premium_dashboard'))
-                        
-                except Exception as invite_err:
-                    logger.error(f"Error processing invitation signup: {invite_err}")
-                    # Fall back to normal signup flow
-                    invitation = None
-
-            # Ensure pending table exists
-            try:
-                ensure_pending_signups_table(c)
-            except Exception:
-                pass
-
-            # Replace any prior pending signups for this email
-            try:
-                c.execute("DELETE FROM pending_signups WHERE email = ?", (email,))
-            except Exception:
-                pass
-
-            # Insert pending signup
-            c.execute(
-                """
-                INSERT INTO pending_signups (username, email, password, first_name, last_name, mobile, verification_sent_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (username, email, hashed_password, first_name, last_name, mobile, datetime.now().isoformat())
-            )
-            conn.commit()
-
-            # Send verification email with pending token
-            try:
-                pending_id = c.lastrowid if hasattr(c, 'lastrowid') else None
-                if not pending_id:
-                    try:
-                        c.execute("SELECT id FROM pending_signups WHERE email=? ORDER BY id DESC LIMIT 1", (email,))
-                        r = c.fetchone()
-                        pending_id = r['id'] if hasattr(r,'keys') else (r[0] if r else None)
-                    except Exception:
-                        pending_id = None
-                token = generate_pending_signup_token(int(pending_id or 0), email)
-                verify_url = _build_verify_url(token)
-                subject = "Verify your C-Point email"
-                html = f"""
-                    <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
-                      <p>Welcome to C-Point!</p>
-                      <p>Please verify your email by clicking the button below:</p>
-                      <p><a href='{verify_url}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Verify Email</a></p>
-                      <p>Or open this link: <a href='{verify_url}'>{verify_url}</a></p>
-                      <p>This link expires in 24 hours.</p>
-                    </div>
-                """
-                _send_email_via_resend(email, subject, html)
-                try:
-                    c.execute("UPDATE pending_signups SET verification_sent_at=? WHERE id=?", (datetime.now().isoformat(), pending_id))
-                    conn.commit()
-                except Exception:
-                    pass
-            except Exception as e:
-                logger.warning(f"Could not send verification email (pending): {e}")
-
-            # Respond without creating user or logging in
-            ua = request.headers.get('User-Agent', '')
-            is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-            if is_mobile:
-                return jsonify({'success': True, 'needs_email_verification': True, 'pending': True})
-            else:
-                return render_template('verification_result.html', success=True, message='We sent a verification link to your email. Please verify to complete sign up.')
-            
-    except Exception as e:
-        logger.error(f"Error during user registration: {str(e)}")
-        import traceback
-        logger.error(f"Registration error traceback: {traceback.format_exc()}")
-        
-        # Smart error response: mobile -> JSON, desktop -> HTML
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            return jsonify({'success': False, 'error': 'An error occurred during registration. Please try again.'}), 500
-        else:
-            return render_template('signup.html', error='An error occurred during registration. Please try again.',
-                                   full_name=full_name, email=email, mobile=mobile)
+# Public-facing index/welcome routes live in backend.blueprints.public
+# Authentication flows (login/signup/logout) are registered via backend.blueprints.auth
+# Onboarding flows (React shell, debug helpers) live in backend.blueprints.onboarding
+# Notification pages/APIs and cron endpoints live in backend.blueprints.notifications
 
 @app.route('/admin_profile')
 @login_required
@@ -5158,7 +4210,7 @@ def logout():
     session.permanent = False
     # Clear remember token cookie
     from flask import make_response
-    resp = make_response(redirect(url_for('index')))
+    resp = make_response(redirect(url_for('public.index')))
     resp.set_cookie('remember_token', '', max_age=0, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN') or None)
     return resp
 @app.route('/login_password', methods=['GET', 'POST'])
@@ -5168,7 +4220,7 @@ def login_password():
     # Use staged username for password entry; do not require full auth here
     if 'pending_username' not in session and 'username' not in session:
         # No staged login; return to username page
-        return redirect(url_for('login'))
+        return redirect(url_for('auth.login'))
     # Prefer staged username for password flow; fall back to current session user
     username = session.get('pending_username') or session.get('username')
     if request.method == 'POST':
@@ -5198,7 +4250,7 @@ def login_password():
                 if not is_active:
                     flash('Your account has been deactivated. Please contact the administrator.', 'error')
                     session.clear()
-                    return redirect(url_for('index'))
+                    return redirect(url_for('public.index'))
                 
                 # Check if password is hashed (bcrypt hashes start with $2b$, $2a$, or $2y$)
                 # or scrypt/pbkdf2 hashes from werkzeug start with 'scrypt:' or 'pbkdf2:'
@@ -5377,7 +4429,7 @@ def login_back():
         session.pop('pending_username', None)
     except Exception:
         pass
-    return redirect(url_for('login'))
+    return redirect(url_for('auth.login'))
 
 @app.route('/dashboard')
 @login_required
@@ -6458,22 +5510,6 @@ def is_app_admin(username):
         return bool(username) and username.lower() == 'admin'
     except Exception:
         return False
-
-def is_community_owner(username, community_id):
-    """Check if a user owns a community"""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
-            result = c.fetchone()
-            if result:
-                creator = result['creator_username'] if hasattr(result, 'keys') else result[0]
-                return creator == username
-    except Exception as e:
-        logger.error(f"Error checking community owner: {e}")
-    return False
-
-# --- Account deletion ---
 @app.route('/delete_account', methods=['POST'])
 @login_required
 def delete_account():
@@ -7486,92 +6522,13 @@ def admin_delete_community():
         logger.error(f"Error deleting community: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/admin/broadcast_notification', methods=['POST'])
-@login_required
-def admin_broadcast_notification():
-    """Send a platform-wide notification from the admin dashboard"""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
-    try:
-        payload = request.get_json() or {}
-    except Exception:
-        payload = {}
-
-    title = (payload.get('title') or '').strip()
-    message_body = (payload.get('message') or '').strip()
-    link = (payload.get('link') or '').strip()
-
-    if not title and not message_body:
-        return jsonify({'success': False, 'error': 'Message is required'}), 400
-
-    if len(title) > 140:
-        return jsonify({'success': False, 'error': 'Title must be 140 characters or fewer'}), 400
-
-    composite_message = title if title else ''
-    if message_body:
-        composite_message = f"{title}\n\n{message_body}".strip() if composite_message else message_body
-
-    if len(composite_message) > 2000:
-        return jsonify({'success': False, 'error': 'Message is too long (max 2000 characters)'}), 400
-
-    link_value: Optional[str] = link if link else None
-
-    broadcast_token = datetime.now().strftime('%Y%m%d%H%M%S')
-    notification_type = f"admin_broadcast:{broadcast_token}"
-    created_at_iso = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            if USE_MYSQL:
-                c.execute("SELECT username FROM users WHERE COALESCE(is_active, 1) = 1")
-            else:
-                c.execute("SELECT username FROM users WHERE COALESCE(is_active, 1) = 1")
-
-            rows = c.fetchall() or []
-            notified = 0
-
-            for row in rows:
-                target_username = row['username'] if hasattr(row, 'keys') else row[0]
-                if not target_username:
-                    continue
-                try:
-                    if USE_MYSQL:
-                        c.execute(
-                            """
-                            INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
-                            VALUES (%s, %s, %s, %s, NOW(), 0, %s)
-                            """,
-                            (target_username, username, notification_type, composite_message, link_value),
-                        )
-                    else:
-                        c.execute(
-                            """
-                            INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read, link)
-                            VALUES (?, ?, ?, ?, ?, 0, ?)
-                            """,
-                            (target_username, username, notification_type, composite_message, created_at_iso, link_value),
-                        )
-                    notified += 1
-                except Exception as insert_err:
-                    logger.warning(f"Broadcast notification insert failed for {target_username}: {insert_err}")
-
-            conn.commit()
-
-        return jsonify({'success': True, 'notified': notified})
-    except Exception as e:
-        logger.error(f"Error broadcasting notification: {e}")
-        return jsonify({'success': False, 'error': 'Failed to send notification'}), 500
-
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
     print(f"Admin route accessed by user: {session.get('username')}")
     if session['username'] != 'admin':
         print("User is not admin, redirecting")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     print("User is admin, proceeding")
 
     # Check if request is from mobile and serve React
@@ -7844,7 +6801,7 @@ def admin():
 @login_required
 def admin_test():
     if session['username'] != 'admin':
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     return "Admin test route is working!"
                     
 
@@ -9190,266 +8147,6 @@ def api_geo_cities():
         logger.error(f"Failed to load cities for {country}: {e}")
         return jsonify({'success': False, 'error': 'Failed to load cities'}), 500
 
-@app.route('/debug_onboarding')
-@login_required
-def debug_onboarding():
-    """Debug endpoint to check onboarding trigger conditions - visible on iOS"""
-    username = session['username']
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Get user data
-            c.execute("""
-                SELECT u.email_verified, u.email_verified_at,
-                       p.profile_picture
-                FROM users u
-                LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username = ?
-            """, (username,))
-            user = c.fetchone()
-            
-            # Get communities count
-            c.execute("""
-                SELECT COUNT(*) as cnt
-                FROM user_communities uc
-                JOIN users u ON uc.user_id = u.id
-                WHERE u.username = ?
-            """, (username,))
-            communities_row = c.fetchone()
-            communities_count = communities_row['cnt'] if hasattr(communities_row, 'keys') else communities_row[0]
-            
-            email_verified = bool(user['email_verified'] if hasattr(user, 'keys') else user[0]) if user else False
-            email_verified_at = (user['email_verified_at'] if hasattr(user, 'keys') else user[1]) if user else None
-            profile_picture = (user['profile_picture'] if hasattr(user, 'keys') else user[2]) if user else None
-            
-            # Calculate if recently verified
-            is_recently_verified = False
-            time_since_verification = None
-            if email_verified_at:
-                try:
-                    from datetime import datetime
-                    verified_time = datetime.fromisoformat(email_verified_at)
-                    now = datetime.now()
-                    diff = now - verified_time
-                    time_since_verification = f"{diff.total_seconds() / 3600:.1f} hours ago"
-                    is_recently_verified = diff.total_seconds() < (24 * 60 * 60)  # 24 hours
-                except:
-                    time_since_verification = "Error parsing timestamp"
-            
-            # Build HTML response
-            html = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Onboarding Debug</title>
-                <style>
-                    body {{ 
-                        font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
-                        padding: 20px; 
-                        background: #0b0b0b; 
-                        color: #fff;
-                        line-height: 1.6;
-                    }}
-                    .status {{ 
-                        padding: 15px; 
-                        margin: 10px 0; 
-                        border-radius: 8px; 
-                        border: 1px solid rgba(255,255,255,0.1);
-                    }}
-                    .pass {{ background: rgba(76, 175, 80, 0.2); border-color: #4CAF50; }}
-                    .fail {{ background: rgba(244, 67, 54, 0.2); border-color: #F44336; }}
-                    .label {{ font-weight: 600; color: #4db6ac; }}
-                    h1 {{ color: #4db6ac; font-size: 24px; }}
-                    .value {{ font-family: monospace; }}
-                    .refresh {{ 
-                        display: inline-block;
-                        margin-top: 20px;
-                        padding: 12px 24px;
-                        background: #4db6ac;
-                        color: #000;
-                        text-decoration: none;
-                        border-radius: 8px;
-                        font-weight: 600;
-                    }}
-                </style>
-            </head>
-            <body>
-                <h1>🔍 Onboarding Debug for {username}</h1>
-                
-                <div class="status {'pass' if email_verified else 'fail'}">
-                    <div class="label">Email Verified:</div>
-                    <div class="value">{'✅ YES' if email_verified else '❌ NO'}</div>
-                </div>
-                
-                <div class="status {'pass' if email_verified_at else 'fail'}">
-                    <div class="label">Email Verified At:</div>
-                    <div class="value">{email_verified_at or '❌ NULL (timestamp missing!)'}</div>
-                    {f'<div style="margin-top:8px; color:#9fb0b5;">{time_since_verification}</div>' if time_since_verification else ''}
-                </div>
-                
-                <div class="status {'pass' if is_recently_verified else 'fail'}">
-                    <div class="label">Recently Verified (< 24h):</div>
-                    <div class="value">{'✅ YES' if is_recently_verified else '❌ NO'}</div>
-                </div>
-                
-                <div class="status {'pass' if communities_count == 0 else 'fail'}">
-                    <div class="label">Communities Count:</div>
-                    <div class="value">{communities_count} {'✅ (needs to be 0)' if communities_count == 0 else '❌ (has communities)'}</div>
-                </div>
-                
-                <div class="status {'pass' if not profile_picture else 'fail'}">
-                    <div class="label">Has Profile Picture:</div>
-                    <div class="value">{'❌ YES (has picture)' if profile_picture else '✅ NO (no picture)'}</div>
-                    {f'<div style="margin-top:8px; color:#9fb0b5;">{profile_picture}</div>' if profile_picture else ''}
-                </div>
-                
-                <div style="margin-top: 30px; padding: 20px; background: rgba(77, 182, 172, 0.1); border-radius: 8px; border: 2px solid {'#4CAF50' if (email_verified and communities_count == 0 and not profile_picture and (is_recently_verified or not email_verified_at)) else '#F44336'};">
-                    <div class="label">Should Onboarding Trigger?</div>
-                    <div style="font-size: 32px; margin-top: 10px;">
-                        {('✅ YES' if (email_verified and communities_count == 0 and not profile_picture and (is_recently_verified or not email_verified_at)) else '❌ NO')}
-                    </div>
-                    <div style="margin-top: 15px; font-size: 14px; color: #9fb0b5;">
-                        Requirements:<br>
-                        • Email verified: {'✅' if email_verified else '❌'}<br>
-                        • No communities: {'✅' if communities_count == 0 else '❌'}<br>
-                        • No profile picture: {'✅' if not profile_picture else '❌'}<br>
-                        • Recently verified OR no timestamp: {'✅' if (is_recently_verified or not email_verified_at) else '❌'}
-                    </div>
-                </div>
-                
-                <div style="margin-top: 30px; padding: 20px; background: rgba(255, 193, 7, 0.1); border-radius: 8px; border: 1px solid #FFC107;">
-                    <div class="label" style="color: #FFC107;">⚠️ LocalStorage Check</div>
-                    <div style="margin-top: 10px; font-size: 14px; color: #9fb0b5;">
-                        Check your browser's localStorage for:<br>
-                        <code style="background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 8px;">
-                            onboarding_done:{username}
-                        </code><br><br>
-                        If this is set to "1", onboarding won't trigger!<br>
-                        <a href="/clear_onboarding_storage" style="display: inline-block; margin-top: 12px; padding: 10px 20px; background: #F44336; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; text-decoration: none;">
-                            Clear Onboarding Flag & Reload
-                        </a>
-                        <button onclick="clearOnboarding()" style="margin-top: 12px; margin-left: 10px; padding: 10px 20px; background: #666; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
-                            Try JavaScript Method
-                        </button>
-                    </div>
-                </div>
-                
-                <a href="/debug_onboarding" class="refresh">🔄 Refresh</a>
-                <a href="/premium_dashboard" class="refresh" style="background: #333; margin-left: 10px;">Go to Dashboard</a>
-                
-                <script>
-                    const currentUsername = '{username}';
-                    
-                    function clearOnboarding() {{
-                        try {{
-                            // Clear all possible onboarding flags
-                            localStorage.removeItem('onboarding_done:' + currentUsername);
-                            localStorage.removeItem('onboarding_done');
-                            localStorage.removeItem('first_login_seen:' + currentUsername);
-                            
-                            // Clear all onboarding-related keys
-                            Object.keys(localStorage).forEach(function(key) {{
-                                if (key.startsWith('onboarding_') || key.startsWith('first_login_')) {{
-                                    localStorage.removeItem(key);
-                                }}
-                            }});
-                            
-                            alert('✅ All onboarding flags cleared! Redirecting to dashboard...');
-                            window.location.href = '/premium_dashboard';
-                        }} catch(e) {{
-                            alert('Error: ' + e.message);
-                        }}
-                    }}
-                    
-                    // Show current localStorage values on page load
-                    window.addEventListener('DOMContentLoaded', function() {{
-                        try {{
-                            const doneValue = localStorage.getItem('onboarding_done:' + currentUsername);
-                            const legacyValue = localStorage.getItem('onboarding_done');
-                            const firstLoginValue = localStorage.getItem('first_login_seen:' + currentUsername);
-                            
-                            console.log('localStorage check:', {{
-                                'onboarding_done:' + currentUsername: doneValue,
-                                'onboarding_done': legacyValue,
-                                'first_login_seen:' + currentUsername: firstLoginValue
-                            }});
-                            
-                            if (doneValue || legacyValue || firstLoginValue) {{
-                                const warning = document.createElement('div');
-                                warning.style = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #F44336; color: #fff; padding: 15px 20px; border-radius: 8px; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-width: 90%; text-align: center;';
-                                warning.innerHTML = '🚨 FOUND: localStorage blocking onboarding!<br><br>' +
-                                    'onboarding_done:' + currentUsername + ' = ' + (doneValue || 'null') + '<br>' +
-                                    'onboarding_done = ' + (legacyValue || 'null') + '<br>' +
-                                    'first_login_seen:' + currentUsername + ' = ' + (firstLoginValue || 'null') + '<br><br>' +
-                                    'Click "Clear Onboarding Flag" button below!';
-                                document.body.appendChild(warning);
-                            }}
-                        }} catch(e) {{
-                            console.error('localStorage check error:', e);
-                        }}
-                    }});
-                </script>
-            </body>
-            </html>
-            """
-            return html
-    except Exception as e:
-        return f"<html><body style='padding:20px; font-family:sans-serif;'><h1>Error</h1><pre>{str(e)}</pre></body></html>", 500
-
-@app.route('/clear_onboarding_storage', methods=['GET', 'POST'])
-def clear_onboarding_storage():
-    """Endpoint that returns JavaScript to clear localStorage - works even when button doesn't"""
-    # Check if user is logged in to determine redirect destination
-    is_logged_in = 'username' in session
-    redirect_url = '/premium_dashboard' if is_logged_in else '/signup'
-    
-    return f'''
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Clearing...</title>
-    </head>
-    <body style="background: #0b0b0b; color: #fff; font-family: sans-serif; padding: 20px; text-align: center;">
-        <h1>Clearing localStorage...</h1>
-        <p id="status">Please wait...</p>
-        <script>
-            try {{
-                // Get all localStorage keys
-                const keys = Object.keys(localStorage);
-                let cleared = [];
-                
-                // Remove onboarding-related keys
-                keys.forEach(function(key) {{
-                    if (key.includes('onboarding') || key.includes('first_login')) {{
-                        localStorage.removeItem(key);
-                        cleared.push(key);
-                    }}
-                }});
-                
-                if (cleared.length > 0) {{
-                    document.getElementById('status').innerHTML = 
-                        '✅ Cleared ' + cleared.length + ' keys:<br><br>' +
-                        cleared.join('<br>') + 
-                        '<br><br>Redirecting in 2 seconds...';
-                }} else {{
-                    document.getElementById('status').innerHTML = 
-                        '✅ No onboarding flags found to clear.<br><br>Redirecting in 2 seconds...';
-                }}
-                
-                setTimeout(function() {{
-                    window.location.href = '{redirect_url}';
-                }}, 2000);
-            }} catch(e) {{
-                document.getElementById('status').innerHTML = 
-                    '❌ Error: ' + e.message + '<br><br><a href="{redirect_url}" style="color: #4db6ac;">Continue</a>';
-            }}
-        </script>
-    </body>
-    </html>
-    '''
-
 @app.route('/upload_logo', methods=['POST'])
 @login_required
 def upload_logo():
@@ -10208,7 +8905,7 @@ def success():
 def business_login():
     # Business login temporarily disabled
     flash('Business login is not available at this time.', 'error')
-    return redirect(url_for('index'))
+    return redirect(url_for('public.index'))
 
 @app.route('/business_logout')
 def business_logout():
@@ -11668,17 +10365,17 @@ def reset_password(token):
             
             if not result:
                 flash('Invalid or expired reset link.', 'error')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
             
             if result['used']:
                 flash('This reset link has already been used.', 'error')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
             
             # Check if token is expired (24 hours)
             created_at = datetime.fromisoformat(result['created_at'])
             if datetime.now() - created_at > timedelta(hours=24):
                 flash('This reset link has expired.', 'error')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
             
             return render_template('reset_password.html', token=token, username=result['username'])
     
@@ -11713,13 +10410,13 @@ def reset_password(token):
                 
                 if not result or result['used']:
                     flash('Invalid or expired reset link.', 'error')
-                    return redirect(url_for('index'))
+                    return redirect(url_for('public.index'))
                 
                 # Check expiration again
                 created_at = datetime.fromisoformat(result['created_at'])
                 if datetime.now() - created_at > timedelta(hours=24):
                     flash('This reset link has expired.', 'error')
-                    return redirect(url_for('index'))
+                    return redirect(url_for('public.index'))
                 
                 # Update password
                 hashed_password = generate_password_hash(new_password)
@@ -11731,7 +10428,7 @@ def reset_password(token):
                 conn.commit()
                 
                 flash('Your password has been successfully reset. You can now log in with your new password.', 'success')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
                 
         except Exception as e:
             logger.error(f"Error resetting password: {e}")
@@ -12475,19 +11172,9 @@ def feed():
 
                 # --- NEW: Fetch reactions for each post ---
                 # Get reaction counts (e.g., {'heart': 5, 'thumbs-up': 2})
-                c.execute("""
-                    SELECT reaction_type, COUNT(*) as count
-                    FROM reactions
-                    WHERE post_id = ?
-                    GROUP BY reaction_type
-                """, (post['id'],))
-                reactions_raw = c.fetchall()
-                post['reactions'] = {r['reaction_type']: r['count'] for r in reactions_raw}
-
-                # Get the current logged-in user's reaction to this post
-                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post['id'], username))
-                user_reaction_raw = c.fetchone()
-                post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+                reaction_counts, user_reaction = get_post_reaction_summary(c, post['id'], username)
+                post['reactions'] = reaction_counts
+                post['user_reaction'] = user_reaction
 
                 # Fetch poll data for this post
                 c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post['id'],))
@@ -12514,17 +11201,9 @@ def feed():
 
                 # Add reaction counts for each reply and user reaction
                 for reply in post['replies']:
-                    c.execute("""
-                        SELECT reaction_type, COUNT(*) as count
-                        FROM reply_reactions
-                        WHERE reply_id = ?
-                        GROUP BY reaction_type
-                    """, (reply['id'],))
-                    rr = c.fetchall()
-                    reply['reactions'] = {r['reaction_type']: r['count'] for r in rr}
-                    c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply['id'], username))
-                    ur = c.fetchone()
-                    reply['user_reaction'] = ur['reaction_type'] if ur else None
+                    counts, user_reaction = get_reply_reaction_summary(c, reply['id'], username)
+                    reply['reactions'] = counts
+                    reply['user_reaction'] = user_reaction
 
         return render_template('feed.html', posts=posts, username=username)
     except Exception as e:
@@ -12612,20 +11291,7 @@ def add_reaction():
             
             conn.commit()
 
-            # After changes, fetch the new reaction counts for the post
-            c.execute("""
-                SELECT reaction_type, COUNT(*) as count
-                FROM reactions
-                WHERE post_id = ?
-                GROUP BY reaction_type
-            """, (post_id,))
-            counts_raw = c.fetchall()
-            new_counts = {r['reaction_type']: r['count'] for r in counts_raw}
-
-            # Also get the user's new reaction state to send back to the UI
-            c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
-            user_reaction_raw = c.fetchone()
-            new_user_reaction = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+            new_counts, new_user_reaction = get_post_reaction_summary(c, post_id, username)
 
             try:
                 view_count = upsert_post_view(c, int(post_id), username)
@@ -12652,42 +11318,6 @@ def add_reaction():
             logger.warning(f"Failed to invalidate cache after reaction for community {comm_id}: {cache_err}")
 
 
-def create_notification(user_id, from_user, notification_type, post_id=None, community_id=None, message=None, link=None):
-    """Helper function to create or refresh a notification entry."""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            if USE_MYSQL:
-                c.execute(
-                    """
-                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW(), 0, %s)
-                    ON DUPLICATE KEY UPDATE
-                        created_at = NOW(),
-                        message = VALUES(message),
-                        link = VALUES(link),
-                        is_read = 0
-                    """,
-                    (user_id, from_user, notification_type, post_id, community_id, message, link),
-                )
-            else:
-                now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                c.execute(
-                    """
-                    INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
-                    ON CONFLICT(user_id, from_user, type, post_id, community_id)
-                    DO UPDATE SET
-                        created_at = excluded.created_at,
-                        message = excluded.message,
-                        link = excluded.link,
-                        is_read = 0
-                    """,
-                    (user_id, from_user, notification_type, post_id, community_id, message, now_str, link),
-                )
-            conn.commit()
-    except Exception as e:
-        logger.error(f"Error creating notification: {str(e)}")
 
 
 def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: int|None, parent_reply_id: int|None):
@@ -12779,110 +11409,11 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
 
 # ---- Community Tasks: DB helpers ----
 def ensure_tasks_table():
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            if 'USE_MYSQL' in globals() and USE_MYSQL:
-                c.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS tasks (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        community_id INT NOT NULL,
-                        title VARCHAR(255) NOT NULL,
-                        description TEXT,
-                        due_date DATE NULL,
-                        assigned_to_username VARCHAR(255) NULL,
-                        created_by_username VARCHAR(255) NOT NULL,
-                        created_at DATETIME NOT NULL DEFAULT NOW(),
-                        completed TINYINT(1) NOT NULL DEFAULT 0,
-                        INDEX idx_tasks_comm (community_id),
-                        INDEX idx_tasks_assignee (assigned_to_username)
-                    )
-                    """
-                )
-            else:
-                c.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS tasks (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        community_id INTEGER NOT NULL,
-                        title TEXT NOT NULL,
-                        description TEXT,
-                        due_date TEXT,
-                        assigned_to_username TEXT,
-                        created_by_username TEXT NOT NULL,
-                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                        completed INTEGER NOT NULL DEFAULT 0
-                    )
-                    """
-                )
-            conn.commit()
-            # Try to add status column if missing
-            try:
-                if 'USE_MYSQL' in globals() and USE_MYSQL:
-                    c.execute("ALTER TABLE tasks ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'not_started'")
-                else:
-                    c.execute("ALTER TABLE tasks ADD COLUMN status TEXT NOT NULL DEFAULT 'not_started'")
-                conn.commit()
-                # Backfill completed->status
-                try:
-                    if 'USE_MYSQL' in globals() and USE_MYSQL:
-                        c.execute("UPDATE tasks SET status='completed' WHERE completed=1")
-                    else:
-                        c.execute("UPDATE tasks SET status='completed' WHERE completed=1")
-                    conn.commit()
-                except Exception:
-                    pass
-            except Exception:
-                # Column likely exists
-                pass
-    except Exception as e:
-        logger.error(f"ensure_tasks_table error: {e}")
+    ensure_tasks_table_service()
 
 
 def is_community_admin_or_owner(username: str, community_id: int) -> bool:
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Global app admin
-            if username == 'admin':
-                return True
-
-            # Owner by creator_username
-            c.execute("SELECT creator_username FROM communities WHERE id = ?", (community_id,))
-            row = c.fetchone()
-            owner = row['creator_username'] if row else None
-            if owner and username == owner:
-                return True
-
-            # Get user's id
-            c.execute("SELECT id FROM users WHERE username = ?", (username,))
-            uid_row = c.fetchone()
-            user_id = uid_row['id'] if hasattr(uid_row, 'keys') and uid_row else (uid_row[0] if uid_row else None)
-
-            # Role in user_communities (admin/owner)
-            if user_id is not None:
-                try:
-                    c.execute(
-                        """
-                        SELECT role FROM user_communities
-                        WHERE user_id = ? AND community_id = ?
-                        """,
-                        (user_id, community_id),
-                    )
-                    role_row = c.fetchone()
-                    role = role_row['role'] if hasattr(role_row, 'keys') and role_row else (role_row[0] if role_row else None)
-                    if role and str(role).lower() in ('admin', 'owner'):
-                        return True
-                except Exception:
-                    pass
-
-            # Legacy/fallback table community_admins (case-insensitive username match)
-            c.execute("SELECT 1 FROM community_admins WHERE community_id = ? AND LOWER(username) = LOWER(?)", (community_id, username))
-            return bool(c.fetchone())
-    except Exception as e:
-        logger.warning(f"is_community_admin_or_owner check failed: {e}")
-        return False
+    return bool(is_app_admin(username) or service_is_community_admin_or_owner(username, community_id))
 
 
 @app.route('/api/community_tasks')
@@ -13345,24 +11876,6 @@ def admin_grant_admin():
         logger.error(f"admin_grant_admin error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
-@app.route('/notifications')
-@login_required
-def notifications_page():
-    """Display notifications page: Mobile -> React SPA, Desktop -> HTML template"""
-    username = session.get('username')
-    logger.info(f"Notifications page accessed by {username}")
-    try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-    except Exception as e:
-        logger.warning(f"React notifications fallback: {e}")
-    return render_template('notifications.html', username=username)
-
-
 
 
 
@@ -13430,183 +11943,6 @@ def remove_logo():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/notifications/check')
-@login_required
-def check_new_notifications():
-    """Check for new notifications since last check timestamp"""
-    username = session['username']
-    last_check = request.args.get('since', '')
-    
-    try:
-        # If no timestamp provided, get notifications from last 5 seconds
-        if not last_check:
-            last_check = (datetime.now() - timedelta(seconds=5)).strftime('%Y-%m-%d %H:%M:%S')
-        
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Get new unread notifications created after last check
-            c.execute("""
-                SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
-                FROM notifications
-                WHERE user_id = ? AND is_read = 0 AND created_at > ?
-                ORDER BY created_at DESC
-                LIMIT 10
-            """, (username, last_check))
-            
-            notifications = []
-            for row in c.fetchall():
-                notifications.append({
-                    'id': row['id'],
-                    'from_user': row['from_user'],
-                    'type': row['type'],
-                    'post_id': row['post_id'],
-                    'community_id': row['community_id'],
-                    'message': row['message'],
-                    'is_read': row['is_read'],
-                    'created_at': row['created_at'],
-                    'link': row.get('link') if hasattr(row, 'get') else row.get('link', None) if hasattr(row, 'keys') else None
-                })
-            
-            return jsonify({
-                'success': True,
-                'notifications': notifications,
-                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            })
-    except Exception as e:
-        logger.error(f"Error checking notifications: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/notifications')
-@login_required
-def get_notifications():
-    """Get notifications for the current user"""
-    username = session['username']
-    
-    # Get 'all' parameter to determine if we should show all or just unread
-    show_all = request.args.get('all', 'false').lower() == 'true'
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Auto-cleanup: Delete read notifications older than 7 days
-            c.execute("""
-                DELETE FROM notifications
-                WHERE user_id = ? 
-                AND is_read = 1 
-                AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY)
-            """, (username,))
-            conn.commit()
-            
-            # Build query based on whether to show all or just unread
-            if show_all:
-                # For notifications page, show all notifications
-                c.execute("""
-                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
-                    FROM notifications
-                    WHERE user_id = ?
-                    ORDER BY created_at DESC
-                    LIMIT 50
-                """, (username,))
-            else:
-                # For real-time checking, only show unread
-                c.execute("""
-                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
-                    FROM notifications
-                    WHERE user_id = ? AND is_read = 0
-                    ORDER BY created_at DESC
-                    LIMIT 50
-                """, (username,))
-            
-            notifications = []
-            for row in c.fetchall():
-                notifications.append({
-                    'id': row['id'],
-                    'from_user': row['from_user'],
-                    'type': row['type'],
-                    'post_id': row['post_id'],
-                    'community_id': row['community_id'],
-                    'message': row['message'],
-                    'link': row.get('link') if hasattr(row, 'get') else row.get('link', None) if hasattr(row, 'keys') else None,
-                    'is_read': bool(row['is_read']),
-                    'created_at': row['created_at']
-                })
-            
-            logger.info(f"User {username} has {len(notifications)} notifications, {sum(1 for n in notifications if not n['is_read'])} unread")
-            return jsonify({'success': True, 'notifications': notifications})
-            
-    except Exception as e:
-        logger.error(f"Error getting notifications: {str(e)}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
-@login_required
-def mark_notification_read(notification_id):
-    """Mark a notification as read"""
-    username = session['username']
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("""
-                UPDATE notifications 
-                SET is_read = 1 
-                WHERE id = ? AND user_id = ?
-            """, (notification_id, username))
-            conn.commit()
-            
-            return jsonify({'success': True})
-            
-    except Exception as e:
-        logger.error(f"Error marking notification as read: {str(e)}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/notifications/mark-all-read', methods=['POST'])
-@login_required
-def mark_all_notifications_read():
-    """Mark all notifications as read for the current user"""
-    username = session['username']
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("""
-                UPDATE notifications 
-                SET is_read = 1 
-                WHERE user_id = ? AND is_read = 0
-            """, (username,))
-            conn.commit()
-            
-            return jsonify({'success': True})
-            
-    except Exception as e:
-        logger.error(f"Error marking all notifications as read: {str(e)}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/notifications/delete-read', methods=['POST'])
-@login_required
-def delete_read_notifications():
-    """Delete all read notifications for the current user"""
-    username = session['username']
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("""
-                DELETE FROM notifications
-                WHERE user_id = ? AND is_read = 1
-            """, (username,))
-            conn.commit()
-            
-            deleted_count = c.rowcount
-            return jsonify({'success': True, 'deleted': deleted_count})
-    except Exception as e:
-        logger.error(f"Error deleting read notifications: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 @app.route('/post_status', methods=['POST'])
 @login_required
 def post_status():
@@ -14981,630 +13317,8 @@ def remove_poll_option():
         logger.error(f"Error removing poll option: {str(e)}")
         return jsonify({'success': False, 'error': 'Error removing option'})
 
-def check_single_poll_notifications(poll_id, conn=None):
-    """
-    Check a single poll and send notifications if needed.
-    This is called event-driven when users vote.
-    Returns number of notifications sent.
-    """
-    should_close_conn = False
-    if conn is None:
-        conn = get_db_connection()
-        should_close_conn = True
-    
-    try:
-        c = conn.cursor()
-        now = datetime.utcnow()  # Use UTC for consistent timezone handling
-        
-        logger.info(f"🔍 Helper called for poll {poll_id}, USE_MYSQL={USE_MYSQL}")
-        
-        # Get poll details - NO datetime filtering in SQL
-        if USE_MYSQL:
-            logger.info(f"🔍 Helper using MySQL query (no datetime filters)")
-            c.execute("""
-                SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
-                       ps.community_id
-                FROM polls p
-                JOIN posts ps ON p.post_id = ps.id
-                WHERE p.id = %s AND p.is_active = 1
-            """, (poll_id,))
-        else:
-            logger.info(f"🔍 Helper using SQLite query (no datetime filters)")
-            c.execute("""
-                SELECT p.id, p.question, p.created_at, p.expires_at, p.post_id,
-                       ps.community_id
-                FROM polls p
-                JOIN posts ps ON p.post_id = ps.id
-                WHERE p.id = ? AND p.is_active = 1
-            """, (poll_id,))
-        
-        poll_row = c.fetchone()
-        if not poll_row:
-            return 0
-        
-        question = poll_row['question'] if hasattr(poll_row, 'keys') else poll_row[1]
-        created_at_str = poll_row['created_at'] if hasattr(poll_row, 'keys') else poll_row[2]
-        expires_at_str = poll_row['expires_at'] if hasattr(poll_row, 'keys') else poll_row[3]
-        post_id = poll_row['post_id'] if hasattr(poll_row, 'keys') else poll_row[4]
-        community_id = poll_row['community_id'] if hasattr(poll_row, 'keys') else poll_row[5]
-        
-        # Validate and parse expires_at - handle both string and datetime object
-        if not expires_at_str:
-            logger.debug(f"Poll {poll_id} has no expires_at")
-            return 0
-        
-        # MySQL returns datetime object, SQLite returns string
-        if isinstance(expires_at_str, str):
-            if expires_at_str.strip() == '' or len(expires_at_str) < 10:
-                logger.debug(f"Poll {poll_id} has invalid expires_at string")
-                return 0
-        
-        try:
-            # Parse dates (handle both datetime objects and strings)
-            if isinstance(created_at_str, datetime):
-                created_at = created_at_str
-            else:
-                created_at = datetime.strptime(created_at_str, '%Y-%m-%d %H:%M:%S')
-            
-            if isinstance(expires_at_str, datetime):
-                expires_at = expires_at_str
-            else:
-                expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
-        except Exception as date_err:
-            logger.debug(f"Poll {poll_id} has invalid date format: {date_err}")
-            return 0
-        
-        # Calculate time progress
-        total_duration = (expires_at - created_at).total_seconds()
-        elapsed = (now - created_at).total_seconds()
-        
-        if total_duration <= 0:
-            return 0
-        
-        progress = elapsed / total_duration
-        
-        # Get community members
-        ph = '%s' if USE_MYSQL else '?'
-        c.execute(f"""
-            SELECT DISTINCT u.username
-            FROM user_communities uc
-            JOIN users u ON uc.user_id = u.id
-            WHERE uc.community_id = {ph}
-        """, (community_id,))
-        members = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
-        
-        # Get voters
-        c.execute(f"""
-            SELECT DISTINCT username
-            FROM poll_votes
-            WHERE poll_id = {ph}
-        """, (poll_id,))
-        voters = set([r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()])
-        non_voters = [m for m in members if m not in voters]
-        
-        # Count total votes
-        c.execute(f"SELECT COUNT(DISTINCT username) as vote_count FROM poll_votes WHERE poll_id = {ph}", (poll_id,))
-        vote_count_row = c.fetchone()
-        vote_count = vote_count_row['vote_count'] if hasattr(vote_count_row, 'keys') else vote_count_row[0]
-        
-        # Calculate time remaining
-        time_remaining = expires_at - now
-        days_remaining = max(0, time_remaining.days)
-        hours_remaining = max(0, int(time_remaining.total_seconds() / 3600))
-        
-        notifications_sent = 0
-        
-        # WIDENED DETECTION WINDOWS (15% instead of 5% for better coverage)
-        # 25% notification - non-voters only
-        logger.info(f"🎯 Poll {poll_id}: Checking 25% window (0.20-0.35), progress={progress:.3f}")
-        if 0.20 <= progress < 0.35:
-            for username_to_notify in non_voters:
-                c.execute(f"SELECT id FROM poll_notification_log WHERE poll_id={ph} AND username={ph} AND notification_type='25'", 
-                         (poll_id, username_to_notify))
-                if not c.fetchone():
-                    community_name = ""
-                    try:
-                        c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
-                        comm_row = c.fetchone()
-                        if comm_row:
-                            community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
-                    except Exception:
-                        pass
-                    
-                    # Shorter message to avoid truncation
-                    message = f"📊 {vote_count} voted in {community_name}. Vote now!" if community_name else f"📊 {vote_count} voted. Vote now!"
-                    
-                    try:
-                        # Pass username (not user_id) to match production DB foreign key constraint
-                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
-                        send_push_to_user(username_to_notify, {
-                            'title': f'{community_name} Poll' if community_name else 'Poll Update',
-                            'body': message,
-                            'url': f'/community/{community_id}/polls_react',
-                            'tag': f'poll-25-{poll_id}'
-                        })
-                    except Exception:
-                        pass
-                    
-                    c.execute(f"INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES ({ph}, {ph}, '25')", 
-                             (poll_id, username_to_notify))
-                    notifications_sent += 1
-        
-        # 50% notification - non-voters only
-        elif 0.45 <= progress < 0.60:
-            logger.info(f"🎯 Poll {poll_id}: IN 50% window! Sending to {len(non_voters)} non-voters")
-            for username_to_notify in non_voters:
-                c.execute("SELECT id FROM poll_notification_log WHERE poll_id=? AND username=? AND notification_type='50'", 
-                         (poll_id, username_to_notify))
-                if not c.fetchone():
-                    community_name = ""
-                    try:
-                        c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
-                        comm_row = c.fetchone()
-                        if comm_row:
-                            community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
-                    except Exception:
-                        pass
-                    
-                    message = f"📊 {vote_count} {community_name} member{'s' if vote_count != 1 else ''} {'have' if vote_count != 1 else 'has'} voted, go vote on the poll!"
-                    
-                    try:
-                        # Pass username (not user_id) to match production DB foreign key constraint
-                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
-                        send_push_to_user(username_to_notify, {
-                            'title': 'Poll Update',
-                            'body': message,
-                            'url': f'/community/{community_id}/polls_react',
-                            'tag': f'poll-50-{poll_id}'
-                        })
-                    except Exception:
-                        pass
-                    
-                    c.execute("INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES (?, ?, '50')", 
-                             (poll_id, username_to_notify))
-                    notifications_sent += 1
-        
-        # 80% notification - different messages for voters vs non-voters
-        elif 0.75 <= progress < 0.90:
-            logger.info(f"🎯 Poll {poll_id}: IN 80% window! Sending to {len(non_voters)} non-voters, {len(voters)} voters")
-            # Non-voters
-            for username_to_notify in non_voters:
-                c.execute(f"SELECT id FROM poll_notification_log WHERE poll_id={ph} AND username={ph} AND notification_type='80_nonvoter'", 
-                         (poll_id, username_to_notify))
-                if not c.fetchone():
-                    if days_remaining > 1:
-                        message = f"⏰ The poll is closing in {days_remaining} days, go vote!"
-                    elif hours_remaining > 1:
-                        message = f"⏰ The poll is closing in {hours_remaining} hours, go vote!"
-                    else:
-                        message = "⏰ The poll is closing soon, go vote!"
-                    
-                    try:
-                        # Pass username (not user_id) to match production DB foreign key constraint
-                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
-                        send_push_to_user(username_to_notify, {
-                            'title': 'Poll Closing Soon!',
-                            'body': message,
-                            'url': f'/community/{community_id}/polls_react',
-                            'tag': f'poll-80-{poll_id}'
-                        })
-                    except Exception:
-                        pass
-                    
-                    c.execute(f"INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES ({ph}, {ph}, '80_nonvoter')", 
-                             (poll_id, username_to_notify))
-                    notifications_sent += 1
-            
-            # Voters
-            for username_to_notify in list(voters):
-                c.execute(f"SELECT id FROM poll_notification_log WHERE poll_id={ph} AND username={ph} AND notification_type='80_voter'", 
-                         (poll_id, username_to_notify))
-                if not c.fetchone():
-                    # Get community name for notification
-                    community_name = ""
-                    try:
-                        c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
-                        comm_row = c.fetchone()
-                        if comm_row:
-                            community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
-                    except Exception:
-                        pass
-                    
-                    message = f"📋 Poll in {community_name} closing. Review results!" if community_name else "📋 Poll closing. Review results!"
-                    
-                    try:
-                        # Pass username (not user_id) to match production DB foreign key constraint
-                        create_notification(username_to_notify, None, 'poll_reminder', post_id, community_id, message)
-                        send_push_to_user(username_to_notify, {
-                            'title': f'{community_name} Poll Closing' if community_name else 'Poll Closing Soon',
-                            'body': message,
-                            'url': f'/community/{community_id}/polls_react',
-                            'tag': f'poll-80-voter-{poll_id}'
-                        })
-                    except Exception:
-                        pass
-                    
-                    c.execute(f"INSERT INTO poll_notification_log (poll_id, username, notification_type) VALUES ({ph}, {ph}, '80_voter')", 
-                             (poll_id, username_to_notify))
-                    notifications_sent += 1
-        
-        if should_close_conn:
-            conn.commit()
-        
-        return notifications_sent
-    
-    finally:
-        if should_close_conn:
-            conn.close()
 
 
-def check_single_event_notifications(event_id, conn=None):
-    """
-    Check a single event and send reminders based on notification_preferences.
-    Sends: 1 week before, 1 day before, 1 hour before, and 80% notifications.
-    Returns number of notifications sent.
-    """
-    should_close_conn = False
-    if conn is None:
-        conn = get_db_connection()
-        should_close_conn = True
-    
-    try:
-        c = conn.cursor()
-        now = datetime.utcnow()
-        ph = '%s' if USE_MYSQL else '?'
-        
-        logger.info(f"🔍 Checking event {event_id} for notifications")
-        
-        # Get event details
-        c.execute(f"""
-            SELECT ce.id, ce.title, ce.date, ce.start_time, ce.end_time, ce.created_at,
-                   ce.community_id, ce.notification_preferences, ce.username as created_by
-            FROM calendar_events ce
-            WHERE ce.id = {ph}
-        """, (event_id,))
-        
-        event_row = c.fetchone()
-        if not event_row:
-            return 0
-        
-        title = event_row['title'] if hasattr(event_row, 'keys') else event_row[1]
-        date_str = event_row['date'] if hasattr(event_row, 'keys') else event_row[2]
-        start_time_str = event_row['start_time'] if hasattr(event_row, 'keys') else event_row[3]
-        created_at_raw = event_row['created_at'] if hasattr(event_row, 'keys') else event_row[5]
-        community_id = event_row['community_id'] if hasattr(event_row, 'keys') else event_row[6]
-        notification_prefs = event_row['notification_preferences'] if hasattr(event_row, 'keys') else event_row[7]
-        
-        # Parse event start datetime
-        try:
-            if isinstance(start_time_str, datetime):
-                event_start = start_time_str
-            elif start_time_str:
-                event_start = datetime.strptime(start_time_str, '%Y-%m-%d %H:%M:%S')
-            else:
-                # No time specified, use date at midnight
-                event_start = datetime.strptime(date_str, '%Y-%m-%d')
-        except Exception as e:
-            logger.debug(f"Event {event_id} has invalid date/time: {e}")
-            return 0
-        
-        # Skip if event is in the past
-        if event_start <= now:
-            logger.debug(f"Event {event_id} is in the past")
-            return 0
-        
-        # Parse created_at
-        try:
-            if isinstance(created_at_raw, datetime):
-                created_at = created_at_raw
-            else:
-                created_at = datetime.strptime(created_at_raw, '%Y-%m-%d %H:%M:%S')
-        except Exception:
-            created_at = now  # Fallback
-        
-        # Get event participants (invited users)
-        c.execute(f"""
-            SELECT DISTINCT invited_username
-            FROM event_invitations
-            WHERE event_id = {ph}
-        """, (event_id,))
-        participants = [r['invited_username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
-        
-        if not participants:
-            return 0
-        
-        # Get community name
-        community_name = ""
-        if community_id:
-            try:
-                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
-                comm_row = c.fetchone()
-                if comm_row:
-                    community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
-            except Exception:
-                pass
-        
-        time_until_event = (event_start - now).total_seconds()
-        hours_until = time_until_event / 3600
-        days_until = time_until_event / 86400
-        
-        notifications_sent = 0
-        
-        # Parse notification preferences
-        prefs = notification_prefs or 'all'
-        send_1week = prefs in ('1_week', 'all')
-        send_1day = prefs in ('1_day', 'all')
-        send_1hour = prefs in ('1_hour', 'all')
-        send_80percent = True  # Always send 80% notification
-        
-        logger.info(f"⏰ Event {event_id}: {hours_until:.1f}h until event (prefs={prefs})")
-        
-        # 1 WEEK BEFORE (7 days = 168 hours, window: 167-169 hours)
-        if send_1week and 167 <= hours_until <= 169:
-            for username_to_notify in participants:
-                c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_week'", 
-                         (event_id, username_to_notify))
-                if not c.fetchone():
-                    message = f"📅 Event in {community_name}: '{title}' in 1 week" if community_name else f"📅 Event '{title}' in 1 week"
-                    
-                    try:
-                        create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
-                        send_push_to_user(username_to_notify, {
-                            'title': f'{community_name} Event Reminder' if community_name else 'Event Reminder',
-                            'body': message,
-                            'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
-                            'tag': f'event-1week-{event_id}'
-                        })
-                    except Exception:
-                        pass
-                    
-                    c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '1_week')", 
-                             (event_id, username_to_notify))
-                    notifications_sent += 1
-        
-        # 1 DAY BEFORE (24 hours, window: 23-25 hours)
-        elif send_1day and 23 <= hours_until <= 25:
-            for username_to_notify in participants:
-                c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_day'", 
-                         (event_id, username_to_notify))
-                if not c.fetchone():
-                    message = f"📅 Event in {community_name}: '{title}' tomorrow" if community_name else f"📅 Event '{title}' tomorrow"
-                    
-                    try:
-                        create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
-                        send_push_to_user(username_to_notify, {
-                            'title': f'{community_name} Event Tomorrow' if community_name else 'Event Tomorrow',
-                            'body': message,
-                            'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
-                            'tag': f'event-1day-{event_id}'
-                        })
-                    except Exception:
-                        pass
-                    
-                    c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '1_day')", 
-                             (event_id, username_to_notify))
-                    notifications_sent += 1
-        
-        # 1 HOUR BEFORE (window: 0.9-1.1 hours)
-        elif send_1hour and 0.9 <= hours_until <= 1.1:
-            for username_to_notify in participants:
-                c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='1_hour'", 
-                         (event_id, username_to_notify))
-                if not c.fetchone():
-                    message = f"⏰ Event in {community_name}: '{title}' in 1 hour!" if community_name else f"⏰ Event '{title}' in 1 hour!"
-                    
-                    try:
-                        create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
-                        send_push_to_user(username_to_notify, {
-                            'title': f'{community_name} Event Soon!' if community_name else 'Event Soon!',
-                            'body': message,
-                            'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
-                            'tag': f'event-1hour-{event_id}'
-                        })
-                    except Exception:
-                        pass
-                    
-                    c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '1_hour')", 
-                             (event_id, username_to_notify))
-                    notifications_sent += 1
-        
-        # 80% NOTIFICATION (always sent regardless of preferences)
-        if send_80percent:
-            # Calculate 80% of time from creation to event
-            total_duration = (event_start - created_at).total_seconds()
-            elapsed = (now - created_at).total_seconds()
-            
-            if total_duration > 0:
-                progress = elapsed / total_duration
-                
-                # 80% window (75%-90%)
-                if 0.75 <= progress < 0.90:
-                    for username_to_notify in participants:
-                        c.execute(f"SELECT id FROM event_notification_log WHERE event_id={ph} AND username={ph} AND notification_type='80_percent'", 
-                                 (event_id, username_to_notify))
-                        if not c.fetchone():
-                            if days_until > 1:
-                                message = f"📆 Event in {community_name}: '{title}' in {int(days_until)} days" if community_name else f"📆 Event '{title}' in {int(days_until)} days"
-                            elif hours_until > 1:
-                                message = f"📆 Event in {community_name}: '{title}' in {int(hours_until)} hours" if community_name else f"📆 Event '{title}' in {int(hours_until)} hours"
-                            else:
-                                message = f"📆 Event in {community_name}: '{title}' starting soon!" if community_name else f"📆 Event '{title}' starting soon!"
-                            
-                            try:
-                                create_notification(username_to_notify, None, 'event_reminder', None, community_id, message)
-                                send_push_to_user(username_to_notify, {
-                                    'title': f'{community_name} Event Soon' if community_name else 'Event Soon',
-                                    'body': message,
-                                    'url': f'/community/{community_id}/calendar' if community_id else '/calendar',
-                                    'tag': f'event-80-{event_id}'
-                                })
-                            except Exception:
-                                pass
-                            
-                            c.execute(f"INSERT INTO event_notification_log (event_id, username, notification_type) VALUES ({ph}, {ph}, '80_percent')", 
-                                     (event_id, username_to_notify))
-                            notifications_sent += 1
-        
-        if should_close_conn:
-            conn.commit()
-        
-        return notifications_sent
-    
-    finally:
-        if should_close_conn:
-            conn.close()
-
-
-@app.route('/api/poll_notification_check', methods=['POST'])
-def api_poll_notification_check():
-    """
-    OPTIMIZED background job to check poll deadlines and send notifications.
-    Should be called by a cron job every 6 HOURS (not hourly).
-    Only checks polls within 24 hours of deadline for efficiency.
-    Most notifications are sent via event-driven checks when users vote.
-    
-    PUBLIC ENDPOINT - No authentication required (for cron jobs)
-    Optional API key for added security.
-    """
-    # Optional API key check (for security)
-    # You can set POLL_CRON_API_KEY in your .env file
-    api_key = request.headers.get('X-API-Key') or request.form.get('api_key')
-    expected_key = os.getenv('POLL_CRON_API_KEY')
-    
-    if expected_key and api_key != expected_key:
-        logger.warning(f"Poll notification check called with invalid API key: {api_key}")
-        return jsonify({'success': False, 'error': 'Invalid API key'}), 401
-    try:
-        now = datetime.utcnow()  # Use UTC for consistent timezone handling
-        logger.info(f"🔍 Poll notification check starting - USE_MYSQL={USE_MYSQL}")
-        
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # SAFE APPROACH: Fetch all active polls, filter in Python
-            # MySQL's query optimizer is unpredictable with CAST/STR_TO_DATE on empty strings
-            # Safer to filter datetime values in Python where we have full control
-            logger.info("🔍 Fetching all active polls (will filter in Python)")
-            c.execute("""
-                SELECT p.id, p.expires_at, p.created_at
-                FROM polls p
-                WHERE p.is_active = 1
-            """)
-            
-            logger.info("🔍 Query executed, fetching results...")
-            all_polls = c.fetchall()
-            logger.info(f"🔍 Got {len(all_polls)} active polls, filtering in Python...")
-            
-            # Filter in Python for safety
-            near_deadline_polls = []
-            for poll in all_polls:
-                poll_id = poll['id'] if hasattr(poll, 'keys') else poll[0]
-                expires_at_raw = poll['expires_at'] if hasattr(poll, 'keys') else poll[1]
-                created_at_raw = poll['created_at'] if hasattr(poll, 'keys') else poll[2]
-                
-                # Skip if no expires_at
-                if not expires_at_raw:
-                    continue
-                
-                # Handle both string and datetime object (MySQL returns datetime, SQLite returns string)
-                if isinstance(expires_at_raw, str):
-                    if expires_at_raw.strip() == '' or len(expires_at_raw) < 10:
-                        continue
-                
-                try:
-                    # Parse or use datetime object directly
-                    if isinstance(expires_at_raw, datetime):
-                        expires_at = expires_at_raw
-                    else:
-                        expires_at = datetime.strptime(expires_at_raw, '%Y-%m-%d %H:%M:%S')
-                    
-                    # Only process polls within 24 hours of deadline
-                    time_until_deadline = (expires_at - now).total_seconds() / 3600  # hours
-                    if 0 < time_until_deadline < 24:
-                        near_deadline_polls.append(poll)
-                except Exception as parse_err:
-                    logger.debug(f"Skipping poll {poll_id} - invalid date: {parse_err}")
-                    continue
-            
-            logger.info(f"🔍 {len(near_deadline_polls)} polls within 24h of deadline")
-            notifications_sent = 0
-            
-            logger.info(f"Cron checking {len(near_deadline_polls)} polls within 24 hours of deadline")
-            
-            # Use the helper function to check each poll
-            for poll_row in near_deadline_polls:
-                poll_id = poll_row['id'] if hasattr(poll_row, 'keys') else poll_row[0]
-                try:
-                    logger.info(f"Checking notifications for poll {poll_id}")
-                    notifications_sent += check_single_poll_notifications(poll_id, conn)
-                except Exception as e:
-                    logger.error(f"Error checking poll {poll_id}: {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-            
-            conn.commit()
-            
-            logger.info(f"Poll notification check complete: {notifications_sent} notifications sent")
-            return jsonify({'success': True, 'notifications_sent': notifications_sent})
-            
-    except Exception as e:
-        logger.error(f"Poll notification check error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/event_notification_check', methods=['POST'])
-def api_event_notification_check():
-    """
-    Cron job endpoint - checks upcoming events and sends reminders.
-    Should be called hourly via cron.
-    
-    Sends notifications for:
-    - 1 week before (if user selected)
-    - 1 day before (if user selected)
-    - 1 hour before (if user selected)
-    - 80% of time between creation and event (always)
-    
-    PUBLIC ENDPOINT - No authentication required (for cron jobs)
-    """
-    try:
-        now = datetime.utcnow()
-        logger.info(f"🔍 Event notification check starting - USE_MYSQL={USE_MYSQL}")
-        
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Get all upcoming events (not in the past)
-            # We'll filter by time windows in Python for robustness
-            c.execute("""
-                SELECT id, title, date, start_time
-                FROM calendar_events
-                WHERE date >= DATE(NOW())
-                ORDER BY date ASC, start_time ASC
-            """)
-            
-            all_events = c.fetchall()
-            logger.info(f"🔍 Found {len(all_events)} upcoming events to check")
-            
-            notifications_sent = 0
-            
-            for event_row in all_events:
-                event_id = event_row['id'] if hasattr(event_row, 'keys') else event_row[0]
-                try:
-                    sent = check_single_event_notifications(event_id, conn)
-                    notifications_sent += sent
-                except Exception as e:
-                    logger.error(f"Error checking event {event_id}: {e}")
-                    continue
-            
-            conn.commit()
-            logger.info(f"✅ Event notification check complete: {notifications_sent} notifications sent")
-            return jsonify({'success': True, 'notifications_sent': notifications_sent})
-            
-    except Exception as e:
-        logger.error(f"Event notification check error: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/get_historical_polls')
@@ -17321,7 +15035,7 @@ def admin_ads_overview():
     # Check if user is admin
     if username != 'admin':
         flash('Access denied. Admin only.', 'error')
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     
     try:
         with get_db_connection() as conn:
@@ -18596,18 +16310,6 @@ def delete_post():
         logger.error(f"Error deleting post {post_id} for {username}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
-@app.route('/onboarding/welcome')
-@login_required
-def onboarding_welcome():
-    """Onboarding step 1: Welcome screen with Get started / Explore first and community code modal."""
-    try:
-        username = session.get('username')
-        return render_template('onboarding_welcome.html', username=username)
-    except Exception as e:
-        logger.error(f"onboarding_welcome error: {e}")
-        # Fail open to dashboard to avoid breaking experience
-        return redirect(url_for('dashboard'))
-
 @app.route('/edit_post', methods=['POST'])
 @login_required
 def edit_post():
@@ -18959,17 +16661,7 @@ def add_reply_reaction():
             else:
                 c.execute("INSERT INTO reply_reactions (reply_id, username, reaction_type) VALUES (?, ?, ?)", (reply_id, username, reaction_type))
             conn.commit()
-            c.execute("""
-                SELECT reaction_type, COUNT(*) as count
-                FROM reply_reactions
-                WHERE reply_id = ?
-                GROUP BY reaction_type
-            """, (reply_id,))
-            counts_raw = c.fetchall()
-            new_counts = {r['reaction_type']: r['count'] for r in counts_raw}
-            c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply_id, username))
-            user_reaction_raw = c.fetchone()
-            new_user_reaction = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+            new_counts, new_user_reaction = get_reply_reaction_summary(c, reply_id, username)
             return jsonify({'success': True, 'counts': new_counts, 'user_reaction': new_user_reaction})
     except Exception as e:
         logger.error(f"Error adding reply reaction: {str(e)}")
@@ -19031,20 +16723,9 @@ def get_post():
                 return arr
             post['replies'] = build_tree(None)
             
-            # Fetch reactions for the post
-            c.execute("""
-                SELECT reaction_type, COUNT(*) as count
-                FROM reactions
-                WHERE post_id = ?
-                GROUP BY reaction_type
-            """, (post_id,))
-            reactions_raw = c.fetchall()
-            post['reactions'] = {r['reaction_type']: r['count'] for r in reactions_raw}
-            
-            # Get the current user's reaction to this post
-            c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
-            user_reaction_raw = c.fetchone()
-            post['user_reaction'] = user_reaction_raw['reaction_type'] if user_reaction_raw else None
+            reaction_counts, user_reaction = get_post_reaction_summary(c, post_id, username)
+            post['reactions'] = reaction_counts
+            post['user_reaction'] = user_reaction
             
             # Add reaction counts for each reply and user reaction
             def hydrate_reply_metrics(reply):
@@ -19055,17 +16736,9 @@ def get_post():
                     reply['profile_picture'] = pr['profile_picture'] if pr and 'profile_picture' in pr.keys() else None
                 except Exception:
                     reply['profile_picture'] = None
-                c.execute("""
-                    SELECT reaction_type, COUNT(*) as count
-                    FROM reply_reactions
-                    WHERE reply_id = ?
-                    GROUP BY reaction_type
-                """, (reply['id'],))
-                rr = c.fetchall()
-                reply['reactions'] = {r['reaction_type']: r['count'] for r in rr}
-                c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply['id'], username))
-                ur = c.fetchone()
-                reply['user_reaction'] = ur['reaction_type'] if ur else None
+                counts, user_reaction = get_reply_reaction_summary(c, reply['id'], username)
+                reply['reactions'] = counts
+                reply['user_reaction'] = user_reaction
                 for ch in reply.get('children', []):
                     hydrate_reply_metrics(ch)
             for reply in post['replies']:
@@ -28313,98 +25986,6 @@ def process_mentions_for_reply(post_id: int, author_username: str, community_id:
                     logger.warning(f"mention reply helper insert warn to {target}: {ne}")
     except Exception as e:
         logger.warning(f"process_mentions_for_reply error: {e}")
-
-def send_push_to_user(target_username: str, payload: dict):
-    if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
-        logger.warning("VAPID keys missing; push disabled")
-        return
-    try:
-        # Simple dedupe: if same tag/title/body sent to this user in last 30 seconds, skip
-        try:
-            tag = payload.get('tag') if isinstance(payload, dict) else None
-            title = payload.get('title') if isinstance(payload, dict) else None
-            body = payload.get('body') if isinstance(payload, dict) else None
-            url = payload.get('url') if isinstance(payload, dict) else None
-            with get_db_connection() as conn_chk:
-                cchk = conn_chk.cursor()
-                if USE_MYSQL:
-                    cchk.execute("""
-                        SELECT id FROM push_send_log
-                        WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
-                          AND sent_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
-                        LIMIT 1
-                    """, (target_username, tag, title, body))
-                else:
-                    # SQLite: 30-second window using datetime comparisons
-                    cchk.execute("""
-                        SELECT id FROM push_send_log
-                        WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
-                          AND datetime(sent_at) > datetime('now','-30 seconds')
-                        LIMIT 1
-                    """, (target_username, tag, title, body))
-                if cchk.fetchone():
-                    logger.info(f"push dedup: skipping duplicate push to {target_username} (tag={tag})")
-                    return
-        except Exception as dedupe_e:
-            logger.warning(f"push dedupe check failed: {dedupe_e}")
-
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE username=?", (target_username,))
-            subs = c.fetchall()
-        if not subs:
-            try:
-                logger.info(f"push: no subscriptions for {target_username}")
-            except Exception:
-                pass
-        for s in subs:
-            try:
-                subscription_info = {
-                    'endpoint': s['endpoint'] if hasattr(s, 'keys') else s[0],
-                    'keys': {
-                        'p256dh': s['p256dh'] if hasattr(s, 'keys') else s[1],
-                        'auth': s['auth'] if hasattr(s, 'keys') else s[2],
-                    }
-                }
-                webpush(
-                    subscription_info=subscription_info,
-                    data=json.dumps(payload),
-                    vapid_private_key=VAPID_PRIVATE_KEY,
-                    vapid_claims={ 'sub': VAPID_SUBJECT }
-                )
-            except WebPushException as wpe:
-                logger.warning(f"webpush failed: {wpe}")
-                # Clean up stale subscriptions (HTTP 404/410)
-                try:
-                    status_code = getattr(getattr(wpe, 'response', None), 'status_code', None)
-                except Exception:
-                    status_code = None
-                if status_code in (404, 410):
-                    try:
-                        endpoint_to_delete = s['endpoint'] if hasattr(s, 'keys') else s[0]
-                        with get_db_connection() as conn_del:
-                            cdel = conn_del.cursor()
-                            cdel.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (endpoint_to_delete,))
-                            conn_del.commit()
-                        logger.info(f"Deleted stale push subscription for endpoint {endpoint_to_delete}")
-                    except Exception as de:
-                        logger.warning(f"failed to delete stale subscription: {de}")
-            except Exception as e:
-                logger.warning(f"push error: {e}")
-        # Record that we sent this push to dedupe subsequent attempts within window
-        try:
-            with get_db_connection() as conn_log:
-                clog = conn_log.cursor()
-                clog.execute("INSERT INTO push_send_log (username, tag, title, body, url) VALUES (?,?,?,?,?)",
-                             (target_username, payload.get('tag') if isinstance(payload, dict) else None,
-                              payload.get('title') if isinstance(payload, dict) else None,
-                              payload.get('body') if isinstance(payload, dict) else None,
-                              payload.get('url') if isinstance(payload, dict) else None))
-                conn_log.commit()
-        except Exception as le:
-            logger.warning(f"push log write failed: {le}")
-    except Exception as e:
-        logger.error(f"send_push_to_user error: {e}")
 
 @app.route('/api/push/test', methods=['POST'])
 @login_required
