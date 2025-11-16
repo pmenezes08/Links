@@ -30,6 +30,7 @@ from urllib.parse import urlencode, urljoin, quote_plus
 from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
+from backend import init_app
 try:
     from PIL import Image
     PIL_AVAILABLE = True
@@ -48,6 +49,7 @@ except ImportError as e:
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
+init_app(app)
 MISSING_UPLOAD_CACHE = deque(maxlen=200)
 
 COUNTRY_CACHE_TTL = 60 * 60 * 24  # 24 hours
@@ -132,7 +134,7 @@ def login_required(f):
                 logger.info("No username in session, redirecting to login")
             except Exception:
                 pass
-            return redirect(url_for('login'))
+            return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -697,57 +699,6 @@ def enforce_canonical_host():
     except Exception:
         # Never block request on redirect failure
         return None
-
-def _issue_remember_token(response, username: str):
-    try:
-        # random 32-byte token -> hash stored; raw token in cookie
-        raw = secrets.token_urlsafe(48)
-        token_hash = sha256(raw.encode()).hexdigest()
-        now = datetime.utcnow()
-        expires = now + timedelta(days=30)
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("INSERT INTO remember_tokens (username, token_hash, created_at, expires_at) VALUES (?,?,?,?)",
-                      (username, token_hash, now.isoformat(), expires.isoformat()))
-            conn.commit()
-        # Set cookie
-        response.set_cookie(
-            'remember_token', raw,
-            max_age=30*24*60*60,
-            secure=True,
-            httponly=True,
-            samesite='Lax',
-            domain=app.config.get('SESSION_COOKIE_DOMAIN') or None,
-            path='/'
-        )
-    except Exception as e:
-        logger.warning(f"Failed to issue remember token: {e}")
-
-@app.before_request
-def auto_login_from_remember_token():
-    try:
-        if 'username' in session:
-            return
-        raw = request.cookies.get('remember_token')
-        if not raw:
-            return
-        token_hash = sha256(raw.encode()).hexdigest()
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT username, expires_at FROM remember_tokens WHERE token_hash=? ORDER BY id DESC LIMIT 1", (token_hash,))
-            row = c.fetchone()
-        if not row:
-            return
-        username = row['username'] if hasattr(row, 'keys') else row[0]
-        expires_at = row['expires_at'] if hasattr(row, 'keys') else row[1]
-        if datetime.fromisoformat(expires_at) < datetime.utcnow():
-            return
-        # restore session
-        session.permanent = True
-        session['username'] = username
-    except Exception as e:
-        # logger not yet defined here, use print for now
-        print(f"WARNING: auto_login_from_remember_token failed: {e}")
 
 # Create uploads directory if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -4649,495 +4600,8 @@ def check_api_limit(username):
         abort(500)
 
 # Routes
-@app.route('/', methods=['GET'])
-def index():
-    # Guests: mobile -> React welcome (serve SPA directly), desktop -> HTML
-    # Logged-in users -> dashboard
-    try:
-        if session.get('username'):
-            return redirect(url_for('premium_dashboard'))
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            try:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                dist_dir = os.path.join(base_dir, 'client', 'dist')
-                index_path = os.path.join(dist_dir, 'index.html')
-                if os.path.exists(index_path):
-                    resp = send_from_directory(dist_dir, 'index.html')
-                    try:
-                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                        resp.headers['Pragma'] = 'no-cache'
-                        resp.headers['Expires'] = '0'
-                    except Exception:
-                        pass
-                    return resp
-            except Exception as e:
-                logger.warning(f"React mobile index not available: {e}")
-        return render_template('index.html')
-    except Exception as e:
-        logger.error(f"Error in / route: {str(e)}")
-        return ("Internal Server Error", 500)
-
-@app.route('/welcome', methods=['GET'])
-def welcome():
-    # Public React entry for welcome (mobile only). Desktop users go to '/' (HTML).
-    try:
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if not is_mobile:
-            return redirect(url_for('index'))
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        index_path = os.path.join(dist_dir, 'index.html')
-        if os.path.exists(index_path):
-            resp = send_from_directory(dist_dir, 'index.html')
-            try:
-                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                resp.headers['Pragma'] = 'no-cache'
-                resp.headers['Expires'] = '0'
-            except Exception:
-                pass
-            return resp
-        # Fallback: HTML welcome if React build missing
-        return render_template('onboarding_welcome.html', username=session.get('username'))
-    except Exception as e:
-        logger.error(f"Error in /welcome: {e}")
-        return ("Internal Server Error", 500)
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    # Dedicated login route: handles username submission -> login_password
-    try:
-        if request.method == 'GET':
-            # Starting (or returning to) username entry: clear any staged or active login
-            try:
-                session.pop('pending_username', None)
-                session.pop('username', None)
-                session.permanent = False
-            except Exception:
-                pass
-            ua = request.headers.get('User-Agent', '')
-            is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-            if is_mobile:
-                # Serve React login for mobile
-                base_dir = os.path.dirname(os.path.abspath(__file__))
-                dist_dir = os.path.join(base_dir, 'client', 'dist')
-                index_path = os.path.join(dist_dir, 'index.html')
-                if os.path.exists(index_path):
-                    resp = send_from_directory(dist_dir, 'index.html')
-                    try:
-                        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                        resp.headers['Pragma'] = 'no-cache'
-                        resp.headers['Expires'] = '0'
-                        # Clear remember token cookie so back/forward cannot revive stale auth
-                        resp.set_cookie('remember_token', '', max_age=0, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN') or None)
-                    except Exception:
-                        pass
-                    return resp
-            from flask import make_response
-            resp = make_response(render_template('index.html'))
-            try:
-                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                resp.headers['Pragma'] = 'no-cache'
-                resp.headers['Expires'] = '0'
-                resp.set_cookie('remember_token', '', max_age=0, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN') or None)
-            except Exception:
-                pass
-            return resp
-        # POST
-        username = (request.form.get('username') or '').strip()
-        invite_token = (request.form.get('invite_token') or '').strip()
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if not username:
-            if is_mobile:
-                return redirect('/login?' + urlencode({'error': 'Please enter a username!'}))
-            return render_template('index.html', error="Please enter a username!")
-        try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                placeholder = get_sql_placeholder()
-                c.execute(f"SELECT 1 FROM users WHERE username={placeholder} LIMIT 1", (username,))
-                exists = c.fetchone() is not None
-        except Exception as e:
-            logger.error(f"Database error validating username '{username}': {e}")
-            if is_mobile:
-                return redirect('/login?' + urlencode({'error': 'Server error. Please try again.'}))
-            return render_template('index.html', error=f"Database error: {str(e)}")
-        if not exists:
-            if is_mobile:
-                return redirect('/login?' + urlencode({'error': 'Username does not exist'}))
-            return render_template('index.html', error="Username does not exist")
-        # Stage username for password entry; do NOT authenticate yet.
-        # Also clear any previous active "username" to avoid remaining logged in during the flow.
-        try:
-            session.pop('username', None)
-        except Exception:
-            pass
-        session.permanent = False
-        session['pending_username'] = username
-        # Preserve invite token if present
-        if invite_token:
-            session['pending_invite_token'] = invite_token
-        session.modified = True
-        return redirect(url_for('login_password'))
-    except Exception as e:
-        logger.error(f"Error in /login: {e}")
-        return ("Internal Server Error", 500)
-
-@app.route('/login_x')
-def login_x():
-    # X/Twitter OAuth is not configured yet
-    # To enable this feature, you need to:
-    # 1. Register your app at https://developer.twitter.com/
-    # 2. Get API keys (consumer key and secret)
-    # 3. Install authlib: pip install authlib
-    # 4. Configure OAuth in the app
-    flash('Sign in with X is not available yet. This feature requires API configuration.', 'error')
-    return redirect(url_for('index'))
-    # When configured, uncomment the following:
-    # return x_auth.authorize(callback=url_for('authorized', _external=True))
-
-@app.route('/callback')
-def authorized():
-    # This is the OAuth callback route for X/Twitter login
-    # Currently disabled as OAuth is not configured
-    flash('Sign in with X is not available yet. This feature requires API configuration.', 'error')
-    return redirect(url_for('index'))
-    
-    # When OAuth is configured, uncomment the following:
-    # try:
-    #     resp = x_auth.authorized_response()
-    #     if resp is None or resp.get('access_token') is None:
-    #         error_msg = request.args.get('error_description', 'Unknown error')
-    #         return render_template('index.html', error=f"Login failed: {error_msg}")
-    #     session['x_token'] = (resp['access_token'], '')
-    #     headers = {'Authorization': f"Bearer {resp['access_token']}"}
-    #     user_info = requests.get('https://api.x.com/2/users/me', headers=headers, params={'user.fields': 'username'})
-    #     if user_info.status_code != 200:
-    #         return render_template('index.html', error=f"X API error: {user_info.text}")
-    #     user_data = user_info.json()['data']
-    #     username = user_data['username']
-    #     with get_db_connection() as conn:
-    #         c = conn.cursor()
-    #         c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-    #         user = c.fetchone()
-    #         if not user:
-    #             c.execute("INSERT INTO users (username, subscription, password) VALUES (?, 'free', ?)",
-    #                       (username, 'default_password'))
-    #             conn.commit()
-    #     session['username'] = username
-    #     return redirect(url_for('premium_dashboard') if user and user['subscription'] == 'premium' else url_for('dashboard'))
-    # except Exception as e:
-    #     logger.error(f"Error in authorized route: {str(e)}")
-    #     abort(500)
-@app.route('/signup', methods=['GET', 'POST'])
-# @csrf.exempt
-def signup():
-    """User registration page"""
-    if request.method == 'GET':
-        # Smart UA: mobile -> React signup, desktop -> HTML
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-        else:
-            return render_template('signup.html')
-    
-    # Handle POST request for user registration (supports both React and HTML forms)
-    # React form sends individual fields, HTML form sends full_name
-    desired_username = request.form.get('username', '').strip()
-    first_name = request.form.get('first_name', '').strip()
-    last_name = request.form.get('last_name', '').strip()
-    full_name = request.form.get('full_name', '').strip()
-    email = request.form.get('email', '').strip()
-    mobile = request.form.get('mobile', '').strip()
-    password = request.form.get('password', '')
-    confirm_password = request.form.get('confirm_password', '')
-    invite_token = request.form.get('invite_token', '').strip()
-    
-    # Check if this is an invited signup
-    invitation = None
-    if invite_token:
-        try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                c.execute("""
-                    SELECT ci.id, ci.community_id, ci.invited_email, ci.used,
-                           c.name as community_name, ci.invited_by_username,
-                           ci.include_nested_ids, ci.include_parent_ids
-                    FROM community_invitations ci
-                    JOIN communities c ON ci.community_id = c.id
-                    WHERE ci.token = ? AND ci.used = 0
-                """, (invite_token,))
-                invitation = c.fetchone()
-                
-                if invitation:
-                    invited_email = invitation['invited_email'] if hasattr(invitation, 'keys') else invitation[2]
-                    
-                    # Check if this is a QR code invitation (placeholder email)
-                    is_qr_invite = invited_email.startswith('qr-invite-') and invited_email.endswith('@placeholder.local')
-                    
-                    if not is_qr_invite:
-                        # Regular email invitation - email must match
-                        if email and email.lower() != invited_email.lower():
-                            error_msg = 'Email does not match invitation'
-                            if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-                                return jsonify({'success': False, 'error': error_msg}), 400
-                            else:
-                                return render_template('signup.html', error=error_msg)
-                        # Use email from invitation if not provided
-                        if not email:
-                            email = invited_email
-                    # For QR code invitations, user can use any email (don't pre-fill)
-        except Exception as e:
-            logger.error(f"Error checking invitation: {e}")
-            invitation = None
-    
-    # Handle both form types
-    if not first_name and not last_name and full_name:
-        # HTML form - split full name
-        parts = full_name.split()
-        first_name = parts[0] if parts else ''
-        last_name = ' '.join(parts[1:]) if len(parts) > 1 else ''
-    elif first_name and last_name:
-        # React form - use individual names
-        full_name = f"{first_name} {last_name}".strip()
-    
-    # Validation
-    if not all([first_name, email, password, confirm_password]):
-        error_msg = 'All required fields must be filled'
-        # Check if this is a React request (JSON or AJAX)
-        if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded' and any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-            return jsonify({'success': False, 'error': error_msg}), 400
-        else:
-            return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
-    
-    if password != confirm_password:
-        error_msg = 'Passwords do not match'
-        # Check if this is a React request
-        if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded' and any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-            return jsonify({'success': False, 'error': error_msg}), 400
-        else:
-            return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
-    
-    if len(password) < 6:
-        error_msg = 'Password must be at least 6 characters long'
-        # Check if this is a React request
-        if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-            return jsonify({'success': False, 'error': error_msg}), 400
-        else:
-            return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
-    
-    # Username handling: user-provided or auto-generate
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Check if email already exists
-            c.execute("SELECT 1 FROM users WHERE email = ?", (email,))
-            if c.fetchone():
-                error_msg = 'Email already registered'
-                # Check if this is a React request
-                if any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-                    return jsonify({'success': False, 'error': error_msg}), 400
-                else:
-                    return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
-            
-            # If provided, validate uniqueness and allowed chars; else auto-generate
-            if desired_username:
-                candidate = re.sub(r'[^a-z0-9_]', '', desired_username.lower())
-                if not candidate:
-                    return jsonify({'success': False, 'error': 'Invalid username'}), 400
-                c.execute("SELECT 1 FROM users WHERE username = ?", (candidate,))
-                if c.fetchone():
-                    return jsonify({'success': False, 'error': 'Username already taken'}), 400
-                username = candidate
-            else:
-                base_username = (email.split('@')[0] if email else (first_name + last_name)).lower()
-                base_username = re.sub(r'[^a-z0-9_]', '', base_username) or 'user'
-                username = base_username
-                suffix = 1
-                while True:
-                    c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
-                    if not c.fetchone():
-                        break
-                    suffix += 1
-                    username = f"{base_username}{suffix}"
-            
-            # Hash the password (store in pending)
-            hashed_password = generate_password_hash(password)
-
-            # If invited, directly create user (email pre-verified)
-            if invitation:
-                try:
-                    invitation_id = invitation['id'] if hasattr(invitation, 'keys') else invitation[0]
-                    community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[1]
-                    community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[4]
-                    raw_nested_values = invitation['include_nested_ids'] if hasattr(invitation, 'keys') else (invitation[6] if len(invitation) > 6 else None)
-                    raw_parent_values = invitation['include_parent_ids'] if hasattr(invitation, 'keys') else (invitation[7] if len(invitation) > 7 else None)
-                    nested_ids = normalize_id_list(raw_nested_values) if raw_nested_values else []
-                    parent_ids_to_join = normalize_id_list(raw_parent_values) if raw_parent_values is not None else get_parent_chain_ids(c, community_id)
-                    
-                    # Create user directly (email already verified via invitation)
-                    c.execute("""
-                        INSERT INTO users (username, first_name, last_name, email, mobile, password, subscription, email_verified, email_verified_at)
-                        VALUES (?, ?, ?, ?, ?, ?, 'free', 1, ?)
-                    """, (username, first_name, last_name, email, mobile, hashed_password, datetime.now().isoformat()))
-                    
-                    # Get user ID
-                    c.execute("SELECT id FROM users WHERE username = ?", (username,))
-                    user_row = c.fetchone()
-                    user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
-                    
-                    # Auto-join the community and all parent communities
-                    communities_to_join: List[int] = []
-                    seen: Set[int] = set()
-
-                    def add_community(target_id: Optional[int]):
-                        if not target_id:
-                            return
-                        if target_id not in seen:
-                            seen.add(target_id)
-                            communities_to_join.append(target_id)
-
-                    add_community(community_id)
-                    for pid in parent_ids_to_join:
-                        add_community(pid)
-                    for nid in nested_ids:
-                        add_community(nid)
-                        for ancestor_id in get_parent_chain_ids(c, nid):
-                            add_community(ancestor_id)
-                    
-                    # Join all communities (invited community + selected extras)
-                    for comm_id in communities_to_join:
-                        # Check if already a member
-                        c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
-                        if not c.fetchone():
-                            try:
-                                add_user_to_community(c, user_id, int(comm_id), role='member')
-                            except CommunityMembershipLimitError as limit_err:
-                                conn.rollback()
-                                error_msg = str(limit_err)
-                                is_mobile_request = any(k in request.headers.get('User-Agent', '') for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-                                if is_mobile_request:
-                                    return jsonify({'success': False, 'error': error_msg}), 403
-                                flash(error_msg, 'error')
-                                return render_template('signup.html', error=error_msg, full_name=full_name, email=email, mobile=mobile)
-                    
-                    # Mark invitation as used
-                    c.execute("""
-                        UPDATE community_invitations 
-                        SET used = 1, used_at = ?
-                        WHERE id = ?
-                    """, (datetime.now().isoformat(), invitation_id))
-                    
-                    # Send notifications to community admins/owners
-                    notify_community_new_member(community_id, username, conn)
-                    
-                    conn.commit()
-                    
-                    # Log the user in
-                    session['username'] = username
-                    session.permanent = True
-                    
-                    # Return success with community info
-                    ua = request.headers.get('User-Agent', '')
-                    is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-                    if is_mobile:
-                        return jsonify({
-                            'success': True, 
-                            'redirect': '/premium_dashboard',
-                            'invited_to_community': community_name,
-                            'needs_email_verification': False
-                        })
-                    else:
-                        flash(f'Welcome! You have been added to {community_name}', 'success')
-                        return redirect(url_for('premium_dashboard'))
-                        
-                except Exception as invite_err:
-                    logger.error(f"Error processing invitation signup: {invite_err}")
-                    # Fall back to normal signup flow
-                    invitation = None
-
-            # Ensure pending table exists
-            try:
-                ensure_pending_signups_table(c)
-            except Exception:
-                pass
-
-            # Replace any prior pending signups for this email
-            try:
-                c.execute("DELETE FROM pending_signups WHERE email = ?", (email,))
-            except Exception:
-                pass
-
-            # Insert pending signup
-            c.execute(
-                """
-                INSERT INTO pending_signups (username, email, password, first_name, last_name, mobile, verification_sent_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (username, email, hashed_password, first_name, last_name, mobile, datetime.now().isoformat())
-            )
-            conn.commit()
-
-            # Send verification email with pending token
-            try:
-                pending_id = c.lastrowid if hasattr(c, 'lastrowid') else None
-                if not pending_id:
-                    try:
-                        c.execute("SELECT id FROM pending_signups WHERE email=? ORDER BY id DESC LIMIT 1", (email,))
-                        r = c.fetchone()
-                        pending_id = r['id'] if hasattr(r,'keys') else (r[0] if r else None)
-                    except Exception:
-                        pending_id = None
-                token = generate_pending_signup_token(int(pending_id or 0), email)
-                verify_url = _build_verify_url(token)
-                subject = "Verify your C-Point email"
-                html = f"""
-                    <div style='font-family:Arial,sans-serif;font-size:14px;color:#111'>
-                      <p>Welcome to C-Point!</p>
-                      <p>Please verify your email by clicking the button below:</p>
-                      <p><a href='{verify_url}' style='display:inline-block;background:#111;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none'>Verify Email</a></p>
-                      <p>Or open this link: <a href='{verify_url}'>{verify_url}</a></p>
-                      <p>This link expires in 24 hours.</p>
-                    </div>
-                """
-                _send_email_via_resend(email, subject, html)
-                try:
-                    c.execute("UPDATE pending_signups SET verification_sent_at=? WHERE id=?", (datetime.now().isoformat(), pending_id))
-                    conn.commit()
-                except Exception:
-                    pass
-            except Exception as e:
-                logger.warning(f"Could not send verification email (pending): {e}")
-
-            # Respond without creating user or logging in
-            ua = request.headers.get('User-Agent', '')
-            is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-            if is_mobile:
-                return jsonify({'success': True, 'needs_email_verification': True, 'pending': True})
-            else:
-                return render_template('verification_result.html', success=True, message='We sent a verification link to your email. Please verify to complete sign up.')
-            
-    except Exception as e:
-        logger.error(f"Error during user registration: {str(e)}")
-        import traceback
-        logger.error(f"Registration error traceback: {traceback.format_exc()}")
-        
-        # Smart error response: mobile -> JSON, desktop -> HTML
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            return jsonify({'success': False, 'error': 'An error occurred during registration. Please try again.'}), 500
-        else:
-            return render_template('signup.html', error='An error occurred during registration. Please try again.',
-                                   full_name=full_name, email=email, mobile=mobile)
+# Public-facing index/welcome routes live in backend.blueprints.public
+# Authentication flows (login/signup/logout) are registered via backend.blueprints.auth
 
 @app.route('/admin_profile')
 @login_required
@@ -5158,7 +4622,7 @@ def logout():
     session.permanent = False
     # Clear remember token cookie
     from flask import make_response
-    resp = make_response(redirect(url_for('index')))
+    resp = make_response(redirect(url_for('public.index')))
     resp.set_cookie('remember_token', '', max_age=0, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN') or None)
     return resp
 @app.route('/login_password', methods=['GET', 'POST'])
@@ -5168,7 +4632,7 @@ def login_password():
     # Use staged username for password entry; do not require full auth here
     if 'pending_username' not in session and 'username' not in session:
         # No staged login; return to username page
-        return redirect(url_for('login'))
+        return redirect(url_for('auth.login'))
     # Prefer staged username for password flow; fall back to current session user
     username = session.get('pending_username') or session.get('username')
     if request.method == 'POST':
@@ -5198,7 +4662,7 @@ def login_password():
                 if not is_active:
                     flash('Your account has been deactivated. Please contact the administrator.', 'error')
                     session.clear()
-                    return redirect(url_for('index'))
+                    return redirect(url_for('public.index'))
                 
                 # Check if password is hashed (bcrypt hashes start with $2b$, $2a$, or $2y$)
                 # or scrypt/pbkdf2 hashes from werkzeug start with 'scrypt:' or 'pbkdf2:'
@@ -5377,7 +4841,7 @@ def login_back():
         session.pop('pending_username', None)
     except Exception:
         pass
-    return redirect(url_for('login'))
+    return redirect(url_for('auth.login'))
 
 @app.route('/dashboard')
 @login_required
@@ -7571,7 +7035,7 @@ def admin():
     print(f"Admin route accessed by user: {session.get('username')}")
     if session['username'] != 'admin':
         print("User is not admin, redirecting")
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     print("User is admin, proceeding")
 
     # Check if request is from mobile and serve React
@@ -7844,7 +7308,7 @@ def admin():
 @login_required
 def admin_test():
     if session['username'] != 'admin':
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     return "Admin test route is working!"
                     
 
@@ -10208,7 +9672,7 @@ def success():
 def business_login():
     # Business login temporarily disabled
     flash('Business login is not available at this time.', 'error')
-    return redirect(url_for('index'))
+    return redirect(url_for('public.index'))
 
 @app.route('/business_logout')
 def business_logout():
@@ -11668,17 +11132,17 @@ def reset_password(token):
             
             if not result:
                 flash('Invalid or expired reset link.', 'error')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
             
             if result['used']:
                 flash('This reset link has already been used.', 'error')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
             
             # Check if token is expired (24 hours)
             created_at = datetime.fromisoformat(result['created_at'])
             if datetime.now() - created_at > timedelta(hours=24):
                 flash('This reset link has expired.', 'error')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
             
             return render_template('reset_password.html', token=token, username=result['username'])
     
@@ -11713,13 +11177,13 @@ def reset_password(token):
                 
                 if not result or result['used']:
                     flash('Invalid or expired reset link.', 'error')
-                    return redirect(url_for('index'))
+                    return redirect(url_for('public.index'))
                 
                 # Check expiration again
                 created_at = datetime.fromisoformat(result['created_at'])
                 if datetime.now() - created_at > timedelta(hours=24):
                     flash('This reset link has expired.', 'error')
-                    return redirect(url_for('index'))
+                    return redirect(url_for('public.index'))
                 
                 # Update password
                 hashed_password = generate_password_hash(new_password)
@@ -11731,7 +11195,7 @@ def reset_password(token):
                 conn.commit()
                 
                 flash('Your password has been successfully reset. You can now log in with your new password.', 'success')
-                return redirect(url_for('index'))
+                return redirect(url_for('public.index'))
                 
         except Exception as e:
             logger.error(f"Error resetting password: {e}")
@@ -17321,7 +16785,7 @@ def admin_ads_overview():
     # Check if user is admin
     if username != 'admin':
         flash('Access denied. Admin only.', 'error')
-        return redirect(url_for('index'))
+        return redirect(url_for('public.index'))
     
     try:
         with get_db_connection() as conn:
