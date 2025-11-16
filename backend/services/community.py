@@ -60,7 +60,7 @@ def is_community_admin(username, community_id):
                 pass
 
             c.execute(
-                f"SELECT 1 FROM community_admins WHERE community_id = {ph} AND username = {ph}",
+                f"SELECT 1 FROM community_admins WHERE community_id = {ph} AND LOWER(username) = LOWER({ph})",
                 (community_id, username),
             )
             return c.fetchone() is not None
