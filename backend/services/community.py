@@ -56,7 +56,8 @@ def is_community_admin(username, community_id):
                 row = c.fetchone()
                 if row:
                     role = row["role"] if hasattr(row, "keys") else row[0]
-                    if (role or "").lower() == "admin":
+                    normalized_role = (role or "").strip().lower()
+                    if normalized_role in {"admin", "owner", "moderator", "manager"}:
                         return True
             except Exception:
                 pass
