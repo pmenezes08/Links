@@ -10210,22 +10210,6 @@ def business_login():
     flash('Business login is not available at this time.', 'error')
     return redirect(url_for('index'))
 
-@app.route('/business_dashboard')
-@business_login_required
-def business_dashboard():
-    business_id = session['business_id']
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT name, email, address, phone, type FROM businesses WHERE business_id=?", (business_id,))
-            business = c.fetchone()
-            c.execute("SELECT u.username, m.membership_type, m.start_date, m.end_date, m.status FROM memberships m JOIN users u ON m.user_username = u.username WHERE m.business_id=?", (business_id,))
-            memberships = c.fetchall()
-        return render_template('business_dashboard.html', business=business, memberships=memberships)
-    except Exception as e:
-        logger.error(f"Error in business_dashboard for business {business_id}: {str(e)}")
-        abort(500)
-
 @app.route('/business_logout')
 def business_logout():
     session.pop('business_id', None)
