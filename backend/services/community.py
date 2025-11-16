@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 def is_community_owner(username, community_id):
     """Check if a user is the owner of a community."""
-    if not username or not community_id:
+    norm_username = (username or "").strip().lower()
+    if not norm_username or not community_id:
         return False
 
     try:
@@ -26,7 +27,7 @@ def is_community_owner(username, community_id):
             if not result:
                 return False
             creator = result["creator_username"] if hasattr(result, "keys") else result[0]
-            return creator == username
+            return bool(creator and str(creator).strip().lower() == norm_username)
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("is_community_owner failed: %s", exc)
         return False
@@ -34,7 +35,8 @@ def is_community_owner(username, community_id):
 
 def is_community_admin(username, community_id):
     """Check if a user is an admin of a community."""
-    if not username or not community_id:
+    norm_username = (username or "").strip().lower()
+    if not norm_username or not community_id:
         return False
 
     try:
@@ -47,7 +49,7 @@ def is_community_admin(username, community_id):
                     SELECT uc.role
                     FROM user_communities uc
                     JOIN users u ON uc.user_id = u.id
-                    WHERE u.username = {ph} AND uc.community_id = {ph}
+                    WHERE LOWER(u.username) = LOWER({ph}) AND uc.community_id = {ph}
                     """,
                     (username, community_id),
                 )
