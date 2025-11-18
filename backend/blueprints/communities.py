@@ -172,8 +172,11 @@ def get_community_members():
                 row = c.fetchone()
                 if row:
                     uc_role = row["role"] if hasattr(row, "keys") else (row[0] if row else None)
-                    if (uc_role or "").lower() in ("admin", "owner"):
-                        current_user_role = uc_role.lower()
+                    normalized_uc_role = (uc_role or "").strip().lower()
+                    if normalized_uc_role == "owner":
+                        current_user_role = "owner"
+                    elif normalized_uc_role in {"admin", "moderator", "manager", "parent_admin"}:
+                        current_user_role = "admin"
 
                 if current_user_role == "member":
                     c.execute(
