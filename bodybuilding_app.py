@@ -16539,8 +16539,302 @@ def test_sub_permissions():
         logger.error(f"Test permissions error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# Route moved to backend.blueprints.communities (/create_community)
+@app.route('/create_community', methods=['POST'])
+@login_required
+def create_community():
+    """Create a new community"""
+    try:
+        username = session.get('username')
+        logger.info(f"=== CREATE COMMUNITY REQUEST from {username} ===")
+        
+        # Log all form data for debugging
+        logger.info(f"Form data: {dict(request.form)}")
+        
+        is_app_admin_user = is_app_admin(username)
+        subscription_value = 'free'
+        is_premium_user = False
+        is_free_creator = False
+        is_business_admin_creating_sub = False
+        requested_type = request.form.get('type')
+        raw_parent_value = request.form.get('parent_community_id', None)
 
+        def normalize_parent_value(value):
+            if value is None:
+                return None
+            if isinstance(value, str):
+                cleaned = value.strip()
+            else:
+                cleaned = str(value).strip()
+            if cleaned.lower() in ('', 'none', 'null', 'undefined'):
+                return None
+            return cleaned
+
+        parent_community_id_check = normalize_parent_value(raw_parent_value)
+        
+        # Enforce verified email
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
+            row = c.fetchone()
+            verified = False
+            if row is not None:
+                verified = bool(row['email_verified'] if hasattr(row, 'keys') else row[0])
+            if not verified:
+                return jsonify({'success': False, 'error': 'please verify your email'}), 403
+            # Enforce subscription: only premium users (or admin) can create communities
+            # Exception: Business community admins can create sub-communities without premium
+            try:
+                c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+                sub_row = c.fetchone()
+                subscription = (sub_row['subscription'] if hasattr(sub_row,'keys') else (sub_row[0] if sub_row else 'free'))
+            except Exception:
+                subscription = 'free'
+            subscription_value = normalize_subscription(subscription)
+            is_premium_user = subscription_value == 'premium'
+            
+            # Check if this is a Business sub-community creation by a parent admin
+            community_type_check = (requested_type or '').strip().lower()
+            
+            if parent_community_id_check is not None and community_type_check == 'business':
+                # Check if user is admin of parent Business community (using same connection/cursor)
+                try:
+                    placeholder_check = get_sql_placeholder()
+                    c.execute(f"SELECT type, creator_username FROM communities WHERE id = {placeholder_check}", (parent_community_id_check,))
+                    parent_check = c.fetchone()
+                    if parent_check:
+                        parent_type_check = parent_check['type'] if hasattr(parent_check, 'keys') else parent_check[0]
+                        parent_creator_check = parent_check['creator_username'] if hasattr(parent_check, 'keys') else parent_check[1]
+                        
+                        if parent_type_check.lower() == 'business':
+                            # Check if owner
+                            if username == parent_creator_check:
+                                is_business_admin_creating_sub = True
+                            else:
+                                # Check if admin
+                                c.execute(f"""
+                                    SELECT role FROM user_communities
+                                    WHERE user_id = (SELECT id FROM users WHERE username = {placeholder_check})
+                                    AND community_id = {placeholder_check}
+                                """, (username, parent_community_id_check))
+                                role_check = c.fetchone()
+                                if role_check:
+                                    user_role_check = role_check['role'] if hasattr(role_check, 'keys') else role_check[0]
+                                    if user_role_check == 'admin':
+                                        is_business_admin_creating_sub = True
+                except Exception as bypass_err:
+                    logger.warning(f"Error checking Business admin bypass: {bypass_err}")
+            
+            raw_type = str(requested_type or '').strip().lower() or 'general'
+
+            # Determine if user should be treated as free-plan creator
+            parent_is_none = parent_community_id_check is None
+            if not is_app_admin_user:
+                if not is_premium_user:
+                    if parent_is_none:
+                        is_free_creator = True
+                        raw_type = 'general'
+        
+        name = request.form.get('name')
+        description = request.form.get('description', '')
+        location = request.form.get('location', '')
+        template = request.form.get('template', 'default')
+        background_color = request.form.get('background_color', '#2d3839')
+        text_color = request.form.get('text_color', '#ffffff')
+        accent_color = request.form.get('accent_color', '#4db6ac')
+        card_color = request.form.get('card_color', '#1a2526')
+        parent_community_id = parent_community_id_check
+        parent_community_id_value: Optional[int] = None
+        if parent_community_id is not None:
+            try:
+                parent_community_id_value = int(str(parent_community_id))
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'Invalid parent community specified'}), 400
+        
+        if not name:
+            return jsonify({'success': False, 'error': 'Name is required'}), 400
+        
+        # Business communities can only be created by app admin (parent) or parent community admins (sub-communities)
+        normalized_type = raw_type
+        if normalized_type == 'business':
+            if parent_community_id is not None:
+                # Check if user is admin of parent Business community
+                try:
+                    with get_db_connection() as conn:
+                        c_check = conn.cursor()
+                        placeholder = get_sql_placeholder()
+                        
+                        # Check parent community type
+                        c_check.execute(f"SELECT type, creator_username FROM communities WHERE id = {placeholder}", (parent_community_id,))
+                        parent_info = c_check.fetchone()
+                        if not parent_info:
+                            return jsonify({'success': False, 'error': 'Parent community not found'}), 404
+                        
+                        parent_type = parent_info['type'] if hasattr(parent_info, 'keys') else parent_info[0]
+                        parent_creator = parent_info['creator_username'] if hasattr(parent_info, 'keys') else parent_info[1]
+                        
+                        if parent_type.lower() != 'business':
+                            return jsonify({'success': False, 'error': 'Business sub-communities can only be created under Business parent communities'}), 403
+                        
+                        # Check if user is owner
+                        if username == parent_creator or is_app_admin(username):
+                            # Owner or app admin - allowed
+                            logger.info(f"Business sub-community creation allowed: {username} is owner/admin of parent {parent_community_id}")
+                        else:
+                            # Check if user is admin of parent community
+                            logger.info(f"Checking if {username} is admin of parent community {parent_community_id}")
+                            c_check.execute(f"""
+                                SELECT role FROM user_communities
+                                WHERE user_id = (SELECT id FROM users WHERE username = {placeholder})
+                                AND community_id = {placeholder}
+                            """, (username, parent_community_id))
+                            user_role_row = c_check.fetchone()
+                            user_role = user_role_row['role'] if (user_role_row and hasattr(user_role_row, 'keys')) else (user_role_row[0] if user_role_row else None)
+                            
+                            logger.info(f"User {username} role in parent {parent_community_id}: {user_role}")
+                            
+                            if user_role != 'admin':
+                                logger.warning(f"Permission denied: {username} has role '{user_role}' (not 'admin') in parent {parent_community_id}")
+                                return jsonify({'success': False, 'error': f'Only parent community admins can create Business sub-communities. Your role: {user_role}'}), 403
+                            
+                            logger.info(f"Business sub-community creation allowed: {username} is admin of parent {parent_community_id}")
+                except Exception as e:
+                    logger.error(f"Error checking parent community permissions: {e}")
+                    return jsonify({'success': False, 'error': f'Permission check failed: {str(e)}'}), 500
+            else:
+                # Creating parent Business community - only app admin
+                if not is_app_admin(username):
+                    return jsonify({'success': False, 'error': 'Only app admin can create Business communities'}), 403
+        
+        # Generate a dummy join_code to satisfy database UNIQUE constraint
+        # (Not used for joining anymore, but column still exists)
+        import random
+        import string
+        join_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        
+        # Handle background image
+        background_path = None
+        if 'background_file' in request.files:
+            file = request.files['background_file']
+            if file.filename != '':
+                background_path = save_uploaded_file(file, 'community_backgrounds')
+                if not background_path:
+                    return jsonify({'success': False, 'error': 'Invalid background image file type. Allowed: png, jpg, jpeg, gif, webp'}), 400
+        
+        # Use URL if no file uploaded
+        if not background_path:
+            background_url = request.form.get('background_url', '').strip()
+            if background_url:
+                background_path = background_url
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Apply free-plan community limits before creation
+            parent_id_int = parent_community_id_value
+            if is_free_creator:
+                if parent_id_int is None:
+                    if USE_MYSQL:
+                        c.execute("""
+                            SELECT COUNT(*) FROM communities 
+                            WHERE creator_username = %s AND (parent_community_id IS NULL OR parent_community_id = '')
+                        """, (username,))
+                    else:
+                        c.execute("""
+                            SELECT COUNT(*) FROM communities 
+                            WHERE creator_username = ? AND (parent_community_id IS NULL OR parent_community_id = '')
+                        """, (username,))
+                    parent_count = get_scalar_result(c.fetchone(), column_index=0) or 0
+                    try:
+                        parent_count = int(parent_count)
+                    except Exception:
+                        parent_count = 0
+                    if parent_count >= 2:
+                        return jsonify({'success': False, 'error': 'Free plan allows up to 2 parent communities. Upgrade to create more communities.'}), 403
+                else:
+                    parent_info = get_community_basic(c, parent_id_int)
+                    if not parent_info:
+                        return jsonify({'success': False, 'error': 'Parent community not found'}), 404
+                    ancestors = get_community_ancestors(c, parent_id_int)
+                    depth = len(ancestors)
+                    top_info = ancestors[-1] if ancestors else parent_info
+                    top_creator = top_info.get('creator_username')
+                    if top_creator != username:
+                        return jsonify({'success': False, 'error': 'Free plan sub-communities must be created under your own parent communities.'}), 403
+                    is_free_creator = True
+                    if depth > 2:
+                        return jsonify({'success': False, 'error': 'Free plan communities support only one nested level.'}), 403
+                    child_placeholder = get_sql_placeholder()
+                    if parent_info.get('parent_community_id') is None:
+                        c.execute(f"SELECT COUNT(*) FROM communities WHERE parent_community_id = {child_placeholder}", (parent_id_int,))
+                        child_count = get_scalar_result(c.fetchone(), column_index=0) or 0
+                        try:
+                            child_count = int(child_count)
+                        except Exception:
+                            child_count = 0
+                        if child_count >= 3:
+                            return jsonify({'success': False, 'error': 'Free plan parent communities can have up to 3 sub-communities.'}), 403
+                    else:
+                        c.execute(f"SELECT COUNT(*) FROM communities WHERE parent_community_id = {child_placeholder}", (parent_id_int,))
+                        nested_count = get_scalar_result(c.fetchone(), column_index=0) or 0
+                        try:
+                            nested_count = int(nested_count)
+                        except Exception:
+                            nested_count = 0
+                        if nested_count >= 1:
+                            return jsonify({'success': False, 'error': 'Free plan sub-communities can have only one nested community.'}), 403
+
+            # If creating a sub-community, enforce premium-only for creators as well
+            # (Already enforced above for community creation, but keep guard explicit)
+            placeholders = ', '.join([get_sql_placeholder()] * 14)
+            c.execute(f"""
+                INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
+                VALUES ({placeholders})
+            """, (name, normalized_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_id_int))
+            
+            community_id = c.lastrowid
+            
+            # Get user's ID and add creator as owner
+            c.execute(f"SELECT id FROM users WHERE username = {get_sql_placeholder()}", (username,))
+            user_row = c.fetchone()
+            if user_row:
+                user_id = user_row[0] if not hasattr(user_row, 'keys') else user_row['id']
+                try:
+                    add_user_to_community(c, user_id, community_id, role='owner')
+                except CommunityMembershipLimitError as limit_err:
+                    conn.rollback()
+                    return jsonify({'success': False, 'error': str(limit_err)}), 403
+            
+            # Ensure admin is also a member of every community
+            c.execute("SELECT id FROM users WHERE username = 'admin'")
+            admin_row = c.fetchone()
+            if admin_row:
+                admin_id = admin_row['id'] if hasattr(admin_row, 'keys') else admin_row[0]
+                c.execute(f"SELECT 1 FROM user_communities WHERE user_id={get_sql_placeholder()} AND community_id={get_sql_placeholder()}", (admin_id, community_id))
+                if not c.fetchone():
+                    try:
+                        add_user_to_community(c, admin_id, community_id, role=None)
+                    except CommunityMembershipLimitError as limit_err:
+                        conn.rollback()
+                        return jsonify({'success': False, 'error': str(limit_err)}), 403
+            
+            conn.commit()
+            
+            return jsonify({
+                'success': True, 
+                'community_id': community_id,
+                'message': f'Community "{name}" created successfully!'
+            })
+            
+    except Exception as e:
+        logger.error(f"Error creating community: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'error': f'Failed to create community: {str(e)}'}), 500
+    except Exception as outer_err:
+        logger.error(f"Outer error in create_community: {outer_err}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'error': f'Server error: {str(outer_err)}'}), 500
 @app.route('/get_available_parent_communities', methods=['GET'])
 @login_required
 def get_available_parent_communities():
