@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from functools import wraps
+from functools import lru_cache, wraps
 
 from flask import (
     Blueprint,
@@ -19,17 +19,23 @@ from flask import (
     url_for,
 )
 
-from bodybuilding_app import (
-    CommunityMembershipLimitError,
-    add_user_to_community,
-    get_db_connection,
-    get_sql_placeholder,
-    is_app_admin,
-)
+from backend.services.database import get_db_connection, get_sql_placeholder
 
 
 communities_bp = Blueprint("communities", __name__)
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _legacy_community_helpers():
+    """Lazy import helpers from the legacy monolith to avoid circular imports."""
+    from bodybuilding_app import (  # type: ignore import-not-found
+        CommunityMembershipLimitError,
+        add_user_to_community,
+        is_app_admin,
+    )
+
+    return CommunityMembershipLimitError, add_user_to_community, is_app_admin
 
 
 def _login_required(view_func):
@@ -196,6 +202,7 @@ def add_community_member():
     username = session["username"]
     community_id = request.form.get("community_id")
     new_member_username = request.form.get("username")
+    CommunityMembershipLimitError, add_user_to_community_fn, _ = _legacy_community_helpers()
     if not community_id or not new_member_username:
         return jsonify({"success": False, "error": "Missing required parameters"}), 400
     try:
@@ -232,7 +239,7 @@ def add_community_member():
                 return jsonify({"success": False, "error": "User is already a member"}), 400
 
             try:
-                add_user_to_community(c, new_member["id"], community_id_int, role="member")
+                add_user_to_community_fn(c, new_member["id"], community_id_int, role="member")
             except CommunityMembershipLimitError as limit_err:
                 return jsonify({"success": False, "error": str(limit_err)}), 403
             conn.commit()
@@ -250,6 +257,7 @@ def update_member_role():
     community_id = request.form.get("community_id")
     target_username = request.form.get("target_username")
     new_role = request.form.get("new_role")
+    _, _, is_app_admin_fn = _legacy_community_helpers()
 
     if not all([community_id, target_username, new_role]):
         return jsonify({"success": False, "error": "Missing required parameters"}), 400
@@ -267,7 +275,7 @@ def update_member_role():
             community_type = community["type"] if hasattr(community, "keys") else community[1]
             parent_community_id = community["parent_community_id"] if hasattr(community, "keys") else community[2]
 
-            is_app_admin_user = is_app_admin(username)
+            is_app_admin_user = is_app_admin_fn(username)
             is_owner = username == current_owner
 
             c.execute(

@@ -134,7 +134,7 @@ export default function CommunityFeed() {
   
   // Check if we should highlight from onboarding
   const [highlightStep, setHighlightStep] = useState<'reaction' | 'post' | null>(null)
-  useEffect(() => {
+    useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('highlight_post') === 'true') {
       setHighlightStep('reaction') // Start with reaction
@@ -1734,8 +1734,8 @@ function EditCommunityButton({ communityId, onClose }:{ communityId: string, onC
         const r = await fetch('/get_community_members', { method:'POST', credentials:'include', body: fd })
         const j = await r.json()
         if (!mounted) return
-        const role = j?.current_user_role
-        const can = role === 'app_admin' || role === 'owner'
+        const role = (j?.current_user_role || '').toLowerCase()
+        const can = role === 'app_admin' || role === 'owner' || role === 'admin'
         setAllowed(!!can)
       }catch{ setAllowed(false) }
     }
