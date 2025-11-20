@@ -160,15 +160,27 @@ def login():
             session.pop("username", None)
         except Exception:
             pass
-        # CRITICAL: Set permanent=True to ensure cookie is sent, even for short-lived sessions
+        # CRITICAL: Set permanent=True to ensure cookie is sent
         session.permanent = True
         session["pending_username"] = username
         if invite_token:
             session["pending_invite_token"] = invite_token
         session.modified = True
-        # Redirect back to React login page - React will detect pending_username and show password step
-        # Use make_response to ensure session cookie is sent with redirect
+        
+        # Force session save by accessing app.session_interface
+        from flask import current_app
+        current_app.session_interface.save_session(current_app, session, make_response(""))
+        
+        # Log for debugging
+        logger.info(f"Login step 1: Set pending_username={username}, session_id={session.get('_id', 'none')}")
+        
+        # Redirect back to React login page
         resp = make_response(redirect("/login?step=password"))
+        # Ensure cookie is set with correct attributes
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        except Exception:
+            pass
         return resp
     except Exception as exc:
         logger.error("Error in /login: %s", exc)

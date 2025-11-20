@@ -4500,12 +4500,14 @@ def api_check_pending_login():
     """Check if there's a pending username in session (for two-step login). No auth required."""
     try:
         pending_username = session.get('pending_username')
+        # Debug logging
+        logger.info(f"check_pending_login called: pending_username={pending_username}, session_keys={list(session.keys())}, cookies={request.cookies.keys()}")
         if pending_username:
             return jsonify({'success': True, 'pending_username': pending_username})
-        return jsonify({'success': False, 'pending_username': None})
+        return jsonify({'success': False, 'pending_username': None, 'debug': 'No pending_username in session'})
     except Exception as e:
         logger.error(f"Error in api_check_pending_login: {e}")
-        return jsonify({'success': False, 'pending_username': None})
+        return jsonify({'success': False, 'pending_username': None, 'error': str(e)})
 # React hashed assets are served by web server static mapping (/assets -> client/dist/assets)
 @app.route('/api/community_group_feed/<int:parent_id>')
 @login_required
