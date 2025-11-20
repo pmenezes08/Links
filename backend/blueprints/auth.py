@@ -687,42 +687,20 @@ def login_password():
                         except Exception as exc:
                             logger.error("Error auto-joining via invite token: %s", exc)
 
-                    resp = make_response(redirect(url_for("communities")))
+                    resp = make_response(redirect("/premium_dashboard"))
                     _issue_remember_token(resp, username)
                     return resp
-                resp = make_response(
-                    render_template("login.html", username=username, error="Incorrect password. Please try again.")
-                )
-                try:
-                    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-                    resp.headers["Pragma"] = "no-cache"
-                    resp.headers["Expires"] = "0"
-                except Exception:
-                    pass
-                return resp
+                # Incorrect password - redirect back to React with error
+                return redirect("/login?step=password&error=" + quote("Incorrect password. Please try again."))
             else:
-                resp = make_response(
-                    render_template("login.html", username=username, error="Incorrect password. Please try again.")
-                )
-                try:
-                    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-                    resp.headers["Pragma"] = "no-cache"
-                    resp.headers["Expires"] = "0"
-                except Exception:
-                    pass
-                return resp
+                # User not found - redirect back to React with error  
+                return redirect("/login?step=password&error=" + quote("Incorrect password. Please try again."))
         except Exception as exc:
             logger.error("Database error in login_password for %s: %s", username, exc)
-            abort(500)
+            return redirect("/login?error=" + quote("Server error. Please try again."))
 
-    resp = make_response(render_template("login.html", username=username))
-    try:
-        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        resp.headers["Pragma"] = "no-cache"
-        resp.headers["Expires"] = "0"
-    except Exception:
-        pass
-    return resp
+    # GET request - redirect to React login
+    return redirect("/login")
 
 
 @auth_bp.route("/login_back", methods=["GET"], endpoint="login_back")
