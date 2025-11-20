@@ -4216,17 +4216,15 @@ def logout():
 @app.route('/login_password', methods=['GET', 'POST'])
 # @csrf.exempt
 def login_password():
-    # React handles all login UI - redirect to React app
-    return redirect('/')
+    # GET request: redirect to React login page
+    if request.method == 'GET':
+        return redirect('/login')
     
-@app.route('/login_password_api', methods=['POST'])
-# @csrf.exempt
-def login_password_api():
-    # Quiet noisy logs in production
+    # POST request: process password
     # Use staged username for password entry; do not require full auth here
     if 'pending_username' not in session and 'username' not in session:
         # No staged login; return to username page
-        return jsonify({'success': False, 'error': 'No pending login'}), 401
+        return redirect('/login?error=' + quote_plus('Session expired. Please try again.'))
     # Prefer staged username for password flow; fall back to current session user
     username = session.get('pending_username') or session.get('username')
     if request.method == 'POST':
@@ -4396,37 +4394,14 @@ def login_password_api():
                     return resp
                     
                 else:
-                    from flask import make_response
-                    resp = make_response(render_template('login.html', username=username, error="Incorrect password. Please try again."))
-                    try:
-                        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-                        resp.headers['Pragma'] = 'no-cache'
-                        resp.headers['Expires'] = '0'
-                    except Exception:
-                        pass
-                    return resp
+                    # Incorrect password - redirect back to password step with error
+                    return redirect('/login?step=password&error=' + quote_plus('Incorrect password. Please try again.'))
             else:
-                from flask import make_response
-                resp = make_response(render_template('login.html', username=username, error="Incorrect password. Please try again."))
-                try:
-                    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-                    resp.headers['Pragma'] = 'no-cache'
-                    resp.headers['Expires'] = '0'
-                except Exception:
-                    pass
-                return resp
+                # User not found - redirect back to password step with error
+                return redirect('/login?step=password&error=' + quote_plus('Incorrect password. Please try again.'))
         except Exception as e:
             logger.error(f"Database error in login_password for {username}: {str(e)}")
-            abort(500)
-    from flask import make_response
-    resp = make_response(render_template('login.html', username=username))
-    try:
-        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-        resp.headers['Pragma'] = 'no-cache'
-        resp.headers['Expires'] = '0'
-    except Exception:
-        pass
-    return resp
+            return redirect('/login?error=' + quote_plus('Server error. Please try again.'))
 
 @app.route('/login_back', methods=['GET'])
 def login_back():
@@ -4519,6 +4494,18 @@ def api_client_log():
     except Exception as e:
         logger.error(f"Error in api_client_log: {e}")
         return jsonify({'success': False}), 500
+
+@app.route('/api/check_pending_login', methods=['GET'])
+def api_check_pending_login():
+    """Check if there's a pending username in session (for two-step login)."""
+    try:
+        pending_username = session.get('pending_username')
+        if pending_username:
+            return jsonify({'success': True, 'pending_username': pending_username})
+        return jsonify({'success': False, 'pending_username': None})
+    except Exception as e:
+        logger.error(f"Error in api_check_pending_login: {e}")
+        return jsonify({'success': False, 'pending_username': None})
 # React hashed assets are served by web server static mapping (/assets -> client/dist/assets)
 @app.route('/api/community_group_feed/<int:parent_id>')
 @login_required

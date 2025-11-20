@@ -7,10 +7,12 @@ export default function MobileLogin() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const inviteToken = searchParams.get('invite')
+  const step = searchParams.get('step')
   const [showForgot, setShowForgot] = useState(false)
   const [resetEmail, setResetEmail] = useState('')
   const [resetSent, setResetSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pendingUsername, setPendingUsername] = useState<string | null>(null)
   const [invitationInfo, setInvitationInfo] = useState<{community_name: string, invited_by: string} | null>(null)
   // PWA install state (removed install UI)
 
@@ -108,6 +110,24 @@ export default function MobileLogin() {
     setError(e)
   }, [])
 
+  // Check if there's a pending username (password step)
+  useEffect(() => {
+    if (step === 'password') {
+      // Check session for pending username
+      fetch('/api/check_pending_login', { credentials: 'include' })
+        .then(r => r.json())
+        .then(j => {
+          if (j?.pending_username) {
+            setPendingUsername(j.pending_username)
+          } else {
+            // No pending login, redirect back to username step
+            navigate('/login', { replace: true })
+          }
+        })
+        .catch(() => navigate('/login', { replace: true }))
+    }
+  }, [step, navigate])
+
   // Removed install prompt wiring
 
   // Removed install handler
@@ -154,19 +174,39 @@ export default function MobileLogin() {
           </div>
         )}
 
-        <form method="POST" action="/login" className="space-y-3">
-          {inviteToken && <input type="hidden" name="invite_token" value={inviteToken} />}
-          <div>
-            <input
-              type="text"
-              name="username"
-              placeholder="Username"
-              required
-              className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-3 text-base outline-none focus:border-teal-400/70"
-            />
-          </div>
-          <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90">Sign In</button>
-        </form>
+        {step === 'password' && pendingUsername ? (
+          <form method="POST" action="/login_password" className="space-y-3">
+            <div className="text-sm text-white/60 mb-2">
+              Signing in as: <span className="text-white font-medium">{pendingUsername}</span>
+            </div>
+            <div>
+              <input
+                type="password"
+                name="password"
+                placeholder="Password"
+                required
+                autoFocus
+                className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-3 text-base outline-none focus:border-teal-400/70"
+              />
+            </div>
+            <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90">Sign In</button>
+            <button type="button" onClick={() => navigate('/login')} className="w-full text-sm text-white/60 hover:text-white/80">Back</button>
+          </form>
+        ) : (
+          <form method="POST" action="/login" className="space-y-3">
+            {inviteToken && <input type="hidden" name="invite_token" value={inviteToken} />}
+            <div>
+              <input
+                type="text"
+                name="username"
+                placeholder="Username"
+                required
+                className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-3 text-base outline-none focus:border-teal-400/70"
+              />
+            </div>
+            <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90">Sign In</button>
+          </form>
+        )}
         {false && (
           <div className="mt-3">
             <a href="/login_back" className="text-xs text-white/60 hover:text-white/80">Back</a>

@@ -114,49 +114,34 @@ def login():
                 session.permanent = False
             except Exception:
                 pass
-            if _is_mobile_request():
-                base_dir = current_app.root_path
-                dist_dir = os.path.join(base_dir, "client", "dist")
-                index_path = os.path.join(dist_dir, "index.html")
-                if os.path.exists(index_path):
-                    resp = send_from_directory(dist_dir, "index.html")
-                    try:
-                        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-                        resp.headers["Pragma"] = "no-cache"
-                        resp.headers["Expires"] = "0"
-                        resp.set_cookie(
-                            "remember_token",
-                            "",
-                            max_age=0,
-                            path="/",
-                            domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
-                        )
-                    except Exception:
-                        pass
-                    return resp
-            resp = make_response(render_template("index.html"))
-            try:
-                resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-                resp.headers["Pragma"] = "no-cache"
-                resp.headers["Expires"] = "0"
-                resp.set_cookie(
-                    "remember_token",
-                    "",
-                    max_age=0,
-                    path="/",
-                    domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
-                )
-            except Exception:
-                pass
-            return resp
+            # Serve React for all devices (mobile and desktop)
+            base_dir = current_app.root_path
+            dist_dir = os.path.join(base_dir, "client", "dist")
+            index_path = os.path.join(dist_dir, "index.html")
+            if os.path.exists(index_path):
+                resp = send_from_directory(dist_dir, "index.html")
+                try:
+                    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                    resp.headers["Pragma"] = "no-cache"
+                    resp.headers["Expires"] = "0"
+                    resp.set_cookie(
+                        "remember_token",
+                        "",
+                        max_age=0,
+                        path="/",
+                        domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
+                    )
+                except Exception:
+                    pass
+                return resp
+            else:
+                return ("React build not found", 500)
 
         username = (request.form.get("username") or "").strip()
         invite_token = (request.form.get("invite_token") or "").strip()
         is_mobile = _is_mobile_request()
         if not username:
-            if is_mobile:
-                return redirect("/login?" + urlencode({"error": "Please enter a username!"}))
-            return render_template("index.html", error="Please enter a username!")
+            return redirect("/login?" + urlencode({"error": "Please enter a username!"}))
 
         try:
             with get_db_connection() as conn:
@@ -166,14 +151,10 @@ def login():
                 exists = c.fetchone() is not None
         except Exception as exc:
             logger.error("Database error validating username '%s': %s", username, exc)
-            if is_mobile:
-                return redirect("/login?" + urlencode({"error": "Server error. Please try again."}))
-            return render_template("index.html", error=f"Database error: {exc}")
+            return redirect("/login?" + urlencode({"error": "Server error. Please try again."}))
 
         if not exists:
-            if is_mobile:
-                return redirect("/login?" + urlencode({"error": "Username does not exist"}))
-            return render_template("index.html", error="Username does not exist")
+            return redirect("/login?" + urlencode({"error": "Username does not exist"}))
 
         try:
             session.pop("username", None)
@@ -184,7 +165,8 @@ def login():
         if invite_token:
             session["pending_invite_token"] = invite_token
         session.modified = True
-        return redirect(url_for("auth.login_password"))
+        # Redirect back to React login page - React will detect pending_username and show password step
+        return redirect("/login?step=password")
     except Exception as exc:
         logger.error("Error in /login: %s", exc)
         return ("Internal Server Error", 500)
