@@ -160,13 +160,16 @@ def login():
             session.pop("username", None)
         except Exception:
             pass
-        session.permanent = False
+        # CRITICAL: Set permanent=True to ensure cookie is sent, even for short-lived sessions
+        session.permanent = True
         session["pending_username"] = username
         if invite_token:
             session["pending_invite_token"] = invite_token
         session.modified = True
         # Redirect back to React login page - React will detect pending_username and show password step
-        return redirect("/login?step=password")
+        # Use make_response to ensure session cookie is sent with redirect
+        resp = make_response(redirect("/login?step=password"))
+        return resp
     except Exception as exc:
         logger.error("Error in /login: %s", exc)
         return ("Internal Server Error", 500)
