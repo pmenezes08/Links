@@ -346,6 +346,9 @@ def _block_unverified_users():
             return None
         if path in ('/', '/welcome', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout', '/verify_required', '/onboarding', '/resend_verification_pending'):
             return None
+        # Allow login flow API endpoints (no auth required)
+        if path in ('/api/check_pending_login', '/api/invitation/verify'):
+            return None
         # Health and misc
         if path in ('/health', '/vite.svg', '/favicon.svg', '/manifest.webmanifest') or path.startswith('/icons/'):
             return None
