@@ -297,8 +297,10 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookie is available for all paths
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
-# For production with HTTPS
-app.config['SESSION_COOKIE_SECURE'] = True  # Re-enabled for HTTPS
+# For production with HTTPS - disabled for PythonAnywhere proxy compatibility
+# PythonAnywhere proxy doesn't forward X-Forwarded-Proto properly, so Flask thinks it's HTTP
+# Setting this to True prevents session cookies from being set
+app.config['SESSION_COOKIE_SECURE'] = False  # Must be False for PythonAnywhere
 # Cookie domain: ensure session persists across apex and www
 try:
     explicit_domain = os.getenv('SESSION_COOKIE_DOMAIN')
