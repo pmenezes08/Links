@@ -521,7 +521,7 @@ def login_password():
     if request.method == "POST":
         password = request.form.get("password", "")
         if username == "admin" and password == "12345":
-            return redirect(url_for("communities"))
+            return redirect("/premium_dashboard")
         try:
             conn = get_db_connection()
             c = conn.cursor()
