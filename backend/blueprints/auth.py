@@ -108,12 +108,15 @@ def login():
     logger = current_app.logger
     try:
         if request.method == "GET":
-            try:
-                session.pop("pending_username", None)
-                session.pop("username", None)
-                session.permanent = False
-            except Exception:
-                pass
+            # Only clear session if NOT on password step
+            # If ?step=password is present, we need to keep pending_username for the password form
+            if request.args.get('step') != 'password':
+                try:
+                    session.pop("pending_username", None)
+                    session.pop("username", None)
+                    session.permanent = False
+                except Exception:
+                    pass
             # Serve React for all devices (mobile and desktop)
             base_dir = current_app.root_path
             dist_dir = os.path.join(base_dir, "client", "dist")
