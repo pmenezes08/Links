@@ -160,6 +160,7 @@ def login():
             session.pop("username", None)
         except Exception:
             pass
+        
         # CRITICAL: Set permanent=True to ensure cookie is sent
         session.permanent = True
         session["pending_username"] = username
@@ -167,19 +168,19 @@ def login():
             session["pending_invite_token"] = invite_token
         session.modified = True
         
-        # Force session save by accessing app.session_interface
-        current_app.session_interface.save_session(current_app, session, make_response(""))
+        # Log session details before response
+        logger.info(f"Login step 1: Set pending_username={username}, session_keys={list(session.keys())}")
         
-        # Log for debugging
-        logger.info(f"Login step 1: Set pending_username={username}, session_id={session.get('_id', 'none')}")
-        
-        # Redirect back to React login page
+        # Create response and manually ensure session is saved
         resp = make_response(redirect("/login?step=password"))
-        # Ensure cookie is set with correct attributes
+        
+        # Save session explicitly using the session interface
         try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        except Exception:
-            pass
+            current_app.session_interface.save_session(current_app, session, resp)
+            logger.info(f"Session saved. Set-Cookie header present: {'Set-Cookie' in resp.headers}")
+        except Exception as e:
+            logger.error(f"Error saving session: {e}")
+        
         return resp
     except Exception as exc:
         logger.error("Error in /login: %s", exc)
