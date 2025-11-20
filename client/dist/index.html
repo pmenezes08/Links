@@ -4,18 +4,37 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/static/logo.png" />
     <link rel="shortcut icon" type="image/png" href="/static/logo.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>C-Point</title>
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#000000">
     <!-- iOS PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
-      html, body, #root { background-color:#000000; color:#ffffff; height:100%; }
-      body { margin:0; }
+      /* Critical: Extend black background into iOS safe areas */
+      html { background-color: #000000; }
+      html, body, #root { 
+        background-color: #000000; 
+        color: #ffffff; 
+        height: 100%; 
+        width: 100%;
+      }
+      body { 
+        margin: 0;
+        /* Extend into safe areas on iOS */
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        /* But remove the padding from body itself, let children handle it */
+        padding: 0;
+      }
+      /* Ensure the entire viewport is black, including safe areas */
+      @supports (padding: env(safe-area-inset-top)) {
+        body {
+          background-color: #000000;
+        }
+      }
       html, body { overscroll-behavior: contain; }
       /* Prevent zoom on input focus (iOS Safari) */
       input, textarea, select { font-size: 16px !important; }
@@ -24,7 +43,7 @@
       }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script type="module" crossorigin src="/assets/index-BYBMtXcx-1763650864710.js"></script>
+    <script type="module" crossorigin src="/assets/index-DQOIFXwg-1763655862130.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-hdSc5Cd2.css">
   </head>
   <body>
