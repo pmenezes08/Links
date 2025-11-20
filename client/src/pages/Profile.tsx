@@ -762,7 +762,9 @@ export default function Profile() {
       const response = await fetch('/upload_profile_picture', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success && payload.profile_picture) {
-        setSummary(prev => prev ? { ...prev, profile_picture: payload.profile_picture } : prev)
+        // Add cache-busting timestamp to force avatar refresh across the app
+        const cacheBustedUrl = `${payload.profile_picture}?v=${Date.now()}`
+        setSummary(prev => prev ? { ...prev, profile_picture: cacheBustedUrl } : prev)
         setFeedback('Profile picture updated')
         try {
           await refreshUserProfile()

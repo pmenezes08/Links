@@ -562,8 +562,10 @@ export default function PremiumDashboard() {
                   }
                   const uploadedPath = resolveAvatar(j?.profile_picture || j?.path || j?.url || '')
                   if (uploadedPath){
-                    setExistingProfilePic(uploadedPath)
-                    setPicPreview(uploadedPath)
+                    // Add cache-busting timestamp to force avatar refresh across the app
+                    const cacheBustedUrl = `${uploadedPath}?v=${Date.now()}`
+                    setExistingProfilePic(cacheBustedUrl)
+                    setPicPreview(cacheBustedUrl)
                   }
                   setHasProfilePic(true)
                   setPicFile(null)

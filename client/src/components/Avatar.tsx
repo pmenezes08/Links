@@ -63,17 +63,11 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
     const p = (url || '').trim()
     if (!p) return null
     
-    let basePath = ''
-    if (p.startsWith('http')) basePath = p
-    else if (p.startsWith('/uploads') || p.startsWith('uploads/')) basePath = p.startsWith('/') ? p : `/${p}`
-    else if (p.startsWith('/static') || p.startsWith('static/')) basePath = p.startsWith('/') ? p : `/${p}`
-    else basePath = `/uploads/${p}` // Fallback: assume legacy stored filename in uploads
-    
-    // Add cache-busting parameter to force reload when avatar changes
-    // Use a short timestamp (hourly) to allow some caching but force refresh when needed
-    const cacheBuster = Math.floor(Date.now() / (1000 * 60 * 60)) // Changes every hour
-    const separator = basePath.includes('?') ? '&' : '?'
-    return `${basePath}${separator}v=${cacheBuster}`
+    if (p.startsWith('http')) return p
+    if (p.startsWith('/uploads') || p.startsWith('uploads/')) return p.startsWith('/') ? p : `/${p}`
+    if (p.startsWith('/static') || p.startsWith('static/')) return p.startsWith('/') ? p : `/${p}`
+    // Fallback: assume legacy stored filename in uploads
+    return `/uploads/${p}`
   })()
   const initials = (username || '?').slice(0, 1).toUpperCase()
   const profileHref = linkToProfile ? `/profile/${encodeURIComponent(username)}` : null
