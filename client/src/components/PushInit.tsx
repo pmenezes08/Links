@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
+import { PushNotifications } from '@capacitor/push-notifications'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
@@ -13,6 +15,64 @@ export default function PushInit(){
   const [ready, setReady] = useState(false)
   useEffect(() => {
     async function run(){
+      // Native iOS/Android app - use Capacitor Push Notifications
+      if (Capacitor.isNativePlatform()) {
+        try {
+          // Request permission
+          const permResult = await PushNotifications.requestPermissions()
+          
+          if (permResult.receive === 'granted') {
+            // Register for push notifications
+            await PushNotifications.register()
+            
+            // Listen for registration token
+            PushNotifications.addListener('registration', async (token) => {
+              console.log('Push registration success, token: ' + token.value)
+              
+              // Send token to backend
+              try {
+                await fetch('/api/push/register_native', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    token: token.value,
+                    platform: Capacitor.getPlatform()
+                  })
+                })
+              } catch (error) {
+                console.error('Failed to register push token with backend:', error)
+              }
+            })
+            
+            // Listen for registration errors
+            PushNotifications.addListener('registrationError', (error) => {
+              console.error('Push registration error:', error)
+            })
+            
+            // Listen for push notifications received while app is in foreground
+            PushNotifications.addListener('pushNotificationReceived', (notification) => {
+              console.log('Push notification received:', notification)
+              // You can show an in-app notification here if desired
+            })
+            
+            // Listen for notification taps (user clicked notification)
+            PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+              console.log('Push notification action performed:', notification)
+              // Handle navigation based on notification data
+            })
+            
+            setReady(true)
+          } else {
+            console.log('Push notification permission not granted')
+          }
+        } catch (error) {
+          console.error('Push notification setup error:', error)
+        }
+        return
+      }
+      
+      // Web platform - use service worker push
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
       try{
         const reg = await navigator.serviceWorker.register('/sw.js')
