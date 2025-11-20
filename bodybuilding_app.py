@@ -4426,9 +4426,9 @@ def dashboard():
 @app.route('/premium_dashboard')
 @login_required
 def premium_dashboard():
-    # Prefer React app if built; fallback to HTML template
+    """Serve React dashboard for all users"""
     try:
-        # Server-side onboarding gate for mobile: consider membership OR creator OR admin
+        # Server-side onboarding gate: check if user has communities
         try:
             username = session.get('username')
             if username:
@@ -4452,25 +4452,17 @@ def premium_dashboard():
                     total_cnt = membership_cnt + created_cnt + admin_cnt
                     if total_cnt == 0:
                         try:
-                            logger.warning(
-                                f"Onboarding prompt (premium_dashboard): user={username}, path={request.path}, "
-                                f"membership_cnt={membership_cnt}, created_cnt={created_cnt}, admin_cnt={admin_cnt}, "
-                                f"referer={request.headers.get('Referer')}, ua={request.headers.get('User-Agent')}"
-                            )
-                        except Exception:
-                            pass
-                        try:
                             session['show_join_community_prompt'] = True
                         except Exception:
                             pass
         except Exception:
             pass
 
+        # Always serve React SPA
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         index_path = os.path.join(dist_dir, 'index.html')
         if os.path.exists(index_path):
-            logger.info("Serving React index.html for premium_dashboard")
             resp = send_from_directory(dist_dir, 'index.html')
             try:
                 resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -4479,7 +4471,7 @@ def premium_dashboard():
             except Exception:
                 pass
             return resp
-        return render_template('premium_dashboard.html', name=session.get('username',''))
+        return ("React build not found. Please run 'npm run build' in client directory.", 500)
     except Exception as e:
         logger.error(f"Error in premium_dashboard: {str(e)}")
         return ("Internal Server Error", 500)
