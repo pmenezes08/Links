@@ -153,7 +153,7 @@ export default function MobileLogin() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-black text-white p-5 relative">
-      <div className={`w-full max-w-xs rounded-xl p-6 relative z-10 ${step === 'password' ? 'bg-black' : 'border border-white/10 bg-white/5 backdrop-blur'}`}>
+      <div className="w-full max-w-xs rounded-xl p-6 relative z-10 bg-black border border-white/10">
         {step !== 'password' && (
           <div className="text-center mb-5">
             <h1 className="text-lg font-semibold">C.Point</h1>
