@@ -18131,16 +18131,12 @@ def leave_community():
 @app.route('/community_feed/<int:community_id>')
 @login_required
 def community_feed(community_id):
-    """Community-specific social feed"""
-    username = session.get('username')
-    # Mobile users -> React version
-    try:
-        ua = request.headers.get('User-Agent', '')
-        if any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad']):
-            return redirect(url_for('community_feed_react', community_id=community_id))
-    except Exception:
-        pass
-    
+    """Community feed - redirect to React version for all devices"""
+    return redirect(f'/community_feed_react/{community_id}')
+
+# Old community_feed code removed - now using React version
+def _old_community_feed_removed(community_id):
+    """This function is disabled - kept for reference only"""
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -24274,10 +24270,13 @@ def test_community_template():
             'card_color': '#1a2526'
         }
         
-        return render_template('community_feed.html', 
-                            posts=[], 
-                            community=mock_community,
-                            username='admin')
+        # Return JSON instead of HTML template
+        return jsonify({
+            'success': True,
+            'community': mock_community,
+            'posts': [],
+            'message': 'Test route - community_feed.html removed, use React version'
+        })
     except Exception as e:
         import traceback
         return jsonify({
