@@ -4216,11 +4216,17 @@ def logout():
 @app.route('/login_password', methods=['GET', 'POST'])
 # @csrf.exempt
 def login_password():
+    # React handles all login UI - redirect to React app
+    return redirect('/')
+    
+@app.route('/login_password_api', methods=['POST'])
+# @csrf.exempt
+def login_password_api():
     # Quiet noisy logs in production
     # Use staged username for password entry; do not require full auth here
     if 'pending_username' not in session and 'username' not in session:
         # No staged login; return to username page
-        return redirect(url_for('auth.login'))
+        return jsonify({'success': False, 'error': 'No pending login'}), 401
     # Prefer staged username for password flow; fall back to current session user
     username = session.get('pending_username') or session.get('username')
     if request.method == 'POST':
@@ -4434,74 +4440,8 @@ def login_back():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    username = session['username']
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            
-            # Get user's communities
-            c.execute(f"""
-                SELECT c.id, c.name, c.type
-                FROM communities c
-                JOIN user_communities uc ON c.id = uc.community_id
-                JOIN users u ON uc.user_id = u.id
-                WHERE u.username = {get_sql_placeholder()}
-                ORDER BY c.name
-            """, (username,))
-            communities = [{'id': row['id'], 'name': row['name'], 'type': row['type']} for row in c.fetchall()]
-            
-        # Server-side onboarding gate: treat membership OR creator OR admin as communities
-        try:
-            has_any = False
-            with get_db_connection() as conn2:
-                c2 = conn2.cursor()
-                ph = get_sql_placeholder()
-                # Memberships
-                c2.execute(f"""
-                    SELECT COUNT(*) as cnt
-                    FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.id
-                    WHERE u.username = {ph}
-                """, (username,))
-                row_m = c2.fetchone()
-                membership_cnt = (row_m['cnt'] if hasattr(row_m,'keys') else (row_m[0] if row_m else 0)) or 0
-                # Created by user
-                c2.execute(f"SELECT COUNT(*) as cnt FROM communities WHERE creator_username = {ph}", (username,))
-                row_c = c2.fetchone()
-                created_cnt = (row_c['cnt'] if hasattr(row_c,'keys') else (row_c[0] if row_c else 0)) or 0
-                # Admin role
-                c2.execute(f"SELECT COUNT(*) as cnt FROM community_admins WHERE username = {ph}", (username,))
-                row_a = c2.fetchone()
-                admin_cnt = (row_a['cnt'] if hasattr(row_a,'keys') else (row_a[0] if row_a else 0)) or 0
-                has_any = (membership_cnt + created_cnt + admin_cnt) > 0
-        except Exception:
-            has_any = bool(communities)
-
-        if not has_any:
-            try:
-                logger.warning(
-                    f"Onboarding prompt (dashboard): user={username}, path={request.path}, "
-                    f"membership_cnt={membership_cnt}, created_cnt={created_cnt}, admin_cnt={admin_cnt}, "
-                    f"referer={request.headers.get('Referer')}, ua={request.headers.get('User-Agent')}"
-                )
-            except Exception:
-                pass
-            try:
-                session['show_join_community_prompt'] = True
-            except Exception:
-                pass
-
-        # Determine if we should show the first-time join community prompt
-        show_join_prompt = session.pop('show_join_community_prompt', False)
-        
-        if user['subscription'] == 'premium':
-            return redirect(url_for('premium_dashboard'))
-        return render_template('dashboard.html', name=username, communities=communities, show_join_prompt=show_join_prompt)
-    except Exception as e:
-        logger.error(f"Error in dashboard for {username}: {str(e)}")
-        abort(500)
+    # All users go to premium dashboard (React app)
+    return redirect('/premium_dashboard')
 
 @app.route('/premium_dashboard')
 @login_required
@@ -5206,7 +5146,8 @@ def saved_workouts():
             user = c.fetchone()
             if not user:
                 logger.error(f"User {username} not found in database")
-                return render_template('index.html', error="User not found!")
+                flash("User not found!", "error")
+                return redirect('/')
             if user['subscription'] != 'premium':
                 logger.warning(f"User {username} attempted to access saved_workouts without premium subscription")
                 return redirect(url_for('dashboard'))
@@ -5373,7 +5314,8 @@ def saved_workout_detail(workout_id):
             workout = c.fetchone()
             if not workout:
                 logger.error(f"Workout {workout_id} not found for user {username}")
-                return render_template('index.html', error="Workout not found or unauthorized!")
+                flash("Workout not found or unauthorized!", "error")
+                return redirect('/')
             weights = json.loads(workout['weights'] or '[]')
             exercises = []
             lines = workout['workout'].replace('\r\n', '<br>').split('<br>')
@@ -8004,8 +7946,15 @@ def account_settings():
                 user = c.fetchone()
                 
             if user:
-                return render_template('account_settings.html', username=username, user=user)
-            return render_template('index.html', error="User not found!")
+                # Serve React app for account settings
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                dist_dir = os.path.join(base_dir, 'client', 'dist')
+                index_path = os.path.join(dist_dir, 'index.html')
+                if os.path.exists(index_path):
+                    return send_from_directory(dist_dir, 'index.html')
+                return redirect('/account_settings_react')
+            flash("User not found!", "error")
+            return redirect('/')
     except Exception as e:
         logger.error(f"Error in account settings for {username}: {str(e)}")
         abort(500)
@@ -8036,8 +7985,9 @@ def profile():
                 return send_from_directory(dist_dir, 'index.html')
             except Exception as serve_err:
                 logger.warning(f"Failed to serve React profile page: {serve_err}")
-                return render_template('profile.html', username=username, user=user)
-        return render_template('index.html', error="User profile not found!")
+                return redirect('/profile_react')
+        flash("User profile not found!", "error")
+        return redirect('/')
     except Exception as e:
         logger.error(f"Error in profile for {username}: {str(e)}")
         abort(500)
@@ -8869,7 +8819,8 @@ def subscribe():
     if request.method == 'POST':
         plan = request.form['plan']
         if not stripe:
-            return render_template('index.html', error="Stripe not configured!")
+            flash("Stripe not configured!", "error")
+            return redirect('/')
         try:
             price_id = 'price_monthly_id' if plan == 'monthly' else 'price_yearly_id'
             checkout_session = stripe.checkout.Session.create(
