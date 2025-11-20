@@ -4502,11 +4502,21 @@ def api_check_pending_login():
     """Check if there's a pending username in session (for two-step login). No auth required."""
     try:
         pending_username = session.get('pending_username')
-        # Debug logging
-        logger.info(f"check_pending_login called: pending_username={pending_username}, session_keys={list(session.keys())}, cookies={request.cookies.keys()}")
+        cookie_names = list(request.cookies.keys())
+        session_cookie = request.cookies.get('cpoint_session', 'NONE')
+        # Debug logging - log everything!
+        logger.info(f"check_pending_login: pending_username={pending_username}, session_keys={list(session.keys())}, cookie_names={cookie_names}, session_cookie_present={session_cookie != 'NONE'}")
         if pending_username:
             return jsonify({'success': True, 'pending_username': pending_username})
-        return jsonify({'success': False, 'pending_username': None, 'debug': 'No pending_username in session'})
+        return jsonify({
+            'success': False, 
+            'pending_username': None, 
+            'debug': {
+                'session_keys': list(session.keys()),
+                'has_session_cookie': session_cookie != 'NONE',
+                'cookie_names': cookie_names
+            }
+        })
     except Exception as e:
         logger.error(f"Error in api_check_pending_login: {e}")
         return jsonify({'success': False, 'pending_username': None, 'error': str(e)})
