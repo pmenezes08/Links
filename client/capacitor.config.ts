@@ -5,9 +5,8 @@ const config: CapacitorConfig = {
   appName: 'C.Point',
   webDir: 'dist',
   server: {
-    // Your production server URL - update this when deploying
-    url: 'https://puntz08.pythonanywhere.com',
-    cleartext: true
+    url: 'https://www.c-point.co',
+    cleartext: false
   },
   ios: {
     contentInset: 'always',
