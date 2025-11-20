@@ -367,7 +367,31 @@ export default function PremiumDashboard() {
 
   return (
     <div className="min-h-screen pt-14 bg-[#0b0f10] text-white">
-      {/* Desktop sidebar removed - using mobile-responsive layout for all screen sizes */}
+      {/* Desktop sidebar - same menu as mobile burger */}
+      <div className="fixed left-0 top-14 bottom-0 w-52 border-r border-[#333] bg-[#0b0f10] hidden md:flex flex-col z-30">
+        <nav className="flex-1 overflow-y-auto py-3">
+          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/premium_dashboard">Dashboard</a>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/profile">Profile</a>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/user_chat">Messages</a>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/followers">Followers</a>
+          {hasGymAccess && <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">Your Sports</a>}
+          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/logout">Logout</a>
+          <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/account_settings">
+            <i className="fa-solid fa-cog mr-2" />Settings
+          </a>
+        </nav>
+        {!isPremium && (
+          <div className="p-4 border-t border-[#333]">
+            <button
+              type="button"
+              className="w-full rounded-lg bg-gradient-to-r from-teal-400 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white hover:from-teal-500 hover:to-teal-600 transition"
+              onClick={() => navigate('/subscription_plans')}
+            >
+              Upgrade to Premium
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* page content starts below header via pt-14 */}
 
@@ -403,7 +427,7 @@ export default function PremiumDashboard() {
         {/* Desktop profile card removed - cleaner mobile-first layout */}
 
         {/* Cards grid */}
-        <div className="flex items-start justify-center px-3 py-6">
+        <div className="flex items-start justify-center px-3 md:ml-52 py-6">
           <div className="w-full max-w-5xl">
             {communities.length === 0 ? (
               <div className="px-3 py-10">
