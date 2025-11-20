@@ -14,6 +14,7 @@ export default function MobileLogin() {
   const [error, setError] = useState<string | null>(null)
   const [pendingUsername, setPendingUsername] = useState<string | null>(null)
   const [invitationInfo, setInvitationInfo] = useState<{community_name: string, invited_by: string} | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   // PWA install state (removed install UI)
 
   // Check invitation token
@@ -51,6 +52,9 @@ export default function MobileLogin() {
 
   // If already authenticated, auto-join community if invited
   useEffect(() => {
+    // Skip auth check if we're on the password step
+    if (step === 'password') return
+    
     async function check(){
       try{
         const r = await fetch('/api/profile_me', { credentials:'include' })
@@ -101,7 +105,7 @@ export default function MobileLogin() {
       }catch{}
     }
     check()
-  }, [navigate, inviteToken])
+  }, [navigate, inviteToken, step])
 
   // Read error from query string (e.g., /?error=...)
   useEffect(() => {
@@ -144,6 +148,13 @@ export default function MobileLogin() {
       })
     } catch {}
     setResetSent(true)
+  }
+
+  function onUsernameSubmit() {
+    console.log('Form submitting...')
+    setIsSubmitting(true)
+    setError(null)
+    // Let the default form submission happen
   }
 
   return (
@@ -193,7 +204,7 @@ export default function MobileLogin() {
             <button type="button" onClick={() => navigate('/login')} className="w-full text-sm text-white/60 hover:text-white/80">Back</button>
           </form>
         ) : (
-          <form method="POST" action="/login" className="space-y-3">
+          <form method="POST" action="/login" className="space-y-3" onSubmit={onUsernameSubmit}>
             {inviteToken && <input type="hidden" name="invite_token" value={inviteToken} />}
             <div>
               <input
@@ -201,10 +212,17 @@ export default function MobileLogin() {
                 name="username"
                 placeholder="Username"
                 required
+                autoComplete="username"
                 className="w-full rounded-md border border-white/10 bg-white/10 px-3 py-3 text-base outline-none focus:border-teal-400/70"
               />
             </div>
-            <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90">Sign In</button>
+            <button 
+              type="submit" 
+              disabled={isSubmitting}
+              className="w-full rounded-lg bg-teal-400 text-white py-2 text-sm font-medium active:opacity-90 disabled:opacity-50"
+            >
+              {isSubmitting ? 'Signing in...' : 'Sign In'}
+            </button>
           </form>
         )}
         {false && (
