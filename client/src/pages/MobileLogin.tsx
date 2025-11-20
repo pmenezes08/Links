@@ -154,24 +154,26 @@ export default function MobileLogin() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-black text-white p-5 relative">
       <div className={`w-full max-w-xs rounded-xl p-6 relative z-10 ${step === 'password' ? 'bg-black' : 'border border-white/10 bg-white/5 backdrop-blur'}`}>
-        <div className="text-center mb-5">
-          <h1 className="text-lg font-semibold">C.Point</h1>
-          {invitationInfo ? (
-            <div className="mt-3 p-3 bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg">
-              <p className="text-xs text-white font-medium">
-                You've been invited to join
-              </p>
-              <p className="text-sm text-[#4db6ac] font-semibold mt-1">
-                {invitationInfo.community_name}
-              </p>
-              <p className="text-xs text-white/60 mt-1">
-                by {invitationInfo.invited_by}
-              </p>
-            </div>
-          ) : (
-            <p className="text-xs text-white/60 mt-1">Sign in to your account</p>
-          )}
-        </div>
+        {step !== 'password' && (
+          <div className="text-center mb-5">
+            <h1 className="text-lg font-semibold">C.Point</h1>
+            {invitationInfo ? (
+              <div className="mt-3 p-3 bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg">
+                <p className="text-xs text-white font-medium">
+                  You've been invited to join
+                </p>
+                <p className="text-sm text-[#4db6ac] font-semibold mt-1">
+                  {invitationInfo.community_name}
+                </p>
+                <p className="text-xs text-white/60 mt-1">
+                  by {invitationInfo.invited_by}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-white/60 mt-1">Sign in to your account</p>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 rounded-md border border-red-500 text-red-400 bg-red-500/10 px-3 py-2 text-sm text-center">
@@ -180,8 +182,8 @@ export default function MobileLogin() {
         )}
 
         {step === 'password' && pendingUsername ? (
-          <form method="POST" action="/login_password" className="space-y-4">
-            <div className="text-center mb-6">
+          <form method="POST" action="/login_password" className="space-y-3">
+            <div className="text-center mb-4">
               <h2 className="text-xl font-semibold text-white mb-1">Welcome Back</h2>
               <p className="text-white/70 text-base">{pendingUsername}</p>
             </div>
@@ -192,7 +194,7 @@ export default function MobileLogin() {
                 placeholder="Enter Password"
                 required
                 autoFocus
-                className="w-full rounded-md bg-black px-3 py-3 text-base text-white outline-none border-0 pr-10"
+                className="w-full rounded-md bg-black border border-white/10 px-3 py-2.5 text-sm text-white outline-none pr-10"
               />
               <button
                 type="button"
@@ -211,8 +213,8 @@ export default function MobileLogin() {
                 )}
               </button>
             </div>
-            <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-3 text-base font-medium active:opacity-90">Sign In</button>
-            <button type="button" onClick={() => navigate('/login')} className="w-full text-sm text-white/60 hover:text-white/80 mt-2">Back</button>
+            <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-2.5 text-sm font-medium active:opacity-90">Login</button>
+            <button type="button" onClick={() => navigate('/login')} className="w-full rounded-lg border border-white/10 bg-white/5 text-white py-2.5 text-sm font-medium active:opacity-90">Back</button>
           </form>
         ) : (
           <form 
