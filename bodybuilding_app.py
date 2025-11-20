@@ -6283,6 +6283,8 @@ def admin():
     dist_dir = os.path.join(base_dir, 'client', 'dist')
     return send_from_directory(dist_dir, 'index.html')
 
+# Old admin HTML code removed - now using React AdminDashboard.tsx
+def _old_admin_removed():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
