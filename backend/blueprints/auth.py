@@ -168,7 +168,6 @@ def login():
         session.modified = True
         
         # Force session save by accessing app.session_interface
-        from flask import current_app
         current_app.session_interface.save_session(current_app, session, make_response(""))
         
         # Log for debugging
