@@ -827,18 +827,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   }
 
   async function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
-    // Check if this is a mobile device - paste from photos app often doesn't work
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-
-    if (isMobile) {
-      // On mobile, just show a hint and let the user use the paste button instead
-      setTimeout(() => {
-        alert('💡 Tip: For images from your photos app, use the + button → "Paste Image" instead of pasting directly.')
-      }, 100)
-      return
-    }
-
-    // Try the modern Clipboard API first (works better on desktop)
+    // Try the modern Clipboard API first (works on native apps and desktop)
     if (navigator.clipboard && navigator.clipboard.read) {
       try {
         const clipboardItems = await navigator.clipboard.read()

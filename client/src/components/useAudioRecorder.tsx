@@ -104,7 +104,7 @@ export function useAudioRecorder() {
   const start = useCallback(async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert('Microphone not supported on this device')
+        alert('Microphone access is not available. Please enable microphone permissions in your device settings.')
         return
       }
       if (!('MediaRecorder' in window)) {
