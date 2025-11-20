@@ -367,21 +367,7 @@ export default function PremiumDashboard() {
 
   return (
     <div className="min-h-screen pt-14 bg-[#0b0f10] text-white">
-      {/* Desktop sidebar */}
-      <div className="fixed left-0 top-14 bottom-0 w-52 border-r border-[#333] bg-[#1a1a1a] hidden md:flex flex-col z-30">
-        <div className="flex items-center h-14 px-2 border-b border-[#333]">
-          <div className="text-white font-semibold text-base truncate pl-2">Dashboard</div>
-        </div>
-        <nav className="flex-1 overflow-y-auto py-2">
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/dashboard">Dashboard</a>
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/profile">Profile</a>
-            <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/user_chat">Messages</a>
-            <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/followers">Followers</a>
-          {hasGymAccess && <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/your_sports">Your Sports</a>}
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/logout">Logout</a>
-          <a className="block px-5 py-3 text-sm hover:bg-teal-700/20 hover:text-teal-300" href="/account_settings"><i className="fa-solid fa-cog mr-2" />Settings</a>
-        </nav>
-      </div>
+      {/* Desktop sidebar removed - using mobile-responsive layout for all screen sizes */}
 
       {/* page content starts below header via pt-14 */}
 
@@ -414,15 +400,10 @@ export default function PremiumDashboard() {
 
       <div className="">
         {/* Desktop profile summary (kept, but edit profile removed) */}
-        <div className="hidden md:flex fixed right-5 top-20 w-44 h-44 rounded-lg border border-[#333] md:border-white/20 bg-[#1a1a1a] md:bg-white/5 flex-col items-center gap-2 p-3">
-          <div className="w-20 h-20 rounded-full bg-white/5 border border-white/20 flex items-center justify-center">
-            <i className="fa-solid fa-user text-2xl text-[#9fb0b5]" />
-          </div>
-          <div className="text-sm font-semibold truncate max-w-[10rem]">You</div>
-        </div>
+        {/* Desktop profile card removed - cleaner mobile-first layout */}
 
         {/* Cards grid */}
-        <div className="flex items-start justify-center px-3 md:ml-52 py-6">
+        <div className="flex items-start justify-center px-3 py-6">
           <div className="w-full max-w-5xl">
             {communities.length === 0 ? (
               <div className="px-3 py-10">
