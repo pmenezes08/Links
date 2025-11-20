@@ -8546,6 +8546,11 @@ def update_personal_info():
 @app.route('/edit_profile', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
+    """Edit profile - redirect to React profile page"""
+    return redirect('/profile')
+
+# Old edit_profile code removed
+def _old_edit_profile_removed():
     username = session['username']
     try:
         if request.method == 'POST':
