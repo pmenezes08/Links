@@ -6275,19 +6275,13 @@ def admin_delete_community():
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
 def admin():
-    print(f"Admin route accessed by user: {session.get('username')}")
     if session['username'] != 'admin':
-        print("User is not admin, redirecting")
         return redirect(url_for('public.index'))
-    print("User is admin, proceeding")
-
-    # Check if request is from mobile and serve React
-    ua = request.headers.get('User-Agent', '')
-    is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-    if is_mobile:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        dist_dir = os.path.join(base_dir, 'client', 'dist')
-        return send_from_directory(dist_dir, 'index.html')
+    
+    # Serve React for all devices (mobile and desktop)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    dist_dir = os.path.join(base_dir, 'client', 'dist')
+    return send_from_directory(dist_dir, 'index.html')
 
     try:
         with get_db_connection() as conn:
@@ -7455,13 +7449,10 @@ def public_profile(username):
     logger.info(f"Request URL: {request.url}")
     logger.info(f"Request path: {request.path}")
     try:
-        # Serve React on mobile, HTML on desktop
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
+        # Serve React for all devices
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
 
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -10594,61 +10585,8 @@ def check_unread_messages():
 @app.route('/feed')
 @login_required
 def feed():
-    username = session.get('username')
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            # Fetch only main social feed posts (where community_id is NULL), ordered by the most recent
-            c.execute("SELECT * FROM posts WHERE community_id IS NULL ORDER BY id DESC")
-            posts_raw = c.fetchall()
-            posts = [dict(row) for row in posts_raw]
-
-            for post in posts:
-                # Fetch replies for each post
-                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp DESC", (post['id'],))
-                replies_raw = c.fetchall()
-                post['replies'] = [dict(row) for row in replies_raw]
-
-                # --- NEW: Fetch reactions for each post ---
-                # Get reaction counts (e.g., {'heart': 5, 'thumbs-up': 2})
-                reaction_counts, user_reaction = get_post_reaction_summary(c, post['id'], username)
-                post['reactions'] = reaction_counts
-                post['user_reaction'] = user_reaction
-
-                # Fetch poll data for this post
-                c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post['id'],))
-                poll_raw = c.fetchone()
-                if poll_raw:
-                    poll = dict(poll_raw)
-                    # Fetch poll options
-                    c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
-                    options_raw = c.fetchall()
-                    poll['options'] = [dict(option) for option in options_raw]
-                    
-                    # Get user's vote
-                    c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
-                    user_vote_raw = c.fetchone()
-                    poll['user_vote'] = user_vote_raw['option_id'] if user_vote_raw else None
-                    
-                    # Calculate total votes
-                    total_votes = sum(option['votes'] for option in poll['options'])
-                    poll['total_votes'] = total_votes
-                    
-                    post['poll'] = poll
-                else:
-                    post['poll'] = None
-
-                # Add reaction counts for each reply and user reaction
-                for reply in post['replies']:
-                    counts, user_reaction = get_reply_reaction_summary(c, reply['id'], username)
-                    reply['reactions'] = counts
-                    reply['user_reaction'] = user_reaction
-
-        return render_template('feed.html', posts=posts, username=username)
-    except Exception as e:
-        logger.error(f"Error fetching feed: {str(e)}")
-        abort(500)
+    """Old feed route - redirect to home timeline React page"""
+    return redirect('/home')
 @app.route('/add_reaction', methods=['POST'])
 @login_required
 def add_reaction():
