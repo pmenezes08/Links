@@ -4497,7 +4497,7 @@ def api_client_log():
 
 @app.route('/api/check_pending_login', methods=['GET'])
 def api_check_pending_login():
-    """Check if there's a pending username in session (for two-step login)."""
+    """Check if there's a pending username in session (for two-step login). No auth required."""
     try:
         pending_username = session.get('pending_username')
         if pending_username:

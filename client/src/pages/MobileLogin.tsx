@@ -150,13 +150,6 @@ export default function MobileLogin() {
     setResetSent(true)
   }
 
-  function onUsernameSubmit() {
-    console.log('Form submitting...')
-    setIsSubmitting(true)
-    setError(null)
-    // Let the default form submission happen
-  }
-
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-black text-white p-5 relative">
       <div className="w-full max-w-xs border border-white/10 rounded-xl p-6 bg-white/5 backdrop-blur relative z-10">
@@ -204,7 +197,17 @@ export default function MobileLogin() {
             <button type="button" onClick={() => navigate('/login')} className="w-full text-sm text-white/60 hover:text-white/80">Back</button>
           </form>
         ) : (
-          <form method="POST" action="/login" className="space-y-3" onSubmit={onUsernameSubmit}>
+          <form 
+            method="POST" 
+            action="/login"
+            className="space-y-3" 
+            onSubmit={() => {
+              console.log('Form submitting...')
+              setIsSubmitting(true)
+              setError(null)
+              // Allow default form submission to proceed
+            }}
+          >
             {inviteToken && <input type="hidden" name="invite_token" value={inviteToken} />}
             <div>
               <input

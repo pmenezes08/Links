@@ -202,11 +202,14 @@ def signup():
 
     logger = current_app.logger
     if request.method == "GET":
-        if _is_mobile_request():
-            base_dir = current_app.root_path
-            dist_dir = os.path.join(base_dir, "client", "dist")
+        # Serve React for all devices (mobile and desktop)
+        base_dir = current_app.root_path
+        dist_dir = os.path.join(base_dir, "client", "dist")
+        index_path = os.path.join(dist_dir, "index.html")
+        if os.path.exists(index_path):
             return send_from_directory(dist_dir, "index.html")
-        return render_template("signup.html")
+        else:
+            return ("React build not found", 500)
 
     desired_username = request.form.get("username", "").strip()
     first_name = request.form.get("first_name", "").strip()
