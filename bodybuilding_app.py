@@ -16411,30 +16411,9 @@ def get_post():
 @app.route('/communities')
 @login_required
 def communities():
-    """Main communities page: Desktop -> HTML template; Mobile -> React SPA"""
-    username = session['username']
-    try:
-        # Allow manual override via query param
-        view = (request.args.get('view') or '').lower().strip()
-        if view == 'html':
-            return render_template('communities.html', username=username)
-        if view == 'react':
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-
-        ua = request.headers.get('User-Agent', '')
-        is_mobile = any(k in ua for k in ['Mobi', 'Android', 'iPhone', 'iPad'])
-        if is_mobile:
-            # Serve React SPA for mobile
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            dist_dir = os.path.join(base_dir, 'client', 'dist')
-            return send_from_directory(dist_dir, 'index.html')
-        # Desktop: render HTML template with side menu
-        return render_template('communities.html', username=username)
-    except Exception as e:
-        logger.error(f"Error in communities for {username}: {str(e)}")
-        abort(500)
+    """Communities page now redirects to React dashboard for all users"""
+    # Redirect all users to premium dashboard (React app)
+    return redirect('/premium_dashboard')
 
 @app.route('/api/test_sub_permissions', methods=['POST'])
 @login_required  
