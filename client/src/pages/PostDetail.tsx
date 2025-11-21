@@ -815,7 +815,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
   const inlineFileRef = useRef<HTMLInputElement|null>(null)
-  const { recording: rec, preview: inlinePreview, start: startInlineRec, stop: stopInlineRec, clearPreview: clearInlinePreview } = useAudioRecorder()
+  const { recording: rec, recordMs: recMs, level: recLevel, preview: inlinePreview, start: startInlineRec, stop: stopInlineRec, clearPreview: clearInlinePreview } = useAudioRecorder()
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(reply.content)
   const [showGifPicker, setShowGifPicker] = useState(false)
@@ -994,20 +994,32 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 }} aria-label="Send reply" disabled={!text && !img && !inlinePreview && !gifFile || !!inlineSendingFlag}>
                   {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
                 </button>
+              </div>
+              {/* Recording visualizer - appears below the reply box */}
+              {rec && (
+                <div className="flex items-center gap-2 px-2">
+                  <div className="text-xs text-[#9fb0b5] whitespace-nowrap">{Math.min(60, Math.round((recMs||0)/1000))}s</div>
+                  <div className="h-2 flex-1 bg-white/5 rounded overflow-hidden">
+                    <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recMs||0)/600) )}%` }} />
+                  </div>
+                  <div className="h-6 w-20 bg-white/5 rounded flex items-center">
+                    <div className="h-2 bg-[#7fe7df] rounded transition-all" style={{ width: `${Math.max(6, Math.min(96, recLevel*100))}%`, marginLeft: '2%' }} />
+                  </div>
+                </div>
+              )}
+              {/* Audio preview - appears below the reply box, not inline with buttons */}
               {inlinePreview && (
-                <div className="text-xs text-[#7fe7df] flex items-center gap-1 px-3">
-                  <i className="fa-solid fa-microphone" />
-                  <span className="max-w-[160px] truncate">audio</span>
+                <div className="flex items-center gap-2 px-2">
+                  <audio controls className="flex-1 max-w-full" playsInline webkit-playsinline="true" src={inlinePreview.url} />
                   <button 
                     onClick={() => { clearInlinePreview() }}
-                    className="ml-1 text-red-400 hover:text-red-300"
+                    className="text-[#9fb0b5] hover:text-white flex-shrink-0"
                     aria-label="Remove audio"
                   >
-                    <i className="fa-solid fa-times" />
+                    <i className="fa-regular fa-trash-can" />
                   </button>
                 </div>
               )}
-              </div>
               {img && (
                 <div className="text-xs text-[#7fe7df] flex items-center gap-1 px-3">
                   <i className="fa-solid fa-image" />
