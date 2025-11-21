@@ -17,13 +17,22 @@ export default function PushInit(){
     async function run(){
       // Native iOS/Android app - use Capacitor Push Notifications
       if (Capacitor.isNativePlatform()) {
+        console.log('🔔 Initializing native push notifications...')
         try {
+          // Check current permission status first
+          const currentStatus = await PushNotifications.checkPermissions()
+          console.log('🔔 Current permission status:', currentStatus)
+          
           // Request permission
+          console.log('🔔 Requesting push notification permissions...')
           const permResult = await PushNotifications.requestPermissions()
+          console.log('🔔 Permission result:', permResult)
           
           if (permResult.receive === 'granted') {
+            console.log('🔔 Permission granted! Registering for push...')
             // Register for push notifications
             await PushNotifications.register()
+            console.log('🔔 Registration initiated')
             
             // Listen for registration token
             PushNotifications.addListener('registration', async (token) => {
@@ -64,13 +73,16 @@ export default function PushInit(){
             
             setReady(true)
           } else {
-            console.log('Push notification permission not granted')
+            console.log('🔔 ❌ Push notification permission not granted:', permResult.receive)
           }
         } catch (error) {
-          console.error('Push notification setup error:', error)
+          console.error('🔔 ❌ Push notification setup error:', error)
+          console.error('🔔 Error details:', JSON.stringify(error, null, 2))
         }
         return
       }
+      
+      console.log('🔔 Not a native platform, skipping native push setup')
       
       // Web platform - use service worker push
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
