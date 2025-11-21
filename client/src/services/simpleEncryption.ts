@@ -3,7 +3,12 @@
  * 
  * Uses Web Crypto API for RSA encryption
  * Simpler than Signal Protocol but still provides strong E2E encryption
+ * 
+ * Keys are stored in iOS Keychain (via Capacitor Preferences) to persist
+ * across app updates and reinstalls. IndexedDB is used as a secondary cache.
  */
+
+import { keychainStorage } from './keychainStorage'
 
 const DB_NAME = 'chat-encryption'
 const DB_VERSION = 1
@@ -26,14 +31,33 @@ class SimpleEncryptionService {
     this.currentUser = username
     await this.openDatabase()
     
-    // Check if user already has keys
+    console.log('🔐 Initializing encryption for', username)
+    
+    // 1. First, try to load keys from iOS Keychain (persists across updates)
+    const keychainKeys = await this.loadKeysFromKeychain()
+    
+    if (keychainKeys) {
+      console.log('🔐 ✅ Loaded keys from iOS Keychain')
+      this.keyPair = keychainKeys
+      // Also store in IndexedDB as cache for faster access
+      await this.storeKeys(keychainKeys)
+      return
+    }
+    
+    // 2. If not in Keychain, try IndexedDB (migration from old version)
     const existingKeys = await this.getStoredKeys()
     
     if (existingKeys) {
+      console.log('🔐 📦 Found keys in IndexedDB - migrating to Keychain')
       this.keyPair = existingKeys
-    } else {
-      await this.generateKeys()
+      // Backup to Keychain for future app updates
+      await this.backupKeysToKeychain(existingKeys)
+      return
     }
+    
+    // 3. No keys found anywhere - generate new ones
+    console.log('🔐 🔑 Generating new encryption keys')
+    await this.generateKeys()
   }
 
   /**
@@ -98,8 +122,9 @@ class SimpleEncryptionService {
       publicKeyExport,
     }
 
-    // Store keys
+    // Store keys in BOTH Keychain (primary) and IndexedDB (cache)
     await this.storeKeys(this.keyPair)
+    await this.backupKeysToKeychain(this.keyPair)
 
     // Upload public key to server
     await this.uploadPublicKey(publicKeyExport)
@@ -390,6 +415,58 @@ class SimpleEncryptionService {
       bytes[i] = binary.charCodeAt(i)
     }
     return bytes.buffer
+  }
+
+  /**
+   * Backup keys to iOS Keychain for persistence across app updates
+   */
+  private async backupKeysToKeychain(keyPair: KeyPair): Promise<void> {
+    if (!this.currentUser) return
+
+    try {
+      // Export private key to JWK (serializable format)
+      const privateKeyJwk = await keychainStorage.exportPrivateKey(keyPair.privateKey)
+      
+      // Store serialized keys in Keychain
+      await keychainStorage.storeKeys(this.currentUser, {
+        publicKey: keyPair.publicKeyExport,
+        privateKey: privateKeyJwk,
+        timestamp: Date.now()
+      })
+      
+      console.log('🔐 ✅ Keys backed up to iOS Keychain')
+    } catch (error) {
+      console.error('🔐 ❌ Failed to backup keys to Keychain:', error)
+      // Don't throw - this is a backup operation, main storage (IndexedDB) still works
+    }
+  }
+
+  /**
+   * Load keys from iOS Keychain
+   */
+  private async loadKeysFromKeychain(): Promise<KeyPair | null> {
+    if (!this.currentUser) return null
+
+    try {
+      const serializedKeys = await keychainStorage.getKeys(this.currentUser)
+      
+      if (!serializedKeys) {
+        return null
+      }
+
+      // Import keys from JWK format
+      const publicKey = await keychainStorage.importPublicKey(serializedKeys.publicKey)
+      const privateKey = await keychainStorage.importPrivateKey(serializedKeys.privateKey)
+
+      return {
+        publicKey,
+        privateKey,
+        publicKeyExport: serializedKeys.publicKey
+      }
+    } catch (error) {
+      console.error('🔐 ❌ Failed to load keys from Keychain:', error)
+      return null
+    }
   }
 }
 
