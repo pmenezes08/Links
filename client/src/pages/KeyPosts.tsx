@@ -44,7 +44,7 @@ export default function KeyPosts(){
   if (error) return <div className="p-4 text-red-400">{error}</div>
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="h-screen overflow-hidden bg-black text-white">
       <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(-1)} aria-label="Back">
@@ -62,7 +62,7 @@ export default function KeyPosts(){
           </div>
         </div>
       </div>
-      <div className="max-w-2xl mx-auto pt-[70px] px-3 pb-16">
+      <div className="max-w-2xl mx-auto pt-[70px] px-3 pb-16 h-full overflow-y-auto">
         <div className="mb-3 flex items-center">
           <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)}>
             ← Back
