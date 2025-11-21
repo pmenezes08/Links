@@ -14,28 +14,44 @@
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
-      /* Critical: Extend black background into iOS safe areas */
-      html { background-color: #000000; }
+      /* Critical: Extend background into iOS safe areas for both light and dark mode */
+      html { 
+        background-color: #000000;
+      }
+      
+      /* Handle light mode: match the app background */
+      @media (prefers-color-scheme: light) {
+        html { 
+          background-color: #000000; /* Keep black even in light mode */
+        }
+      }
+      
       html, body, #root { 
         background-color: #000000; 
         color: #ffffff; 
         height: 100%; 
         width: 100%;
       }
+      
       body { 
         margin: 0;
-        /* Extend into safe areas on iOS */
-        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-        /* But remove the padding from body itself, let children handle it */
         padding: 0;
       }
-      /* Ensure the entire viewport is black, including safe areas */
+      
+      /* Ensure the entire viewport is black, including safe areas, in both modes */
       @supports (padding: env(safe-area-inset-top)) {
         body {
           background-color: #000000;
         }
+        @media (prefers-color-scheme: light) {
+          body {
+            background-color: #000000; /* Force black safe areas even in light mode */
+          }
+        }
       }
+      
       html, body { overscroll-behavior: contain; }
+      
       /* Prevent zoom on input focus (iOS Safari) */
       input, textarea, select { font-size: 16px !important; }
       @media screen and (max-width: 768px) {
@@ -43,8 +59,8 @@
       }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script type="module" crossorigin src="/assets/index-CyU9DlQH-1763664365417.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-hdSc5Cd2.css">
+    <script type="module" crossorigin src="/assets/index-D8ODXf8F-1763713820473.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-jZcNSMoH.css">
   </head>
   <body>
     <div id="root"></div>

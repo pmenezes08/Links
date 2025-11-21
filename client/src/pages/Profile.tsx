@@ -788,7 +788,8 @@ export default function Profile() {
   if (error || !summary) return <div className="p-4 text-red-400">{error || 'Something went wrong'}</div>
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 overflow-y-auto bg-black text-white">
+    <div className="h-screen overflow-hidden bg-black text-white">
+      <div className="h-full overflow-y-auto pt-14">
       <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
         {summary.cover_photo ? (
           <div className="rounded-xl border border-white/10 overflow-hidden">
@@ -1085,6 +1086,7 @@ export default function Profile() {
             {feedback}
           </div>
         ) : null}
+      </div>
       </div>
     </div>
   )

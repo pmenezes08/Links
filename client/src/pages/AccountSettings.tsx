@@ -120,8 +120,8 @@ export default function AccountSettings(){
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="max-w-2xl mx-auto px-4 py-6">
+    <div className="h-screen overflow-hidden bg-black text-white">
+      <div className="max-w-2xl mx-auto px-4 py-6 pt-20 h-full overflow-y-auto">
         {message && (
           <div
             className={`mb-6 rounded-lg border p-4 ${

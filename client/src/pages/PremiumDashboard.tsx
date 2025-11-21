@@ -366,7 +366,7 @@ export default function PremiumDashboard() {
   const profilePreviewSrc = picPreview || existingProfilePic
 
   return (
-    <div className="min-h-screen pt-14 bg-[#0b0f10] text-white">
+    <div className="h-screen overflow-hidden bg-[#0b0f10] text-white">
       {/* Desktop sidebar - same menu as mobile burger */}
       <div className="fixed left-0 top-14 bottom-0 w-52 border-r border-[#333] bg-[#0b0f10] hidden md:flex flex-col z-30">
         <nav className="flex-1 overflow-y-auto py-3">
@@ -422,13 +422,9 @@ export default function PremiumDashboard() {
           </div>
         )}
 
-      <div className="">
-        {/* Desktop profile summary (kept, but edit profile removed) */}
-        {/* Desktop profile card removed - cleaner mobile-first layout */}
-
-        {/* Cards grid */}
-        <div className="flex items-start justify-center px-3 md:ml-52 py-6">
-          <div className="w-full max-w-5xl">
+      {/* Main content area with proper positioning */}
+      <div className="h-screen overflow-y-auto pt-14 md:ml-52">
+        <div className="max-w-5xl mx-auto px-3 py-6">
             {communities.length === 0 ? (
               <div className="px-3 py-10">
                 <div className="mx-auto max-w-xl rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center">
@@ -463,7 +459,6 @@ export default function PremiumDashboard() {
               />
             </div>
             )}
-          </div>
         </div>
 
         {/* Floating Action Button */}
