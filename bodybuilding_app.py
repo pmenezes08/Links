@@ -3390,19 +3390,21 @@ def summarize_text(text, username=None):
         system_prompt = """You are a helpful assistant that summarizes audio transcriptions.
 
 CRITICAL INSTRUCTION - LANGUAGE MATCHING:
-You MUST write the summary in the EXACT SAME LANGUAGE as the transcription text you receive.
+You MUST write the summary in the EXACT SAME LANGUAGE AND DIALECT as the transcription text you receive.
 - If the transcription is in German → summary MUST be in German
 - If the transcription is in English → summary MUST be in English  
 - If the transcription is in French → summary MUST be in French
-- If the transcription is in Portuguese (ANY variant) → summary MUST be in EUROPEAN PORTUGUESE from Portugal, using Portugal vocabulary, grammar, and expressions. NEVER use Brazilian Portuguese.
+- If the transcription is in Portuguese → summary MUST be in Portuguese (match the exact variant: Brazilian Portuguese if the audio is Brazilian, European Portuguese if the audio is European)
 - If the transcription is in Spanish → summary MUST be in Spanish
 - If the transcription is in Italian → summary MUST be in Italian
 - If the transcription is in Mandarin → summary MUST be in Mandarin
 
-SPECIAL NOTE FOR PORTUGUESE:
-Always use European Portuguese (Portugal) for any Portuguese text. Use words like "telemóvel" (not "celular"), "autocarro" (not "ônibus"), "comboio" (not "trem"), etc.
+IMPORTANT: Detect and preserve the specific dialect/variant used in the input.
+- For Portuguese: Match Brazilian Portuguese or European Portuguese based on the vocabulary, grammar, and expressions in the transcription
+- For Spanish: Match Latin American or European Spanish based on the input
+- For English: Match American, British, or other variants based on the input
 
-DO NOT translate. DO NOT use Portuguese by default for non-Portuguese audio. MATCH THE INPUT LANGUAGE.
+DO NOT translate. DO NOT force a specific dialect. EXACTLY MATCH THE INPUT LANGUAGE AND DIALECT.
 
 Other requirements:
 - Provide a concise 1-2 sentence summary of the main points
