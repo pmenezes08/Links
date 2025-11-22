@@ -168,11 +168,17 @@ class RedisCache:
             # Test connection
             self.redis_client.ping()
             self.enabled = True
-            logger.info(f"✅ Redis connected successfully at {REDIS_HOST}:{REDIS_PORT}")
+            msg = f"✅ Redis connected successfully at {REDIS_HOST}:{REDIS_PORT}"
+            logger.info(msg)
+            print(msg, flush=True)  # Ensure it appears in error log
             
         except Exception as e:
-            logger.warning(f"⚠️ Redis connection failed: {e}")
-            logger.warning("Falling back to in-memory cache")
+            msg1 = f"⚠️ Redis connection failed: {e}"
+            msg2 = "Falling back to in-memory cache"
+            logger.warning(msg1)
+            logger.warning(msg2)
+            print(msg1, flush=True)
+            print(msg2, flush=True)
             self.enabled = False
     
     def get(self, key):
@@ -255,16 +261,24 @@ def create_optimal_cache():
                 ping_time = (time.time() - start) * 1000
                 
                 if ping_time < 100:  # If Redis is fast (< 100ms)
-                    logger.info(f"🚀 Using Redis cache (ping: {ping_time:.1f}ms)")
+                    msg = f"🚀 Using Redis cache (ping: {ping_time:.1f}ms)"
+                    logger.info(msg)
+                    print(msg, flush=True)
                     return redis_cache
                 else:
-                    logger.warning(f"⚠️ Redis too slow (ping: {ping_time:.1f}ms), using in-memory cache")
+                    msg = f"⚠️ Redis too slow (ping: {ping_time:.1f}ms), using in-memory cache"
+                    logger.warning(msg)
+                    print(msg, flush=True)
                     return MemoryCache()
             except:
-                logger.warning("Redis performance test failed, using in-memory cache")
+                msg = "Redis performance test failed, using in-memory cache"
+                logger.warning(msg)
+                print(msg, flush=True)
                 return MemoryCache()
     
-    logger.info("💾 Using optimized in-memory cache")
+    msg = "💾 Using optimized in-memory cache"
+    logger.info(msg)
+    print(msg, flush=True)
     return MemoryCache()
 
 # Global cache instance - automatically selects fastest option
