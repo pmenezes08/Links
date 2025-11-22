@@ -14,55 +14,58 @@
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
-      /* Modern iOS Safe Area Handling - 2024 Best Practices */
+      /* iOS Safe Area - Lock viewport, allow content to scroll */
       
-      /* HTML fills entire viewport including safe areas with black */
       html { 
+        position: fixed;
         width: 100%;
         height: 100%;
+        overflow: hidden;
         background-color: #000000;
       }
       
-      /* Force black background in all color schemes */
       @media (prefers-color-scheme: light) {
         html { 
           background-color: #000000 !important;
         }
       }
       
-      /* Body: NO padding - let components handle safe areas individually */
       body { 
+        position: fixed;
         width: 100%;
-        min-height: 100%;
+        height: 100%;
         margin: 0;
         padding: 0;
+        overflow: hidden;
         background-color: #000000; 
         color: #ffffff;
         overscroll-behavior: none;
-        -webkit-overflow-scrolling: touch;
       }
       
-      /* Root container */
+      /* Root fills viewport and is scrollable */
       #root {
+        position: relative;
         width: 100%;
-        min-height: 100vh;
+        height: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
         background-color: #000000;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: none;
       }
       
-      /* Force black in light mode */
       @media (prefers-color-scheme: light) {
         body, #root {
           background-color: #000000 !important;
         }
       }
       
-      /* Prevent zoom on input focus */
       input, textarea, select { 
         font-size: 16px !important;
       }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script type="module" crossorigin src="/assets/index-C5v9Ei7_-1763813881257.js"></script>
+    <script type="module" crossorigin src="/assets/index-H5bezGuV-1763814005446.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-D4CsXKwY.css">
   </head>
   <body>
