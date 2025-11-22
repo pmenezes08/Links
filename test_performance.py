@@ -111,7 +111,7 @@ class PerformanceTest:
         """Test dashboard loading time"""
         return self.test_endpoint("/premium_dashboard", "Dashboard", iterations)
     
-    def test_community_feed(self, community_id=28, iterations=5):
+    def test_community_feed(self, community_id=21, iterations=5):
         """Test community feed loading time"""
         endpoint = f"/community_feed_react/{community_id}"
         return self.test_endpoint(endpoint, f"Community Feed (ID: {community_id})", iterations)
