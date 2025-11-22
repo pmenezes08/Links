@@ -17,6 +17,10 @@ def is_community_owner(username, community_id):
     norm_username = (username or "").strip().lower()
     if not norm_username or not community_id:
         return False
+    
+    # App admin 'admin' has owner rights in all communities
+    if norm_username == 'admin':
+        return True
 
     try:
         with get_db_connection() as conn:
@@ -38,6 +42,10 @@ def is_community_admin(username, community_id):
     norm_username = (username or "").strip().lower()
     if not norm_username or not community_id:
         return False
+    
+    # App admin 'admin' has admin rights in all communities
+    if norm_username == 'admin':
+        return True
 
     try:
         with get_db_connection() as conn:
