@@ -528,6 +528,47 @@ export default function CommunityFeed() {
     }catch{}
   }
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white pb-safe flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 px-4">
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-white/10 rounded-full"></div>
+            <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-[#4db6ac] rounded-full animate-spin"></div>
+          </div>
+          <div className="text-center">
+            <div className="text-lg font-medium text-white/90 mb-1">Loading Community Feed</div>
+            <div className="text-sm text-white/50">Please wait...</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black text-white pb-safe flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 px-4 text-center">
+          <div className="w-16 h-16 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center">
+            <i className="fa-solid fa-exclamation-triangle text-2xl text-red-400" />
+          </div>
+          <div>
+            <div className="text-lg font-medium text-white/90 mb-1">Failed to Load Feed</div>
+            <div className="text-sm text-white/50">{error}</div>
+          </div>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
       {refreshHint && (
