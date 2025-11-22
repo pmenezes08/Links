@@ -17,6 +17,10 @@
       /* Critical: Extend background into iOS safe areas for both light and dark mode */
       html { 
         background-color: #000000;
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+        height: 100%;
       }
       
       /* Handle light mode: match the app background */
@@ -26,16 +30,24 @@
         }
       }
       
-      html, body, #root { 
+      body { 
         background-color: #000000; 
         color: #ffffff; 
-        height: 100%; 
-        width: 100%;
-      }
-      
-      body { 
         margin: 0;
         padding: 0;
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      #root {
+        background-color: #000000;
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+        position: relative;
       }
       
       /* Ensure the entire viewport is black, including safe areas, in both modes */
@@ -50,7 +62,17 @@
         }
       }
       
-      html, body { overscroll-behavior: contain; }
+      /* Prevent overscroll bounce effect on iOS */
+      html, body { 
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+      }
+      
+      /* Prevent pull-to-refresh */
+      body {
+        overscroll-behavior-y: contain;
+      }
       
       /* Prevent zoom on input focus (iOS Safari) */
       input, textarea, select { font-size: 16px !important; }
