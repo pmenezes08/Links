@@ -217,11 +217,11 @@ export default function Communities(){
   }, [setTitle, parentName])
 
   return (
-    <div className="h-screen overflow-hidden bg-black text-white relative">
+    <div className="min-h-screen bg-black text-white relative pb-safe">
       {/* Global header used from App */}
 
       {/* Secondary nav like X */}
-      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+      <div className="sticky left-0 right-0 top-0 h-10 bg-black/95 backdrop-blur z-40" style={{ top: 'calc(env(safe-area-inset-top) + 56px)' }}>
         <div className="max-w-2xl mx-auto h-full flex items-center">
           <button
             type="button"
@@ -277,7 +277,7 @@ export default function Communities(){
       {/* Slide-out menu (90% width) same as feed */}
       {/* Menu unified via HeaderBar */}
 
-      <div className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-6 px-3 overflow-y-auto no-scrollbar">
+      <div className="max-w-2xl mx-auto pt-[10px] pb-6 px-3">
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (
