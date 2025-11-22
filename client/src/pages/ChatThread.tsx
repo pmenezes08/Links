@@ -1468,43 +1468,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                     <div className="text-white/60 text-xs">Powered by GIPHY</div>
                   </div>
                 </button>
-                <button
-                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
-                    onClick={async () => {
-                      setShowAttachMenu(false)
-                      // Try to paste from clipboard manually
-                      if (navigator.clipboard && navigator.clipboard.read) {
-                        try {
-                          const clipboardItems = await navigator.clipboard.read()
-                          for (const clipboardItem of clipboardItems) {
-                            for (const type of clipboardItem.types) {
-                              if (type.startsWith('image/')) {
-                                const blob = await clipboardItem.getType(type)
-                                const file = new File([blob], `pasted-image.${type.split('/')[1]}`, { type })
-                                setPastedImage(file)
-                                setPreviewImage(URL.createObjectURL(file))
-                                return
-                              }
-                            }
-                          }
-                          alert('No image found in clipboard. Copy an image first, then tap this button again.')
-                        } catch (error) {
-                          console.warn('Clipboard access failed:', error)
-                          alert('Clipboard access denied. This is normal on some browsers. Try using the Photos button instead.')
-                        }
-                      } else {
-                        alert("Your browser doesn't support clipboard image access. Try using the Photos button to select an image instead.")
-                      }
-                    }}
-                >
-                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
-                    <i className="fa-solid fa-paste text-[#4db6ac]" />
-                  </div>
-                  <div>
-                    <div className="text-white font-medium">Paste Image</div>
-                    <div className="text-white/60 text-xs">From clipboard</div>
-                  </div>
-                </button>
+                {/* Paste Image option removed - direct paste with Ctrl+V/Cmd+V now works */}
                 {/* Voice message moved next to Send button */}
               </div>
             </>
