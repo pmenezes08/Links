@@ -1,8 +1,16 @@
+import sys
+import os
+
+# STARTUP LOGGING - Must be first
+print("=" * 80, flush=True)
+print("🚀 BODYBUILDING_APP.PY STARTING", flush=True)
+print(f"   REDIS_ENABLED: {os.environ.get('REDIS_ENABLED', 'NOT SET')}", flush=True)
+print(f"   REDIS_HOST: {os.environ.get('REDIS_HOST', 'NOT SET')[:50]}...", flush=True)
+print("=" * 80, flush=True)
+
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
 from collections import deque, defaultdict
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
-import os
-import sys
 import json
 import sqlite3
 import random
@@ -23,7 +31,9 @@ import secrets
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from hashlib import sha256
+print("📦 About to import redis_cache...", flush=True)
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
+print(f"✅ redis_cache imported! Cache type: {type(cache).__name__}", flush=True)
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode, urljoin, quote_plus
 from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
