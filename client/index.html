@@ -14,16 +14,14 @@
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
-      /* Critical: Lock viewport and extend black background into safe areas */
+      /* iOS Safe Area Support - Black background everywhere */
       html { 
-        position: fixed;
         width: 100%;
         height: 100%;
-        overflow: hidden;
         background-color: #000000;
       }
       
-      /* Handle light mode: force black everywhere */
+      /* Force black in light mode too */
       @media (prefers-color-scheme: light) {
         html { 
           background-color: #000000 !important;
@@ -31,22 +29,21 @@
       }
       
       body { 
-        position: fixed;
         width: 100%;
-        height: 100%;
+        min-height: 100%;
         margin: 0;
         padding: 0;
-        overflow: hidden;
         background-color: #000000; 
-        color: #ffffff; 
+        color: #ffffff;
+        /* Extend black into safe areas */
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
       }
       
       #root {
-        position: relative;
         width: 100%;
-        height: 100%;
+        min-height: 100vh;
         background-color: #000000;
-        overflow: hidden;
       }
       
       /* Force black safe areas in all modes */
@@ -56,11 +53,10 @@
         }
       }
       
-      /* Completely prevent all scrolling and bouncing */
-      html, body { 
-        overscroll-behavior: none !important;
-        -webkit-overflow-scrolling: auto;
-        touch-action: pan-x pan-y;
+      /* Prevent overscroll bounce but allow normal scrolling */
+      body { 
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
       }
       
       /* Prevent zoom on input focus (iOS Safari) */
