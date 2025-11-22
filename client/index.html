@@ -14,65 +14,58 @@
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
-      /* Critical: Extend background into iOS safe areas for both light and dark mode */
+      /* Critical: Lock viewport and extend black background into safe areas */
       html { 
-        background-color: #000000;
-        height: 100%;
+        position: fixed;
         width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #000000;
       }
       
-      /* Handle light mode: match the app background */
+      /* Handle light mode: force black everywhere */
       @media (prefers-color-scheme: light) {
         html { 
-          background-color: #000000; /* Keep black even in light mode */
+          background-color: #000000 !important;
         }
       }
       
       body { 
-        background-color: #000000; 
-        color: #ffffff; 
+        position: fixed;
+        width: 100%;
+        height: 100%;
         margin: 0;
         padding: 0;
-        min-height: 100%;
-        width: 100%;
-        /* Extend background into safe areas */
-        padding-top: env(safe-area-inset-top);
-        padding-bottom: env(safe-area-inset-bottom);
+        overflow: hidden;
+        background-color: #000000; 
+        color: #ffffff; 
       }
       
       #root {
-        background-color: #000000;
-        min-height: 100vh;
+        position: relative;
         width: 100%;
+        height: 100%;
+        background-color: #000000;
+        overflow: hidden;
       }
       
-      /* Ensure the entire viewport is black, including safe areas, in both modes */
-      @supports (padding: env(safe-area-inset-top)) {
-        html, body {
-          background-color: #000000;
-        }
-        @media (prefers-color-scheme: light) {
-          html, body {
-            background-color: #000000; /* Force black safe areas even in light mode */
-          }
+      /* Force black safe areas in all modes */
+      @media (prefers-color-scheme: light) {
+        body, #root {
+          background-color: #000000 !important;
         }
       }
       
-      /* Prevent overscroll bounce effect on iOS */
+      /* Completely prevent all scrolling and bouncing */
       html, body { 
-        overscroll-behavior-y: none;
-        -webkit-overflow-scrolling: touch;
-      }
-      
-      /* Prevent pull-to-refresh on body */
-      body {
-        overscroll-behavior: none;
+        overscroll-behavior: none !important;
+        -webkit-overflow-scrolling: auto;
+        touch-action: pan-x pan-y;
       }
       
       /* Prevent zoom on input focus (iOS Safari) */
-      input, textarea, select { font-size: 16px !important; }
-      @media screen and (max-width: 768px) {
-        input, textarea, select { font-size: 16px !important; }
+      input, textarea, select { 
+        font-size: 16px !important;
       }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
