@@ -18,9 +18,14 @@ logger = logging.getLogger(__name__)
 try:
     import redis
     REDIS_AVAILABLE = True
-except ImportError:
+    print(f"✅ redis module imported successfully from: {redis.__file__}", flush=True)
+except ImportError as e:
     REDIS_AVAILABLE = False
-    logger.info("Redis not available, using in-memory cache")
+    msg = f"❌ Failed to import redis: {e}"
+    logger.info(msg)
+    print(msg, flush=True)
+    import sys
+    print(f"   Python path: {sys.path[:3]}...", flush=True)
 
 # Configuration
 REDIS_ENABLED = os.environ.get('REDIS_ENABLED', 'false').lower() == 'true' and REDIS_AVAILABLE
