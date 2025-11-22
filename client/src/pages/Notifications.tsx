@@ -126,14 +126,14 @@ export default function Notifications(){
   }
 
   if (loading || !items) return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white overflow-y-auto">
-      <div className="max-w-xl mx-auto p-3 text-[#9fb0b5]">Loading…</div>
+    <div className="min-h-screen bg-black text-white pb-safe">
+      <div className="max-w-xl mx-auto p-3 pt-3 pb-20 text-[#9fb0b5]">Loading…</div>
     </div>
   )
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white overflow-y-auto">
-      <div className="max-w-xl mx-auto p-3">
+    <div className="min-h-screen bg-black text-white pb-safe">
+      <div className="max-w-xl mx-auto p-3 pt-3 pb-20">
         <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
           <div className="text-lg font-semibold">Notifications</div>
           <div className="flex items-center gap-2">
