@@ -68,6 +68,8 @@ function AppRoutes(){
     style.textContent = `
       .content-with-safe-area {
         padding-top: calc(56px + env(safe-area-inset-top));
+        padding-bottom: env(safe-area-inset-bottom);
+        min-height: 100vh;
       }
     `
     document.head.appendChild(style)
