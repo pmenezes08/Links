@@ -434,8 +434,8 @@ export default function Members(){
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-black text-white">
-      <div className="fixed left-0 right-0 top-14 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
+    <div className="min-h-screen bg-black text-white pb-safe">
+      <div className="sticky left-0 right-0 top-0 h-12 border-b border-white/10 bg-black/95 backdrop-blur flex items-center px-3 z-40" style={{ top: 'calc(env(safe-area-inset-top) + 56px)' }}>
         <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
           <i className="fa-solid fa-arrow-left" />
         </button>
@@ -463,7 +463,7 @@ export default function Members(){
           )}
         </div>
       </div>
-      <div className="max-w-2xl mx-auto pt-28 px-3 pb-6 h-full overflow-y-auto">
+      <div className="max-w-2xl mx-auto pt-3 px-3 pb-6">
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (
