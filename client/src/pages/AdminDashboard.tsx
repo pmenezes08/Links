@@ -485,23 +485,40 @@ export default function AdminDashboard() {
     }
   }
 
+  const [deleteUserModal, setDeleteUserModal] = useState<{username: string} | null>(null)
+  const [deletePreserveData, setDeletePreserveData] = useState(false)
+
   const handleDeleteUser = async (username: string) => {
-    if (!confirm(`Are you sure you want to delete user ${username}?`)) return
+    // Show modal instead of immediate confirm
+    setDeleteUserModal({ username })
+    setDeletePreserveData(false)
+  }
+
+  const confirmDeleteUser = async () => {
+    if (!deleteUserModal) return
+    const { username } = deleteUserModal
     
     try {
       const response = await fetch('/api/admin/delete_user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ username })
+        body: JSON.stringify({ 
+          username,
+          preserve_data: deletePreserveData
+        })
       })
       
       const data = await response.json()
       if (data.success) {
+        setDeleteUserModal(null)
         loadAdminData()
+      } else {
+        alert(data.error || 'Failed to delete user')
       }
     } catch (error) {
       console.error('Error deleting user:', error)
+      alert('Error deleting user')
     }
   }
 
@@ -1725,6 +1742,90 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Confirmation Modal */}
+      {deleteUserModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-[#0b0f10] rounded-2xl border border-white/10 p-6">
+            <h2 className="text-lg font-semibold mb-2 text-white">Delete User: {deleteUserModal.username}</h2>
+            <p className="text-sm text-white/60 mb-6">
+              Choose how to handle this user's data:
+            </p>
+
+            {/* Option 1: Preserve Data */}
+            <button
+              onClick={() => setDeletePreserveData(true)}
+              className={`w-full mb-3 p-4 rounded-xl border text-left transition ${
+                deletePreserveData
+                  ? 'border-[#4db6ac] bg-[#4db6ac]/10'
+                  : 'border-white/10 bg-white/5 hover:border-white/20'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    deletePreserveData ? 'border-[#4db6ac] bg-[#4db6ac]' : 'border-white/30'
+                  }`}>
+                    {deletePreserveData && <i className="fa-solid fa-check text-xs text-black" />}
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <div className="font-medium text-white mb-1">Preserve User Content</div>
+                  <div className="text-xs text-white/60">
+                    Keep all posts, messages, reactions, and uploads. Only removes the user account.
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            {/* Option 2: Delete Everything */}
+            <button
+              onClick={() => setDeletePreserveData(false)}
+              className={`w-full mb-6 p-4 rounded-xl border text-left transition ${
+                !deletePreserveData
+                  ? 'border-red-500/60 bg-red-500/10'
+                  : 'border-white/10 bg-white/5 hover:border-white/20'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    !deletePreserveData ? 'border-red-500 bg-red-500' : 'border-white/30'
+                  }`}>
+                    {!deletePreserveData && <i className="fa-solid fa-check text-xs text-white" />}
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <div className="font-medium text-white mb-1">Delete All Data</div>
+                  <div className="text-xs text-white/60">
+                    Permanently remove user and ALL their content: posts, messages, reactions, uploads. Cannot be undone.
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteUserModal(null)}
+                className="flex-1 px-4 py-2 rounded-lg border border-white/20 text-white hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteUser}
+                className={`flex-1 px-4 py-2 rounded-lg font-semibold ${
+                  deletePreserveData
+                    ? 'bg-[#4db6ac] text-black hover:brightness-110'
+                    : 'bg-red-500 text-white hover:bg-red-600'
+                }`}
+              >
+                {deletePreserveData ? 'Delete Account Only' : 'Delete Everything'}
+              </button>
+            </div>
           </div>
         </div>
       )}

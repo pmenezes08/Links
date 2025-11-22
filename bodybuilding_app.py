@@ -6151,6 +6151,7 @@ def admin_delete_user():
     
     data = request.get_json()
     target_username = data.get('username')
+    preserve_data = data.get('preserve_data', False)  # Default to deleting everything
     
     if not target_username:
         return jsonify({'success': False, 'error': 'Username required'}), 400
@@ -6170,27 +6171,21 @@ def admin_delete_user():
             if not user_id:
                 return jsonify({'success': False, 'error': 'User not found'}), 404
 
-            # Delete dependent rows first to satisfy FK constraints
+            # Always delete these (required for user deletion)
             try:
                 c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
             except Exception:
                 pass
-            # Delete poll votes FIRST (foreign key constraint to users table)
+            # Delete poll votes (foreign key constraint to users table)
             try:
                 c.execute(f"DELETE FROM poll_votes WHERE username={ph}", (target_username,))
             except Exception:
                 pass
-            c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (target_username, target_username))
-            c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
             c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
             try:
                 c.execute(f"DELETE FROM community_admins WHERE username={ph}", (target_username,))
             except Exception:
                 pass
-            c.execute(f"DELETE FROM posts WHERE username={ph}", (target_username,))
-            c.execute(f"DELETE FROM replies WHERE username={ph}", (target_username,))
-            c.execute(f"DELETE FROM reactions WHERE username={ph}", (target_username,))
-            c.execute(f"DELETE FROM reply_reactions WHERE username={ph}", (target_username,))
             try:
                 c.execute(f"DELETE FROM push_subscriptions WHERE username={ph}", (target_username,))
             except Exception:
@@ -6211,31 +6206,50 @@ def admin_delete_user():
                 c.execute(f"DELETE FROM remember_tokens WHERE username={ph}", (target_username,))
             except Exception:
                 pass
-            # Reassign communities owned by this user to 'admin' to satisfy FK fk_comm_owner
-            try:
-                c.execute(f"UPDATE communities SET creator_username={ph} WHERE creator_username={ph}", ('admin', target_username))
-            except Exception:
-                pass
-            # Delete calendar and event related data
-            try:
-                # Delete RSVPs for events this user is involved in
-                c.execute(f"DELETE FROM event_rsvps WHERE username={ph}", (target_username,))
-                # Delete event invitations for this user
-                c.execute(f"DELETE FROM event_invitations WHERE invited_username={ph} OR invited_by={ph}", (target_username, target_username))
-                # Delete calendar events created by this user
-                c.execute(f"DELETE FROM calendar_events WHERE username={ph}", (target_username,))
-            except Exception as cal_err:
-                logger.warning(f"Error deleting calendar/event data for {target_username}: {cal_err}")
-                pass
-            
-            # Remove profile row before user to satisfy FK fk_profile_user
             c.execute(f"DELETE FROM user_profiles WHERE username={ph}", (target_username,))
             try:
-                c.execute(f"DELETE FROM exercises WHERE username={ph}", (target_username,))
-                c.execute(f"DELETE FROM workouts WHERE username={ph}", (target_username,))
-                c.execute(f"DELETE FROM crossfit_entries WHERE username={ph}", (target_username,))
+                c.execute(f"DELETE FROM push_tokens WHERE username={ph}", (target_username,))
             except Exception:
                 pass
+            try:
+                c.execute(f"DELETE FROM encryption_keys WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
+
+            # Conditionally delete user content based on preserve_data flag
+            if not preserve_data:
+                # Delete ALL user content (posts, messages, reactions, etc.)
+                logger.info(f"Deleting ALL content for user: {target_username}")
+                c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (target_username, target_username))
+                c.execute(f"DELETE FROM posts WHERE username={ph}", (target_username,))
+                c.execute(f"DELETE FROM replies WHERE username={ph}", (target_username,))
+                c.execute(f"DELETE FROM reactions WHERE username={ph}", (target_username,))
+                c.execute(f"DELETE FROM reply_reactions WHERE username={ph}", (target_username,))
+                try:
+                    c.execute(f"DELETE FROM event_rsvps WHERE username={ph}", (target_username,))
+                    c.execute(f"DELETE FROM event_invitations WHERE invited_username={ph} OR invited_by={ph}", (target_username, target_username))
+                    c.execute(f"DELETE FROM calendar_events WHERE username={ph}", (target_username,))
+                except Exception:
+                    pass
+                try:
+                    c.execute(f"DELETE FROM exercises WHERE username={ph}", (target_username,))
+                    c.execute(f"DELETE FROM workouts WHERE username={ph}", (target_username,))
+                    c.execute(f"DELETE FROM crossfit_entries WHERE username={ph}", (target_username,))
+                except Exception:
+                    pass
+                # Reassign communities owned by this user to 'admin'
+                try:
+                    c.execute(f"UPDATE communities SET creator_username={ph} WHERE creator_username={ph}", ('admin', target_username))
+                except Exception:
+                    pass
+            else:
+                # Preserve user content - only reassign ownership
+                logger.info(f"Preserving content for user: {target_username} (only deleting account)")
+                # Reassign communities to admin so they're not orphaned
+                try:
+                    c.execute(f"UPDATE communities SET creator_username={ph} WHERE creator_username={ph}", ('admin', target_username))
+                except Exception:
+                    pass
 
             # Finally delete the user
             c.execute(f"DELETE FROM users WHERE username={ph}", (target_username,))
