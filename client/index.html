@@ -52,6 +52,8 @@
         background-color: #000000;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior-y: none;
+        /* Extend into safe areas */
+        padding-bottom: env(safe-area-inset-bottom);
       }
       
       @media (prefers-color-scheme: light) {
