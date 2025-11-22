@@ -15,6 +15,19 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
   const [menuOpen, setMenuOpen] = useState(false)
   const [unreadMsgs, setUnreadMsgs] = useState<number>(0)
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0)
+  
+  // Add CSS for safe area support
+  if (typeof document !== 'undefined' && !document.getElementById('header-safe-area-styles')) {
+    const style = document.createElement('style')
+    style.id = 'header-safe-area-styles'
+    style.textContent = `
+      .header-with-safe-area {
+        padding-top: env(safe-area-inset-top);
+        height: calc(56px + env(safe-area-inset-top)) !important;
+      }
+    `
+    document.head.appendChild(style)
+  }
   // PWA install state handled on login page now
 
   // Light polling for unread counts
@@ -74,7 +87,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
 
   return (
     <>
-      <div className="fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black flex items-center px-3 z-[1000] text-white will-change-transform">
+      <div className="header-with-safe-area fixed left-0 right-0 top-0 h-14 border-b border-[#262f30] bg-black flex items-center px-3 z-[1000] text-white will-change-transform">
         {showBack ? (
           <button className="mr-2 p-2 rounded-full hover:bg-white/5" onClick={goBack} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
