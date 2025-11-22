@@ -21,6 +21,9 @@ SELECT COUNT(*) as member_of FROM user_communities WHERE user_id IN (SELECT id F
 
 -- 2. Delete all related data (in correct order to avoid foreign key issues)
 
+-- Delete poll votes FIRST (foreign key constraint)
+DELETE FROM poll_votes WHERE username = 'gofreire';
+
 -- Delete reactions by this user
 DELETE FROM reactions WHERE username = 'gofreire';
 
@@ -44,6 +47,12 @@ DELETE FROM push_tokens WHERE username = 'gofreire';
 
 -- Delete encryption keys (if table exists)
 DELETE FROM encryption_keys WHERE username = 'gofreire';
+
+-- Delete calendar event attendees
+DELETE FROM event_attendees WHERE username = 'gofreire';
+
+-- Delete task assignments
+DELETE FROM task_assignments WHERE username = 'gofreire';
 
 -- Finally, delete the user
 DELETE FROM users WHERE username = 'gofreire';
