@@ -529,7 +529,7 @@ export default function CommunityFeed() {
   }
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
+    <div className="min-h-screen bg-black text-white pb-safe">
       {refreshHint && (
         <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
             <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
@@ -539,7 +539,7 @@ export default function CommunityFeed() {
         </div>
       )}
       {/* Scrollable content area below fixed global header */}
-      <div ref={scrollRef} className={`h-full max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : 'overflow-y-auto'} no-scrollbar pb-20 px-3`} style={{ WebkitOverflowScrolling: 'touch' as any, overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto', overscrollBehaviorY: 'contain', touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y', paddingTop: `calc(12px + ${pullPx}px)` }}>
+      <div ref={scrollRef} className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-20 px-3 pt-3`} style={{ WebkitOverflowScrolling: 'touch' as any, overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto', overscrollBehaviorY: 'contain', touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y', paddingTop: `calc(12px + ${pullPx}px)` }}>
         <div className="space-y-3">
           {/* Back to communities (parent) + Search */}
           <div className="flex items-center gap-2">
