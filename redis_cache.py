@@ -282,7 +282,15 @@ def create_optimal_cache():
     return MemoryCache()
 
 # Global cache instance - automatically selects fastest option
+print("🔧 Initializing cache system...", flush=True)
+print(f"   REDIS_ENABLED: {REDIS_ENABLED}", flush=True)
+print(f"   REDIS_AVAILABLE: {REDIS_AVAILABLE}", flush=True)
+print(f"   CACHE_ENABLED: {CACHE_ENABLED}", flush=True)
+if REDIS_ENABLED:
+    print(f"   REDIS_HOST: {REDIS_HOST}", flush=True)
+    print(f"   REDIS_PORT: {REDIS_PORT}", flush=True)
 cache = create_optimal_cache()
+print(f"✅ Cache initialized: {type(cache).__name__}", flush=True)
 
 # Cache key generators
 def user_cache_key(username):
