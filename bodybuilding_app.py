@@ -6175,6 +6175,11 @@ def admin_delete_user():
                 c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
             except Exception:
                 pass
+            # Delete poll votes FIRST (foreign key constraint to users table)
+            try:
+                c.execute(f"DELETE FROM poll_votes WHERE username={ph}", (target_username,))
+            except Exception:
+                pass
             c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (target_username, target_username))
             c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
             c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
