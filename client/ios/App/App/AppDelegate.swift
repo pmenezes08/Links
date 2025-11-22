@@ -8,6 +8,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
+        let appBackgroundColor = UIColor(red: 11.0/255.0, green: 15.0/255.0, blue: 16.0/255.0, alpha: 1.0)
+
+        window?.backgroundColor = appBackgroundColor
+
+        if let rootViewController = window?.rootViewController {
+            rootViewController.view.backgroundColor = appBackgroundColor
+
+            if let bridgeController = rootViewController as? CAPBridgeViewController {
+                bridgeController.webView?.isOpaque = false
+                bridgeController.webView?.backgroundColor = .clear
+                bridgeController.webView?.scrollView.isOpaque = false
+                bridgeController.webView?.scrollView.backgroundColor = appBackgroundColor
+            }
+        }
+
         return true
     }
 
