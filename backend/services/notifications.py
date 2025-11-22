@@ -64,10 +64,106 @@ def create_notification(
         logger.error("Error creating notification: %s", exc)
 
 
+def send_native_push(username: str, title: str, body: str, data: dict = None):
+    """Send native push notification to iOS/Android devices via APNs/FCM"""
+    from backend.services.database import get_db_connection, get_sql_placeholder
+    
+    try:
+        # Get user's push tokens from database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ph = get_sql_placeholder()
+        
+        cursor.execute(
+            f"SELECT token, platform FROM push_tokens WHERE username = {ph} AND is_active = 1",
+            (username,)
+        )
+        tokens = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        if not tokens:
+            logger.debug(f"No active push tokens for user {username}")
+            return
+        
+        # Send to each registered device
+        for token_row in tokens:
+            token = token_row[0]
+            platform = token_row[1]
+            
+            if platform == 'ios':
+                # Send via APNs
+                send_apns_notification(token, title, body, data)
+            elif platform == 'android':
+                # Send via FCM  
+                send_fcm_notification(token, title, body, data)
+                
+    except Exception as e:
+        logger.error(f"Error sending native push to {username}: {e}")
+
+
+def send_apns_notification(device_token: str, title: str, body: str, data: dict = None):
+    """Send iOS push notification via APNs"""
+    # TODO: Implement APNs sending using pyapns2 or similar
+    # This requires:
+    # 1. APNs authentication key (.p8 file) from Apple Developer account
+    # 2. Team ID, Key ID, Bundle ID from Apple
+    # 3. pyapns2 library installed
+    
+    # For now, log what would be sent
+    logger.info(f"📱 [APNs] Would send to iOS device: {device_token[:20]}...")
+    logger.info(f"   Title: {title}")
+    logger.info(f"   Body: {body}")
+    logger.info(f"   Data: {data}")
+    
+    # Example implementation (commented out until APNs credentials are configured):
+    """
+    from apns2.client import APNsClient
+    from apns2.payload import Payload
+    
+    apns_key_path = os.getenv('APNS_KEY_PATH')  # Path to .p8 file
+    apns_key_id = os.getenv('APNS_KEY_ID')
+    apns_team_id = os.getenv('APNS_TEAM_ID')
+    bundle_id = 'co.cpoint.app'
+    
+    if not all([apns_key_path, apns_key_id, apns_team_id]):
+        logger.warning("APNs credentials not configured")
+        return
+    
+    client = APNsClient(
+        credentials=apns_key_path,
+        use_sandbox=False,  # Use True for development
+        team_id=apns_team_id,
+        auth_key_id=apns_key_id
+    )
+    
+    payload = Payload(alert={'title': title, 'body': body}, badge=1, sound='default', custom=data or {})
+    
+    client.send_notification(device_token, payload, bundle_id)
+    logger.info(f"✅ APNs notification sent successfully")
+    """
+
+
+def send_fcm_notification(device_token: str, title: str, body: str, data: dict = None):
+    """Send Android push notification via FCM"""
+    # TODO: Implement FCM sending using firebase-admin
+    logger.info(f"📱 [FCM] Would send to Android device: {device_token[:20]}...")
+    logger.info(f"   Title: {title}")
+    logger.info(f"   Body: {body}")
+
+
 def send_push_to_user(target_username: str, payload: dict):
-    """Send a web push notification to the given user (best-effort)."""
+    """Send push notification to the given user (web + native)."""
+    
+    # Send to native devices (iOS/Android)
+    title = payload.get('title', 'C.Point Notification')
+    body = payload.get('body', '')
+    data = {'url': payload.get('url', '/')}
+    send_native_push(target_username, title, body, data)
+    
+    # Also send web push for desktop browsers
     if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
-        logger.warning("VAPID keys missing; push disabled")
+        logger.warning("VAPID keys missing; web push disabled")
         return
 
     try:

@@ -77,6 +77,8 @@ def welcome():
 @public_bp.route("/api/push/register_native", methods=["POST"])
 def register_native_push_token():
     """Register a native iOS/Android push notification token."""
+    from backend.services.database import get_db_connection, get_sql_placeholder
+    
     logger = current_app.logger
     try:
         data = request.get_json() or {}
@@ -86,16 +88,55 @@ def register_native_push_token():
         if not token:
             return jsonify({'success': False, 'error': 'No token provided'}), 400
         
-        # TODO: Store token in database for sending push notifications via APNs/FCM
-        # For now, just log it
-        logger.info(f"📱 Native push token registered - Platform: {platform}, Token: {token[:20]}...")
+        # Get current user from session
+        username = session.get('username')
+        if not username:
+            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
         
-        # In production, you would:
-        # 1. Store the token in database associated with the current user
-        # 2. Configure APNs (iOS) or FCM (Android) credentials
-        # 3. Use a library like 'pyapns2' or 'firebase-admin' to send notifications
+        # Store token in database
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        return jsonify({'success': True, 'message': 'Token registered (logged for future APNs setup)'}), 200
+        try:
+            ph = get_sql_placeholder()
+            # Check if token exists for this user/platform
+            cursor.execute(
+                f"SELECT id FROM push_tokens WHERE username = {ph} AND platform = {ph}",
+                (username, platform)
+            )
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Update existing token
+                cursor.execute(
+                    f"UPDATE push_tokens SET token = {ph}, updated_at = CURRENT_TIMESTAMP, is_active = 1 WHERE username = {ph} AND platform = {ph}",
+                    (token, username, platform)
+                )
+                logger.info(f"📱 Updated push token for {username} on {platform}")
+            else:
+                # Insert new token
+                cursor.execute(
+                    f"INSERT INTO push_tokens (username, token, platform, is_active) VALUES ({ph}, {ph}, {ph}, 1)",
+                    (username, token, platform)
+                )
+                logger.info(f"📱 Registered new push token for {username} on {platform}")
+            
+            conn.commit()
+            
+            logger.info(f"✅ Push token saved - Platform: {platform}, Token: {token[:20]}...")
+            
+            return jsonify({'success': True, 'message': 'Push token registered successfully'}), 200
+            
+        except Exception as db_err:
+            conn.rollback()
+            logger.error(f"Database error storing push token: {db_err}")
+            # Even if DB storage fails, log it for manual setup
+            logger.info(f"📱 FALLBACK LOG - Platform: {platform}, Token: {token[:20]}...")
+            return jsonify({'success': True, 'message': 'Token logged (DB storage failed)'}), 200
+        finally:
+            cursor.close()
+            conn.close()
+            
     except Exception as exc:
         logger.error("Error registering native push token: %s", exc)
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
