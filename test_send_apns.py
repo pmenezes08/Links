@@ -74,6 +74,15 @@ def test_apns_notification(username=None, device_token=None):
         print(f"   Using provided token: {device_token[:20]}...")
     elif username:
         try:
+            # Set MySQL env vars if not already set (for testing outside WSGI)
+            if not os.getenv('MYSQL_HOST'):
+                os.environ['DB_BACKEND'] = 'mysql'
+                os.environ['MYSQL_HOST'] = 'puntz08.mysql.pythonanywhere-services.com'
+                os.environ['MYSQL_USER'] = 'puntz08'
+                os.environ['MYSQL_DB'] = 'puntz08$C-Point'
+                # MYSQL_PASSWORD must be set by user
+                print("   ℹ️  Using default MySQL connection (set MYSQL_PASSWORD env var if this fails)")
+            
             from backend.services.database import get_db_connection, get_sql_placeholder
             conn = get_db_connection()
             cursor = conn.cursor()
