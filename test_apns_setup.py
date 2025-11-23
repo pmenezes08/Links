@@ -16,12 +16,26 @@ def test_apns_setup():
     # Check 1: apns2 library
     print("\n1️⃣  Checking apns2 library...")
     try:
+        import apns2
         from apns2.client import APNsClient
         from apns2.payload import Payload
+        from apns2.credentials import TokenCredentials
         print("   ✅ apns2 library is installed")
+        print(f"   Location: {apns2.__file__}")
+        try:
+            print(f"   Version: {apns2.__version__}")
+        except:
+            pass
     except ImportError as e:
-        print("   ❌ apns2 library NOT installed")
-        print("   Run: pip install apns2==0.7.2")
+        print("   ❌ apns2 library NOT installed in this Python environment")
+        print(f"   Error: {e}")
+        print("\n   This might be a Python environment issue.")
+        print("   The library may be installed but in a different Python environment.")
+        print("\n   Solutions:")
+        print("   1. Make sure you're using the same Python as your web app")
+        print("   2. If using a virtual environment, activate it first")
+        print("   3. Try: python3 -m pip install apns2==0.7.2 --user")
+        print("   4. Check your web app's Python with: python check_python_environment.py")
         return False
     
     # Check 2: Environment variables
