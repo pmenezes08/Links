@@ -27,6 +27,8 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from backend.services.native_push import associate_install_tokens_with_user
+
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -572,6 +574,12 @@ def login_password():
 
                     session.permanent = True
                     session["username"] = username
+                    try:
+                        install_cookie = request.cookies.get("native_push_install_id")
+                        if install_cookie:
+                            associate_install_tokens_with_user(install_cookie, username)
+                    except Exception as exc:
+                        logger.warning("native push install association failed: %s", exc)
                     try:
                         session.pop("pending_username", None)
                     except Exception:
