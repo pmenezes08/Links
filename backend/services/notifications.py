@@ -104,44 +104,72 @@ def send_native_push(username: str, title: str, body: str, data: dict = None):
 
 def send_apns_notification(device_token: str, title: str, body: str, data: dict = None):
     """Send iOS push notification via APNs"""
-    # TODO: Implement APNs sending using pyapns2 or similar
-    # This requires:
-    # 1. APNs authentication key (.p8 file) from Apple Developer account
-    # 2. Team ID, Key ID, Bundle ID from Apple
-    # 3. pyapns2 library installed
+    try:
+        from apns2.client import APNsClient
+        from apns2.payload import Payload
+    except ImportError:
+        logger.error("❌ apns2 library not installed. Run: pip install apns2==0.7.2")
+        return
     
-    # For now, log what would be sent
-    logger.info(f"📱 [APNs] Would send to iOS device: {device_token[:20]}...")
+    # Get APNs credentials from environment
+    apns_key_path = os.getenv('APNS_KEY_PATH')
+    apns_key_id = os.getenv('APNS_KEY_ID')
+    apns_team_id = os.getenv('APNS_TEAM_ID')
+    apns_bundle_id = os.getenv('APNS_BUNDLE_ID', 'co.cpoint.app')
+    use_sandbox = os.getenv('APNS_USE_SANDBOX', 'true').lower() == 'true'
+    
+    logger.info(f"📱 [APNs] Attempting to send to iOS device: {device_token[:20]}...")
     logger.info(f"   Title: {title}")
     logger.info(f"   Body: {body}")
     logger.info(f"   Data: {data}")
+    logger.info(f"   Key Path: {apns_key_path}")
+    logger.info(f"   Key ID: {apns_key_id}")
+    logger.info(f"   Team ID: {apns_team_id}")
+    logger.info(f"   Bundle ID: {apns_bundle_id}")
+    logger.info(f"   Use Sandbox: {use_sandbox}")
     
-    # Example implementation (commented out until APNs credentials are configured):
-    """
-    from apns2.client import APNsClient
-    from apns2.payload import Payload
-    
-    apns_key_path = os.getenv('APNS_KEY_PATH')  # Path to .p8 file
-    apns_key_id = os.getenv('APNS_KEY_ID')
-    apns_team_id = os.getenv('APNS_TEAM_ID')
-    bundle_id = 'co.cpoint.app'
-    
+    # Check if credentials are configured
     if not all([apns_key_path, apns_key_id, apns_team_id]):
-        logger.warning("APNs credentials not configured")
+        logger.warning("⚠️  APNs credentials not configured. Set APNS_KEY_PATH, APNS_KEY_ID, APNS_TEAM_ID in environment")
+        logger.warning(f"   APNS_KEY_PATH: {apns_key_path}")
+        logger.warning(f"   APNS_KEY_ID: {apns_key_id}")
+        logger.warning(f"   APNS_TEAM_ID: {apns_team_id}")
         return
     
-    client = APNsClient(
-        credentials=apns_key_path,
-        use_sandbox=False,  # Use True for development
-        team_id=apns_team_id,
-        auth_key_id=apns_key_id
-    )
+    # Check if key file exists
+    if not os.path.exists(apns_key_path):
+        logger.error(f"❌ APNs key file not found at: {apns_key_path}")
+        logger.error(f"   Please upload your .p8 key file to this location")
+        return
     
-    payload = Payload(alert={'title': title, 'body': body}, badge=1, sound='default', custom=data or {})
-    
-    client.send_notification(device_token, payload, bundle_id)
-    logger.info(f"✅ APNs notification sent successfully")
-    """
+    try:
+        # Create APNs client
+        client = APNsClient(
+            credentials=apns_key_path,
+            use_sandbox=use_sandbox,
+            team_id=apns_team_id,
+            auth_key_id=apns_key_id
+        )
+        
+        # Create notification payload
+        payload = Payload(
+            alert={'title': title, 'body': body},
+            badge=1,
+            sound='default',
+            custom=data or {}
+        )
+        
+        # Send notification
+        logger.info(f"📤 Sending APNs notification...")
+        client.send_notification(device_token, payload, apns_bundle_id)
+        logger.info(f"✅ APNs notification sent successfully to {device_token[:20]}...")
+        
+    except FileNotFoundError:
+        logger.error(f"❌ APNs key file not found: {apns_key_path}")
+    except Exception as e:
+        logger.error(f"❌ APNs send error: {e}")
+        logger.error(f"   Error type: {type(e).__name__}")
+        logger.error(f"   Error details: {str(e)}")
 
 
 def send_fcm_notification(device_token: str, title: str, body: str, data: dict = None):
