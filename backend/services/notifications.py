@@ -13,16 +13,16 @@ from pywebpush import WebPushException, webpush
 
 from backend.services.database import USE_MYSQL, get_db_connection
 
+# Modern APNs implementation using HTTP/2 (Apple's 2025 recommendation)
 try:
-    from apns2.client import APNsClient
-    from apns2.credentials import TokenCredentials
-    from apns2.payload import Payload
-    from apns2.errors import APNsException, BadDeviceToken, Unregistered
-except Exception:  # pragma: no cover - apns2 optional in dev
-    APNsClient = None  # type: ignore
-    TokenCredentials = None  # type: ignore
-    Payload = None  # type: ignore
-    APNsException = BadDeviceToken = Unregistered = Exception  # type: ignore
+    import httpx
+    import jwt
+    from cryptography.hazmat.primitives import serialization
+    APNS_AVAILABLE = True
+except ImportError:
+    APNS_AVAILABLE = False
+    httpx = None  # type: ignore
+    jwt = None  # type: ignore
 
 
 logger = logging.getLogger(__name__)
@@ -34,8 +34,9 @@ APNS_KEY_ID = os.getenv("APNS_KEY_ID")
 APNS_TEAM_ID = os.getenv("APNS_TEAM_ID")
 APNS_BUNDLE_ID = os.getenv("APNS_BUNDLE_ID", "co.cpoint.app")
 APNS_USE_SANDBOX = os.getenv("APNS_USE_SANDBOX", "true").strip().lower() == "true"
-_APNS_CLIENT = None
-_APNS_CLIENT_LOCK = Lock()
+_APNS_JWT_TOKEN = None
+_APNS_JWT_EXPIRY = None
+_APNS_TOKEN_LOCK = Lock()
 
 
 def create_notification(
@@ -123,33 +124,79 @@ def send_native_push(username: str, title: str, body: str, data: dict = None):
 
 
 def send_apns_notification(device_token: str, title: str, body: str, data: dict = None):
-    """Send iOS push notification via APNs using token-based auth."""
-    client = _get_apns_client()
-    if client is None:
+    """Send iOS push notification via APNs using HTTP/2 (Apple's 2025 recommendation)."""
+    
+    if not APNS_AVAILABLE:
+        logger.debug("APNs dependencies not available (httpx, PyJWT, cryptography)")
         return
-
+    
     token = (device_token or "").strip().replace(" ", "")
     if not token:
         logger.warning("APNs token missing, cannot send notification")
         return
-
-    alert = {"title": title, "body": body}
-    try:
-        payload = Payload(alert=alert, badge=1, sound="default", custom=data or {})
-    except Exception as payload_err:  # pragma: no cover - defensive
-        logger.error("Failed to build APNs payload: %s", payload_err)
+    
+    # Check credentials
+    if not all([APNS_KEY_PATH, APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID]):
+        logger.debug("APNs credentials not configured")
         return
-
+    
+    if not os.path.exists(APNS_KEY_PATH):
+        logger.error("APNs key file not found: %s", APNS_KEY_PATH)
+        return
+    
     try:
-        client.send_notification(token, payload, APNS_BUNDLE_ID, push_type="alert")
-        logger.info("✅ APNs alert sent to token %s…", token[:8])
-    except (BadDeviceToken, Unregistered) as invalid_token_err:
-        logger.warning("APNs rejected token %s: %s", token[:8], invalid_token_err)
-        _disable_push_token(token)
-    except APNsException as apns_err:
-        logger.error("APNs delivery error: %s", apns_err)
-    except Exception as exc:  # pragma: no cover - network/runtime
-        logger.error("Unexpected APNs error: %s", exc)
+        # Build APNs payload
+        payload = {
+            "aps": {
+                "alert": {
+                    "title": title,
+                    "body": body
+                },
+                "badge": 1,
+                "sound": "default"
+            }
+        }
+        
+        # Add custom data
+        if data:
+            payload.update(data)
+        
+        # Get JWT token for authentication
+        auth_token = _get_apns_jwt_token()
+        if not auth_token:
+            logger.error("Failed to generate APNs JWT token")
+            return
+        
+        # APNs endpoint
+        apns_server = "api.sandbox.push.apple.com" if APNS_USE_SANDBOX else "api.push.apple.com"
+        url = f"https://{apns_server}/3/device/{token}"
+        
+        # Headers
+        headers = {
+            "authorization": f"bearer {auth_token}",
+            "apns-push-type": "alert",
+            "apns-topic": APNS_BUNDLE_ID,
+            "apns-priority": "10"
+        }
+        
+        # Send notification via HTTP/2
+        with httpx.Client(http2=True, timeout=10.0) as client:
+            response = client.post(url, json=payload, headers=headers)
+        
+        if response.status_code == 200:
+            logger.info("✅ APNs notification sent to token %s…", token[:8])
+        elif response.status_code == 400:
+            logger.error("APNs error 400 (Bad Request): %s", response.text)
+        elif response.status_code == 403:
+            logger.error("APNs error 403 (Forbidden): Check credentials")
+        elif response.status_code == 410:
+            logger.warning("APNs token %s is no longer active", token[:8])
+            _disable_push_token(token)
+        else:
+            logger.error("APNs error %s: %s", response.status_code, response.text)
+            
+    except Exception as exc:
+        logger.error("APNs send error: %s", exc)
 
 
 def send_fcm_notification(device_token: str, title: str, body: str, data: dict = None):
@@ -478,46 +525,60 @@ def check_single_poll_notifications(poll_id, conn=None):
             conn.close()
 
 
-def _get_apns_client():
-    """Build (or reuse) a configured APNs client if credentials are available."""
-    global _APNS_CLIENT
-
-    if APNsClient is None or TokenCredentials is None or Payload is None:
-        logger.debug("apns2 library not available; skipping APNs send")
-        return None
-
-    if not all([APNS_KEY_PATH, APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID]):
-        logger.debug("APNs env vars missing; skipping APNs send")
-        return None
-
-    with _APNS_CLIENT_LOCK:
-        if _APNS_CLIENT is not None:
-            return _APNS_CLIENT
-
-        key_path = Path(APNS_KEY_PATH)
-        if not key_path.exists():
-            logger.error("APNs key path does not exist: %s", key_path)
-            return None
-
+def _get_apns_jwt_token():
+    """Generate JWT token for APNs authentication (cached for 55 minutes)."""
+    global _APNS_JWT_TOKEN, _APNS_JWT_EXPIRY
+    
+    with _APNS_TOKEN_LOCK:
+        # Check if we have a valid cached token
+        if _APNS_JWT_TOKEN and _APNS_JWT_EXPIRY:
+            if datetime.now().timestamp() < _APNS_JWT_EXPIRY:
+                return _APNS_JWT_TOKEN
+        
+        # Generate new JWT token
         try:
-            credentials = TokenCredentials(
-                auth_key_path=str(key_path),
-                auth_key_id=APNS_KEY_ID,
-                team_id=APNS_TEAM_ID,
+            # Read the .p8 private key
+            with open(APNS_KEY_PATH, 'rb') as key_file:
+                private_key = serialization.load_pem_private_key(
+                    key_file.read(),
+                    password=None
+                )
+            
+            # JWT header
+            headers = {
+                "alg": "ES256",
+                "kid": APNS_KEY_ID
+            }
+            
+            # JWT payload (issued at time)
+            now = datetime.now().timestamp()
+            payload = {
+                "iss": APNS_TEAM_ID,
+                "iat": int(now)
+            }
+            
+            # Generate token (valid for 1 hour, we'll cache for 55 minutes)
+            token = jwt.encode(
+                payload,
+                private_key,
+                algorithm="ES256",
+                headers=headers
             )
-            _APNS_CLIENT = APNsClient(
-                credentials,
-                use_sandbox=APNS_USE_SANDBOX,
-                use_alternative_port=False,
-            )
+            
+            # Cache token and expiry (55 minutes from now)
+            _APNS_JWT_TOKEN = token
+            _APNS_JWT_EXPIRY = now + (55 * 60)
+            
             logger.info(
-                "APNs client initialized (sandbox=%s, bundle=%s)",
+                "APNs JWT token generated (sandbox=%s, bundle=%s)",
                 APNS_USE_SANDBOX,
                 APNS_BUNDLE_ID,
             )
-            return _APNS_CLIENT
+            
+            return token
+            
         except Exception as exc:
-            logger.error("Failed to initialize APNs client: %s", exc)
+            logger.error("Failed to generate APNs JWT token: %s", exc)
             return None
 
 
