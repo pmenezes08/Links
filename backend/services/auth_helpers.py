@@ -13,20 +13,27 @@ def associate_anonymous_tokens_with_user(username: str):
     This handles the case where notification permission was granted before login.
     """
     try:
+        from backend.services.database import USE_MYSQL
+        
         conn = get_db_connection()
         cursor = conn.cursor()
         ph = get_sql_placeholder()
         
         # Find any anonymous tokens that should belong to this user
         # We'll match by checking if there are recent anonymous tokens
+        if USE_MYSQL:
+            time_condition = "created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)"
+        else:
+            time_condition = "created_at > datetime('now', '-1 hour')"
+        
         cursor.execute(
             f"""
             SELECT id, token, platform 
             FROM push_tokens 
-            WHERE username LIKE 'anonymous_%' 
-            AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+            WHERE username LIKE 'anonymous_{ph}' 
+            AND {time_condition}
             """,
-            ()
+            ('%',)
         )
         
         anonymous_tokens = cursor.fetchall()
