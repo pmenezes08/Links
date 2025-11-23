@@ -208,6 +208,7 @@ function AppRoutes(){
 
   return (
     <UserProfileContext.Provider value={userProfileValue}>
+      <NativePushInit />
       <HeaderContext.Provider value={{ setTitle }}>
         {(() => {
           const path = location.pathname
@@ -292,7 +293,6 @@ export default function App() {
       <BrowserRouter>
         <BrandAssetsInit />
         <PushInit />
-        <NativePushInit />
         <AppRoutes />
       </BrowserRouter>
     </QueryClientProvider>
