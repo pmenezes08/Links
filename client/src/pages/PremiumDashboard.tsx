@@ -365,10 +365,10 @@ export default function PremiumDashboard() {
   })()
   const profilePreviewSrc = picPreview || existingProfilePic
 
-  return (
-    <div className="min-h-screen bg-[#0b0f10] text-white pb-safe">
+    return (
+      <div className="min-h-screen bg-black text-white pb-safe">
       {/* Desktop sidebar - same menu as mobile burger */}
-      <div className="fixed left-0 top-14 bottom-0 w-52 border-r border-[#333] bg-[#0b0f10] hidden md:flex flex-col z-30">
+      <div className="fixed left-0 top-14 bottom-0 w-52 border-r border-[#333] bg-black hidden md:flex flex-col z-30">
         <nav className="flex-1 overflow-y-auto py-3">
           <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/premium_dashboard">Dashboard</a>
           <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/profile">Profile</a>
@@ -477,7 +477,7 @@ export default function PremiumDashboard() {
       {/* Onboarding Step 1: Welcome */}
       {onbStep === 1 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-6">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-6">
             <div className="text-center">
               <div className="text-2xl font-bold mb-3">Welcome {firstName || 'to CPoint'}! 👋</div>
               <div className="text-sm text-[#9fb0b5] mb-6">
@@ -497,7 +497,7 @@ export default function PremiumDashboard() {
       {/* Onboarding Step 2: Display Name */}
       {onbStep === 2 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-5">
             <div className="text-lg font-semibold mb-2">Choose your display name</div>
             <div className="text-xs text-[#9fb0b5] mb-3">By default, your display name matches your username. You can change it now.</div>
             <input value={displayName} onChange={(e)=> setDisplayName(e.target.value)} className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04] focus:border-[#4db6ac] focus:outline-none" />
@@ -525,7 +525,7 @@ export default function PremiumDashboard() {
         {/* Onboarding Step 3: Profile Picture */}
       {onbStep === 3 && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-5">
             <div className="text-lg font-semibold mb-2">Add a profile picture</div>
             <div className="text-xs text-[#9fb0b5] mb-3">Help people recognize you. You can change this later in your profile.</div>
             <input type="file" accept="image/*" onChange={(e)=>{
@@ -576,7 +576,7 @@ export default function PremiumDashboard() {
         {/* Onboarding Step 4: Complete Profile */}
         {onbStep === 4 && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-            <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-5">
               <div className="text-center mb-4">
                 <div className="text-4xl mb-3">👤</div>
                 <div className="text-lg font-semibold mb-2">Fill out your profile</div>
@@ -627,7 +627,7 @@ export default function PremiumDashboard() {
         {/* Onboarding Step 5: Final action */}
         {onbStep === 5 && (
           <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-            <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-5">
               {hasAnyCommunity ? (
                 <>
                   <div className="text-center mb-4">
@@ -700,7 +700,7 @@ export default function PremiumDashboard() {
       {/* Global Exit confirmation modal (available on any step) */}
       {confirmExit && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setConfirmExit(false)}>
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-[#0b0f10] p-5">
+          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-5">
             <div className="text-base font-semibold mb-2">Exit onboarding?</div>
             <div className="text-xs text-[#9fb0b5] mb-4">You can update these details anytime later in your Profile page.</div>
             <div className="flex justify-end gap-2">
@@ -713,7 +713,7 @@ export default function PremiumDashboard() {
       {/* Verify email first modal */}
       {showVerifyFirstModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowVerifyFirstModal(false)}>
-          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-black p-4">
             <div className="font-semibold text-sm mb-2">Verify your email</div>
             <div className="text-sm text-[#9fb0b5]">Please verify your email before joining a community.</div>
             <div className="flex items-center justify-end gap-2 mt-3">
@@ -727,7 +727,7 @@ export default function PremiumDashboard() {
       {/* Communities modal removed; button links to /communities */}
         {showCreateModal && (
           <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> { if (e.currentTarget===e.target) handleCloseCreateModal() }}>
-          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-black p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold text-sm">Create Community</div>
                 <button className="p-2 rounded-md hover:bg:white/5" onClick={handleCloseCreateModal} aria-label="Close"><i className="fa-solid fa-xmark"/></button>
@@ -779,7 +779,7 @@ export default function PremiumDashboard() {
       )}
       {showJoinModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setShowJoinModal(false)}>
-          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-4">
+          <div className="w-[92%] max-w-sm rounded-2xl border border-white/10 bg-black p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="font-semibold text-sm">Join Community</div>
               <button className="p-2 rounded-md hover:bg:white/5" onClick={()=> setShowJoinModal(false)} aria-label="Close"><i className="fa-solid fa-xmark"/></button>

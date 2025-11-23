@@ -2020,13 +2020,26 @@ def init_db():
             
             # Create users table
             logger.info("Creating users table...")
-            c.execute('''CREATE TABLE IF NOT EXISTS users
-                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                          username VARCHAR(191) UNIQUE NOT NULL, email TEXT UNIQUE, subscription TEXT DEFAULT 'free',
-                          password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT,
-                          fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT,
-                          muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT,
-                          created_at TEXT, is_admin BOOLEAN DEFAULT 0)''')
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS users
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              username VARCHAR(191) UNIQUE NOT NULL,
+                              email TEXT UNIQUE,
+                              subscription VARCHAR(32) NOT NULL DEFAULT 'free',
+                              password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT,
+                              fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT,
+                              muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT,
+                              created_at TEXT, is_admin BOOLEAN DEFAULT 0)''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS users
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              username TEXT UNIQUE NOT NULL,
+                              email TEXT UNIQUE,
+                              subscription TEXT DEFAULT 'free',
+                              password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT,
+                              fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT,
+                              muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT,
+                              created_at TEXT, is_admin BOOLEAN DEFAULT 0)''')
             
             # Add id column for MySQL compatibility if it doesn't exist
             try:
@@ -2035,6 +2048,20 @@ def init_db():
                 logger.info("Adding id column to users table for MySQL compatibility...")
                 c.execute("ALTER TABLE users ADD COLUMN id INTEGER PRIMARY KEY AUTO_INCREMENT FIRST")
                 conn.commit()
+            
+            # Ensure subscription column is compatible with MySQL defaults
+            if USE_MYSQL:
+                try:
+                    c.execute("SHOW COLUMNS FROM users LIKE 'subscription'")
+                    col_info = c.fetchone()
+                    col_type = col_info[1].lower() if col_info and len(col_info) > 1 else ''
+                    default_val = str(col_info[4]).lower() if col_info and len(col_info) > 4 and col_info[4] is not None else ''
+                    if 'varchar' not in col_type or default_val not in ("'free'", "free"):
+                        logger.info("Updating subscription column to VARCHAR with default...")
+                        c.execute("ALTER TABLE users MODIFY COLUMN subscription VARCHAR(32) NOT NULL DEFAULT 'free'")
+                        conn.commit()
+                except Exception as e:
+                    logger.warning(f"Could not enforce subscription column default: {e}")
             
             # Ensure user_communities table exists and has correct schema
             try:

@@ -6,16 +6,36 @@ import json
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
+from threading import Lock
 
 from pywebpush import WebPushException, webpush
 
 from backend.services.database import USE_MYSQL, get_db_connection
+
+try:
+    from apns2.client import APNsClient
+    from apns2.credentials import TokenCredentials
+    from apns2.payload import Payload
+    from apns2.errors import APNsException, BadDeviceToken, Unregistered
+except Exception:  # pragma: no cover - apns2 optional in dev
+    APNsClient = None  # type: ignore
+    TokenCredentials = None  # type: ignore
+    Payload = None  # type: ignore
+    APNsException = BadDeviceToken = Unregistered = Exception  # type: ignore
 
 
 logger = logging.getLogger(__name__)
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "https://www.c-point.co")
+APNS_KEY_PATH = os.getenv("APNS_KEY_PATH")
+APNS_KEY_ID = os.getenv("APNS_KEY_ID")
+APNS_TEAM_ID = os.getenv("APNS_TEAM_ID")
+APNS_BUNDLE_ID = os.getenv("APNS_BUNDLE_ID", "co.cpoint.app")
+APNS_USE_SANDBOX = os.getenv("APNS_USE_SANDBOX", "true").strip().lower() == "true"
+_APNS_CLIENT = None
+_APNS_CLIENT_LOCK = Lock()
 
 
 def create_notification(
@@ -103,73 +123,33 @@ def send_native_push(username: str, title: str, body: str, data: dict = None):
 
 
 def send_apns_notification(device_token: str, title: str, body: str, data: dict = None):
-    """Send iOS push notification via APNs"""
+    """Send iOS push notification via APNs using token-based auth."""
+    client = _get_apns_client()
+    if client is None:
+        return
+
+    token = (device_token or "").strip().replace(" ", "")
+    if not token:
+        logger.warning("APNs token missing, cannot send notification")
+        return
+
+    alert = {"title": title, "body": body}
     try:
-        from apns2.client import APNsClient
-        from apns2.payload import Payload
-    except ImportError:
-        logger.error("❌ apns2 library not installed. Run: pip install apns2==0.7.2")
+        payload = Payload(alert=alert, badge=1, sound="default", custom=data or {})
+    except Exception as payload_err:  # pragma: no cover - defensive
+        logger.error("Failed to build APNs payload: %s", payload_err)
         return
-    
-    # Get APNs credentials from environment
-    apns_key_path = os.getenv('APNS_KEY_PATH')
-    apns_key_id = os.getenv('APNS_KEY_ID')
-    apns_team_id = os.getenv('APNS_TEAM_ID')
-    apns_bundle_id = os.getenv('APNS_BUNDLE_ID', 'co.cpoint.app')
-    use_sandbox = os.getenv('APNS_USE_SANDBOX', 'true').lower() == 'true'
-    
-    logger.info(f"📱 [APNs] Attempting to send to iOS device: {device_token[:20]}...")
-    logger.info(f"   Title: {title}")
-    logger.info(f"   Body: {body}")
-    logger.info(f"   Data: {data}")
-    logger.info(f"   Key Path: {apns_key_path}")
-    logger.info(f"   Key ID: {apns_key_id}")
-    logger.info(f"   Team ID: {apns_team_id}")
-    logger.info(f"   Bundle ID: {apns_bundle_id}")
-    logger.info(f"   Use Sandbox: {use_sandbox}")
-    
-    # Check if credentials are configured
-    if not all([apns_key_path, apns_key_id, apns_team_id]):
-        logger.warning("⚠️  APNs credentials not configured. Set APNS_KEY_PATH, APNS_KEY_ID, APNS_TEAM_ID in environment")
-        logger.warning(f"   APNS_KEY_PATH: {apns_key_path}")
-        logger.warning(f"   APNS_KEY_ID: {apns_key_id}")
-        logger.warning(f"   APNS_TEAM_ID: {apns_team_id}")
-        return
-    
-    # Check if key file exists
-    if not os.path.exists(apns_key_path):
-        logger.error(f"❌ APNs key file not found at: {apns_key_path}")
-        logger.error(f"   Please upload your .p8 key file to this location")
-        return
-    
+
     try:
-        # Create APNs client
-        client = APNsClient(
-            credentials=apns_key_path,
-            use_sandbox=use_sandbox,
-            team_id=apns_team_id,
-            auth_key_id=apns_key_id
-        )
-        
-        # Create notification payload
-        payload = Payload(
-            alert={'title': title, 'body': body},
-            badge=1,
-            sound='default',
-            custom=data or {}
-        )
-        
-        # Send notification
-        logger.info(f"📤 Sending APNs notification...")
-        client.send_notification(device_token, payload, apns_bundle_id)
-        logger.info(f"✅ APNs notification sent successfully to {device_token[:20]}...")
-        
-    except FileNotFoundError:
-        logger.error(f"❌ APNs key file not found: {apns_key_path}")
-    except Exception as e:
-        logger.error(f"❌ APNs send error: {e}")
-        logger.error(f"   Error type: {type(e).__name__}")
-        logger.error(f"   Error details: {str(e)}")
+        client.send_notification(token, payload, APNS_BUNDLE_ID, push_type="alert")
+        logger.info("✅ APNs alert sent to token %s…", token[:8])
+    except (BadDeviceToken, Unregistered) as invalid_token_err:
+        logger.warning("APNs rejected token %s: %s", token[:8], invalid_token_err)
+        _disable_push_token(token)
+    except APNsException as apns_err:
+        logger.error("APNs delivery error: %s", apns_err)
+    except Exception as exc:  # pragma: no cover - network/runtime
+        logger.error("Unexpected APNs error: %s", exc)
 
 
 def send_fcm_notification(device_token: str, title: str, body: str, data: dict = None):
@@ -496,6 +476,65 @@ def check_single_poll_notifications(poll_id, conn=None):
     finally:
         if should_close_conn:
             conn.close()
+
+
+def _get_apns_client():
+    """Build (or reuse) a configured APNs client if credentials are available."""
+    global _APNS_CLIENT
+
+    if APNsClient is None or TokenCredentials is None or Payload is None:
+        logger.debug("apns2 library not available; skipping APNs send")
+        return None
+
+    if not all([APNS_KEY_PATH, APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID]):
+        logger.debug("APNs env vars missing; skipping APNs send")
+        return None
+
+    with _APNS_CLIENT_LOCK:
+        if _APNS_CLIENT is not None:
+            return _APNS_CLIENT
+
+        key_path = Path(APNS_KEY_PATH)
+        if not key_path.exists():
+            logger.error("APNs key path does not exist: %s", key_path)
+            return None
+
+        try:
+            credentials = TokenCredentials(
+                auth_key_path=str(key_path),
+                auth_key_id=APNS_KEY_ID,
+                team_id=APNS_TEAM_ID,
+            )
+            _APNS_CLIENT = APNsClient(
+                credentials,
+                use_sandbox=APNS_USE_SANDBOX,
+                use_alternative_port=False,
+            )
+            logger.info(
+                "APNs client initialized (sandbox=%s, bundle=%s)",
+                APNS_USE_SANDBOX,
+                APNS_BUNDLE_ID,
+            )
+            return _APNS_CLIENT
+        except Exception as exc:
+            logger.error("Failed to initialize APNs client: %s", exc)
+            return None
+
+
+def _disable_push_token(token: str):
+    """Deactivate an invalid APNs token so it can be refreshed on next login."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        from backend.services.database import get_sql_placeholder
+
+        ph = get_sql_placeholder()
+        cursor.execute(f"UPDATE push_tokens SET is_active = 0 WHERE token = {ph}", (token,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as exc:  # pragma: no cover - best-effort cleanup
+        logger.debug("Failed to deactivate push token %s: %s", token[:8], exc)
 
 
 def check_single_event_notifications(event_id, conn=None):
