@@ -13,27 +13,20 @@ This is because in Python 3.10+, `Iterable` must be imported from `collections.a
 
 ---
 
-## ✅ Solution: Upgrade apns2
+## ✅ Solution: Use PyAPNs2 (Maintained Fork)
 
-### Option 1: Upgrade to Latest apns2 (Recommended)
+The original `apns2` package was **abandoned in 2018** at version 0.7.2 and is incompatible with Python 3.10+.
 
-```bash
-pip uninstall apns2 -y
-pip install "apns2>=0.8.0" --user
-```
+The community has created **PyAPNs2** - an actively maintained fork that's Python 3.10+ compatible.
 
-The newer versions (0.8.0+) are compatible with Python 3.10+.
-
-### Option 2: Use PyAPNs2 (Actively Maintained Fork)
-
-If the above doesn't work, use the actively maintained fork:
+### Install PyAPNs2:
 
 ```bash
 pip uninstall apns2 -y
-pip install pyapns2 --user
+pip install PyAPNs2==0.8.0 --user
 ```
 
-Then update the imports in your code (already compatible in our codebase).
+**Note:** The package is `PyAPNs2` (capital P and A) but imports as `apns2` (lowercase), so no code changes needed!
 
 ---
 
@@ -44,10 +37,12 @@ Then update the imports in your code (already compatible in our codebase).
 pip uninstall apns2 -y
 ```
 
-### Step 2: Install Compatible Version
+### Step 2: Install PyAPNs2 (Maintained Fork)
 ```bash
-pip install "apns2>=0.8.0" --user
+pip install PyAPNs2==0.8.0 --user
 ```
+
+**Important:** The package name is `PyAPNs2` but it imports as `apns2`, so your code doesn't need any changes!
 
 ### Step 3: Verify Installation
 ```bash
@@ -70,14 +65,15 @@ After installing the compatible version, reload your web application.
 ## 📊 What Changed
 
 **Before (apns2 0.7.2):**
-- Last updated: 2018
+- Original package, abandoned in 2018
 - Python 3.10 incompatible
 - `collections.Iterable` import fails
 
-**After (apns2 0.8.0+):**
+**After (PyAPNs2 0.8.0):**
+- Maintained community fork
 - Python 3.10+ compatible
 - Uses `collections.abc.Iterable`
-- Actively maintained
+- Same API, imports as `apns2` (no code changes needed)
 
 ---
 
