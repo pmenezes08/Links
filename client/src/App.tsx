@@ -8,6 +8,7 @@ import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
 import { UserProfileContext, type UserProfile } from './contexts/UserProfileContext'
 import PushInit from './components/PushInit'
+import NativePushInit from './components/NativePushInit'
 import BrandAssetsInit from './components/BrandAssetsInit'
 import { encryptionService } from './services/simpleEncryption'
 import CrossfitExact from './pages/CrossfitExact'
@@ -59,20 +60,6 @@ function AppRoutes(){
   const navigate = useNavigate()
   const [authLoaded, setAuthLoaded] = useState(false)
   const [isVerified, setIsVerified] = useState<boolean | null>(null)
-  
-  // Add CSS for content padding with safe area support
-  if (typeof document !== 'undefined' && !document.getElementById('app-safe-area-styles')) {
-    const style = document.createElement('style')
-    style.id = 'app-safe-area-styles'
-    style.textContent = `
-      .content-with-safe-area {
-        padding-top: calc(56px + env(safe-area-inset-top));
-        padding-bottom: env(safe-area-inset-bottom);
-        min-height: 100vh;
-      }
-    `
-    document.head.appendChild(style)
-  }
   // const [hasCommunities, setHasCommunities] = useState<boolean | null>(null)
   const [requireVerification] = useState(() => (import.meta as any).env?.VITE_REQUIRE_VERIFICATION_CLIENT === 'true')
   const [profileData, setProfileData] = useState<UserProfile>(null)
@@ -229,7 +216,7 @@ function AppRoutes(){
         })() && (
           <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
         )}
-        <div className={(() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? '' : 'content-with-safe-area' })()}>
+        <div style={{ paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : '56px' })() }}>
             <ErrorBoundary>
               <Routes>
                 <Route path="/" element={<OnboardingWelcome />} />
@@ -305,6 +292,7 @@ export default function App() {
       <BrowserRouter>
         <BrandAssetsInit />
         <PushInit />
+        <NativePushInit />
         <AppRoutes />
       </BrowserRouter>
     </QueryClientProvider>

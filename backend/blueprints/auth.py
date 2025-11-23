@@ -27,6 +27,8 @@ from flask import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from backend.services.native_push import associate_install_tokens_with_user
+
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -506,7 +508,6 @@ def logout():
 @auth_bp.route("/login_password", methods=["GET", "POST"], endpoint="login_password")
 def login_password():
     """Password entry stage for staged logins."""
-    from backend.services.auth_helpers import associate_anonymous_tokens_with_user
     from bodybuilding_app import (
         get_db_connection,
         get_parent_chain_ids,
@@ -574,15 +575,15 @@ def login_password():
                     session.permanent = True
                     session["username"] = username
                     try:
+                        install_cookie = request.cookies.get("native_push_install_id")
+                        if install_cookie:
+                            associate_install_tokens_with_user(install_cookie, username)
+                    except Exception as exc:
+                        logger.warning("native push install association failed: %s", exc)
+                    try:
                         session.pop("pending_username", None)
                     except Exception:
                         pass
-                    
-                    # Associate any anonymous push tokens with this user
-                    try:
-                        associate_anonymous_tokens_with_user(username)
-                    except Exception as token_err:
-                        logger.warning("Failed to associate anonymous tokens: %s", token_err)
 
                     invite_token = session.pop("pending_invite_token", None)
                     if invite_token:

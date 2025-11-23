@@ -1,16 +1,8 @@
-import sys
-import os
-
-# STARTUP LOGGING - Must be first
-print("=" * 80, flush=True)
-print("🚀 BODYBUILDING_APP.PY STARTING", flush=True)
-print(f"   REDIS_ENABLED: {os.environ.get('REDIS_ENABLED', 'NOT SET')}", flush=True)
-print(f"   REDIS_HOST: {os.environ.get('REDIS_HOST', 'NOT SET')[:50]}...", flush=True)
-print("=" * 80, flush=True)
-
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
 from collections import deque, defaultdict
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
+import os
+import sys
 import json
 import sqlite3
 import random
@@ -31,9 +23,7 @@ import secrets
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from hashlib import sha256
-print("📦 About to import redis_cache...", flush=True)
 from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
-print(f"✅ redis_cache imported! Cache type: {type(cache).__name__}", flush=True)
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode, urljoin, quote_plus
 from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
@@ -55,6 +45,12 @@ from backend.services.notifications import (
     check_single_poll_notifications,
     create_notification,
     send_push_to_user,
+)
+from backend.services.native_push import (
+    DEFAULT_APNS_ENVIRONMENT,
+    associate_install_tokens_with_user,
+    register_native_push_token,
+    unregister_native_push_token,
 )
 from backend.services.media import (
     DEFAULT_ALLOWED_EXTENSIONS,
@@ -364,13 +360,7 @@ def _block_unverified_users():
             return None
         # API behavior: return JSON instead of HTML redirects to avoid client parse errors
         # Exception for public endpoints (no auth required)
-        public_api_endpoints = [
-            '/api/poll_notification_check', 
-            '/api/event_notification_check', 
-            '/api/email_verified_status', 
-            '/api/invitation/verify',
-            '/api/push/register_native',  # Allow iOS/Android push token registration before login
-        ]
+        public_api_endpoints = ['/api/poll_notification_check', '/api/event_notification_check', '/api/email_verified_status', '/api/invitation/verify']
         if path.startswith('/api/') and path not in public_api_endpoints:
             username = session.get('username')
             if not username:
@@ -1409,6 +1399,40 @@ def add_missing_tables():
                           auth TEXT,
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
 
+            # Store native (APNs) push tokens
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS native_push_tokens
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              token VARCHAR(191) NOT NULL UNIQUE,
+                              username VARCHAR(191),
+                              install_id VARCHAR(191),
+                              platform VARCHAR(50) NOT NULL DEFAULT 'ios',
+                              environment VARCHAR(20) NOT NULL DEFAULT 'sandbox',
+                              bundle_id VARCHAR(191) NOT NULL,
+                              device_name VARCHAR(191),
+                              last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                              is_active TINYINT(1) DEFAULT 1,
+                              INDEX idx_native_push_user (username),
+                              INDEX idx_native_push_install (install_id)
+                             )''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS native_push_tokens
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              token TEXT NOT NULL UNIQUE,
+                              username TEXT,
+                              install_id TEXT,
+                              platform TEXT NOT NULL DEFAULT 'ios',
+                              environment TEXT NOT NULL DEFAULT 'sandbox',
+                              bundle_id TEXT NOT NULL,
+                              device_name TEXT,
+                              last_seen TEXT DEFAULT (datetime('now')),
+                              created_at TEXT DEFAULT (datetime('now')),
+                              is_active INTEGER DEFAULT 1
+                             )''')
+                c.execute("CREATE INDEX IF NOT EXISTS idx_native_push_user ON native_push_tokens(username)")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_native_push_install ON native_push_tokens(install_id)")
+
             # Log of recently sent push notifications for de-duplication
             try:
                 if USE_MYSQL:
@@ -2026,26 +2050,13 @@ def init_db():
             
             # Create users table
             logger.info("Creating users table...")
-            if USE_MYSQL:
-                c.execute('''CREATE TABLE IF NOT EXISTS users
-                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                              username VARCHAR(191) UNIQUE NOT NULL,
-                              email TEXT UNIQUE,
-                              subscription VARCHAR(32) NOT NULL DEFAULT 'free',
-                              password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT,
-                              fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT,
-                              muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT,
-                              created_at TEXT, is_admin BOOLEAN DEFAULT 0)''')
-            else:
-                c.execute('''CREATE TABLE IF NOT EXISTS users
-                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                              username TEXT UNIQUE NOT NULL,
-                              email TEXT UNIQUE,
-                              subscription TEXT DEFAULT 'free',
-                              password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT,
-                              fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT,
-                              muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT,
-                              created_at TEXT, is_admin BOOLEAN DEFAULT 0)''')
+            c.execute('''CREATE TABLE IF NOT EXISTS users
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          username VARCHAR(191) UNIQUE NOT NULL, email TEXT UNIQUE, subscription TEXT DEFAULT 'free',
+                          password TEXT, first_name TEXT, last_name TEXT, age INTEGER, gender TEXT,
+                          fitness_level TEXT, primary_goal TEXT, weight REAL, height REAL, blood_type TEXT,
+                          muscle_mass REAL, bmi REAL, nutrition_goal TEXT, nutrition_restrictions TEXT,
+                          created_at TEXT, is_admin BOOLEAN DEFAULT 0)''')
             
             # Add id column for MySQL compatibility if it doesn't exist
             try:
@@ -2054,20 +2065,6 @@ def init_db():
                 logger.info("Adding id column to users table for MySQL compatibility...")
                 c.execute("ALTER TABLE users ADD COLUMN id INTEGER PRIMARY KEY AUTO_INCREMENT FIRST")
                 conn.commit()
-            
-            # Ensure subscription column is compatible with MySQL defaults
-            if USE_MYSQL:
-                try:
-                    c.execute("SHOW COLUMNS FROM users LIKE 'subscription'")
-                    col_info = c.fetchone()
-                    col_type = col_info[1].lower() if col_info and len(col_info) > 1 else ''
-                    default_val = str(col_info[4]).lower() if col_info and len(col_info) > 4 and col_info[4] is not None else ''
-                    if 'varchar' not in col_type or default_val not in ("'free'", "free"):
-                        logger.info("Updating subscription column to VARCHAR with default...")
-                        c.execute("ALTER TABLE users MODIFY COLUMN subscription VARCHAR(32) NOT NULL DEFAULT 'free'")
-                        conn.commit()
-                except Exception as e:
-                    logger.warning(f"Could not enforce subscription column default: {e}")
             
             # Ensure user_communities table exists and has correct schema
             try:
@@ -3433,21 +3430,19 @@ def summarize_text(text, username=None):
         system_prompt = """You are a helpful assistant that summarizes audio transcriptions.
 
 CRITICAL INSTRUCTION - LANGUAGE MATCHING:
-You MUST write the summary in the EXACT SAME LANGUAGE AND DIALECT as the transcription text you receive.
+You MUST write the summary in the EXACT SAME LANGUAGE as the transcription text you receive.
 - If the transcription is in German → summary MUST be in German
 - If the transcription is in English → summary MUST be in English  
 - If the transcription is in French → summary MUST be in French
-- If the transcription is in Portuguese → summary MUST be in Portuguese (match the exact variant: Brazilian Portuguese if the audio is Brazilian, European Portuguese if the audio is European)
+- If the transcription is in Portuguese (ANY variant) → summary MUST be in EUROPEAN PORTUGUESE from Portugal, using Portugal vocabulary, grammar, and expressions. NEVER use Brazilian Portuguese.
 - If the transcription is in Spanish → summary MUST be in Spanish
 - If the transcription is in Italian → summary MUST be in Italian
 - If the transcription is in Mandarin → summary MUST be in Mandarin
 
-IMPORTANT: Detect and preserve the specific dialect/variant used in the input.
-- For Portuguese: Match Brazilian Portuguese or European Portuguese based on the vocabulary, grammar, and expressions in the transcription
-- For Spanish: Match Latin American or European Spanish based on the input
-- For English: Match American, British, or other variants based on the input
+SPECIAL NOTE FOR PORTUGUESE:
+Always use European Portuguese (Portugal) for any Portuguese text. Use words like "telemóvel" (not "celular"), "autocarro" (not "ônibus"), "comboio" (not "trem"), etc.
 
-DO NOT translate. DO NOT force a specific dialect. EXACTLY MATCH THE INPUT LANGUAGE AND DIALECT.
+DO NOT translate. DO NOT use Portuguese by default for non-Portuguese audio. MATCH THE INPUT LANGUAGE.
 
 Other requirements:
 - Provide a concise 1-2 sentence summary of the main points
@@ -6184,7 +6179,6 @@ def admin_delete_user():
     
     data = request.get_json()
     target_username = data.get('username')
-    preserve_data = data.get('preserve_data', False)  # Default to deleting everything
     
     if not target_username:
         return jsonify({'success': False, 'error': 'Username required'}), 400
@@ -6204,21 +6198,22 @@ def admin_delete_user():
             if not user_id:
                 return jsonify({'success': False, 'error': 'User not found'}), 404
 
-            # Always delete these (required for user deletion)
+            # Delete dependent rows first to satisfy FK constraints
             try:
                 c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
             except Exception:
                 pass
-            # Delete poll votes (foreign key constraint to users table)
-            try:
-                c.execute(f"DELETE FROM poll_votes WHERE username={ph}", (target_username,))
-            except Exception:
-                pass
+            c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (target_username, target_username))
+            c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (target_username, target_username))
             c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
             try:
                 c.execute(f"DELETE FROM community_admins WHERE username={ph}", (target_username,))
             except Exception:
                 pass
+            c.execute(f"DELETE FROM posts WHERE username={ph}", (target_username,))
+            c.execute(f"DELETE FROM replies WHERE username={ph}", (target_username,))
+            c.execute(f"DELETE FROM reactions WHERE username={ph}", (target_username,))
+            c.execute(f"DELETE FROM reply_reactions WHERE username={ph}", (target_username,))
             try:
                 c.execute(f"DELETE FROM push_subscriptions WHERE username={ph}", (target_username,))
             except Exception:
@@ -6239,50 +6234,31 @@ def admin_delete_user():
                 c.execute(f"DELETE FROM remember_tokens WHERE username={ph}", (target_username,))
             except Exception:
                 pass
+            # Reassign communities owned by this user to 'admin' to satisfy FK fk_comm_owner
+            try:
+                c.execute(f"UPDATE communities SET creator_username={ph} WHERE creator_username={ph}", ('admin', target_username))
+            except Exception:
+                pass
+            # Delete calendar and event related data
+            try:
+                # Delete RSVPs for events this user is involved in
+                c.execute(f"DELETE FROM event_rsvps WHERE username={ph}", (target_username,))
+                # Delete event invitations for this user
+                c.execute(f"DELETE FROM event_invitations WHERE invited_username={ph} OR invited_by={ph}", (target_username, target_username))
+                # Delete calendar events created by this user
+                c.execute(f"DELETE FROM calendar_events WHERE username={ph}", (target_username,))
+            except Exception as cal_err:
+                logger.warning(f"Error deleting calendar/event data for {target_username}: {cal_err}")
+                pass
+            
+            # Remove profile row before user to satisfy FK fk_profile_user
             c.execute(f"DELETE FROM user_profiles WHERE username={ph}", (target_username,))
             try:
-                c.execute(f"DELETE FROM push_tokens WHERE username={ph}", (target_username,))
+                c.execute(f"DELETE FROM exercises WHERE username={ph}", (target_username,))
+                c.execute(f"DELETE FROM workouts WHERE username={ph}", (target_username,))
+                c.execute(f"DELETE FROM crossfit_entries WHERE username={ph}", (target_username,))
             except Exception:
                 pass
-            try:
-                c.execute(f"DELETE FROM encryption_keys WHERE username={ph}", (target_username,))
-            except Exception:
-                pass
-
-            # Conditionally delete user content based on preserve_data flag
-            if not preserve_data:
-                # Delete ALL user content (posts, messages, reactions, etc.)
-                logger.info(f"Deleting ALL content for user: {target_username}")
-                c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (target_username, target_username))
-                c.execute(f"DELETE FROM posts WHERE username={ph}", (target_username,))
-                c.execute(f"DELETE FROM replies WHERE username={ph}", (target_username,))
-                c.execute(f"DELETE FROM reactions WHERE username={ph}", (target_username,))
-                c.execute(f"DELETE FROM reply_reactions WHERE username={ph}", (target_username,))
-                try:
-                    c.execute(f"DELETE FROM event_rsvps WHERE username={ph}", (target_username,))
-                    c.execute(f"DELETE FROM event_invitations WHERE invited_username={ph} OR invited_by={ph}", (target_username, target_username))
-                    c.execute(f"DELETE FROM calendar_events WHERE username={ph}", (target_username,))
-                except Exception:
-                    pass
-                try:
-                    c.execute(f"DELETE FROM exercises WHERE username={ph}", (target_username,))
-                    c.execute(f"DELETE FROM workouts WHERE username={ph}", (target_username,))
-                    c.execute(f"DELETE FROM crossfit_entries WHERE username={ph}", (target_username,))
-                except Exception:
-                    pass
-                # Reassign communities owned by this user to 'admin'
-                try:
-                    c.execute(f"UPDATE communities SET creator_username={ph} WHERE creator_username={ph}", ('admin', target_username))
-                except Exception:
-                    pass
-            else:
-                # Preserve user content - only reassign ownership
-                logger.info(f"Preserving content for user: {target_username} (only deleting account)")
-                # Reassign communities to admin so they're not orphaned
-                try:
-                    c.execute(f"UPDATE communities SET creator_username={ph} WHERE creator_username={ph}", ('admin', target_username))
-                except Exception:
-                    pass
 
             # Finally delete the user
             c.execute(f"DELETE FROM users WHERE username={ph}", (target_username,))
@@ -25163,6 +25139,103 @@ def api_push_status():
     except Exception as e:
         logger.error(f"push status error: {e}")
         return jsonify({ 'success': False, 'hasSubscription': False }), 500
+
+
+def _set_native_push_cookie(response, install_id: str):
+    """Attach/update the native push install cookie on the response."""
+    try:
+        response.set_cookie(
+            'native_push_install_id',
+            install_id,
+            max_age=60 * 60 * 24 * 365,
+            secure=app.config.get('SESSION_COOKIE_SECURE', False),
+            httponly=False,
+            samesite='Lax',
+        )
+    except Exception:
+        pass
+
+
+@app.route('/api/native_push/register', methods=['POST'])
+def api_native_push_register():
+    """Register or refresh a native (APNs) token. Works before or after login."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+
+    token = (data.get('token') or '').strip()
+    if not token:
+        return jsonify({ 'success': False, 'error': 'token required' }), 400
+
+    install_id = request.cookies.get('native_push_install_id') or secrets.token_urlsafe(24)
+    platform = (data.get('platform') or 'ios').lower()
+    environment = (data.get('environment') or DEFAULT_APNS_ENVIRONMENT).lower()
+    bundle_id = (data.get('bundle_id') or '').strip() or None
+    device_name = (data.get('device_name') or '').strip() or None
+    username = session.get('username')
+
+    try:
+        register_native_push_token(
+            token=token,
+            username=username,
+            install_id=install_id,
+            platform=platform,
+            environment=environment,
+            bundle_id=bundle_id,
+            device_name=device_name,
+        )
+        if username:
+            associate_install_tokens_with_user(install_id, username)
+        resp = jsonify({ 'success': True, 'install_id': install_id, 'linked': bool(username) })
+        _set_native_push_cookie(resp, install_id)
+        return resp
+    except ValueError:
+        return jsonify({ 'success': False, 'error': 'token required' }), 400
+    except Exception as exc:
+        app.logger.error(f"native push register error: {exc}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+
+@app.route('/api/native_push/claim', methods=['POST'])
+@login_required
+def api_native_push_claim():
+    """Associate any anonymous native tokens on this device with the logged-in user."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    install_id = (data.get('install_id') or '').strip() or request.cookies.get('native_push_install_id')
+    if not install_id:
+        return jsonify({ 'success': False, 'error': 'missing install id' }), 400
+    username = session.get('username')
+    try:
+        updated = associate_install_tokens_with_user(install_id, username)
+        resp = jsonify({ 'success': True, 'updated': updated })
+        _set_native_push_cookie(resp, install_id)
+        return resp
+    except Exception as exc:
+        app.logger.error(f"native push claim error: {exc}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+
+@app.route('/api/native_push/unregister', methods=['POST'])
+def api_native_push_unregister():
+    """Remove a native push token (e.g., on logout or uninstall)."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    token = (data.get('token') or '').strip()
+    if not token:
+        return jsonify({ 'success': False, 'error': 'token required' }), 400
+    try:
+        unregister_native_push_token(session.get('username'), token)
+        return jsonify({ 'success': True })
+    except Exception as exc:
+        app.logger.error(f"native push unregister error: {exc}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
+
 
 @app.route('/api/active_chat', methods=['POST'])
 @login_required
