@@ -30,10 +30,10 @@ def associate_anonymous_tokens_with_user(username: str):
             f"""
             SELECT id, token, platform 
             FROM push_tokens 
-            WHERE username LIKE 'anonymous_{ph}' 
+            WHERE username LIKE {ph}
             AND {time_condition}
             """,
-            ('%',)
+            ('anonymous_%',)
         )
         
         anonymous_tokens = cursor.fetchall()
