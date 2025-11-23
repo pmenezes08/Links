@@ -8,7 +8,7 @@ stripe==7.0.0  # Stripe payments
 python-dotenv==1.0.0  # Optional: for managing env vars like API keys
 pywebpush==1.14.0  # Web Push notifications
 cryptography>=41.0.0  # Needed by pywebpush for VAPID
-apns2==0.7.2  # Apple Push Notification Service for iOS
+apns2>=0.8.0  # Apple Push Notification Service for iOS (Python 3.10+ compatible)
 redis==5.0.1  # Redis caching for performance
 PyMySQL==1.1.0  # MySQL database connector
 Pillow==10.1.0  # Image optimization and compression
