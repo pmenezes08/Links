@@ -11,4 +11,5 @@ cryptography>=41.0.0  # Needed by pywebpush for VAPID
 redis==5.0.1  # Redis caching for performance
 PyMySQL==1.1.0  # MySQL database connector
 Pillow==10.1.0  # Image optimization and compression
-openai>=1.0.0  # OpenAI API for audio transcription and summarizationpyyaml
+openai>=1.0.0  # OpenAI API for audio transcription and summarization
+apns2==0.7.2  # Native iOS push notifications
