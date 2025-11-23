@@ -88,10 +88,15 @@ def register_native_push_token():
         if not token:
             return jsonify({'success': False, 'error': 'No token provided'}), 400
         
-        # Get current user from session
+        # Get current user from session (may be None if not logged in yet)
         username = session.get('username')
+        
+        # If not logged in, store as anonymous for now (will be updated on login)
         if not username:
-            return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+            username = f'anonymous_{token[:16]}'  # Temporary placeholder
+            logger.info(f"📱 Storing anonymous push token (will associate with user on login)")
+            logger.info(f"   Token preview: {token[:20]}...")
+            logger.info(f"   Platform: {platform}")
         
         # Store token in database
         conn = get_db_connection()
@@ -124,6 +129,10 @@ def register_native_push_token():
             conn.commit()
             
             logger.info(f"✅ Push token saved - Platform: {platform}, Token: {token[:20]}...")
+            
+            # If this was an anonymous registration, remind to associate it on login
+            if username.startswith('anonymous_'):
+                logger.info(f"   Note: Token stored anonymously, will be linked to user on login")
             
             return jsonify({'success': True, 'message': 'Push token registered successfully'}), 200
             
