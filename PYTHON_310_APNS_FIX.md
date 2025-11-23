@@ -23,7 +23,7 @@ The community has created **PyAPNs2** - an actively maintained fork that's Pytho
 
 ```bash
 pip uninstall apns2 -y
-pip install PyAPNs2==0.8.0 --user
+pip install PyAPNs2==2.0.0 --user
 ```
 
 **Note:** The package is `PyAPNs2` (capital P and A) but imports as `apns2` (lowercase), so no code changes needed!
@@ -39,7 +39,7 @@ pip uninstall apns2 -y
 
 ### Step 2: Install PyAPNs2 (Maintained Fork)
 ```bash
-pip install PyAPNs2==0.8.0 --user
+pip install PyAPNs2==2.0.0 --user
 ```
 
 **Important:** The package name is `PyAPNs2` but it imports as `apns2`, so your code doesn't need any changes!
@@ -69,8 +69,8 @@ After installing the compatible version, reload your web application.
 - Python 3.10 incompatible
 - `collections.Iterable` import fails
 
-**After (PyAPNs2 0.8.0):**
-- Maintained community fork
+**After (PyAPNs2 2.0.0):**
+- Maintained community fork (latest version)
 - Python 3.10+ compatible
 - Uses `collections.abc.Iterable`
 - Same API, imports as `apns2` (no code changes needed)
