@@ -18,16 +18,19 @@ def test_apns_notification(username=None, device_token=None):
     print("🧪 APNs Notification Test")
     print("=" * 60)
     
-    # Step 1: Check apns2 library
-    print("\n1️⃣  Checking apns2 library...")
+    # Step 1: Check modern APNs libraries
+    print("\n1️⃣  Checking modern APNs libraries...")
     try:
-        from apns2.client import APNsClient
-        from apns2.credentials import TokenCredentials
-        from apns2.payload import Payload
-        print("   ✅ apns2 library available")
+        import httpx
+        import jwt
+        from cryptography.hazmat.primitives import serialization
+        print("   ✅ httpx library available")
+        print("   ✅ PyJWT library available")
+        print("   ✅ cryptography library available")
+        print("   ℹ️  Using modern HTTP/2 APNs implementation (Apple 2025 standard)")
     except ImportError as e:
-        print(f"   ❌ apns2 library not available: {e}")
-        print("\n   Fix: pip install apns2==0.7.2 --user")
+        print(f"   ❌ Required library not available: {e}")
+        print("\n   Fix: pip install 'httpx[http2]>=0.24.0' 'PyJWT>=2.8.0' --user")
         return False
     
     # Step 2: Check environment variables
@@ -104,72 +107,114 @@ def test_apns_notification(username=None, device_token=None):
         print("          python3 test_send_apns.py --token <device_token>")
         return False
     
-    # Step 5: Initialize APNs client
-    print("\n5️⃣  Initializing APNs client...")
+    # Step 5: Generate JWT token
+    print("\n5️⃣  Generating APNs JWT token...")
     try:
-        from pathlib import Path
-        credentials = TokenCredentials(
-            auth_key_path=str(Path(apns_key_path)),
-            auth_key_id=apns_key_id,
-            team_id=apns_team_id,
+        import jwt
+        from cryptography.hazmat.primitives import serialization
+        from datetime import datetime
+        
+        # Read the .p8 private key
+        with open(apns_key_path, 'rb') as key_file:
+            private_key = serialization.load_pem_private_key(
+                key_file.read(),
+                password=None
+            )
+        
+        # JWT header
+        headers = {
+            "alg": "ES256",
+            "kid": apns_key_id
+        }
+        
+        # JWT payload
+        now = datetime.now().timestamp()
+        payload = {
+            "iss": apns_team_id,
+            "iat": int(now)
+        }
+        
+        # Generate token
+        auth_token = jwt.encode(
+            payload,
+            private_key,
+            algorithm="ES256",
+            headers=headers
         )
-        client = APNsClient(
-            credentials,
-            use_sandbox=use_sandbox,
-            use_alternative_port=False,
-        )
-        print(f"   ✅ APNs client initialized")
+        
+        print(f"   ✅ JWT token generated successfully")
         print(f"   Environment: {'SANDBOX (TestFlight)' if use_sandbox else 'PRODUCTION (App Store)'}")
     except Exception as e:
-        print(f"   ❌ Failed to initialize client: {e}")
+        print(f"   ❌ Failed to generate JWT token: {e}")
         return False
     
-    # Step 6: Send test notification
-    print("\n6️⃣  Sending test notification...")
+    # Step 6: Send test notification via HTTP/2
+    print("\n6️⃣  Sending test notification via HTTP/2...")
     try:
-        payload = Payload(
-            alert={
-                'title': '🧪 Test Notification',
-                'body': 'APNs is working! Your notifications are configured correctly.'
+        import httpx
+        
+        # Build APNs payload
+        payload = {
+            "aps": {
+                "alert": {
+                    "title": "🧪 Test Notification",
+                    "body": "APNs is working! Your notifications are configured correctly."
+                },
+                "badge": 1,
+                "sound": "default"
             },
-            badge=1,
-            sound='default',
-            custom={'test': True, 'timestamp': str(os.time() if hasattr(os, 'time') else 'now')}
-        )
+            "test": True
+        }
+        
+        # APNs endpoint
+        apns_server = "api.sandbox.push.apple.com" if use_sandbox else "api.push.apple.com"
+        url = f"https://{apns_server}/3/device/{device_token}"
+        
+        # Headers
+        headers = {
+            "authorization": f"bearer {auth_token}",
+            "apns-push-type": "alert",
+            "apns-topic": apns_bundle_id,
+            "apns-priority": "10"
+        }
         
         print(f"   Sending to: {device_token[:20]}...")
+        print(f"   Server: {apns_server}")
         print(f"   Bundle ID: {apns_bundle_id}")
         
-        client.send_notification(device_token, payload, apns_bundle_id, push_type='alert')
+        # Send via HTTP/2
+        with httpx.Client(http2=True, timeout=10.0) as client:
+            response = client.post(url, json=payload, headers=headers)
         
-        print("\n" + "=" * 60)
-        print("✅ SUCCESS! Test notification sent!")
-        print("=" * 60)
-        print("\nCheck your iPhone for the notification.")
-        print("If it doesn't appear within 10 seconds:")
-        print("  1. Check device has internet connection")
-        print("  2. Verify notifications are enabled for your app")
-        print(f"  3. Confirm app is {'TestFlight' if use_sandbox else 'App Store'} build")
-        print("  4. Try reopening the app")
-        
-        return True
+        if response.status_code == 200:
+            print("\n" + "=" * 60)
+            print("✅ SUCCESS! Test notification sent!")
+            print("=" * 60)
+            print("\nCheck your iPhone for the notification.")
+            print("If it doesn't appear within 10 seconds:")
+            print("  1. Check device has internet connection")
+            print("  2. Verify notifications are enabled for your app")
+            print(f"  3. Confirm app is {'TestFlight' if use_sandbox else 'App Store'} build")
+            print("  4. Try reopening the app")
+            return True
+        else:
+            print(f"\n❌ APNs returned status {response.status_code}")
+            print(f"Response: {response.text}")
+            
+            if response.status_code == 400:
+                print("\n💡 Hint: Bad request - check payload format")
+            elif response.status_code == 403:
+                print("\n💡 Hint: Forbidden - check credentials (Key ID, Team ID)")
+            elif response.status_code == 410:
+                print("\n💡 Hint: Device token is no longer active")
+                print("   Solution: Reopen app to get new token")
+            
+            return False
         
     except Exception as e:
         print(f"\n❌ Failed to send notification: {e}")
         print(f"\nError type: {type(e).__name__}")
         print(f"Error details: {str(e)}")
-        
-        # Common error hints
-        if 'BadDeviceToken' in str(e):
-            print("\n💡 Hint: Token is invalid or app was reinstalled")
-            print("   Solution: Reopen app to get new token")
-        elif 'Unregistered' in str(e):
-            print("\n💡 Hint: Token is no longer registered with APNs")
-            print("   Solution: Reopen app to re-register")
-        elif 'TooManyProviderTokenUpdates' in str(e):
-            print("\n💡 Hint: APNs rate limit hit")
-            print("   Solution: Wait a moment and try again")
-        
         return False
 
 if __name__ == '__main__':
