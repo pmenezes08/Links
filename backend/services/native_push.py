@@ -20,7 +20,15 @@ if not hasattr(collections, "MutableMapping"):  # pragma: no cover
 
 from apns2.client import APNsClient
 from apns2.credentials import TokenCredentials
-from apns2.errors import ExceptionRetryableError, Unregistered
+try:  # apns2 0.7.2 (Python 3.10 compatible fork) may not expose ExceptionRetryableError
+    from apns2.errors import ExceptionRetryableError, Unregistered
+except ImportError:  # pragma: no cover - best effort compatibility
+    from apns2.errors import Unregistered  # type: ignore
+
+    class ExceptionRetryableError(Exception):  # type: ignore
+        """Compatibility fallback when apns2.errors lacks ExceptionRetryableError."""
+        pass
+
 from apns2.payload import Payload, PayloadAlert
 
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
