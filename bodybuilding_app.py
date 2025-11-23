@@ -46,6 +46,12 @@ from backend.services.notifications import (
     create_notification,
     send_push_to_user,
 )
+from backend.services.native_push import (
+    DEFAULT_APNS_ENVIRONMENT,
+    associate_install_tokens_with_user,
+    register_native_push_token,
+    unregister_native_push_token,
+)
 from backend.services.media import (
     DEFAULT_ALLOWED_EXTENSIONS,
     allowed_file,
@@ -1392,6 +1398,40 @@ def add_missing_tables():
                           p256dh TEXT,
                           auth TEXT,
                           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+
+            # Store native (APNs) push tokens
+            if USE_MYSQL:
+                c.execute('''CREATE TABLE IF NOT EXISTS native_push_tokens
+                             (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                              token VARCHAR(191) NOT NULL UNIQUE,
+                              username VARCHAR(191),
+                              install_id VARCHAR(191),
+                              platform VARCHAR(50) NOT NULL DEFAULT 'ios',
+                              environment VARCHAR(20) NOT NULL DEFAULT 'sandbox',
+                              bundle_id VARCHAR(191) NOT NULL,
+                              device_name VARCHAR(191),
+                              last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                              is_active TINYINT(1) DEFAULT 1,
+                              INDEX idx_native_push_user (username),
+                              INDEX idx_native_push_install (install_id)
+                             )''')
+            else:
+                c.execute('''CREATE TABLE IF NOT EXISTS native_push_tokens
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              token TEXT NOT NULL UNIQUE,
+                              username TEXT,
+                              install_id TEXT,
+                              platform TEXT NOT NULL DEFAULT 'ios',
+                              environment TEXT NOT NULL DEFAULT 'sandbox',
+                              bundle_id TEXT NOT NULL,
+                              device_name TEXT,
+                              last_seen TEXT DEFAULT (datetime('now')),
+                              created_at TEXT DEFAULT (datetime('now')),
+                              is_active INTEGER DEFAULT 1
+                             )''')
+                c.execute("CREATE INDEX IF NOT EXISTS idx_native_push_user ON native_push_tokens(username)")
+                c.execute("CREATE INDEX IF NOT EXISTS idx_native_push_install ON native_push_tokens(install_id)")
 
             # Log of recently sent push notifications for de-duplication
             try:
@@ -25099,6 +25139,103 @@ def api_push_status():
     except Exception as e:
         logger.error(f"push status error: {e}")
         return jsonify({ 'success': False, 'hasSubscription': False }), 500
+
+
+def _set_native_push_cookie(response, install_id: str):
+    """Attach/update the native push install cookie on the response."""
+    try:
+        response.set_cookie(
+            'native_push_install_id',
+            install_id,
+            max_age=60 * 60 * 24 * 365,
+            secure=app.config.get('SESSION_COOKIE_SECURE', False),
+            httponly=False,
+            samesite='Lax',
+        )
+    except Exception:
+        pass
+
+
+@app.route('/api/native_push/register', methods=['POST'])
+def api_native_push_register():
+    """Register or refresh a native (APNs) token. Works before or after login."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+
+    token = (data.get('token') or '').strip()
+    if not token:
+        return jsonify({ 'success': False, 'error': 'token required' }), 400
+
+    install_id = request.cookies.get('native_push_install_id') or secrets.token_urlsafe(24)
+    platform = (data.get('platform') or 'ios').lower()
+    environment = (data.get('environment') or DEFAULT_APNS_ENVIRONMENT).lower()
+    bundle_id = (data.get('bundle_id') or '').strip() or None
+    device_name = (data.get('device_name') or '').strip() or None
+    username = session.get('username')
+
+    try:
+        register_native_push_token(
+            token=token,
+            username=username,
+            install_id=install_id,
+            platform=platform,
+            environment=environment,
+            bundle_id=bundle_id,
+            device_name=device_name,
+        )
+        if username:
+            associate_install_tokens_with_user(install_id, username)
+        resp = jsonify({ 'success': True, 'install_id': install_id, 'linked': bool(username) })
+        _set_native_push_cookie(resp, install_id)
+        return resp
+    except ValueError:
+        return jsonify({ 'success': False, 'error': 'token required' }), 400
+    except Exception as exc:
+        app.logger.error(f"native push register error: {exc}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+
+@app.route('/api/native_push/claim', methods=['POST'])
+@login_required
+def api_native_push_claim():
+    """Associate any anonymous native tokens on this device with the logged-in user."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    install_id = (data.get('install_id') or '').strip() or request.cookies.get('native_push_install_id')
+    if not install_id:
+        return jsonify({ 'success': False, 'error': 'missing install id' }), 400
+    username = session.get('username')
+    try:
+        updated = associate_install_tokens_with_user(install_id, username)
+        resp = jsonify({ 'success': True, 'updated': updated })
+        _set_native_push_cookie(resp, install_id)
+        return resp
+    except Exception as exc:
+        app.logger.error(f"native push claim error: {exc}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
+
+
+@app.route('/api/native_push/unregister', methods=['POST'])
+def api_native_push_unregister():
+    """Remove a native push token (e.g., on logout or uninstall)."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+    token = (data.get('token') or '').strip()
+    if not token:
+        return jsonify({ 'success': False, 'error': 'token required' }), 400
+    try:
+        unregister_native_push_token(session.get('username'), token)
+        return jsonify({ 'success': True })
+    except Exception as exc:
+        app.logger.error(f"native push unregister error: {exc}")
+        return jsonify({ 'success': False, 'error': 'server error' }), 500
+
 
 @app.route('/api/active_chat', methods=['POST'])
 @login_required

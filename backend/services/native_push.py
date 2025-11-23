@@ -69,15 +69,16 @@ def _get_apns_client(use_sandbox: bool) -> Optional[APNsClient]:
 
 
 def register_native_push_token(
-    username: str,
     token: str,
+    username: Optional[str] = None,
+    install_id: Optional[str] = None,
     platform: str = "ios",
     environment: str = DEFAULT_APNS_ENVIRONMENT,
     bundle_id: Optional[str] = None,
     device_name: Optional[str] = None,
 ) -> None:
-    """Upsert a native push token for the given user."""
-    normalized_token = token.strip()
+    """Upsert a native push token for the given user or anonymous install."""
+    normalized_token = (token or "").strip()
     if not normalized_token:
         raise ValueError("token required")
 
@@ -89,8 +90,9 @@ def register_native_push_token(
         c = conn.cursor()
         ph = get_sql_placeholder()
         params = (
-            username,
             normalized_token,
+            username,
+            install_id,
             (platform or "ios").lower(),
             environment,
             bundle_id or APNS_BUNDLE_ID,
@@ -99,10 +101,11 @@ def register_native_push_token(
         if USE_MYSQL:
             c.execute(
                 f"""
-                INSERT INTO native_push_tokens (username, token, platform, environment, bundle_id, device_name, last_seen, is_active)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), 1)
+                INSERT INTO native_push_tokens (token, username, install_id, platform, environment, bundle_id, device_name, last_seen, is_active)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, NOW(), 1)
                 ON DUPLICATE KEY UPDATE
-                    username=VALUES(username),
+                    username=IFNULL(VALUES(username), username),
+                    install_id=IFNULL(VALUES(install_id), install_id),
                     platform=VALUES(platform),
                     environment=VALUES(environment),
                     bundle_id=VALUES(bundle_id),
@@ -115,10 +118,11 @@ def register_native_push_token(
         else:
             c.execute(
                 """
-                INSERT INTO native_push_tokens (username, token, platform, environment, bundle_id, device_name, last_seen, is_active)
-                VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 1)
+                INSERT INTO native_push_tokens (token, username, install_id, platform, environment, bundle_id, device_name, last_seen, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), 1)
                 ON CONFLICT(token) DO UPDATE SET
-                    username=excluded.username,
+                    username=COALESCE(excluded.username, username),
+                    install_id=COALESCE(excluded.install_id, install_id),
                     platform=excluded.platform,
                     environment=excluded.environment,
                     bundle_id=excluded.bundle_id,
@@ -129,10 +133,17 @@ def register_native_push_token(
                 params,
             )
         conn.commit()
-    logger.info("Registered native push token for %s (%s/%s)", username, platform, environment)
+
+    logger.info(
+        "Registered native push token (user=%s install=%s platform=%s env=%s)",
+        username or "anonymous",
+        install_id or "none",
+        platform,
+        environment,
+    )
 
 
-def unregister_native_push_token(username: str, token: str) -> None:
+def unregister_native_push_token(username: Optional[str], token: str) -> None:
     """Remove a native push token for the given user."""
     normalized_token = token.strip()
     if not normalized_token:
@@ -142,16 +153,53 @@ def unregister_native_push_token(username: str, token: str) -> None:
         ph = get_sql_placeholder()
         if USE_MYSQL:
             c.execute(
-                f"DELETE FROM native_push_tokens WHERE token={ph} AND (username={ph} OR username IS NULL)",
-                (normalized_token, username),
+                f"DELETE FROM native_push_tokens WHERE token={ph} AND ({'username IS NULL' if username is None else f'username={ph}'})",
+                (normalized_token,) if username is None else (normalized_token, username),
+            )
+        else:
+            if username is None:
+                c.execute("DELETE FROM native_push_tokens WHERE token=?", (normalized_token,))
+            else:
+                c.execute(
+                    "DELETE FROM native_push_tokens WHERE token=? AND username=?",
+                    (normalized_token, username),
+                )
+        conn.commit()
+    logger.info("Unregistered native push token for %s", username)
+
+
+def associate_install_tokens_with_user(install_id: str, username: str) -> int:
+    """Assign any anonymous tokens from the install to the authenticated user."""
+    if not install_id or not username:
+        return 0
+
+    with get_db_connection() as conn:
+        c = conn.cursor()
+        ph = get_sql_placeholder()
+        if USE_MYSQL:
+            c.execute(
+                f"""
+                UPDATE native_push_tokens
+                SET username={ph}, last_seen=NOW()
+                WHERE install_id={ph} AND (username IS NULL OR username!={ph})
+                """,
+                (username, install_id, username),
             )
         else:
             c.execute(
-                "DELETE FROM native_push_tokens WHERE token=? AND (username=? OR username IS NULL)",
-                (normalized_token, username),
+                """
+                UPDATE native_push_tokens
+                SET username=?, last_seen=datetime('now')
+                WHERE install_id=? AND (username IS NULL OR username<>?)
+                """,
+                (username, install_id, username),
             )
         conn.commit()
-    logger.info("Unregistered native push token for %s", username)
+        updated = c.rowcount or 0
+
+    if updated:
+        logger.info("Associated %d native push token(s) with %s", updated, username)
+    return updated
 
 
 def _fetch_tokens(username: str) -> List[Dict[str, str]]:
@@ -269,4 +317,5 @@ __all__ = [
     "register_native_push_token",
     "unregister_native_push_token",
     "send_native_push_notification",
+    "associate_install_tokens_with_user",
 ]
