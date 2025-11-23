@@ -8,6 +8,14 @@ import time
 from functools import lru_cache
 from typing import Dict, Iterable, List, Optional
 
+import collections
+
+# Compatibility shim for older dependencies (hyper/apns2) expecting collections.Iterable/Mapping
+if not hasattr(collections, "Iterable"):  # pragma: no cover - Py3.10+
+    collections.Iterable = collections.abc.Iterable  # type: ignore[attr-defined]
+if not hasattr(collections, "Mapping"):  # pragma: no cover
+    collections.Mapping = collections.abc.Mapping  # type: ignore[attr-defined]
+
 from apns2.client import APNsClient
 from apns2.credentials import TokenCredentials
 from apns2.errors import ExceptionRetryableError, Unregistered
