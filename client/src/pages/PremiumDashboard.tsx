@@ -365,8 +365,8 @@ export default function PremiumDashboard() {
   })()
   const profilePreviewSrc = picPreview || existingProfilePic
 
-  return (
-    <div className="min-h-screen bg-[#0b0f10] text-white pb-safe">
+    return (
+      <div className="min-h-screen bg-black text-white pb-safe">
       {/* Desktop sidebar - same menu as mobile burger */}
       <div className="fixed left-0 top-14 bottom-0 w-52 border-r border-[#333] bg-[#0b0f10] hidden md:flex flex-col z-30">
         <nav className="flex-1 overflow-y-auto py-3">
