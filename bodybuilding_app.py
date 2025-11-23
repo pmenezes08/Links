@@ -364,7 +364,13 @@ def _block_unverified_users():
             return None
         # API behavior: return JSON instead of HTML redirects to avoid client parse errors
         # Exception for public endpoints (no auth required)
-        public_api_endpoints = ['/api/poll_notification_check', '/api/event_notification_check', '/api/email_verified_status', '/api/invitation/verify']
+        public_api_endpoints = [
+            '/api/poll_notification_check', 
+            '/api/event_notification_check', 
+            '/api/email_verified_status', 
+            '/api/invitation/verify',
+            '/api/push/register_native',  # Allow iOS/Android push token registration before login
+        ]
         if path.startswith('/api/') and path not in public_api_endpoints:
             username = session.get('username')
             if not username:
