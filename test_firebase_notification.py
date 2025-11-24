@@ -8,7 +8,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Set environment variables (or load from WSGI-like config)
-os.environ.setdefault('FIREBASE_CREDENTIALS', '/home/puntz08/secrets/firebase-credentials.json')
+os.environ.setdefault('FIREBASE_CREDENTIALS', '/home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json')
 os.environ.setdefault('DB_BACKEND', 'mysql')
 os.environ.setdefault('MYSQL_HOST', 'puntz08.mysql.pythonanywhere-services.com')
 os.environ.setdefault('MYSQL_DB', 'puntz08$C-Point')

@@ -77,14 +77,14 @@ pip3.10 install --user firebase-admin
 
 ### Step 2: Upload Credentials to Server
 
-Upload your `firebase-credentials.json` to:
+Upload your Firebase credentials JSON to:
 ```
-/home/puntz08/secrets/firebase-credentials.json
+/home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json
 ```
 
 **Set permissions:**
 ```bash
-chmod 600 /home/puntz08/secrets/firebase-credentials.json
+chmod 600 /home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json
 ```
 
 ### Step 3: Update WSGI File
@@ -93,7 +93,7 @@ Add to your WSGI file (before importing app):
 
 ```python
 # Firebase credentials path
-os.environ['FIREBASE_CREDENTIALS'] = '/home/puntz08/secrets/firebase-credentials.json'
+os.environ['FIREBASE_CREDENTIALS'] = '/home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json'
 ```
 
 ### Step 4: Backend Code Ready

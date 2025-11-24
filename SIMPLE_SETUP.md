@@ -49,14 +49,14 @@ git pull origin main
 # Install Firebase
 pip3.10 install --user firebase-admin
 
-# Upload firebase-credentials.json to:
-# /home/puntz08/secrets/firebase-credentials.json
+# Upload Firebase credentials JSON to:
+# /home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json
 
 # Create table
 python3.10 add_fcm_tokens_table.py
 
 # Add to WSGI file:
-# os.environ['FIREBASE_CREDENTIALS'] = '/home/puntz08/secrets/firebase-credentials.json'
+# os.environ['FIREBASE_CREDENTIALS'] = '/home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json'
 
 # Reload web app
 ```
