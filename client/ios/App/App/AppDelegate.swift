@@ -1,5 +1,7 @@
 import UIKit
 import Capacitor
+import FirebaseCore
+import FirebaseMessaging
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -8,6 +10,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
+
+        // Initialize Firebase
+        FirebaseApp.configure()
+
+        // Set messaging delegate
+        Messaging.messaging().delegate = self
+
         return true
     }
 
@@ -45,5 +54,80 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // tracking app url opens, make sure to keep this call
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
+
+    // Push notification methods
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Messaging.messaging().apnsToken = deviceToken
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        print("Failed to register for remote notifications: \(error)")
+    }
+
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        Messaging.messaging().appDidReceiveMessage(userInfo)
+        completionHandler(.noData)
+    }
+}
+
+// MARK: - MessagingDelegate
+extension AppDelegate: MessagingDelegate {
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        print("Firebase registration token: \(String(describing: fcmToken))")
+
+        // Send token to your server
+        if let token = fcmToken {
+            sendTokenToServer(token: token)
+        }
+    }
+
+    private func sendTokenToServer(token: String) {
+        // Get user session/token from Capacitor bridge if available
+        // For now, we'll store it locally and send when user logs in
+        UserDefaults.standard.set(token, forKey: "fcmToken")
+        UserDefaults.standard.synchronize()
+
+        // If user is logged in, send token immediately
+        if let username = UserDefaults.standard.string(forKey: "username") {
+            registerTokenWithServer(token: token, username: username)
+        }
+    }
+
+    private func registerTokenWithServer(token: String, username: String) {
+        guard let url = URL(string: "https://yourapp.pythonanywhere.com/api/fcm/register_token") else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "username": username,
+            "fcm_token": token,
+            "platform": "ios"
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            print("Error creating request body: \(error)")
+            return
+        }
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("Error registering FCM token: \(error)")
+                return
+            }
+
+            if let httpResponse = response as? HTTPURLResponse,
+               (200...299).contains(httpResponse.statusCode) {
+                print("FCM token registered successfully")
+                UserDefaults.standard.set(true, forKey: "tokenRegistered")
+            } else {
+                print("Failed to register FCM token: \(String(describing: response))")
+            }
+        }.resume()
+    }
+}
 
 }

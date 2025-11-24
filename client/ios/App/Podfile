@@ -12,6 +12,8 @@ def capacitor_pods
   pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
 
+  # Firebase pods for push notifications
+  pod 'Firebase/Messaging'
 end
 
 target 'App' do
