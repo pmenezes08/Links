@@ -6,7 +6,7 @@ requests==2.31.0  # HTTP requests (used in OAuth callback)
 requests-oauthlib>=0.6.2,<1.2.0  # OAuth support for requests (compatible with flask-oauthlib)
 stripe==7.0.0  # Stripe payments
 python-dotenv==1.0.0  # Optional: for managing env vars like API keys
-pywebpush==1.14.0  # Web Push notifications
+pywebpush>=2.0.0  # Web Push notifications (v2+ compatible with cryptography 41+)
 httpx[http2]>=0.24.0  # Modern HTTP/2 client for APNs (Apple's recommended approach)
 PyJWT>=2.8.0  # JWT token generation for APNs authentication
 cryptography>=41.0.0  # Needed by pywebpush and APNs JWT for VAPID/JWT
