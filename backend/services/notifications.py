@@ -86,38 +86,17 @@ def create_notification(
 
 
 def send_native_push(username: str, title: str, body: str, data: dict = None):
-    """Send native push notification to iOS/Android devices via APNs/FCM"""
-    from backend.services.database import get_db_connection, get_sql_placeholder
+    """Send native push notification to iOS/Android devices via Firebase Cloud Messaging"""
+    from backend.services.firebase_notifications import send_fcm_to_user
     
     try:
-        # Get user's push tokens from database
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        ph = get_sql_placeholder()
+        # Use Firebase to send notifications
+        sent_count = send_fcm_to_user(username, title, body, data)
         
-        cursor.execute(
-            f"SELECT token, platform FROM push_tokens WHERE username = {ph} AND is_active = 1",
-            (username,)
-        )
-        tokens = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        
-        if not tokens:
-            logger.debug(f"No active push tokens for user {username}")
-            return
-        
-        # Send to each registered device
-        for token_row in tokens:
-            token = token_row[0]
-            platform = token_row[1]
-            
-            if platform == 'ios':
-                # Send via APNs
-                send_apns_notification(token, title, body, data)
-            elif platform == 'android':
-                # Send via FCM  
-                send_fcm_notification(token, title, body, data)
+        if sent_count > 0:
+            logger.info(f"Sent {sent_count} FCM notification(s) to {username}")
+        else:
+            logger.debug(f"No FCM tokens for user {username}")
                 
     except Exception as e:
         logger.error(f"Error sending native push to {username}: {e}")
