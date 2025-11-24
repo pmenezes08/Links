@@ -21,17 +21,32 @@ print("")
 # Step 1: Check environment variables
 print("1️⃣  Checking environment variables...")
 firebase_creds = os.environ.get('FIREBASE_CREDENTIALS')
-if firebase_creds:
-    print(f"   ✅ FIREBASE_CREDENTIALS is set: {firebase_creds}")
+
+# If not set in environment, try the default location from WSGI
+if not firebase_creds:
+    print("   ⚠️  FIREBASE_CREDENTIALS not set in environment")
+    print("   🔍 Trying default location from WSGI file...")
+    firebase_creds = '/home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json'
     if os.path.exists(firebase_creds):
-        print(f"   ✅ File exists: {firebase_creds}")
-        file_size = os.path.getsize(firebase_creds)
-        print(f"   ✅ File size: {file_size} bytes")
+        print(f"   ✅ Found at default location: {firebase_creds}")
+        os.environ['FIREBASE_CREDENTIALS'] = firebase_creds  # Set it for this session
     else:
-        print(f"   ❌ File NOT FOUND: {firebase_creds}")
+        print(f"   ❌ File NOT FOUND at: {firebase_creds}")
+        print("")
+        print("   Please check:")
+        print("   1. Is the file path correct?")
+        print("   2. Does /home/puntz08/secrets/ directory exist?")
+        print("   3. Run: ls -la /home/puntz08/secrets/")
         sys.exit(1)
 else:
-    print("   ❌ FIREBASE_CREDENTIALS not set!")
+    print(f"   ✅ FIREBASE_CREDENTIALS is set: {firebase_creds}")
+
+if os.path.exists(firebase_creds):
+    print(f"   ✅ File exists: {firebase_creds}")
+    file_size = os.path.getsize(firebase_creds)
+    print(f"   ✅ File size: {file_size} bytes")
+else:
+    print(f"   ❌ File NOT FOUND: {firebase_creds}")
     sys.exit(1)
 print("")
 
