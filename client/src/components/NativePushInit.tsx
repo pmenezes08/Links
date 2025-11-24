@@ -11,62 +11,69 @@ export default function NativePushInit() {
 
     console.log('🔥 NativePushInit: Starting FCM registration...');
 
-    const registerFCM = async () => {
+    const registerToken = async (token: string) => {
       try {
-        // Try to get FCM token (with retry)
+        console.log('📤 Registering token with server...');
+        const response = await fetch('/api/push/register_fcm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            token: token,
+            platform: 'ios'
+          })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+          console.log('✅ FCM token registered with server:', result);
+        } else {
+          console.error('❌ FCM registration failed:', result);
+        }
+      } catch (error) {
+        console.error('❌ Error registering token:', error);
+      }
+    };
+
+    const initializeFCM = async () => {
+      try {
+        // Step 1: Add listener for token updates
+        const listener = await FCMNotifications.addTokenListener((token) => {
+          console.log('🔥 Token update received:', token.substring(0, 20) + '...');
+          registerToken(token);
+        });
+
+        // Step 2: Try to get current token
         let token = await FCMNotifications.getToken();
         
-        // If no token yet, retry after 2 seconds
+        // Step 3: Retry if no token yet (Firebase might still be initializing)
         if (!token) {
-          console.log('⏳ No token yet, retrying in 2s...');
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          console.log('⏳ No token yet, retrying in 3s...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
           token = await FCMNotifications.getToken();
         }
         
+        // Step 4: Register if we have a token
         if (token) {
-          console.log('🔥 FCM Token received:', token.substring(0, 20) + '...');
-          
-          // Register token with your server
-          const response = await fetch('/api/push/register_fcm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              token: token,
-              platform: 'ios'
-            })
-          });
-          
-          const result = await response.json();
-          
-          if (response.ok) {
-            console.log('✅ FCM token registered with server:', result);
-          } else {
-            console.error('❌ FCM registration failed:', result);
-          }
+          await registerToken(token);
         } else {
-          console.warn('❌ Could not get FCM token after retry');
+          console.warn('⚠️  No FCM token available yet. Will register when token is received.');
         }
+
+        // Cleanup
+        return () => {
+          listener.remove();
+        };
       } catch (error) {
-        console.error('❌ FCM registration error:', error);
+        console.error('❌ FCM initialization error:', error);
       }
     };
 
-    // Start registration
-    registerFCM();
-
-    // Also listen for token refreshes
-    const handleTokenRefresh = (event: any) => {
-      if (event && event.token) {
-        console.log('🔥 FCM Token refreshed:', event.token.substring(0, 20) + '...');
-        registerFCM();
-      }
-    };
-
-    window.addEventListener('FCMTokenRefresh', handleTokenRefresh);
+    const cleanup = initializeFCM();
 
     return () => {
-      window.removeEventListener('FCMTokenRefresh', handleTokenRefresh);
+      cleanup.then(fn => fn?.());
     };
   }, []);
 
