@@ -8,6 +8,7 @@ import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
 import { UserProfileContext, type UserProfile } from './contexts/UserProfileContext'
 import PushInit from './components/PushInit'
+import FirebasePushInit from './components/FirebasePushInit'
 import PwaInstallPrompt from './components/PwaInstallPrompt'
 import BrandAssetsInit from './components/BrandAssetsInit'
 import { encryptionService } from './services/simpleEncryption'
@@ -292,6 +293,7 @@ export default function App() {
       <BrowserRouter>
         <BrandAssetsInit />
         <PushInit />
+        <FirebasePushInit />
         <PwaInstallPrompt />
         <AppRoutes />
       </BrowserRouter>

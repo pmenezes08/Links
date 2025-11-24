@@ -11,11 +11,128 @@ from pywebpush import WebPushException, webpush
 
 from backend.services.database import USE_MYSQL, get_db_connection
 
+# Firebase imports (optional)
+try:
+    import firebase_admin
+    from firebase_admin import credentials, messaging
+    FIREBASE_AVAILABLE = True
+except ImportError:
+    FIREBASE_AVAILABLE = False
+    firebase_admin = None
+    credentials = None
+    messaging = None
+
 
 logger = logging.getLogger(__name__)
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "https://www.c-point.co")
+
+# Firebase initialization
+FIREBASE_CREDENTIALS_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH")
+firebase_app = None
+
+def _init_firebase():
+    """Initialize Firebase Admin SDK if available and not already initialized."""
+    global firebase_app
+    if not FIREBASE_AVAILABLE or firebase_app:
+        return firebase_app
+
+    try:
+        if FIREBASE_CREDENTIALS_PATH and os.path.exists(FIREBASE_CREDENTIALS_PATH):
+            cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
+            firebase_app = firebase_admin.initialize_app(cred)
+            logger.info("Firebase Admin SDK initialized successfully")
+        else:
+            logger.warning("Firebase credentials not found, FCM disabled")
+    except Exception as e:
+        logger.error(f"Failed to initialize Firebase: {e}")
+        firebase_app = None
+
+    return firebase_app
+
+def send_fcm_push_to_user(target_username: str, payload: dict):
+    """Send FCM push notification to user."""
+    if not FIREBASE_AVAILABLE:
+        logger.warning("Firebase not available, skipping FCM push")
+        return False
+
+    if not _init_firebase():
+        logger.warning("Firebase not initialized, skipping FCM push")
+        return False
+
+    try:
+        # Get FCM tokens for the user
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT fcm_token FROM fcm_tokens WHERE username = ?", (target_username,))
+            tokens = [row["fcm_token"] if hasattr(row, "keys") else row[0] for row in c.fetchall()]
+
+        if not tokens:
+            logger.info(f"No FCM tokens found for user {target_username}")
+            return False
+
+        # Prepare FCM message
+        title = payload.get("title", "")
+        body = payload.get("body", "")
+        url = payload.get("url", "")
+        tag = payload.get("tag", "")
+
+        message = messaging.MulticastMessage(
+            tokens=tokens,
+            notification=messaging.Notification(
+                title=title,
+                body=body,
+            ),
+            data={
+                "url": url,
+                "tag": tag,
+            } if url or tag else None,
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    channel_id="default",
+                    priority="high",
+                ),
+            ),
+            apns=messaging.APNSConfig(
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(
+                        alert=messaging.ApsAlert(
+                            title=title,
+                            body=body,
+                        ),
+                        badge=1,
+                        sound="default",
+                    ),
+                ),
+            ),
+        )
+
+        # Send the message
+        response = messaging.send_multicast(message)
+        logger.info(f"FCM push sent to {target_username}: {response.success_count} success, {response.failure_count} failures")
+
+        # Clean up invalid tokens
+        if response.failure_count > 0:
+            failed_tokens = []
+            for idx, result in enumerate(response.responses):
+                if not result.success:
+                    failed_tokens.append(tokens[idx])
+
+            if failed_tokens:
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    placeholders = ','.join(['?'] * len(failed_tokens))
+                    c.execute(f"DELETE FROM fcm_tokens WHERE fcm_token IN ({placeholders})", failed_tokens)
+                    conn.commit()
+                    logger.info(f"Removed {len(failed_tokens)} invalid FCM tokens")
+
+        return response.success_count > 0
+
+    except Exception as e:
+        logger.error(f"FCM push error for {target_username}: {e}")
+        return False
 
 
 def create_notification(
@@ -65,10 +182,20 @@ def create_notification(
 
 
 def send_push_to_user(target_username: str, payload: dict):
-    """Send a web push notification to the given user (best-effort)."""
+    """Send push notifications to the given user via both web push and FCM (best-effort)."""
+    success = False
+
+    # Try FCM first (for mobile devices)
+    try:
+        if send_fcm_push_to_user(target_username, payload):
+            success = True
+    except Exception as fcm_error:
+        logger.warning(f"FCM push failed for {target_username}: {fcm_error}")
+
+    # Then try web push (for browsers)
     if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
-        logger.warning("VAPID keys missing; push disabled")
-        return
+        logger.warning("VAPID keys missing; web push disabled")
+        return success
 
     try:
         # Simple dedupe window (30 seconds) to avoid flooding
@@ -160,8 +287,14 @@ def send_push_to_user(target_username: str, payload: dict):
                 conn_log.commit()
         except Exception as log_err:
             logger.warning("push log write failed: %s", log_err)
+
+        if subs and len(subs) > 0:
+            success = True
+
     except Exception as exc:
         logger.error("send_push_to_user error: %s", exc)
+
+    return success
 
 
 def check_single_poll_notifications(poll_id, conn=None):

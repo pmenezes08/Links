@@ -25418,6 +25418,63 @@ def api_push_status():
         logger.error(f"push status error: {e}")
         return jsonify({ 'success': False, 'hasSubscription': False }), 500
 
+# Firebase Cloud Messaging token registration
+@app.route('/api/fcm/register_token', methods=['POST'])
+@login_required
+def api_fcm_register_token():
+    """Register FCM token for push notifications."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        fcm_token = data.get('fcm_token')
+        platform = data.get('platform', 'unknown')
+        username = session.get('username')
+
+        if not fcm_token:
+            return jsonify({'success': False, 'error': 'FCM token is required'}), 400
+
+        logger.info(f"Registering FCM token for user {username} on platform {platform}")
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Check if we need to create the fcm_tokens table
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS fcm_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    fcm_token TEXT NOT NULL UNIQUE,
+                    platform TEXT NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    last_updated TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Insert or update the FCM token
+            if USE_MYSQL:
+                c.execute("""
+                    INSERT INTO fcm_tokens (username, fcm_token, platform, last_updated)
+                    VALUES (%s, %s, %s, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        last_updated = NOW()
+                """, (username, fcm_token, platform))
+            else:
+                c.execute("""
+                    INSERT INTO fcm_tokens (username, fcm_token, platform, last_updated)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(fcm_token) DO UPDATE SET
+                        username = excluded.username,
+                        platform = excluded.platform,
+                        last_updated = CURRENT_TIMESTAMP
+                """, (username, fcm_token, platform))
+
+            conn.commit()
+
+        logger.info(f"Successfully registered FCM token for user {username}")
+        return jsonify({'success': True})
+
+    except Exception as e:
+        logger.error(f"FCM token registration error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/active_chat', methods=['POST'])
 @login_required
 def api_active_chat():
