@@ -30,9 +30,19 @@ def initialize_firebase():
         logger.error("Firebase Admin SDK not available")
         return False
     
+    # Check if already initialized
     if _firebase_app is not None:
         logger.debug("Firebase already initialized")
         return True
+    
+    # Check if default app exists (initialized elsewhere)
+    try:
+        _firebase_app = firebase_admin.get_app()
+        logger.info("✅ Firebase already initialized (using existing default app)")
+        return True
+    except ValueError:
+        # Default app doesn't exist, we need to initialize it
+        pass
     
     if not FIREBASE_CREDENTIALS_PATH:
         logger.error("FIREBASE_CREDENTIALS environment variable not set")
@@ -47,6 +57,19 @@ def initialize_firebase():
         _firebase_app = firebase_admin.initialize_app(cred)
         logger.info("✅ Firebase Admin SDK initialized successfully")
         return True
+    except ValueError as e:
+        # App already exists
+        if "already exists" in str(e):
+            try:
+                _firebase_app = firebase_admin.get_app()
+                logger.info("✅ Firebase already initialized (recovered from ValueError)")
+                return True
+            except:
+                logger.error(f"Firebase initialization conflict: {e}")
+                return False
+        else:
+            logger.error(f"Failed to initialize Firebase: {e}")
+            return False
     except Exception as e:
         logger.error(f"Failed to initialize Firebase: {e}")
         return False
