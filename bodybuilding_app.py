@@ -91,14 +91,23 @@ app = Flask(__name__, template_folder='templates')
 init_app(app)
 
 # Initialize Firebase Cloud Messaging
+print("🔥 ATTEMPTING FIREBASE INITIALIZATION...")  # This WILL show in logs
 try:
     from backend.services.firebase_notifications import initialize_firebase
-    if initialize_firebase():
+    print("🔥 Firebase module imported")
+    result = initialize_firebase()
+    print(f"🔥 initialize_firebase() returned: {result}")
+    if result:
         app.logger.info("✅ Firebase Cloud Messaging initialized")
+        print("✅ Firebase Cloud Messaging initialized")
     else:
         app.logger.warning("⚠️  Firebase not initialized - check FIREBASE_CREDENTIALS env var")
+        print("⚠️  Firebase not initialized - check FIREBASE_CREDENTIALS env var")
 except Exception as e:
     app.logger.warning(f"⚠️  Firebase initialization skipped: {e}")
+    print(f"⚠️  Firebase initialization skipped: {e}")
+    import traceback
+    traceback.print_exc()
 
 MISSING_UPLOAD_CACHE = deque(maxlen=200)
 
