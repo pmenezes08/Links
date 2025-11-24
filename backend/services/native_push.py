@@ -38,7 +38,6 @@ from backend.services.database import USE_MYSQL, get_db_connection, get_sql_plac
 logger = logging.getLogger(__name__)
 
 APNS_KEY_PATH = os.getenv("APNS_KEY_PATH")
-logger.info("APNS key path: %s", APNS_KEY_PATH)
 APNS_KEY_ID = os.getenv("APNS_KEY_ID")
 APNS_TEAM_ID = os.getenv("APNS_TEAM_ID")
 APNS_BUNDLE_ID = os.getenv("APNS_BUNDLE_ID", "co.cpoint.app")
