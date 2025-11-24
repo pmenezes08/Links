@@ -1,19 +1,21 @@
 import { useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { FCMNotifications } from '../services/fcmNotifications';
+import { PushNotifications } from '@capacitor/push-notifications';
 
 export default function NativePushInit() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) {
-      console.log('Not a native platform, skipping FCM');
+      console.log('Not a native platform, skipping push notifications');
       return;
     }
 
-    console.log('🔥 NativePushInit: Starting FCM registration...');
+    console.log('🔥 NativePushInit: Starting push notification registration...');
 
     const registerToken = async (token: string) => {
       try {
-        console.log('📤 Registering token with server...');
+        console.log('📤 Registering FCM token with server...');
+        console.log('   Token preview:', token.substring(0, 30) + '...');
+        
         const response = await fetch('/api/push/register_fcm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -29,51 +31,63 @@ export default function NativePushInit() {
         if (response.ok) {
           console.log('✅ FCM token registered with server:', result);
         } else {
-          console.error('❌ FCM registration failed:', result);
+          console.error('❌ FCM registration failed:', response.status, result);
         }
       } catch (error) {
         console.error('❌ Error registering token:', error);
       }
     };
 
-    const initializeFCM = async () => {
+    const initializePushNotifications = async () => {
       try {
-        // Step 1: Add listener for token updates
-        const listener = await FCMNotifications.addTokenListener((token) => {
-          console.log('🔥 Token update received:', token.substring(0, 20) + '...');
-          registerToken(token);
+        // Step 1: Request permissions
+        console.log('📋 Requesting push notification permissions...');
+        const permResult = await PushNotifications.requestPermissions();
+        
+        if (permResult.receive === 'granted') {
+          console.log('✅ Push notification permissions granted');
+          
+          // Step 2: Register with APNs (Firebase will convert to FCM token)
+          await PushNotifications.register();
+          console.log('📱 Registered for push notifications');
+        } else {
+          console.warn('⚠️  Push notification permissions denied');
+          return;
+        }
+
+        // Step 3: Listen for registration success
+        await PushNotifications.addListener('registration', (token) => {
+          console.log('🔥 Push token received:', token.value.substring(0, 30) + '...');
+          registerToken(token.value);
         });
 
-        // Step 2: Try to get current token
-        let token = await FCMNotifications.getToken();
-        
-        // Step 3: Retry if no token yet (Firebase might still be initializing)
-        if (!token) {
-          console.log('⏳ No token yet, retrying in 3s...');
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          token = await FCMNotifications.getToken();
-        }
-        
-        // Step 4: Register if we have a token
-        if (token) {
-          await registerToken(token);
-        } else {
-          console.warn('⚠️  No FCM token available yet. Will register when token is received.');
-        }
+        // Step 4: Listen for registration errors
+        await PushNotifications.addListener('registrationError', (error) => {
+          console.error('❌ Push registration error:', error);
+        });
 
-        // Cleanup
-        return () => {
-          listener.remove();
-        };
+        // Step 5: Listen for notifications received
+        await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          console.log('📬 Push notification received:', notification);
+        });
+
+        // Step 6: Listen for notification actions
+        await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+          console.log('👆 Push notification action:', notification);
+        });
+
+        console.log('✅ Push notification listeners registered');
+
       } catch (error) {
-        console.error('❌ FCM initialization error:', error);
+        console.error('❌ Push notification initialization error:', error);
       }
     };
 
-    const cleanup = initializeFCM();
+    initializePushNotifications();
 
+    // Cleanup
     return () => {
-      cleanup.then(fn => fn?.());
+      PushNotifications.removeAllListeners();
     };
   }, []);
 
