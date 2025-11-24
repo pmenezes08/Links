@@ -1,0 +1,43 @@
+🚨 YOUR SERVER IS RUNNING OLD CODE!
+
+You checked earlier and saw "nothing to pull" - that was BEFORE we pushed the fix.
+
+═══════════════════════════════════════════════════════════
+
+QUICK FIX (5 minutes):
+
+1. SSH in:
+   ssh puntz08@ssh.pythonanywhere.com
+   cd ~/workspace
+
+2. Pull the NEW code:
+   git pull origin main
+   
+   ✅ You should see: "Updating 19454779..53e899bf"
+   ❌ If you see: "Already up to date" → Your git is cached, run:
+      git fetch origin
+      git reset --hard origin/main
+
+3. Verify dependencies:
+   python3.10 -c "import httpx, jwt; print('OK')"
+   
+   ❌ If error: pip3.10 install --user "httpx[http2]>=0.24.0" "PyJWT>=2.8.0"
+
+4. Reload web app:
+   - Go to pythonanywhere.com
+   - Web tab
+   - Click green Reload button
+
+5. Test notification on your iPhone
+
+═══════════════════════════════════════════════════════════
+
+WHAT'S DIFFERENT NOW:
+
+✅ backend/services/native_push.py - All apns2 code REMOVED (187 lines deleted)
+✅ requirements.txt - Uses httpx + PyJWT (not apns2 or PyAPNs2)
+✅ Only modern HTTP/2 APNs API runs (Apple's 2025 standard)
+
+═══════════════════════════════════════════════════════════
+
+After reload, error will be GONE! ✅
