@@ -36,11 +36,12 @@ export default function PushInit(){
             
             // Listen for registration token
             PushNotifications.addListener('registration', async (token) => {
-              console.log('Push registration success, token: ' + token.value)
+              console.log('🔥 Push registration success, FCM token: ' + token.value.substring(0, 30) + '...')
               
               // Send token to backend
               try {
-                await fetch('/api/push/register_native', {
+                console.log('📤 Sending FCM token to server...')
+                const response = await fetch('/api/push/register_fcm', {
                   method: 'POST',
                   credentials: 'include',
                   headers: { 'Content-Type': 'application/json' },
@@ -49,8 +50,15 @@ export default function PushInit(){
                     platform: Capacitor.getPlatform()
                   })
                 })
+                
+                if (response.ok) {
+                  const result = await response.json()
+                  console.log('✅ FCM token registered with server:', result)
+                } else {
+                  console.error('❌ Failed to register token:', response.status)
+                }
               } catch (error) {
-                console.error('Failed to register push token with backend:', error)
+                console.error('❌ Failed to register push token with backend:', error)
               }
             })
             
