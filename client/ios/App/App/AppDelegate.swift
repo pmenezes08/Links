@@ -46,11 +46,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        print("✅ APNs device token received: \(deviceToken.map { String(format: "%02.2hhx", $0) }.joined())")
+        
+        // Pass to Firebase Messaging (Firebase will convert APNs token → FCM token)
         Messaging.messaging().apnsToken = deviceToken
+        print("✅ APNs token passed to Firebase Messaging")
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        print("Failed to register: \(error)")
+        print("❌ Failed to register for remote notifications!")
+        print("❌ Error: \(error)")
+        print("❌ Error localized: \(error.localizedDescription)")
+        
+        // Common reasons:
+        // 1. No push entitlements (aps-environment missing)
+        // 2. Simulator (APNs doesn't work in simulator)
+        // 3. Network issues
+        // 4. Invalid provisioning profile
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
