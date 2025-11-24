@@ -74,9 +74,66 @@ def welcome():
         return ("Internal Server Error", 500)
 
 
+@public_bp.route("/api/push/register_fcm", methods=["POST"])
+def register_fcm_token():
+    """Register a Firebase Cloud Messaging token."""
+    from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
+    
+    try:
+        data = request.get_json()
+        token = data.get("token", "").strip()
+        platform = data.get("platform", "ios")
+        device_name = data.get("device_name", "")
+        
+        if not token:
+            return jsonify({"error": "Token required"}), 400
+        
+        # Get username if logged in
+        username = session.get("username")
+        
+        # Insert or update FCM token
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ph = get_sql_placeholder()
+        
+        if USE_MYSQL:
+            cursor.execute(f"""
+                INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                VALUES ({ph}, {ph}, {ph}, {ph}, NOW(), 1)
+                ON DUPLICATE KEY UPDATE
+                    username=IFNULL(VALUES(username), username),
+                    platform=VALUES(platform),
+                    device_name=VALUES(device_name),
+                    last_seen=NOW(),
+                    is_active=1
+            """, (token, username, platform, device_name))
+        else:
+            cursor.execute("""
+                INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                VALUES (?, ?, ?, ?, datetime('now'), 1)
+                ON CONFLICT(token) DO UPDATE SET
+                    username=COALESCE(excluded.username, username),
+                    platform=excluded.platform,
+                    device_name=excluded.device_name,
+                    last_seen=excluded.last_seen,
+                    is_active=1
+            """, (token, username, platform, device_name))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"Registered FCM token for {username or 'anonymous'}")
+        return jsonify({"success": True, "message": "FCM token registered"})
+        
+    except Exception as e:
+        logger.error(f"FCM token registration error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @public_bp.route("/api/push/register_native", methods=["POST"])
 def register_native_push_token():
-    """Register a native iOS/Android push notification token."""
+    """Register a native iOS/Android push notification token (legacy - redirects to FCM)."""
     from backend.services.database import get_db_connection, get_sql_placeholder
     
     logger = current_app.logger
