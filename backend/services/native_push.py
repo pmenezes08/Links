@@ -17,6 +17,8 @@ if not hasattr(collections, "Mapping"):  # pragma: no cover
     collections.Mapping = collections.abc.Mapping  # type: ignore[attr-defined]
 if not hasattr(collections, "MutableMapping"):  # pragma: no cover
     collections.MutableMapping = collections.abc.MutableMapping  # type: ignore[attr-defined]
+if not hasattr(collections, "MutableSet"):  # pragma: no cover
+    collections.MutableSet = collections.abc.MutableSet  # type: ignore[attr-defined]
 
 from apns2.client import APNsClient
 from apns2.credentials import TokenCredentials
