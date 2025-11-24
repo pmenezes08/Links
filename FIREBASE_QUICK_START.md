@@ -36,15 +36,15 @@ git pull origin main
 # 3. Install Firebase Admin SDK
 pip3.10 install --user firebase-admin
 
-# 4. Upload firebase-credentials.json
-# Upload to: /home/puntz08/secrets/firebase-credentials.json
-chmod 600 /home/puntz08/secrets/firebase-credentials.json
+# 4. Upload Firebase credentials JSON
+# Upload to: /home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json
+chmod 600 /home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json
 
 # 5. Create FCM tokens table
 python3.10 add_fcm_tokens_table.py
 
 # 6. Update WSGI file - add this line after other os.environ:
-# os.environ['FIREBASE_CREDENTIALS'] = '/home/puntz08/secrets/firebase-credentials.json'
+# os.environ['FIREBASE_CREDENTIALS'] = '/home/puntz08/secrets/cpoint-127c2-firebase-adminsdk-fbsvc-1f900dabeb.json'
 
 # 7. Reload web app
 ```
