@@ -65,23 +65,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        
+        NSLog("🟢🟢🟢 APNS TOKEN RECEIVED 🟢🟢🟢")
+        NSLog("Token: %@", tokenString)
         print("✅ APNs device token received: \(tokenString)")
         
         // Pass to Firebase Messaging (Firebase will convert APNs token → FCM token)
         Messaging.messaging().apnsToken = deviceToken
+        NSLog("Token passed to Firebase Messaging")
         print("✅ APNs token passed to Firebase Messaging")
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NSLog("🔴🔴🔴 APNS REGISTRATION FAILED 🔴🔴🔴")
+        NSLog("Error: %@", error.localizedDescription)
         print("❌ Failed to register for remote notifications!")
         print("❌ Error: \(error)")
         print("❌ Error localized: \(error.localizedDescription)")
-        print("")
-        print("Common causes:")
-        print("  1. Missing push entitlements (aps-environment)")
-        print("  2. Running in simulator (APNs doesn't work)")
-        print("  3. Network issues")
-        print("  4. Invalid provisioning profile")
     }
 
     // MARK: - Capacitor Deep Links
@@ -133,11 +133,16 @@ extension AppDelegate: MessagingDelegate {
     
     // Called when FCM token is generated or refreshed
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        NSLog("🔥🔥🔥 FCM DELEGATE CALLED 🔥🔥🔥")
+        
         guard let token = fcmToken else {
+            NSLog("WARNING: FCM token is nil")
             print("⚠️ FCM token is nil")
             return
         }
         
+        NSLog("FCM TOKEN RECEIVED: %@", token)
+        NSLog("Token length: %d", token.count)
         print("🔥 FCM Registration Token: \(token)")
         print("🔥 Token length: \(token.count) characters")
         
@@ -148,6 +153,7 @@ extension AppDelegate: MessagingDelegate {
             userInfo: ["token": token]
         )
         
+        NSLog("FCM token posted to NotificationCenter")
         print("✅ FCM token posted to NotificationCenter")
     }
 }
