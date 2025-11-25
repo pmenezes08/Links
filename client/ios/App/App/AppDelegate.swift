@@ -2,6 +2,7 @@ import UIKit
 import Capacitor
 import Firebase
 import FirebaseMessaging
+import UserNotifications
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -10,43 +11,49 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         
-        // Initialize Firebase
+        print("🚀 App launching...")
+        
+        // 1. Initialize Firebase
         FirebaseApp.configure()
+        print("✅ Firebase configured")
         
-        // Set FCM delegate
+        // 2. Set FCM delegate to receive token updates
         Messaging.messaging().delegate = self
+        print("✅ FCM delegate set")
         
-        // Register for push notifications
+        // 3. Set notification center delegate
         UNUserNotificationCenter.current().delegate = self
         
+        // 4. Request authorization and register for notifications
         let authOptions: UNAuthorizationOptions = [.alert, .badge, .sound]
         UNUserNotificationCenter.current().requestAuthorization(
             options: authOptions,
-            completionHandler: { _, _ in }
+            completionHandler: { granted, error in
+                if let error = error {
+                    print("❌ Notification permission error: \(error.localizedDescription)")
+                    return
+                }
+                
+                if granted {
+                    print("✅ Notification permission granted")
+                    DispatchQueue.main.async {
+                        application.registerForRemoteNotifications()
+                        print("📱 Registering for remote notifications...")
+                    }
+                } else {
+                    print("⚠️ Notification permission denied by user")
+                }
+            }
         )
-        
-        application.registerForRemoteNotifications()
         
         return true
     }
 
-    func applicationWillResignActive(_ application: UIApplication) {
-    }
-
-    func applicationDidEnterBackground(_ application: UIApplication) {
-    }
-
-    func applicationWillEnterForeground(_ application: UIApplication) {
-    }
-
-    func applicationDidBecomeActive(_ application: UIApplication) {
-    }
-
-    func applicationWillTerminate(_ application: UIApplication) {
-    }
+    // MARK: - APNs Token Registration
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        print("✅ APNs device token received: \(deviceToken.map { String(format: "%02.2hhx", $0) }.joined())")
+        let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        print("✅ APNs device token received: \(tokenString)")
         
         // Pass to Firebase Messaging (Firebase will convert APNs token → FCM token)
         Messaging.messaging().apnsToken = deviceToken
@@ -57,13 +64,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         print("❌ Failed to register for remote notifications!")
         print("❌ Error: \(error)")
         print("❌ Error localized: \(error.localizedDescription)")
-        
-        // Common reasons:
-        // 1. No push entitlements (aps-environment missing)
-        // 2. Simulator (APNs doesn't work in simulator)
-        // 3. Network issues
-        // 4. Invalid provisioning profile
+        print("")
+        print("Common causes:")
+        print("  1. Missing push entitlements (aps-environment)")
+        print("  2. Running in simulator (APNs doesn't work)")
+        print("  3. Network issues")
+        print("  4. Invalid provisioning profile")
     }
+
+    // MARK: - Capacitor Deep Links
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
@@ -74,30 +83,59 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 }
 
+// MARK: - UNUserNotificationCenterDelegate
+
 extension AppDelegate: UNUserNotificationCenterDelegate {
+    
+    // Called when notification arrives while app is in FOREGROUND
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([[.banner, .sound, .badge]])
+        
+        let userInfo = notification.request.content.userInfo
+        print("📬 Notification received in foreground: \(userInfo)")
+        
+        // Show banner, sound, and badge even when app is open
+        if #available(iOS 14.0, *) {
+            completionHandler([.list, .banner, .sound, .badge])
+        } else {
+            completionHandler([.alert, .sound, .badge])
+        }
     }
     
+    // Called when user TAPS on a notification
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
+        
+        let userInfo = response.notification.request.content.userInfo
+        print("👆 User tapped notification: \(userInfo)")
+        
         completionHandler()
     }
 }
 
+// MARK: - MessagingDelegate
+
 extension AppDelegate: MessagingDelegate {
+    
+    // Called when FCM token is generated or refreshed
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
-        print("🔥 Firebase token: \(fcmToken ?? "none")")
-        
-        if let token = fcmToken {
-            NotificationCenter.default.post(
-                name: Notification.Name("FCMTokenRefresh"),
-                object: nil,
-                userInfo: ["token": token]
-            )
+        guard let token = fcmToken else {
+            print("⚠️ FCM token is nil")
+            return
         }
+        
+        print("🔥 FCM Registration Token: \(token)")
+        print("🔥 Token length: \(token.count) characters")
+        
+        // Post to NotificationCenter so JavaScript can pick it up
+        NotificationCenter.default.post(
+            name: Notification.Name("FCMToken"),
+            object: nil,
+            userInfo: ["token": token]
+        )
+        
+        print("✅ FCM token posted to NotificationCenter")
     }
 }
