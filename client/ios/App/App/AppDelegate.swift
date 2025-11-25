@@ -11,10 +11,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         
+        // CRITICAL DEBUG - This MUST show up
+        NSLog("========================================")
+        NSLog("CPOINT APP DELEGATE LAUNCHED!!!")
+        NSLog("BUILD 36 - ENHANCED LOGGING ACTIVE")
+        NSLog("========================================")
         print("🚀 App launching...")
         
         // 1. Initialize Firebase
         FirebaseApp.configure()
+        NSLog("Firebase configured")
         print("✅ Firebase configured")
         
         // 2. Set FCM delegate to receive token updates
