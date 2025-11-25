@@ -35,9 +35,11 @@ export default function PushInit(){
             console.log('🔔 Registration initiated')
             
             // Listen for registration token from Capacitor
+            // When Firebase generates FCM token, Capacitor catches it and fires this event
             PushNotifications.addListener('registration', async (token) => {
-              console.log('🔥 Capacitor registration event fired')
-              console.log('🔥 FCM token: ' + token.value.substring(0, 30) + '...')
+              console.log('🔥 Capacitor registration event fired!')
+              console.log('🔥 FCM token received: ' + token.value.substring(0, 30) + '...')
+              console.log('🔥 Token length: ' + token.value.length + ' characters')
               
               // Send token to backend
               try {
@@ -52,43 +54,17 @@ export default function PushInit(){
                   })
                 })
                 
+                const result = await response.json()
+                
                 if (response.ok) {
-                  const result = await response.json()
-                  console.log('✅ FCM token registered with server:', result)
+                  console.log('✅ FCM token successfully registered with server!')
+                  console.log('✅ Server response:', result)
                 } else {
                   console.error('❌ Failed to register token. Status:', response.status)
-                  const errorText = await response.text()
-                  console.error('❌ Error response:', errorText)
+                  console.error('❌ Error response:', result)
                 }
               } catch (error) {
-                console.error('❌ Failed to register push token with backend:', error)
-              }
-            })
-            
-            // ALSO listen for FCM token from iOS NotificationCenter
-            // (This is posted by AppDelegate MessagingDelegate)
-            window.addEventListener('FCMToken', (event: any) => {
-              console.log('🔥 FCM token received from iOS NotificationCenter')
-              if (event && event.detail && event.detail.token) {
-                const token = event.detail.token
-                console.log('🔥 Token:', token.substring(0, 30) + '...')
-                
-                // Send to server
-                fetch('/api/push/register_fcm', {
-                  method: 'POST',
-                  credentials: 'include',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    token: token,
-                    platform: Capacitor.getPlatform()
-                  })
-                }).then(response => {
-                  if (response.ok) {
-                    console.log('✅ FCM token registered (via NotificationCenter)')
-                  }
-                }).catch(error => {
-                  console.error('❌ Error registering token:', error)
-                })
+                console.error('❌ Network error registering push token:', error)
               }
             })
             
