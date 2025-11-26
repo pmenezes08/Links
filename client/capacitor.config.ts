@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-const appBackground = '#0b0f10';
+const appBackground = '#000000';
 
 const config: CapacitorConfig = {
   appId: 'co.cpoint.app',
