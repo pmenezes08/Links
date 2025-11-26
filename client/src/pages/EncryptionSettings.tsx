@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { encryptionService } from '../services/simpleEncryption'
+import { keychainStorage } from '../services/keychainStorage'
 
 export default function EncryptionSettings() {
   const { setTitle } = useHeader()
   const [keyStatus, setKeyStatus] = useState<'checking' | 'ready' | 'none'>('checking')
   const [lastGenerated, setLastGenerated] = useState<string | null>(null)
   const [resetting, setResetting] = useState(false)
+  const [showSuccess, setShowSuccess] = useState(false)
 
   useEffect(() => {
     setTitle('Encryption Settings')
@@ -46,19 +48,59 @@ export default function EncryptionSettings() {
     setResetting(true)
 
     try {
-      console.log('🔐 Setting reset flag...')
+      console.log('🔐 Starting encryption key reset...')
       
-      // Set a flag that will trigger deletion on next page load
-      localStorage.setItem('encryption_reset_requested', 'true')
+      // 1. Close the database connection first
+      encryptionService.closeDatabase()
+      console.log('🔐 Database connection closed')
+      
+      // 2. Delete the IndexedDB database
+      await new Promise<void>((resolve) => {
+        const request = indexedDB.deleteDatabase('chat-encryption')
+        request.onsuccess = () => {
+          console.log('🔐 ✅ Old encryption database deleted')
+          resolve()
+        }
+        request.onerror = () => {
+          console.log('🔐 ⚠️ Database deletion error (may not exist)')
+          resolve()
+        }
+        request.onblocked = () => {
+          console.log('🔐 ⚠️ Database deletion blocked')
+          resolve()
+        }
+      })
+      
+      // 3. Clear keys from Keychain storage
+      const username = localStorage.getItem('username') || ''
+      if (username) {
+        try {
+          await keychainStorage.removeKeys(username)
+          console.log('🔐 ✅ Keychain keys cleared')
+        } catch (e) {
+          console.log('🔐 ⚠️ Keychain clear error:', e)
+        }
+      }
+      
+      // 4. Update timestamp
       localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
       
-      console.log('🔐 Closing database and reloading...')
+      // 5. Re-initialize encryption (this will generate new keys)
+      if (username) {
+        console.log('🔐 Generating new encryption keys...')
+        await encryptionService.init(username)
+        console.log('🔐 ✅ New encryption keys generated!')
+      }
       
-      // Close database connection
-      encryptionService.closeDatabase()
+      // 6. Update UI state
+      setKeyStatus('ready')
+      const date = new Date()
+      setLastGenerated(date.toLocaleString())
+      setResetting(false)
+      setShowSuccess(true)
       
-      // Reload immediately - the App.tsx will handle deletion
-      window.location.reload()
+      // Auto-hide success message after 5 seconds
+      setTimeout(() => setShowSuccess(false), 5000)
       
     } catch (error) {
       console.error('🔐 ❌ Error resetting keys:', error)
@@ -69,6 +111,29 @@ export default function EncryptionSettings() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-[#1a2f2a] to-gray-900 text-white pb-20">
+      {/* Success Popup */}
+      {showSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-green-500/30 rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
+                <i className="fa-solid fa-check text-3xl text-green-400" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Keys Reset Successfully!</h3>
+              <p className="text-sm text-white/60 mb-4">
+                Your encryption keys have been regenerated. You can now send and receive encrypted messages.
+              </p>
+              <button
+                onClick={() => setShowSuccess(false)}
+                className="w-full px-6 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-medium transition-all active:scale-95"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-2xl mx-auto px-6 pb-6" style={{ paddingTop: 'calc(70px + env(safe-area-inset-top))' }}>
         
         {/* Header */}
@@ -145,7 +210,6 @@ export default function EncryptionSettings() {
             <ul className="text-xs text-yellow-300/80 space-y-1 ml-5 list-disc">
               <li>Old encrypted messages may become unreadable</li>
               <li>Other users will automatically fetch your new public key</li>
-              <li>You'll need to refresh the page</li>
             </ul>
           </div>
 
