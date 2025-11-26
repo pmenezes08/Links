@@ -1405,7 +1405,14 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* Composer - flex child at bottom */}
       <div 
         className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 flex-shrink-0" 
-        style={{ zIndex: 200, position: 'relative', pointerEvents: 'auto' }}
+        style={{ 
+          zIndex: 200, 
+          position: isIOS ? 'sticky' : 'relative', 
+          bottom: 0,
+          pointerEvents: 'auto',
+          touchAction: 'manipulation',
+          WebkitTapHighlightColor: 'transparent'
+        }}
       >
         <div className="max-w-3xl mx-auto">
           {replyTo && (
