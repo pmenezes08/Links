@@ -1078,15 +1078,16 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     <div 
       className="bg-black text-white flex flex-col" 
       style={{ 
-        height: '100vh',
-        minHeight: '100vh',
-        maxHeight: '100vh',
+        height: '100dvh',
+        minHeight: '100dvh',
+        maxHeight: '100dvh',
         position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px))'
+        paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)'
       }}
     >
       {/* Chat header (fixed below global header for iOS focus stability) */}
@@ -1185,7 +1186,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
           paddingTop: '56px',
-          paddingBottom: 'calc(70px + env(safe-area-inset-bottom, 0px))'
+          paddingBottom: '8px'
         }}
         onScroll={(e)=> {
           const el = e.currentTarget
@@ -1383,8 +1384,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         
         {showScrollDown && (
           <button
-            className="fixed right-4 z-[10006] w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
-            style={{ bottom: 'calc(75px + env(safe-area-inset-bottom, 0px))' }}
+            className="absolute right-4 bottom-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
             aria-label="Scroll to latest"
           >
@@ -1393,19 +1393,12 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* Composer - Fixed at bottom like WhatsApp */}
+      {/* Composer - flex child at bottom */}
       <div 
-        className="bg-black px-2 sm:px-3 pt-2 border-t border-white/10" 
-        style={{ 
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          zIndex: 10005,
-          paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))'
-        }}
+        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 flex-shrink-0" 
+        style={{ zIndex: 100 }}
       >
-        <div className="max-w-3xl mx-auto" style={{ touchAction: 'manipulation' }}>
+        <div className="max-w-3xl mx-auto">
           {replyTo && (
             <div className="mb-2 px-3 py-2 bg-[#1a1a1a] rounded-lg border-l-4 border-[#4db6ac]">
               <div className="flex items-center justify-between mb-1">
@@ -1536,8 +1529,6 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 placeholder="Message"
                 value={draft}
                 onPaste={handlePaste}
-                onTouchStart={(e) => e.stopPropagation()}
-                onClick={(e) => e.currentTarget.focus()}
                 onChange={e=> {
                   setDraft(e.target.value)
                   fetch('/api/typing', { 
@@ -1559,41 +1550,36 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 style={{
                   lineHeight: '1.4',
                   scrollbarWidth: 'none',
-                  msOverflowStyle: 'none',
-                  WebkitAppearance: 'none',
-                  touchAction: 'manipulation'
+                  msOverflowStyle: 'none'
                 }}
               />
             )}
             
             {/* Mic + Send - Conditional based on recording state */}
-            <div className="absolute right-1 sm:right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1 sm:gap-2">
+            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
               {/* When recording: Show STOP + visualizer (consistent with posts) */}
               {MIC_ENABLED && recording ? (
                 <button
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] active:scale-95 transition-all duration-200"
+                  className="w-9 h-9 rounded-full flex items-center justify-center bg-[#4db6ac] text-white"
                   onClick={stopVoiceRecording}
                   aria-label="Stop recording"
-                  title="Stop recording"
-                  style={{ touchAction: 'manipulation' }}
                 >
                   <i className="fa-solid fa-stop text-sm" />
                 </button>
               ) : (
                 <>
-                  {/* Send button - only show when NOT recording */}
+                  {/* Send button */}
                   <button
-                    className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all duration-200 ease-out ${
+                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
                       sending 
-                        ? 'bg-gray-600 text-gray-300 cursor-not-allowed' 
+                        ? 'bg-gray-600 text-gray-300' 
                         : draft.trim()
-                          ? 'bg-[#4db6ac] text-black hover:bg-[#45a99c] active:scale-95'
+                          ? 'bg-[#4db6ac] text-black'
                           : 'bg-white/20 text-white/70'
                     }`}
                     onClick={draft.trim() ? send : undefined}
                     disabled={sending || !draft.trim()}
                     aria-label="Send"
-                    style={{ touchAction: 'manipulation' }}
                   >
                     {sending ? (
                       <i className="fa-solid fa-spinner fa-spin text-xs" />
@@ -1602,14 +1588,12 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                     )}
                   </button>
                   
-                  {/* Mic icon - click to start recording */}
+                  {/* Mic icon */}
                   {MIC_ENABLED && (
                   <button
-                    className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-white/70 hover:text-white active:text-white transition-colors"
+                    className="w-9 h-9 flex items-center justify-center text-white/70"
                     onClick={checkMicrophonePermission}
                     aria-label="Start voice message"
-                    title="Click to start recording"
-                    style={{ touchAction: 'manipulation' }}
                   >
                     <i className="fa-solid fa-microphone text-lg" />
                   </button>
