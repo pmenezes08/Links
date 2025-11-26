@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
@@ -39,9 +39,13 @@ export default function ChatThread(){
   // Detect mobile device
   useEffect(() => {
     const checkMobile = () => {
-      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      const ua = navigator.userAgent || ''
+      const isiOSMatch = /iPad|iPhone|iPod/i.test(ua) ||
+        ((navigator.platform === 'MacIntel' || navigator.platform === 'Macintosh') && (navigator.maxTouchPoints || 0) > 2)
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
                             (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /MacIntel/.test(navigator.platform))
       setIsMobile(Boolean(isMobileDevice))
+      setIsIOS(Boolean(isiOSMatch))
     }
     checkMobile()
   }, [])
@@ -75,6 +79,7 @@ export default function ChatThread(){
   const { recording, recordMs, preview: recordingPreview, start: startVoiceRecording, stop: stopVoiceRecording, clearPreview: cancelRecordingPreview, level } = useAudioRecorder() as any
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  const [isIOS, setIsIOS] = useState(false)
   const [showMicPermissionModal, setShowMicPermissionModal] = useState(false)
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
@@ -91,6 +96,20 @@ export default function ChatThread(){
   const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
+
+  const viewportStyles = useMemo<CSSProperties>(() => {
+    const positionStyles = isIOS
+      ? { position: 'relative' as const, overflow: 'hidden' as const }
+      : { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0 }
+    return {
+      height: '100dvh',
+      minHeight: '100dvh',
+      maxHeight: '100dvh',
+      paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+      paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      ...positionStyles,
+    }
+  }, [isIOS])
 
   useEffect(() => {
     if (!headerMenuOpen) return
@@ -1077,18 +1096,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   return (
     <div 
       className="bg-black text-white flex flex-col" 
-      style={{ 
-        height: '100dvh',
-        minHeight: '100dvh',
-        maxHeight: '100dvh',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)'
-      }}
+      style={viewportStyles}
     >
       {/* Chat header (fixed below global header for iOS focus stability) */}
       <div 
@@ -1183,6 +1191,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         ref={listRef}
         className="flex-1 overflow-y-auto overscroll-contain px-3 py-2 space-y-1"
         style={{ 
+          position: 'relative',
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
           paddingTop: '56px',
@@ -1396,7 +1405,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* Composer - flex child at bottom */}
       <div 
         className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 flex-shrink-0" 
-        style={{ zIndex: 100, position: 'relative' }}
+        style={{ zIndex: 200, position: 'relative', pointerEvents: 'auto' }}
       >
         <div className="max-w-3xl mx-auto">
           {replyTo && (
