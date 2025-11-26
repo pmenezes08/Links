@@ -156,6 +156,37 @@ def register_fcm_token():
             except Exception as e:
                 logger.warning(f"Could not store in native_push_tokens: {e}")
         
+        # If it's an FCM token, deactivate any APNs tokens for the same user/device
+        # FCM handles APNs delivery internally, so we don't need both
+        if not is_native_apns and platform == 'ios' and username:
+            try:
+                logger.info(f"   Deactivating APNs tokens for {username} (FCM will handle delivery)")
+                if USE_MYSQL:
+                    # Deactivate APNs tokens (64 char hex tokens) for this user
+                    cursor.execute(f"""
+                        UPDATE fcm_tokens 
+                        SET is_active = 0 
+                        WHERE username = {ph} AND platform = 'ios' AND LENGTH(token) = 64 AND token != {ph}
+                    """, (username, token))
+                    cursor.execute(f"""
+                        UPDATE native_push_tokens 
+                        SET is_active = 0 
+                        WHERE username = {ph}
+                    """, (username,))
+                else:
+                    cursor.execute("""
+                        UPDATE fcm_tokens 
+                        SET is_active = 0 
+                        WHERE username = ? AND platform = 'ios' AND LENGTH(token) = 64 AND token != ?
+                    """, (username, token))
+                    cursor.execute("""
+                        UPDATE native_push_tokens 
+                        SET is_active = 0 
+                        WHERE username = ?
+                    """, (username,))
+            except Exception as e:
+                logger.warning(f"Could not deactivate APNs tokens: {e}")
+        
         conn.commit()
         cursor.close()
         conn.close()
