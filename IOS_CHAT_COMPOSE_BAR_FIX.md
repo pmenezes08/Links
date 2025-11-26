@@ -30,14 +30,12 @@ plugins: {
 }
 ```
 
-### 3. Initialized Keyboard in App
-**File: `client/src/App.tsx`**
-- Used dynamic import with type assertion (`as any`) for Keyboard plugin
-- Checks if running on native platform before loading plugin
-- Added initialization useEffect
-- Configured keyboard accessory bar and scroll behavior
-- Gracefully handles web environment where plugin is unavailable
-- Type assertion prevents TypeScript compile-time errors for optional dependency
+### 3. Keyboard Configuration (Automatic)
+**File: `client/capacitor.config.ts`**
+- Keyboard plugin configuration is applied automatically by Capacitor
+- No programmatic initialization needed in App.tsx
+- Settings are read when the native iOS app starts
+- This avoids Vite/Rollup build errors from dynamic imports
 
 ### 4. Fixed Touch Handling in ChatThread
 **File: `client/src/pages/ChatThread.tsx`**
@@ -128,16 +126,8 @@ Test these scenarios:
 
 ## Troubleshooting
 
-### TypeScript Error: "Cannot find module '@capacitor/keyboard'"
-**Solution:** The code uses dynamic imports with type assertion (`as any`), which tells TypeScript to skip compile-time checking for this optional dependency:
-```typescript
-const keyboardModule = await import('@capacitor/keyboard' as any)
-```
-This is the correct approach for optional platform-specific dependencies:
-1. The plugin is installed via `npm install` (in package.json)
-2. On native platforms: Plugin loads and initializes successfully
-3. On web: Import gracefully fails (caught by try-catch)
-4. TypeScript won't complain about missing module at compile time
+### Vite Build Error: "Rollup failed to resolve import"
+**Solution:** We removed all programmatic keyboard initialization from the code. The keyboard plugin is configured via `capacitor.config.ts` only, which Capacitor reads at native app startup. This avoids any build-time import issues.
 
 ### If keyboard still doesn't show:
 1. Check Safari console for errors (use Safari DevTools)
@@ -180,9 +170,8 @@ This is the correct approach for optional platform-specific dependencies:
 
 ## Related Files Modified
 1. `/workspace/client/package.json` - Added Keyboard dependency
-2. `/workspace/client/capacitor.config.ts` - Configured Keyboard plugin
-3. `/workspace/client/src/App.tsx` - Initialized Keyboard
-4. `/workspace/client/src/pages/ChatThread.tsx` - Fixed touch handling
+2. `/workspace/client/capacitor.config.ts` - Configured Keyboard plugin (auto-applied)
+3. `/workspace/client/src/pages/ChatThread.tsx` - Fixed touch handling for iOS
 
 ## Additional Recommendations
 
