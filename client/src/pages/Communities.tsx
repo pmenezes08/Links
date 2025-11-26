@@ -277,7 +277,7 @@ export default function Communities(){
       {/* Slide-out menu (90% width) same as feed */}
       {/* Menu unified via HeaderBar */}
 
-      <div className="max-w-2xl mx-auto pt-[10px] pb-6 px-3">
+      <div className="max-w-2xl mx-auto pb-6 px-3" style={{ paddingTop: 'calc(56px + 40px + env(safe-area-inset-top) + 10px)' }}>
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (

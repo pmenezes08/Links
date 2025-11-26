@@ -580,7 +580,7 @@ export default function CommunityFeed() {
         </div>
       )}
       {/* Scrollable content area below fixed global header */}
-      <div ref={scrollRef} className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-20 px-3 pt-3`} style={{ WebkitOverflowScrolling: 'touch' as any, overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto', overscrollBehaviorY: 'contain', touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y', paddingTop: `calc(12px + ${pullPx}px)` }}>
+      <div ref={scrollRef} className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`} style={{ WebkitOverflowScrolling: 'touch' as any, overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto', overscrollBehaviorY: 'contain', touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y', paddingTop: `calc(70px + env(safe-area-inset-top) + ${pullPx}px)` }}>
         <div className="space-y-3">
           {/* Back to communities (parent) + Search */}
           <div className="flex items-center gap-2">
@@ -867,8 +867,8 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Bottom navigation bar - floating */}
-      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-[100] w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/95 backdrop-blur shadow-lg pointer-events-auto" style={{ marginBottom: 'env(safe-area-inset-bottom)' }}>
+      {/* Bottom navigation bar - fixed at bottom */}
+      <div className="fixed bottom-0 left-1/2 transform -translate-x-1/2 z-[100] w-full max-w-[1200px] rounded-t-2xl border-t border-x border-white/10 bg-black/95 backdrop-blur shadow-lg pointer-events-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
           <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
             <i className="fa-solid fa-house" />
@@ -908,10 +908,10 @@ export default function CommunityFeed() {
         </div>
       </div>
 
-      {/* Bottom sheet for More */}
+      {/* Bottom sheet for More - appears above bottom nav */}
       {moreOpen && (
-        <div className="fixed inset-0 z-[95] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
-          <div className="w-[75%] max-w-sm mr-2 mb-2 bg-black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0">
+        <div className="fixed inset-0 z-[110] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
+          <div className="w-[75%] max-w-sm mr-2 bg-black/95 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0" style={{ marginBottom: 'calc(70px + env(safe-area-inset-bottom))' }}>
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/key_posts`) }}>
               Key Posts
             </button>
