@@ -32,9 +32,10 @@ plugins: {
 
 ### 3. Initialized Keyboard in App
 **File: `client/src/App.tsx`**
-- Imported Keyboard plugin
+- Used dynamic import for Keyboard plugin (to avoid TypeScript errors on web)
 - Added initialization useEffect
 - Configured keyboard accessory bar and scroll behavior
+- Gracefully handles web environment where plugin is unavailable
 
 ### 4. Fixed Touch Handling in ChatThread
 **File: `client/src/pages/ChatThread.tsx`**
@@ -124,6 +125,12 @@ Test these scenarios:
 - Smooth keyboard animations
 
 ## Troubleshooting
+
+### TypeScript Error: "Cannot find module '@capacitor/keyboard'"
+**Solution:** The code uses dynamic imports, so TypeScript errors should be resolved. If you still see errors:
+1. Run `npm install` in the client directory
+2. The plugin will be installed but only used on native platforms
+3. On web, the dynamic import will gracefully fail (expected behavior)
 
 ### If keyboard still doesn't show:
 1. Check Safari console for errors (use Safari DevTools)
