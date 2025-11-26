@@ -99,7 +99,7 @@ export default function ChatThread(){
 
   const viewportStyles = useMemo<CSSProperties>(() => {
     const positionStyles = isIOS
-      ? { position: 'relative' as const, overflow: 'hidden' as const }
+      ? { position: 'relative' as const, overflow: 'visible' as const }
       : { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0 }
     return {
       height: '100dvh',
@@ -1404,17 +1404,19 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
 
       {/* Composer - flex child at bottom */}
       <div 
-        className="bg-black px-2 sm:px-3 pb-4 pt-3 border-t border-white/10 flex-shrink-0" 
+        className="bg-red-500 px-2 sm:px-3 pb-4 pt-3 border-t border-white/10 flex-shrink-0" 
+        onClick={() => console.log('🎯 COMPOSER CONTAINER CLICKED!')}
+        onTouchStart={(e) => {
+          console.log('🎯 COMPOSER CONTAINER TOUCHED!')
+          console.log('Touch coords:', e.touches[0].clientX, e.touches[0].clientY)
+        }}
         style={{ 
-          zIndex: 200, 
-          position: isIOS ? 'fixed' : 'relative', 
-          bottom: isIOS ? 'env(safe-area-inset-bottom, 0px)' : 0,
-          left: 0,
-          right: 0,
+          zIndex: 10000, 
+          position: 'relative', 
           pointerEvents: 'auto',
           touchAction: 'manipulation',
           WebkitTapHighlightColor: 'transparent',
-          marginBottom: isIOS ? '8px' : 0
+          minHeight: '80px'
         }}
       >
         <div className="max-w-3xl mx-auto">
