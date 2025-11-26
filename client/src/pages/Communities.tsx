@@ -220,8 +220,11 @@ export default function Communities(){
     <div className="min-h-screen bg-black text-white relative pb-safe">
       {/* Global header used from App */}
 
-      {/* Secondary nav like X */}
-      <div className="sticky left-0 right-0 top-0 h-10 bg-black/95 backdrop-blur z-40" style={{ top: 'calc(env(safe-area-inset-top) + 56px)' }}>
+      {/* Secondary nav like X - fixed below global header */}
+      <div 
+        className="fixed left-0 right-0 h-12 bg-black/95 backdrop-blur z-40 border-b border-white/5" 
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 56px)' }}
+      >
         <div className="max-w-2xl mx-auto h-full flex items-center">
           <button
             type="button"
@@ -277,7 +280,7 @@ export default function Communities(){
       {/* Slide-out menu (90% width) same as feed */}
       {/* Menu unified via HeaderBar */}
 
-      <div className="max-w-2xl mx-auto pb-6 px-3" style={{ paddingTop: 'calc(56px + 40px + env(safe-area-inset-top) + 10px)' }}>
+      <div className="max-w-2xl mx-auto pb-6 px-3" style={{ paddingTop: 'calc(56px + 48px + env(safe-area-inset-top, 0px) + 16px)' }}>
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (
