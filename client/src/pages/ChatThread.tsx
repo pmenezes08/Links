@@ -1195,7 +1195,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
           paddingTop: '56px',
-          paddingBottom: isIOS ? '120px' : '8px'
+          paddingBottom: '8px'
         }}
         onScroll={(e)=> {
           const el = e.currentTarget
@@ -1402,48 +1402,14 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* DEBUG: Full screen red overlay to test if ANYTHING renders */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: '200px',
-          backgroundColor: 'red',
-          zIndex: 99999,
-          pointerEvents: 'auto',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '24px',
-          fontWeight: 'bold',
-          color: 'white'
-        }}
-        onClick={() => console.log('🎯 RED OVERLAY CLICKED!')}
-        onTouchStart={(e) => {
-          console.log('🎯 RED OVERLAY TOUCHED!')
-          console.log('Touch coords:', e.touches[0].clientX, e.touches[0].clientY)
-        }}
-      >
-        TAP HERE - COMPOSE BAR TEST
-      </div>
-      
       {/* Composer - flex child at bottom */}
       <div 
-        className="bg-blue-500 px-2 sm:px-3 pb-4 pt-3 border-t border-white/10 flex-shrink-0" 
-        onClick={() => console.log('🎯 COMPOSER CONTAINER CLICKED!')}
-        onTouchStart={(e) => {
-          console.log('🎯 COMPOSER CONTAINER TOUCHED!')
-          console.log('Touch coords:', e.touches[0].clientX, e.touches[0].clientY)
-        }}
+        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 flex-shrink-0" 
         style={{ 
-          zIndex: 10000, 
           position: 'relative', 
           pointerEvents: 'auto',
           touchAction: 'manipulation',
-          WebkitTapHighlightColor: 'transparent',
-          minHeight: '80px'
+          WebkitTapHighlightColor: 'transparent'
         }}
       >
         <div className="max-w-3xl mx-auto">
@@ -1470,11 +1436,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             {/* Attachment button */}
             <button 
               className="w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20 transition-colors"
-              onClick={() => {
-                console.log('✅ Attachment button clicked!')
-                setShowAttachMenu(!showAttachMenu)
-              }}
-              onTouchStart={() => console.log('✅ Attachment button touched!')}
+              onClick={() => setShowAttachMenu(!showAttachMenu)}
               style={{
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent'
@@ -1571,7 +1533,6 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           <div 
             className="flex-1 flex items-center bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative"
             style={{
-              minHeight: '48px',
               touchAction: 'manipulation',
               WebkitTapHighlightColor: 'transparent'
             }}
@@ -1605,21 +1566,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 autoCapitalize="sentences"
                 spellCheck="true"
                 onPaste={handlePaste}
-                onFocus={() => {
-                  console.log('✅ Textarea focused!')
-                }}
                 onClick={(e) => {
-                  console.log('✅ Textarea clicked!')
                   // iOS fix: ensure textarea gets focus on tap
                   e.currentTarget.focus()
                 }}
                 onTouchStart={(e) => {
-                  console.log('✅ Textarea touch started!')
                   // iOS fix: ensure touch events are recognized
                   e.stopPropagation()
-                }}
-                onTouchEnd={() => {
-                  console.log('✅ Textarea touch ended!')
                 }}
                 onChange={e=> {
                   setDraft(e.target.value)
@@ -1704,11 +1657,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                   {MIC_ENABLED && (
                   <button
                     className="w-9 h-9 flex items-center justify-center text-white/70"
-                    onClick={() => {
-                      console.log('✅ Microphone button clicked!')
-                      checkMicrophonePermission()
-                    }}
-                    onTouchStart={() => console.log('✅ Microphone button touched!')}
+                    onClick={checkMicrophonePermission}
                     aria-label="Start voice message"
                     style={{
                       touchAction: 'manipulation',
