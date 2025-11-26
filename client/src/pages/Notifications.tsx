@@ -127,13 +127,13 @@ export default function Notifications(){
 
   if (loading || !items) return (
     <div className="min-h-screen bg-black text-white pb-safe">
-      <div className="max-w-xl mx-auto p-3 pt-3 pb-20 text-[#9fb0b5]">Loading…</div>
+      <div className="max-w-xl mx-auto px-3 pb-20 text-[#9fb0b5]" style={{ paddingTop: 'calc(70px + env(safe-area-inset-top))' }}>Loading…</div>
     </div>
   )
 
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
-      <div className="max-w-xl mx-auto p-3 pt-3 pb-20">
+      <div className="max-w-xl mx-auto px-3 pb-20" style={{ paddingTop: 'calc(70px + env(safe-area-inset-top))' }}>
         <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
           <div className="text-lg font-semibold">Notifications</div>
           <div className="flex items-center gap-2">
