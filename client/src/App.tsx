@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Keyboard } from '@capacitor/keyboard'
 import ErrorBoundary from './components/ErrorBoundary'
 import MobileLogin from './pages/MobileLogin'
 import PremiumDashboard from './pages/PremiumDashboard'
@@ -175,6 +176,22 @@ function AppRoutes(){
   useEffect(() => {
     loadProfile(locationRef.current)
   }, [loadProfile])
+
+  // Initialize Keyboard plugin for iOS
+  useEffect(() => {
+    const initKeyboard = async () => {
+      try {
+        // Configure keyboard behavior for native iOS
+        await Keyboard.setAccessoryBarVisible({ isVisible: true })
+        await Keyboard.setScroll({ isDisabled: false })
+        console.log('⌨️ Keyboard plugin initialized')
+      } catch (error) {
+        // Keyboard plugin only works on native platforms, will fail on web
+        console.log('⌨️ Keyboard plugin not available (web or error):', error)
+      }
+    }
+    initKeyboard()
+  }, [])
 
   useEffect(() => {
     if (profileData) {

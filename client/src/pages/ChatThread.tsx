@@ -1439,6 +1439,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             <button 
               className="w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20 transition-colors"
               onClick={() => setShowAttachMenu(!showAttachMenu)}
+              style={{
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent'
+              }}
             >
               <i className={`fa-solid text-white/70 text-base sm:text-lg transition-transform duration-200 ${
                 showAttachMenu ? 'fa-times rotate-90' : 'fa-plus'
@@ -1450,9 +1454,18 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             <>
               <div 
                 className="fixed inset-0 z-40" 
-                onClick={() => setShowAttachMenu(false)} 
+                onClick={() => setShowAttachMenu(false)}
+                style={{ 
+                  pointerEvents: 'auto',
+                  touchAction: 'manipulation'
+                }}
               />
-              <div className="absolute bottom-12 left-0 z-50 bg-[#1a1a1a] border border-white/20 rounded-2xl shadow-xl overflow-hidden min-w-[180px]">
+              <div 
+                className="absolute bottom-12 left-0 z-50 bg-[#1a1a1a] border border-white/20 rounded-2xl shadow-xl overflow-hidden min-w-[180px]"
+                style={{
+                  touchAction: 'manipulation'
+                }}
+              >
                 <button
                   className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
                   onClick={handlePhotoSelect}
@@ -1545,6 +1558,14 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 placeholder="Message"
                 value={draft}
                 onPaste={handlePaste}
+                onClick={(e) => {
+                  // iOS fix: ensure textarea gets focus on tap
+                  e.currentTarget.focus()
+                }}
+                onTouchStart={(e) => {
+                  // iOS fix: ensure touch events are recognized
+                  e.stopPropagation()
+                }}
                 onChange={e=> {
                   setDraft(e.target.value)
                   fetch('/api/typing', { 
@@ -1566,19 +1587,35 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 style={{
                   lineHeight: '1.4',
                   scrollbarWidth: 'none',
-                  msOverflowStyle: 'none'
+                  msOverflowStyle: 'none',
+                  WebkitUserSelect: 'text',
+                  userSelect: 'text',
+                  touchAction: 'manipulation',
+                  pointerEvents: 'auto',
+                  zIndex: 1
                 }}
               />
             )}
             
             {/* Mic + Send - Conditional based on recording state */}
-            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
+            <div 
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2"
+              style={{ 
+                pointerEvents: 'auto',
+                zIndex: 2,
+                touchAction: 'manipulation'
+              }}
+            >
               {/* When recording: Show STOP + visualizer (consistent with posts) */}
               {MIC_ENABLED && recording ? (
                 <button
                   className="w-9 h-9 rounded-full flex items-center justify-center bg-[#4db6ac] text-white"
                   onClick={stopVoiceRecording}
                   aria-label="Stop recording"
+                  style={{
+                    touchAction: 'manipulation',
+                    WebkitTapHighlightColor: 'transparent'
+                  }}
                 >
                   <i className="fa-solid fa-stop text-sm" />
                 </button>
@@ -1596,6 +1633,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                     onClick={draft.trim() ? send : undefined}
                     disabled={sending || !draft.trim()}
                     aria-label="Send"
+                    style={{
+                      touchAction: 'manipulation',
+                      WebkitTapHighlightColor: 'transparent'
+                    }}
                   >
                     {sending ? (
                       <i className="fa-solid fa-spinner fa-spin text-xs" />
@@ -1610,6 +1651,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                     className="w-9 h-9 flex items-center justify-center text-white/70"
                     onClick={checkMicrophonePermission}
                     aria-label="Start voice message"
+                    style={{
+                      touchAction: 'manipulation',
+                      WebkitTapHighlightColor: 'transparent'
+                    }}
                   >
                     <i className="fa-solid fa-microphone text-lg" />
                   </button>

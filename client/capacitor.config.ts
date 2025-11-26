@@ -17,6 +17,13 @@ const config: CapacitorConfig = {
     preferredContentMode: 'mobile',
     backgroundColor: appBackground,
   },
+  plugins: {
+    Keyboard: {
+      resize: 'native',
+      style: 'dark',
+      resizeOnFullScreen: true,
+    },
+  },
 };
 
 export default config;
