@@ -1086,7 +1086,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         left: 0,
         right: 0,
         bottom: 0,
-        paddingTop: '3.5rem'
+        paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)'
       }}
     >
       {/* Chat header (fixed below global header for iOS focus stability) */}
@@ -1097,7 +1098,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
           zIndex: 10010,
           position: 'fixed',
-          top: '56px',
+          top: 'calc(56px + env(safe-area-inset-top, 0px))',
           left: 0,
           right: 0,
           minHeight: '3.5rem',
@@ -1165,7 +1166,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         <div 
           className="fixed left-1/2 z-50 pointer-events-none"
           style={{ 
-            top: '7rem',
+            top: 'calc(7rem + env(safe-area-inset-top, 0px))',
             transform: `translateX(-50%) translateY(${showDateFloat ? '0' : '-10px'})`,
             opacity: showDateFloat ? 1 : 0,
             transition: 'all 0.3s ease-in-out'
@@ -1185,7 +1186,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
           paddingTop: '56px',
-          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 6rem)'
+          paddingBottom: '1rem'
         }}
         onScroll={(e)=> {
           const el = e.currentTarget
@@ -1383,7 +1384,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         
         {showScrollDown && (
           <button
-            className="fixed bottom-24 right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
+            className="fixed right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
+            style={{ bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
             aria-label="Scroll to latest"
           >
@@ -1393,7 +1395,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       </div>
 
       {/* Composer */}
-      <div className="bg-black px-3 py-2 border-t border-white/10 flex-shrink-0" style={{ marginBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)', position:'sticky', bottom:0, zIndex:10005 }}>
+      <div className="bg-black px-3 py-2 border-t border-white/10 flex-shrink-0" style={{ zIndex: 10005 }}>
         {replyTo && (
           <div className="mb-2 px-3 py-2 bg-[#1a1a1a] rounded-lg border-l-4 border-[#4db6ac]">
             <div className="flex items-center justify-between mb-1">
