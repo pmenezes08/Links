@@ -32,10 +32,12 @@ plugins: {
 
 ### 3. Initialized Keyboard in App
 **File: `client/src/App.tsx`**
-- Used dynamic import for Keyboard plugin (to avoid TypeScript errors on web)
+- Used dynamic import with type assertion (`as any`) for Keyboard plugin
+- Checks if running on native platform before loading plugin
 - Added initialization useEffect
 - Configured keyboard accessory bar and scroll behavior
 - Gracefully handles web environment where plugin is unavailable
+- Type assertion prevents TypeScript compile-time errors for optional dependency
 
 ### 4. Fixed Touch Handling in ChatThread
 **File: `client/src/pages/ChatThread.tsx`**
@@ -127,10 +129,15 @@ Test these scenarios:
 ## Troubleshooting
 
 ### TypeScript Error: "Cannot find module '@capacitor/keyboard'"
-**Solution:** The code uses dynamic imports, so TypeScript errors should be resolved. If you still see errors:
-1. Run `npm install` in the client directory
-2. The plugin will be installed but only used on native platforms
-3. On web, the dynamic import will gracefully fail (expected behavior)
+**Solution:** The code uses dynamic imports with type assertion (`as any`), which tells TypeScript to skip compile-time checking for this optional dependency:
+```typescript
+const keyboardModule = await import('@capacitor/keyboard' as any)
+```
+This is the correct approach for optional platform-specific dependencies:
+1. The plugin is installed via `npm install` (in package.json)
+2. On native platforms: Plugin loads and initializes successfully
+3. On web: Import gracefully fails (caught by try-catch)
+4. TypeScript won't complain about missing module at compile time
 
 ### If keyboard still doesn't show:
 1. Check Safari console for errors (use Safari DevTools)
