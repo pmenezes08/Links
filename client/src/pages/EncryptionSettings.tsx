@@ -69,7 +69,7 @@ export default function EncryptionSettings() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-[#1a2f2a] to-gray-900 text-white pb-20">
-      <div className="max-w-2xl mx-auto p-6 pt-4">
+      <div className="max-w-2xl mx-auto px-6 pb-6" style={{ paddingTop: 'calc(70px + env(safe-area-inset-top))' }}>
         
         {/* Header */}
         <div className="mb-8">

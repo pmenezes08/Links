@@ -50,7 +50,7 @@ export default function AccountSecurity() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+      <div className="max-w-2xl mx-auto px-4 pb-6 space-y-4" style={{ paddingTop: 'calc(70px + env(safe-area-inset-top))' }}>
         <button
           type="button"
           className="inline-flex items-center gap-2 text-sm text-[#9fb0b5] hover:text-white"
@@ -69,7 +69,7 @@ export default function AccountSecurity() {
             </p>
           </div>
 
-          <div className="flex gap-2 rounded-full border border-white/10 bg-white/5 p-1">
+          <div className="flex gap-1 rounded-full border border-white/10 bg-white/5 p-1 overflow-hidden">
             {[
               { key: 'security', label: 'Security' },
               { key: 'encryption', label: 'Encryption' },
@@ -80,8 +80,8 @@ export default function AccountSecurity() {
                 <button
                   key={tab.key}
                   type="button"
-                  className={`flex-1 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] transition ${
-                    isActive ? 'bg-white text-black' : 'text-white/70'
+                  className={`flex-1 min-w-0 rounded-full px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition truncate ${
+                    isActive ? 'bg-white text-black' : 'text-white/70 hover:text-white'
                   }`}
                   onClick={() => setActiveTab(tab.key as typeof activeTab)}
                 >

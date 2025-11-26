@@ -121,7 +121,7 @@ export default function AccountSettings(){
 
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
-      <div className="max-w-2xl mx-auto px-4 py-6 pt-4 pb-32">
+      <div className="max-w-2xl mx-auto px-4 pb-32" style={{ paddingTop: 'calc(70px + env(safe-area-inset-top))' }}>
         {message && (
           <div
             className={`mb-6 rounded-lg border p-4 ${
