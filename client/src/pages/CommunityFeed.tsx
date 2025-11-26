@@ -867,14 +867,17 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Bottom navigation bar - fixed at bottom */}
-      <div className="fixed bottom-0 left-1/2 transform -translate-x-1/2 z-[100] w-full max-w-[1200px] rounded-t-2xl border-t border-x border-white/10 bg-black/95 backdrop-blur shadow-lg pointer-events-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <i className="fa-solid fa-house" />
+      {/* Bottom navigation bar - fixed at bottom like WhatsApp */}
+      <div 
+        className="fixed bottom-0 left-0 right-0 z-[100] bg-black/95 backdrop-blur shadow-lg border-t border-white/10" 
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
+      >
+        <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc] max-w-[1200px] mx-auto">
+          <button className="p-3 rounded-full hover:bg-white/5 active:bg-white/10" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <i className="fa-solid fa-house text-lg" />
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
-            <i className="fa-solid fa-users" />
+          <button className="p-3 rounded-full hover:bg-white/5 active:bg-white/10" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
+            <i className="fa-solid fa-users text-lg" />
           </button>
           <button 
             className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
@@ -896,14 +899,14 @@ export default function CommunityFeed() {
           >
             <i className="fa-solid fa-plus" />
           </button>
-          <button className="relative p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
+          <button className="relative p-3 rounded-full hover:bg-white/5 active:bg-white/10" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
             <span className="relative inline-block">
-              <i className="fa-solid fa-bullhorn" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
+              <i className="fa-solid fa-bullhorn text-lg" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
               {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
             </span>
           </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
-            <i className="fa-solid fa-ellipsis" />
+          <button className="p-3 rounded-full hover:bg-white/5 active:bg-white/10" aria-label="More" onClick={()=> setMoreOpen(true)}>
+            <i className="fa-solid fa-ellipsis text-lg" />
           </button>
         </div>
       </div>
