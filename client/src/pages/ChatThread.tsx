@@ -1402,9 +1402,36 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
+      {/* DEBUG: Full screen red overlay to test if ANYTHING renders */}
+      <div
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: '200px',
+          backgroundColor: 'red',
+          zIndex: 99999,
+          pointerEvents: 'auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '24px',
+          fontWeight: 'bold',
+          color: 'white'
+        }}
+        onClick={() => console.log('🎯 RED OVERLAY CLICKED!')}
+        onTouchStart={(e) => {
+          console.log('🎯 RED OVERLAY TOUCHED!')
+          console.log('Touch coords:', e.touches[0].clientX, e.touches[0].clientY)
+        }}
+      >
+        TAP HERE - COMPOSE BAR TEST
+      </div>
+      
       {/* Composer - flex child at bottom */}
       <div 
-        className="bg-red-500 px-2 sm:px-3 pb-4 pt-3 border-t border-white/10 flex-shrink-0" 
+        className="bg-blue-500 px-2 sm:px-3 pb-4 pt-3 border-t border-white/10 flex-shrink-0" 
         onClick={() => console.log('🎯 COMPOSER CONTAINER CLICKED!')}
         onTouchStart={(e) => {
           console.log('🎯 COMPOSER CONTAINER TOUCHED!')
