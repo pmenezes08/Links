@@ -138,9 +138,29 @@ def send_fcm_notification(
         return False
 
 
+def is_apns_token(token: str) -> bool:
+    """
+    Check if a token looks like a native APNs token (64 hex characters).
+    FCM tokens are typically 150+ characters and contain colons.
+    """
+    if not token:
+        return False
+    token = token.strip()
+    # APNs tokens are exactly 64 hex characters
+    if len(token) == 64:
+        try:
+            int(token, 16)  # Validates it's all hex
+            return True
+        except ValueError:
+            pass
+    return False
+
+
 def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] = None) -> int:
     """
-    Send FCM notification to all devices registered for a user.
+    Send push notification to all devices registered for a user.
+    
+    Tries FCM first, then falls back to direct APNs for iOS tokens.
     
     Args:
         username: User to send notification to
@@ -152,39 +172,87 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
         Number of notifications sent successfully
     """
     from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
+    from backend.services.notifications import send_apns_notification
+    
+    sent_count = 0
     
     try:
-        # Get user's FCM tokens
         conn = get_db_connection()
         cursor = conn.cursor()
         ph = get_sql_placeholder()
         
+        # Get user's FCM tokens
         cursor.execute(
-            f"SELECT token FROM fcm_tokens WHERE username = {ph} AND is_active = 1",
+            f"SELECT token, platform FROM fcm_tokens WHERE username = {ph} AND is_active = 1",
             (username,)
         )
-        tokens = cursor.fetchall()
+        fcm_tokens = cursor.fetchall()
+        
+        # Also check native_push_tokens table for direct APNs tokens
+        try:
+            cursor.execute(
+                f"SELECT token, platform FROM native_push_tokens WHERE username = {ph} AND is_active = 1",
+                (username,)
+            )
+            native_tokens = cursor.fetchall()
+        except Exception:
+            native_tokens = []
+        
         cursor.close()
         conn.close()
         
-        if not tokens:
-            logger.debug(f"No FCM tokens for user {username}")
+        # Combine and deduplicate tokens
+        all_tokens = {}
+        for row in (fcm_tokens or []):
+            token = row[0] if isinstance(row, (list, tuple)) else row.get('token', row[0])
+            platform = row[1] if isinstance(row, (list, tuple)) else row.get('platform', 'ios')
+            all_tokens[token] = platform
+        
+        for row in (native_tokens or []):
+            token = row[0] if isinstance(row, (list, tuple)) else row.get('token', row[0])
+            platform = row[1] if isinstance(row, (list, tuple)) else row.get('platform', 'ios')
+            if token not in all_tokens:
+                all_tokens[token] = platform
+        
+        if not all_tokens:
+            logger.debug(f"No push tokens for user {username}")
             return 0
         
+        logger.info(f"📱 Sending push to {username}: {len(all_tokens)} token(s)")
+        
         # Send to each token
-        sent_count = 0
-        for token_row in tokens:
-            token = token_row[0]
-            if send_fcm_notification(token, title, body, data):
-                sent_count += 1
+        for token, platform in all_tokens.items():
+            token_preview = token[:16] + "..." if len(token) > 16 else token
+            
+            # Check if this is a native APNs token (64 hex chars)
+            if is_apns_token(token):
+                logger.info(f"📱 Token {token_preview} is APNs format, sending via APNs HTTP/2")
+                try:
+                    send_apns_notification(token, title, body, data)
+                    sent_count += 1
+                except Exception as e:
+                    logger.error(f"APNs send failed for {token_preview}: {e}")
+            else:
+                # Try FCM first
+                logger.info(f"📱 Token {token_preview} is FCM format, sending via Firebase")
+                if send_fcm_notification(token, title, body, data):
+                    sent_count += 1
+                elif platform == 'ios':
+                    # FCM failed, try APNs as fallback for iOS
+                    logger.info(f"📱 FCM failed, trying APNs fallback for {token_preview}")
+                    try:
+                        send_apns_notification(token, title, body, data)
+                        sent_count += 1
+                    except Exception as e:
+                        logger.error(f"APNs fallback also failed for {token_preview}: {e}")
         
         if sent_count > 0:
-            logger.info(f"Sent {sent_count} FCM notifications to {username}")
+            logger.info(f"✅ Sent {sent_count} notification(s) to {username}")
         
         return sent_count
         
     except Exception as e:
-        logger.error(f"Error sending FCM to {username}: {e}")
+        logger.error(f"Error sending push to {username}: {e}")
         return 0
 
 
@@ -192,5 +260,6 @@ __all__ = [
     'initialize_firebase',
     'send_fcm_notification',
     'send_fcm_to_user',
+    'is_apns_token',
     'FIREBASE_AVAILABLE',
 ]

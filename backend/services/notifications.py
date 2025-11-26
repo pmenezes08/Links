@@ -33,7 +33,9 @@ APNS_KEY_PATH = os.getenv("APNS_KEY_PATH")
 APNS_KEY_ID = os.getenv("APNS_KEY_ID")
 APNS_TEAM_ID = os.getenv("APNS_TEAM_ID")
 APNS_BUNDLE_ID = os.getenv("APNS_BUNDLE_ID", "co.cpoint.app")
-APNS_USE_SANDBOX = os.getenv("APNS_USE_SANDBOX", "true").strip().lower() == "true"
+# Default to production for App Store/TestFlight builds
+# Set APNS_USE_SANDBOX=true for Xcode debug builds only
+APNS_USE_SANDBOX = os.getenv("APNS_USE_SANDBOX", "false").strip().lower() == "true"
 _APNS_JWT_TOKEN = None
 _APNS_JWT_EXPIRY = None
 _APNS_TOKEN_LOCK = Lock()

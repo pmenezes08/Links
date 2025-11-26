@@ -14,7 +14,9 @@ from backend.services.database import USE_MYSQL, get_db_connection, get_sql_plac
 
 logger = logging.getLogger(__name__)
 
-APNS_USE_SANDBOX = os.getenv("APNS_USE_SANDBOX", "true").lower() in {"1", "true", "yes", "sandbox"}
+# Default to production for App Store/TestFlight builds
+# Set APNS_USE_SANDBOX=true for Xcode debug builds only
+APNS_USE_SANDBOX = os.getenv("APNS_USE_SANDBOX", "false").lower() in {"1", "true", "yes", "sandbox"}
 DEFAULT_APNS_ENVIRONMENT = "sandbox" if APNS_USE_SANDBOX else "production"
 APNS_BUNDLE_ID = os.getenv("APNS_BUNDLE_ID", "co.cpoint.app")
 

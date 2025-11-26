@@ -76,8 +76,11 @@ def welcome():
 
 @public_bp.route("/api/push/register_fcm", methods=["POST"])
 def register_fcm_token():
-    """Register a Firebase Cloud Messaging token."""
+    """Register a push notification token (FCM or native APNs)."""
     from backend.services.database import get_db_connection, get_sql_placeholder, USE_MYSQL
+    from backend.services.firebase_notifications import is_apns_token
+    
+    logger = current_app.logger
     
     try:
         data = request.get_json()
@@ -91,11 +94,18 @@ def register_fcm_token():
         # Get username if logged in
         username = session.get("username")
         
-        # Insert or update FCM token
+        # Detect token type
+        is_native_apns = is_apns_token(token)
+        token_type = "APNs" if is_native_apns else "FCM"
+        
+        logger.info(f"📱 Registering {token_type} token for {username or 'anonymous'}")
+        logger.info(f"   Token: {token[:20]}... ({len(token)} chars)")
+        
         conn = get_db_connection()
         cursor = conn.cursor()
         ph = get_sql_placeholder()
         
+        # Always store in fcm_tokens table (main table for all push tokens)
         if USE_MYSQL:
             cursor.execute(f"""
                 INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
@@ -119,15 +129,46 @@ def register_fcm_token():
                     is_active=1
             """, (token, username, platform, device_name))
         
+        # If it's an APNs token, also store in native_push_tokens for direct APNs sending
+        if is_native_apns and platform == 'ios':
+            logger.info(f"   Also storing in native_push_tokens for direct APNs")
+            try:
+                if USE_MYSQL:
+                    cursor.execute(f"""
+                        INSERT INTO native_push_tokens (token, username, platform, environment, bundle_id, device_name, last_seen, is_active)
+                        VALUES ({ph}, {ph}, {ph}, 'production', 'co.cpoint.app', {ph}, NOW(), 1)
+                        ON DUPLICATE KEY UPDATE
+                            username=IFNULL(VALUES(username), username),
+                            device_name=VALUES(device_name),
+                            last_seen=NOW(),
+                            is_active=1
+                    """, (token, username, platform, device_name))
+                else:
+                    cursor.execute("""
+                        INSERT INTO native_push_tokens (token, username, platform, environment, bundle_id, device_name, last_seen, is_active)
+                        VALUES (?, ?, ?, 'production', 'co.cpoint.app', ?, datetime('now'), 1)
+                        ON CONFLICT(token) DO UPDATE SET
+                            username=COALESCE(excluded.username, username),
+                            device_name=excluded.device_name,
+                            last_seen=excluded.last_seen,
+                            is_active=1
+                    """, (token, username, platform, device_name))
+            except Exception as e:
+                logger.warning(f"Could not store in native_push_tokens: {e}")
+        
         conn.commit()
         cursor.close()
         conn.close()
         
-        logger.info(f"Registered FCM token for {username or 'anonymous'}")
-        return jsonify({"success": True, "message": "FCM token registered"})
+        logger.info(f"✅ {token_type} token registered for {username or 'anonymous'}")
+        return jsonify({
+            "success": True, 
+            "message": f"{token_type} token registered",
+            "token_type": token_type.lower()
+        })
         
     except Exception as e:
-        logger.error(f"FCM token registration error: {e}")
+        logger.error(f"Token registration error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
