@@ -8,6 +8,7 @@ import UserNotifications
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
+    private let serverURL = "https://www.c-point.co"
     
     override init() {
         super.init()
@@ -20,11 +21,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // CRITICAL DEBUG - This MUST show up
         NSLog("========================================")
         NSLog("CPOINT APP DELEGATE LAUNCHED!!!")
-        NSLog("BUILD 36 - ENHANCED LOGGING ACTIVE")
+        NSLog("BUILD 37 - DIRECT TOKEN REGISTRATION")
         NSLog("========================================")
         print("🚀 App launching...")
         
-        // 1. Initialize Firebase
+        // 1. Initialize Firebase (optional - for FCM token conversion)
         FirebaseApp.configure()
         NSLog("Firebase configured")
         print("✅ Firebase configured")
@@ -68,12 +69,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         
         NSLog("🟢🟢🟢 APNS TOKEN RECEIVED 🟢🟢🟢")
         NSLog("Token: %@", tokenString)
+        NSLog("Token length: %d characters", tokenString.count)
         print("✅ APNs device token received: \(tokenString)")
         
         // Pass to Firebase Messaging (Firebase will convert APNs token → FCM token)
         Messaging.messaging().apnsToken = deviceToken
         NSLog("Token passed to Firebase Messaging")
         print("✅ APNs token passed to Firebase Messaging")
+        
+        // ALSO send APNs token directly to server (in case Firebase/Capacitor bridge fails)
+        sendTokenToServer(token: tokenString, tokenType: "apns")
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
@@ -82,6 +87,57 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         print("❌ Failed to register for remote notifications!")
         print("❌ Error: \(error)")
         print("❌ Error localized: \(error.localizedDescription)")
+    }
+    
+    // MARK: - Direct Token Registration to Server
+    
+    private func sendTokenToServer(token: String, tokenType: String) {
+        NSLog("📤 Sending %@ token directly to server...", tokenType)
+        
+        guard let url = URL(string: "\(serverURL)/api/push/register_fcm") else {
+            NSLog("❌ Invalid server URL")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "token": token,
+            "platform": "ios",
+            "device_name": UIDevice.current.name,
+            "token_type": tokenType
+        ]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            NSLog("❌ Failed to serialize token request: %@", error.localizedDescription)
+            return
+        }
+        
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                NSLog("❌ Failed to send token to server: %@", error.localizedDescription)
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                NSLog("📤 Server response status: %d", httpResponse.statusCode)
+                
+                if httpResponse.statusCode == 200 {
+                    NSLog("✅✅✅ TOKEN REGISTERED WITH SERVER ✅✅✅")
+                    print("✅ Token successfully registered with server!")
+                } else {
+                    NSLog("⚠️ Server returned status %d", httpResponse.statusCode)
+                    if let data = data, let responseStr = String(data: data, encoding: .utf8) {
+                        NSLog("Server response: %@", responseStr)
+                    }
+                }
+            }
+        }
+        task.resume()
     }
 
     // MARK: - Capacitor Deep Links
@@ -155,5 +211,53 @@ extension AppDelegate: MessagingDelegate {
         
         NSLog("FCM token posted to NotificationCenter")
         print("✅ FCM token posted to NotificationCenter")
+        
+        // ALSO send FCM token directly to server
+        sendFCMTokenToServer(token: token)
+    }
+    
+    private func sendFCMTokenToServer(token: String) {
+        NSLog("📤 Sending FCM token directly to server...")
+        
+        guard let url = URL(string: "https://www.c-point.co/api/push/register_fcm") else {
+            NSLog("❌ Invalid server URL")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: Any] = [
+            "token": token,
+            "platform": "ios",
+            "device_name": UIDevice.current.name,
+            "token_type": "fcm"
+        ]
+        
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } catch {
+            NSLog("❌ Failed to serialize FCM token request: %@", error.localizedDescription)
+            return
+        }
+        
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                NSLog("❌ Failed to send FCM token to server: %@", error.localizedDescription)
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                NSLog("📤 FCM token server response: %d", httpResponse.statusCode)
+                
+                if httpResponse.statusCode == 200 {
+                    NSLog("✅✅✅ FCM TOKEN REGISTERED WITH SERVER ✅✅✅")
+                } else {
+                    NSLog("⚠️ FCM token registration returned status %d", httpResponse.statusCode)
+                }
+            }
+        }
+        task.resume()
     }
 }
