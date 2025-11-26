@@ -204,13 +204,23 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
         # Combine and deduplicate tokens
         all_tokens = {}
         for row in (fcm_tokens or []):
-            token = row[0] if isinstance(row, (list, tuple)) else row.get('token', row[0])
-            platform = row[1] if isinstance(row, (list, tuple)) else row.get('platform', 'ios')
+            # Handle both tuple and dict-like rows
+            if hasattr(row, 'keys'):
+                token = row['token']
+                platform = row['platform']
+            else:
+                token = row[0]
+                platform = row[1]
             all_tokens[token] = platform
         
         for row in (native_tokens or []):
-            token = row[0] if isinstance(row, (list, tuple)) else row.get('token', row[0])
-            platform = row[1] if isinstance(row, (list, tuple)) else row.get('platform', 'ios')
+            # Handle both tuple and dict-like rows
+            if hasattr(row, 'keys'):
+                token = row['token']
+                platform = row['platform']
+            else:
+                token = row[0]
+                platform = row[1]
             if token not in all_tokens:
                 all_tokens[token] = platform
         
