@@ -5,20 +5,35 @@ The message compose bar in ChatThread.tsx was completely unresponsive on iOS nat
 - Clicking on textarea didn't show keyboard
 - Plus (+) button wasn't working
 - Microphone button wasn't responding
+- Touch events were not being registered at all
 
-## Root Causes
-1. **Missing Keyboard Plugin** - Capacitor Keyboard plugin was not installed
-2. **Touch Event Conflicts** - iOS WebView wasn't properly handling touch events
-3. **Z-index Issues** - Absolute positioned buttons were blocking textarea touches
-4. **Missing iOS-specific touch properties** - WebKit properties not configured
+## Root Cause ✅ SOLVED!
+**The compose bar was hidden due to `overflow: 'hidden'` on the parent container!**
+
+The iOS viewport had `overflow: 'hidden'` which was clipping the compose bar and preventing touch events from reaching it. Changing to `overflow: 'visible'` fixed the issue completely.
 
 ## Changes Made
 
-### 1. Added Capacitor Keyboard Plugin
+### 1. **CRITICAL FIX: Changed Viewport Overflow** 🎯
+**File: `client/src/pages/ChatThread.tsx`**
+
+Changed iOS viewport from `overflow: 'hidden'` to `overflow: 'visible'`:
+
+```typescript
+const viewportStyles = useMemo<CSSProperties>(() => {
+  const positionStyles = isIOS
+    ? { position: 'relative' as const, overflow: 'visible' as const } // ✅ Changed from 'hidden'
+    : { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0 }
+  // ...
+}, [isIOS])
+```
+
+**This was the main issue!** The `overflow: 'hidden'` was clipping the compose bar and blocking all touch events.
+
+### 2. Added Capacitor Keyboard Plugin (Optional Enhancement)
 **File: `client/package.json`**
 - Added `"@capacitor/keyboard": "^6.0.3"` to dependencies
 
-### 2. Configured Keyboard Plugin
 **File: `client/capacitor.config.ts`**
 ```typescript
 plugins: {
@@ -30,38 +45,25 @@ plugins: {
 }
 ```
 
-### 3. Keyboard Configuration (Automatic)
-**File: `client/capacitor.config.ts`**
-- Keyboard plugin configuration is applied automatically by Capacitor
-- No programmatic initialization needed in App.tsx
-- Settings are read when the native iOS app starts
-- This avoids Vite/Rollup build errors from dynamic imports
-
-### 4. Fixed Touch Handling in ChatThread
+### 3. Enhanced Touch Handling in ChatThread
 **File: `client/src/pages/ChatThread.tsx`**
 
 #### Composer Container
-- Added `position: 'sticky'` for iOS (instead of relative)
+- Changed to `position: 'relative'` (natural flex layout)
 - Added `touchAction: 'manipulation'`
 - Added `WebkitTapHighlightColor: 'transparent'`
 
 #### Textarea Input
 - Added explicit `onClick` handler to force focus
 - Added `onTouchStart` with `stopPropagation()`
-- Added iOS-specific styles:
-  - `WebkitUserSelect: 'text'`
-  - `touchAction: 'manipulation'`
-  - `pointerEvents: 'auto'`
-  - `zIndex: 1`
+- Added iOS-specific attributes:
+  - `autoComplete="off"`
+  - `autoCorrect="off"`
+  - `autoCapitalize="sentences"`
 
 #### Buttons (Send, Mic, Attachment)
 - Added `touchAction: 'manipulation'` to all buttons
 - Added `WebkitTapHighlightColor: 'transparent'`
-- Fixed z-index layering for button container
-
-#### Attachment Menu Overlay
-- Added proper touch handling to overlay
-- Added `touchAction: 'manipulation'`
 
 ## Deployment Steps
 
@@ -180,9 +182,12 @@ Test these scenarios:
 3. **Test with VoiceOver** - Ensure accessibility still works
 4. **Monitor performance** - Ensure no lag when keyboard appears
 
-## Success Criteria
+## Success Criteria ✅ ACHIEVED!
 ✅ User can tap compose bar and keyboard appears immediately
-✅ All buttons respond to taps with no dead zones
+✅ All buttons (plus, send, microphone) respond to taps
 ✅ No visual glitches or layout issues
-✅ Smooth keyboard animations
-✅ Works consistently across all iOS devices and versions
+✅ Compose bar is visible and accessible on iOS
+✅ Works on iOS devices with the overflow fix
+
+## The Actual Solution
+The fix was simple: **Change `overflow: 'hidden'` to `overflow: 'visible'`** in the iOS viewport styles. This single line change made the compose bar accessible again.
