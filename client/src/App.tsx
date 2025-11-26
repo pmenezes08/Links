@@ -180,12 +180,23 @@ function AppRoutes(){
   useEffect(() => {
     const initKeyboard = async () => {
       try {
+        // Only load on native platforms (not web)
+        const { Capacitor } = await import('@capacitor/core')
+        if (!Capacitor.isNativePlatform()) {
+          return // Skip on web
+        }
+        
         // Dynamically import Keyboard plugin (only available on native platforms)
-        const { Keyboard } = await import('@capacitor/keyboard')
+        // Using type assertion to handle optional dependency
+        const keyboardModule = await import('@capacitor/keyboard' as any)
+        const Keyboard = keyboardModule.Keyboard
+        
         // Configure keyboard behavior for native iOS
-        await Keyboard.setAccessoryBarVisible({ isVisible: true })
-        await Keyboard.setScroll({ isDisabled: false })
-        console.log('⌨️ Keyboard plugin initialized')
+        if (Keyboard && typeof Keyboard.setAccessoryBarVisible === 'function') {
+          await Keyboard.setAccessoryBarVisible({ isVisible: true })
+          await Keyboard.setScroll({ isDisabled: false })
+          console.log('⌨️ Keyboard plugin initialized')
+        }
       } catch (error) {
         // Keyboard plugin only works on native platforms, will fail on web
         console.log('⌨️ Keyboard plugin not available (web or error):', error)
