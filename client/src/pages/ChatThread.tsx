@@ -1395,36 +1395,37 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       </div>
 
       {/* Composer */}
-      <div className="bg-black px-3 py-2 border-t border-white/10 flex-shrink-0" style={{ zIndex: 10005 }}>
-        {replyTo && (
-          <div className="mb-2 px-3 py-2 bg-[#1a1a1a] rounded-lg border-l-4 border-[#4db6ac]">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-[11px] text-[#4db6ac] font-semibold">
-                Replying to {replyTo.sender === 'You' ? 'yourself' : (otherProfile?.display_name || username || 'User')}
+      <div className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 flex-shrink-0" style={{ zIndex: 10005 }}>
+        <div className="max-w-3xl mx-auto">
+          {replyTo && (
+            <div className="mb-2 px-3 py-2 bg-[#1a1a1a] rounded-lg border-l-4 border-[#4db6ac]">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-[11px] text-[#4db6ac] font-semibold">
+                  Replying to {replyTo.sender === 'You' ? 'yourself' : (otherProfile?.display_name || username || 'User')}
+                </div>
+                <button 
+                  className="text-white/50 hover:text-white/80 transition-colors p-1" 
+                  onClick={()=> setReplyTo(null)}
+                >
+                  <i className="fa-solid fa-xmark text-sm" />
+                </button>
               </div>
-              <button 
-                className="text-white/50 hover:text-white/80 transition-colors" 
-                onClick={()=> setReplyTo(null)}
-              >
-                <i className="fa-solid fa-xmark text-sm" />
-              </button>
+              <div className="text-[13px] text-white/70 line-clamp-2">
+                {replyTo.text.length > 100 ? replyTo.text.slice(0, 100) + '…' : replyTo.text}
+              </div>
             </div>
-            <div className="text-[13px] text-white/70 line-clamp-2">
-              {replyTo.text.length > 100 ? replyTo.text.slice(0, 100) + '…' : replyTo.text}
-            </div>
-          </div>
-        )}
+          )}
 
-        <div className="flex items-end gap-2 relative">
-          {/* Attachment button */}
-          <button 
-            className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
-            onClick={() => setShowAttachMenu(!showAttachMenu)}
-          >
-            <i className={`fa-solid text-white/70 text-base transition-transform duration-200 ${
-              showAttachMenu ? 'fa-times rotate-90' : 'fa-plus'
-            }`} />
-          </button>
+          <div className="flex items-end gap-1.5 sm:gap-2">
+            {/* Attachment button */}
+            <button 
+              className="w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20 transition-colors"
+              onClick={() => setShowAttachMenu(!showAttachMenu)}
+            >
+              <i className={`fa-solid text-white/70 text-base sm:text-lg transition-transform duration-200 ${
+                showAttachMenu ? 'fa-times rotate-90' : 'fa-plus'
+              }`} />
+            </button>
 
           {/* Attachment menu */}
           {showAttachMenu && (
@@ -1433,45 +1434,43 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 className="fixed inset-0 z-40" 
                 onClick={() => setShowAttachMenu(false)} 
               />
-              <div className="absolute bottom-10 left-0 z-50 bg-[#1a1a1a] border border-white/20 rounded-2xl shadow-xl overflow-hidden">
+              <div className="absolute bottom-12 left-0 z-50 bg-[#1a1a1a] border border-white/20 rounded-2xl shadow-xl overflow-hidden min-w-[180px]">
                 <button
-                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
                   onClick={handlePhotoSelect}
                 >
-                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
-                    <i className="fa-solid fa-image text-[#4db6ac]" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-image text-[#4db6ac] text-sm sm:text-base" />
                   </div>
-                  <div>
-                    <div className="text-white font-medium">Photos</div>
-                    <div className="text-white/60 text-xs">Send from gallery</div>
+                  <div className="min-w-0">
+                    <div className="text-white font-medium text-sm sm:text-base">Photos</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">Send from gallery</div>
                   </div>
                 </button>
                 <button
-                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
                   onClick={handleCameraOpen}
                 >
-                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
-                    <i className="fa-solid fa-camera text-[#4db6ac]" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-camera text-[#4db6ac] text-sm sm:text-base" />
                   </div>
-                  <div>
-                    <div className="text-white font-medium">Camera</div>
-                    <div className="text-white/60 text-xs">Take a photo</div>
+                  <div className="min-w-0">
+                    <div className="text-white font-medium text-sm sm:text-base">Camera</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">Take a photo</div>
                   </div>
                 </button>
                 <button
-                  className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors text-left"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
                   onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}
                 >
-                  <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
-                    <i className="fa-solid fa-images text-[#4db6ac]" />
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-images text-[#4db6ac] text-sm sm:text-base" />
                   </div>
-                  <div>
-                    <div className="text-white font-medium">GIF</div>
-                    <div className="text-white/60 text-xs">Powered by GIPHY</div>
+                  <div className="min-w-0">
+                    <div className="text-white font-medium text-sm sm:text-base">GIF</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">Powered by GIPHY</div>
                   </div>
                 </button>
-                {/* Paste Image option removed - direct paste with Ctrl+V/Cmd+V now works */}
-                {/* Voice message moved next to Send button */}
               </div>
             </>
           )}
