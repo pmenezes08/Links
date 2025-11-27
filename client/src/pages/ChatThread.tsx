@@ -100,17 +100,21 @@ export default function ChatThread(){
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (!el) return
+    // iOS FIX: More aggressive scroll-to-bottom with multiple attempts
+    const doScroll = () => {
+      // Scroll to the absolute maximum possible
+      const maxScroll = el.scrollHeight - el.clientHeight
+      el.scrollTop = maxScroll + 1000 // Overshoot to ensure we hit the bottom
+    }
     // Use multiple requestAnimationFrame calls to ensure DOM is fully updated
     requestAnimationFrame(() => {
+      doScroll()
       requestAnimationFrame(() => {
-        // Scroll to absolute maximum
-        el.scrollTop = el.scrollHeight
-        // Double-check after a short delay to ensure we're at the bottom
-        setTimeout(() => {
-          if (el.scrollHeight > el.clientHeight) {
-            el.scrollTop = el.scrollHeight
-          }
-        }, 50)
+        doScroll()
+        // iOS FIX: Triple-check after delays to handle slow rendering
+        setTimeout(doScroll, 50)
+        setTimeout(doScroll, 150)
+        setTimeout(doScroll, 300)
       })
     })
   }, [])
@@ -144,10 +148,13 @@ export default function ChatThread(){
   // E2E Encryption is initialized globally in App.tsx, so it's always ready
   const globalHeaderHeight = 56
   const chatHeaderHeight = 56
-  const composerHeight = 60
+  // iOS FIX: Increased composer height estimate to ensure full scroll visibility
+  const composerHeight = 72
   const safeTop = 'env(safe-area-inset-top, 0px)'
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const totalHeaderHeight = globalHeaderHeight + chatHeaderHeight
+  // iOS FIX: Extra buffer to ensure last message is always visible above composer
+  const iosScrollBuffer = 16
   
   // iOS KEYBOARD FIX: Track keyboard height, move composer above it
   const [keyboardHeight, setKeyboardHeight] = useState(0)
@@ -158,13 +165,22 @@ export default function ChatThread(){
     const updateLayout = () => {
       const vvh = window.visualViewport?.height ?? window.innerHeight
       const kh = Math.max(0, window.innerHeight - vvh)
+      const prevKeyboardHeight = keyboardHeight
       setKeyboardHeight(kh)
       
-      // Auto-scroll to bottom when keyboard opens/closes
+      // iOS FIX: Auto-scroll to bottom when keyboard opens/closes
+      // Use multiple attempts to ensure scroll reaches the bottom
       if (listRef.current && didInitialAutoScrollRef.current) {
-        setTimeout(() => {
-          scrollToBottom()
-        }, 100)
+        // Scroll immediately
+        scrollToBottom()
+        // And again after layout updates
+        setTimeout(scrollToBottom, 50)
+        setTimeout(scrollToBottom, 150)
+        // Extra scroll when keyboard opens (kh > prevKeyboardHeight)
+        if (kh > prevKeyboardHeight) {
+          setTimeout(scrollToBottom, 300)
+          setTimeout(scrollToBottom, 500)
+        }
       }
     }
     
@@ -183,7 +199,7 @@ export default function ChatThread(){
       }
       window.removeEventListener('resize', updateLayout)
     }
-  }, [scrollToBottom])
+  }, [scrollToBottom, keyboardHeight])
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -429,19 +445,25 @@ export default function ChatThread(){
     if (!el) return
     if (!didInitialAutoScrollRef.current) {
       if (messages.length > 0){
-        // Wait for layout to settle before scrolling
+        // iOS FIX: Wait longer for layout to fully settle before scrolling
+        // Use multiple scroll attempts to ensure we reach the bottom
         setTimeout(() => {
           scrollToBottom()
-          didInitialAutoScrollRef.current = true
-          lastCountRef.current = messages.length
-        }, 200)
+          setTimeout(() => {
+            scrollToBottom()
+            didInitialAutoScrollRef.current = true
+            lastCountRef.current = messages.length
+          }, 200)
+        }, 100)
         return
       }
     }
     if (messages.length > lastCountRef.current){
-      const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
+      const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
       if (near){
+        // iOS FIX: More aggressive scroll when new messages arrive
         scrollToBottom()
+        setTimeout(scrollToBottom, 100)
         setShowScrollDown(false)
       } else {
         setShowScrollDown(true)
@@ -1234,7 +1256,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* ====== MESSAGES LIST - FLEX CHILD, SCROLLABLE ====== */}
       <div
         ref={listRef}
-        className="space-y-1 bg-black text-white"
+        className="space-y-1 bg-black text-white ios-messages-scroll"
         style={{
           flex: 1,
           display: 'flex',
@@ -1245,9 +1267,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           overscrollBehavior: 'contain',
           // Padding: top for headers, bottom for composer + keyboard + safe area
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
+          // iOS FIX: Much larger bottom padding to ensure last message is fully visible
+          // Formula: composer height + extra buffer + safe area inset
           paddingBottom: keyboardHeight > 0 
-            ? `${composerHeight + keyboardHeight + 24}px`
-            : `calc(${composerHeight}px + 24px + ${safeBottom})`,
+            ? `${composerHeight + keyboardHeight + iosScrollBuffer + 40}px`
+            : `calc(${composerHeight}px + ${iosScrollBuffer}px + 40px + ${safeBottom})`,
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
@@ -1445,13 +1469,25 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           )
         })}
         
+        {/* iOS FIX: Scroll anchor/spacer at the very end to ensure last message can scroll fully into view */}
+        <div 
+          className="scroll-anchor" 
+          style={{ 
+            height: '1px',
+            width: '100%',
+            flexShrink: 0,
+          }} 
+          aria-hidden="true"
+        />
+        
         {showScrollDown && (
           <button
             className="fixed right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
             style={{ 
+              // iOS FIX: Position above the composer with proper safe area
               bottom: keyboardHeight > 0 
-                ? `${composerHeight + keyboardHeight + 16}px`
-                : `calc(${composerHeight}px + 16px + ${safeBottom})`
+                ? `${composerHeight + keyboardHeight + iosScrollBuffer + 24}px`
+                : `calc(${composerHeight}px + ${iosScrollBuffer}px + 24px + ${safeBottom})`
             }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
             aria-label="Scroll to latest"
