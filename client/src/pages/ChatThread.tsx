@@ -88,8 +88,6 @@ export default function ChatThread(){
     }
   }, [])
 
-  // (wave animation CSS no longer required for unified recorder)
-
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Message[]>([])
   const [editingId, setEditingId] = useState<number|string| null>(null)
