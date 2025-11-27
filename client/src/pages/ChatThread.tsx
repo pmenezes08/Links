@@ -40,12 +40,9 @@ export default function ChatThread(){
   useEffect(() => {
     const checkMobile = () => {
       const ua = navigator.userAgent || ''
-      const isiOSMatch = /iPad|iPhone|iPod/i.test(ua) ||
-        ((navigator.platform === 'MacIntel' || navigator.platform === 'Macintosh') && (navigator.maxTouchPoints || 0) > 2)
       const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
                             (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /MacIntel/.test(navigator.platform))
       setIsMobile(Boolean(isMobileDevice))
-      setIsIOS(Boolean(isiOSMatch))
     }
     checkMobile()
   }, [])
@@ -79,7 +76,6 @@ export default function ChatThread(){
   const { recording, recordMs, preview: recordingPreview, start: startVoiceRecording, stop: stopVoiceRecording, clearPreview: cancelRecordingPreview, level } = useAudioRecorder() as any
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [isMobile, setIsMobile] = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
   const [showMicPermissionModal, setShowMicPermissionModal] = useState(false)
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
