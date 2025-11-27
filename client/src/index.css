@@ -2,21 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global scrollbar hiding - applied via @layer for proper cascade */
+/* Hide scrollbars globally */
 @layer base {
-  *, *::before, *::after {
-    scrollbar-width: none !important;
-    -ms-overflow-style: none !important;
-  }
-  
-  *::-webkit-scrollbar,
-  *::-webkit-scrollbar-track,
-  *::-webkit-scrollbar-thumb,
-  *::-webkit-scrollbar-corner {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
-    background: transparent !important;
-    -webkit-appearance: none !important;
-  }
+  * { scrollbar-width: none; -ms-overflow-style: none; }
+  *::-webkit-scrollbar { display: none; width: 0; height: 0; }
 }
