@@ -100,24 +100,24 @@ export default function ChatThread(){
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (!el) return
-    // iOS FIX: Scroll to exact bottom (no overshoot - causes bounce on iOS)
+    
     const doScroll = () => {
-      const maxScroll = el.scrollHeight - el.clientHeight
-      if (maxScroll > 0) {
-        el.scrollTop = maxScroll
+      // Method 1: Set scrollTop directly
+      el.scrollTop = el.scrollHeight
+      
+      // Method 2: Find scroll anchor and scroll into view
+      const anchor = el.querySelector('.scroll-anchor')
+      if (anchor) {
+        anchor.scrollIntoView({ behavior: 'instant', block: 'end' })
       }
     }
-    // Use multiple requestAnimationFrame calls to ensure DOM is fully updated
-    requestAnimationFrame(() => {
-      doScroll()
-      requestAnimationFrame(() => {
-        doScroll()
-        // iOS FIX: Multiple delayed scrolls to handle slow rendering
-        setTimeout(doScroll, 50)
-        setTimeout(doScroll, 150)
-        setTimeout(doScroll, 300)
-      })
-    })
+    
+    // Execute immediately and with delays
+    doScroll()
+    requestAnimationFrame(doScroll)
+    setTimeout(doScroll, 50)
+    setTimeout(doScroll, 100)
+    setTimeout(doScroll, 200)
   }, [])
   
 
@@ -1233,14 +1233,16 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         </div>
       )}
       
-      {/* ====== MESSAGES LIST - FLEX CHILD, SCROLLABLE ====== */}
+      {/* ====== MESSAGES LIST - SCROLLABLE ====== */}
       <div
         ref={listRef}
         className="space-y-1 bg-black text-white"
         style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
