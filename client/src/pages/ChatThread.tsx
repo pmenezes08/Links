@@ -186,9 +186,9 @@ export default function ChatThread(){
   
   // iOS Capacitor needs much larger buffer due to safe area handling differences
   // Significantly increased buffer for better visibility of last message
-  const iosNativeBuffer = isIOSCapacitor ? 70 : 0
-  const iosSafeAreaBuffer = isIOSCapacitor ? 50 : 0
-  const baseBuffer = 32
+  const iosNativeBuffer = isIOSCapacitor ? 90 : 0
+  const iosSafeAreaBuffer = isIOSCapacitor ? 60 : 0
+  const baseBuffer = 40
   
   // Use Capacitor Keyboard plugin for iOS to get accurate keyboard height
   useEffect(() => {
@@ -1226,10 +1226,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100dvh',
+        minHeight: '100dvh',
+        height: '100%',
         background: '#000000',
         position: 'relative',
-        overflow: 'hidden',
       }}
     >
       {/* ====== CHAT HEADER - FIXED AT TOP ====== */}
