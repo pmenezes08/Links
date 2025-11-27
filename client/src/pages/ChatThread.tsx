@@ -9,6 +9,7 @@ import { encryptionService } from '../services/simpleEncryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import { Keyboard } from '@capacitor/keyboard'
 
 interface Message {
   id: number | string
