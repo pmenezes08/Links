@@ -106,18 +106,19 @@ export default function ChatThread(){
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (!el) return
-    // iOS FIX: More aggressive scroll-to-bottom with multiple attempts
+    // iOS FIX: Scroll to exact bottom (no overshoot - causes bounce on iOS)
     const doScroll = () => {
-      // Scroll to the absolute maximum possible
       const maxScroll = el.scrollHeight - el.clientHeight
-      el.scrollTop = maxScroll + 1000 // Overshoot to ensure we hit the bottom
+      if (maxScroll > 0) {
+        el.scrollTop = maxScroll
+      }
     }
     // Use multiple requestAnimationFrame calls to ensure DOM is fully updated
     requestAnimationFrame(() => {
       doScroll()
       requestAnimationFrame(() => {
         doScroll()
-        // iOS FIX: Triple-check after delays to handle slow rendering
+        // iOS FIX: Multiple delayed scrolls to handle slow rendering
         setTimeout(doScroll, 50)
         setTimeout(doScroll, 150)
         setTimeout(doScroll, 300)
@@ -1289,14 +1290,17 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
-          overscrollBehavior: 'contain',
+          // iOS FIX: Use 'none' for iOS Capacitor to prevent bounce-back
+          overscrollBehavior: isIOSCapacitor ? 'none' : 'contain',
           // Padding: top for headers, bottom for composer + keyboard + safe area
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
-          // iOS FIX: Dynamic bottom padding using measured composer height
-          // Formula: measured composer height + base buffer + iOS native buffer + safe area
-          paddingBottom: keyboardHeight > 0 
-            ? `${measuredComposerHeight + keyboardHeight + baseBuffer + iosNativeBuffer}px`
-            : `calc(${measuredComposerHeight}px + ${baseBuffer}px + ${iosNativeBuffer}px + ${safeBottom})`,
+          // iOS FIX: For iOS Capacitor, use fixed px value (env() may not work correctly)
+          // For web, use calc with env() for safe area
+          paddingBottom: isIOSCapacitor
+            ? `${measuredComposerHeight + keyboardHeight + baseBuffer + iosNativeBuffer + 34}px`
+            : (keyboardHeight > 0 
+                ? `${measuredComposerHeight + keyboardHeight + baseBuffer}px`
+                : `calc(${measuredComposerHeight}px + ${baseBuffer}px + ${safeBottom})`),
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
@@ -1509,10 +1513,12 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           <button
             className="fixed right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
             style={{ 
-              // iOS FIX: Position above the composer with proper safe area
-              bottom: keyboardHeight > 0 
-                ? `${measuredComposerHeight + keyboardHeight + 16 + iosNativeBuffer}px`
-                : `calc(${measuredComposerHeight}px + 16px + ${iosNativeBuffer}px + ${safeBottom})`
+              // iOS FIX: Position above the composer
+              bottom: isIOSCapacitor
+                ? `${measuredComposerHeight + keyboardHeight + 16 + iosNativeBuffer + 34}px`
+                : (keyboardHeight > 0 
+                    ? `${measuredComposerHeight + keyboardHeight + 16}px`
+                    : `calc(${measuredComposerHeight}px + 16px + ${safeBottom})`)
             }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
             aria-label="Scroll to latest"
