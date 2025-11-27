@@ -19,8 +19,8 @@ const config: CapacitorConfig = {
   },
   plugins: {
     Keyboard: {
-      // 'native' uses iOS native keyboard avoidance - pushes content up
-      resize: 'native',
+      // 'body' resizes the HTML body when keyboard opens - more stable than 'native'
+      resize: 'body',
       style: 'dark',
       resizeOnFullScreen: true,
     },

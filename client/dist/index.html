@@ -21,18 +21,27 @@
         --sab: env(safe-area-inset-bottom, 0px);
       }
       
-      html, body {
+      html {
+        height: 100%;
+        background: #000000;
+        color-scheme: dark;
+      }
+      
+      /* Body resizes when keyboard opens (Capacitor resize:'body' mode) */
+      body {
         margin: 0;
         padding: 0;
+        min-height: 100%;
         height: 100%;
         background: #000000;
         color: #ffffff;
-        color-scheme: dark;
+        overflow: hidden;
       }
       
       #root {
         height: 100%;
         background: #000000;
+        overflow: hidden;
       }
       
       /* Hide scrollbars but allow scrolling */
@@ -43,7 +52,7 @@
       input, textarea, select { font-size: 16px !important; }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script type="module" crossorigin src="/assets/index-0p2DUaei-1764282030371.js"></script>
+    <script type="module" crossorigin src="/assets/index-Bve7qOAv-1764282111837.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-C2WVLlaz.css">
   </head>
   <body>
