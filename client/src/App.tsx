@@ -217,7 +217,11 @@ function AppRoutes(){
         })() && (
           <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
         )}
-        <div style={{ paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : '56px' })() }}>
+        <div style={{ 
+          paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : 'calc(56px + env(safe-area-inset-top, 0px))' })(),
+          minHeight: '100%',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+        }}>
             <ErrorBoundary>
               <Routes>
                 <Route path="/" element={<OnboardingWelcome />} />

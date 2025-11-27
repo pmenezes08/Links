@@ -92,12 +92,11 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // Layout: flex column, messages scroll in the middle
+  // Layout: flex column filling available space, messages scroll in middle
   const viewportStyles: CSSProperties = {
-    minHeight: '100%',
     display: 'flex',
     flexDirection: 'column',
-    paddingTop: 'calc(56px + env(safe-area-inset-top, 0px))',
+    minHeight: 'calc(100vh - 56px - env(safe-area-inset-top, 0px))',
   }
 
   useEffect(() => {
