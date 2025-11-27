@@ -1141,7 +1141,6 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         height: '100%',
         background: '#000000',
         position: 'relative',
-        overflow: 'hidden',
       }}
     >
       {/* ====== CHAT HEADER - FIXED AT TOP ====== */}
@@ -1242,7 +1241,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
-          overscrollBehavior: 'auto',
+          // 'contain' allows elastic scroll but keeps it within this element
+          overscrollBehavior: 'contain',
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
           paddingBottom: `calc(${bottomPadding}px + ${safeBottom})`,
           paddingLeft: '12px',
