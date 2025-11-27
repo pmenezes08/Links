@@ -18,50 +18,51 @@
       /* Force dark color scheme */
       :root {
         color-scheme: dark;
+        --app-height: 100vh;
       }
       
-      /* Allow iOS keyboard to resize - don't lock with position:fixed */
-      html { 
-        height: 100%;
-        background: #000000 !important;
-        color-scheme: dark !important;
-      }
-      
-      body { 
-        height: 100%;
+      html, body, #root {
         margin: 0;
         padding: 0;
+        height: 100%;
+        height: var(--app-height, 100vh);
+        width: 100%;
+        overflow: hidden !important;
         background: #000000 !important;
         color: #ffffff;
-        overscroll-behavior: none;
         color-scheme: dark !important;
       }
       
-      /* Root uses dynamic viewport height - adjusts with keyboard */
-      #root {
-        min-height: 100%;
-        min-height: 100dvh; /* Dynamic viewport height - shrinks when keyboard opens */
-        background: #000000 !important;
-        overflow-x: hidden;
-      }
-      
-      /* Hide all scrollbars globally */
-      * {
+      /* FORCE hide all scrollbars everywhere */
+      *, *::before, *::after {
         scrollbar-width: none !important;
         -ms-overflow-style: none !important;
-        color-scheme: dark !important;
       }
-      *::-webkit-scrollbar {
+      *::-webkit-scrollbar,
+      *::-webkit-scrollbar-track,
+      *::-webkit-scrollbar-thumb {
         display: none !important;
         width: 0 !important;
         height: 0 !important;
+        background: transparent !important;
+        -webkit-appearance: none !important;
       }
       
-      /* Prevent iOS text size adjustment and ensure proper input sizing */
+      /* Prevent iOS text size adjustment */
       input, textarea, select { 
         font-size: 16px !important;
       }
     </style>
+    <script>
+      // Set actual viewport height (fixes iOS keyboard issues)
+      function setAppHeight() {
+        const vh = window.innerHeight;
+        document.documentElement.style.setProperty('--app-height', vh + 'px');
+      }
+      window.addEventListener('resize', setAppHeight);
+      window.addEventListener('orientationchange', setAppHeight);
+      setAppHeight();
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   </head>
   <body>

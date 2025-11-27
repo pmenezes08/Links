@@ -92,10 +92,10 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // Layout: uses 100dvh (dynamic viewport height) which auto-adjusts on iOS keyboard
-  // Capacitor Keyboard plugin with resize: 'body' handles the resize automatically
+  // Layout: uses --app-height CSS variable set by JS (actual window.innerHeight)
+  // This variable updates on resize, so it shrinks when keyboard opens on iOS
   const viewportStyles: CSSProperties = {
-    height: '100dvh', // Dynamic viewport height - shrinks when keyboard opens
+    height: 'var(--app-height, 100vh)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
