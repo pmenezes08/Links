@@ -184,8 +184,10 @@ export default function ChatThread(){
   }, [replyTo, recording, recordingPreview])
   
   // iOS Capacitor needs much larger buffer due to safe area handling differences
-  const iosNativeBuffer = isIOSCapacitor ? 44 : 0
-  const baseBuffer = 24
+  // Increased buffer for better visibility of last message
+  const iosNativeBuffer = isIOSCapacitor ? 54 : 0
+  const iosSafeAreaBuffer = isIOSCapacitor ? 44 : 0
+  const baseBuffer = 28
   
   useEffect(() => {
     const updateLayout = () => {
@@ -194,7 +196,7 @@ export default function ChatThread(){
       const prevKeyboardHeight = keyboardHeight
       setKeyboardHeight(kh)
       
-      // iOS FIX: Auto-scroll to bottom when keyboard opens/closes
+      // Auto-scroll to bottom when keyboard opens/closes
       // Use multiple attempts to ensure scroll reaches the bottom
       if (listRef.current && didInitialAutoScrollRef.current) {
         // Scroll immediately
@@ -210,20 +212,30 @@ export default function ChatThread(){
       }
     }
     
+    // For iOS Capacitor with resize: 'body', also listen for window resize
+    // which fires when keyboard causes body to resize
+    const handleResize = () => {
+      if (listRef.current && didInitialAutoScrollRef.current) {
+        scrollToBottom()
+        setTimeout(scrollToBottom, 100)
+        setTimeout(scrollToBottom, 300)
+      }
+    }
+    
     updateLayout()
     
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', updateLayout)
       window.visualViewport.addEventListener('scroll', updateLayout)
     }
-    window.addEventListener('resize', updateLayout)
+    window.addEventListener('resize', handleResize)
     
     return () => {
       if (window.visualViewport) {
         window.visualViewport.removeEventListener('resize', updateLayout)
         window.visualViewport.removeEventListener('scroll', updateLayout)
       }
-      window.removeEventListener('resize', updateLayout)
+      window.removeEventListener('resize', handleResize)
     }
   }, [scrollToBottom, keyboardHeight])
 
@@ -1295,9 +1307,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           // Padding: top for headers, bottom for composer + keyboard + safe area
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
           // iOS FIX: For iOS Capacitor, use fixed px value (env() may not work correctly)
-          // For web, use calc with env() for safe area
+          // Capacitor now handles keyboard resize via 'body' mode, so keyboardHeight not needed for iOS
           paddingBottom: isIOSCapacitor
-            ? `${measuredComposerHeight + keyboardHeight + baseBuffer + iosNativeBuffer + 34}px`
+            ? `${measuredComposerHeight + baseBuffer + iosNativeBuffer + iosSafeAreaBuffer}px`
             : (keyboardHeight > 0 
                 ? `${measuredComposerHeight + keyboardHeight + baseBuffer}px`
                 : `calc(${measuredComposerHeight}px + ${baseBuffer}px + ${safeBottom})`),
@@ -1515,7 +1527,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             style={{ 
               // iOS FIX: Position above the composer
               bottom: isIOSCapacitor
-                ? `${measuredComposerHeight + keyboardHeight + 16 + iosNativeBuffer + 34}px`
+                ? `${measuredComposerHeight + 16 + iosNativeBuffer + iosSafeAreaBuffer}px`
                 : (keyboardHeight > 0 
                     ? `${measuredComposerHeight + keyboardHeight + 16}px`
                     : `calc(${measuredComposerHeight}px + 16px + ${safeBottom})`)

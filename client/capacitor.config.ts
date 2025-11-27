@@ -16,12 +16,15 @@ const config: CapacitorConfig = {
     // Enable hardware keyboard in simulator
     preferredContentMode: 'mobile',
     backgroundColor: appBackground,
+    // iOS keyboard behavior - let iOS handle keyboard avoidance
+    scrollEnabled: true,
   },
   plugins: {
     Keyboard: {
-      resize: 'none',  // We handle resize via visualViewport JS
+      // 'body' resizes the webview body when keyboard opens (WhatsApp-like behavior)
+      resize: 'body',
       style: 'dark',
-      resizeOnFullScreen: false,
+      resizeOnFullScreen: true,
     },
   },
 };
