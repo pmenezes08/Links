@@ -112,13 +112,22 @@ export default function ChatThread(){
     // Use multiple requestAnimationFrame calls to ensure DOM is fully updated
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        // Scroll to maximum possible position
-        el.scrollTop = el.scrollHeight - el.clientHeight
-        // Double-check: ensure we're at the bottom
+        // Calculate maximum scroll position
+        const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
+        el.scrollTop = maxScroll
+        // Double-check with multiple attempts to ensure we're truly at the bottom
         setTimeout(() => {
-          if (el.scrollHeight > el.clientHeight) {
-            el.scrollTop = el.scrollHeight - el.clientHeight
+          const newMaxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
+          if (Math.abs(el.scrollTop - newMaxScroll) > 1) {
+            el.scrollTop = newMaxScroll
           }
+          // Final check after a short delay to handle any dynamic content
+          setTimeout(() => {
+            const finalMaxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
+            if (Math.abs(el.scrollTop - finalMaxScroll) > 1) {
+              el.scrollTop = finalMaxScroll
+            }
+          }, 100)
         }, 50)
       })
     })
@@ -231,7 +240,10 @@ export default function ChatThread(){
     overflowY: 'auto',
     WebkitOverflowScrolling: 'touch',
     overscrollBehavior: 'contain',
-    padding: `0.75rem 0.75rem calc(${(composerHeight || 80)}px + env(safe-area-inset-bottom, 0px) + 0.75rem)`,
+    paddingLeft: '0.75rem',
+    paddingRight: '0.75rem',
+    paddingTop: '0.75rem',
+    paddingBottom: `calc(${(composerHeight || 80)}px + env(safe-area-inset-bottom, 0px) + 2rem)`,
   }
   const rootStyle: CSSProperties = {
     position: 'fixed',
@@ -1471,6 +1483,14 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             </div>
           )
         })}
+        
+        {/* Bottom spacer to ensure last message is fully scrollable above composer */}
+        <div style={{ 
+          height: `calc(${(composerHeight || 80)}px + env(safe-area-inset-bottom, 0px) + 1rem)`,
+          minHeight: `calc(${(composerHeight || 80)}px + env(safe-area-inset-bottom, 0px) + 1rem)`,
+          width: '100%',
+          flexShrink: 0
+        }} />
         
         {showScrollDown && (
           <button
