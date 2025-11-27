@@ -157,12 +157,22 @@ export default function ChatThread(){
   
   // Scroll to bottom when window resizes (Capacitor native keyboard resize)
   useEffect(() => {
+    let lastHeight = window.innerHeight
+    
     const handleResize = () => {
-      if (listRef.current && didInitialAutoScrollRef.current) {
-        setTimeout(scrollToBottom, 100)
-        setTimeout(scrollToBottom, 300)
+      const newHeight = window.innerHeight
+      // Keyboard opened (height decreased) or closed (height increased)
+      if (newHeight !== lastHeight) {
+        lastHeight = newHeight
+        // Always scroll to bottom when keyboard state changes
+        if (listRef.current) {
+          setTimeout(scrollToBottom, 50)
+          setTimeout(scrollToBottom, 150)
+          setTimeout(scrollToBottom, 300)
+        }
       }
     }
+    
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [scrollToBottom])
@@ -412,25 +422,26 @@ export default function ChatThread(){
   useEffect(() => {
     const el = listRef.current
     if (!el) return
-    if (!didInitialAutoScrollRef.current) {
-      if (messages.length > 0){
-        // iOS FIX: Wait longer for layout to fully settle before scrolling
-        // Use multiple scroll attempts to ensure we reach the bottom
-        setTimeout(() => {
-          scrollToBottom()
-          setTimeout(() => {
-            scrollToBottom()
-            didInitialAutoScrollRef.current = true
-            lastCountRef.current = messages.length
-          }, 200)
-        }, 100)
-        return
-      }
+    
+    if (!didInitialAutoScrollRef.current && messages.length > 0) {
+      // Initial load - scroll to bottom with multiple attempts
+      // Use longer delays to ensure content is fully rendered
+      scrollToBottom()
+      setTimeout(scrollToBottom, 100)
+      setTimeout(scrollToBottom, 300)
+      setTimeout(scrollToBottom, 500)
+      setTimeout(() => {
+        scrollToBottom()
+        didInitialAutoScrollRef.current = true
+        lastCountRef.current = messages.length
+      }, 700)
+      return
     }
-    if (messages.length > lastCountRef.current){
+    
+    // New messages arrived
+    if (messages.length > lastCountRef.current) {
       const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
-      if (near){
-        // iOS FIX: More aggressive scroll when new messages arrive
+      if (near) {
         scrollToBottom()
         setTimeout(scrollToBottom, 100)
         setShowScrollDown(false)
