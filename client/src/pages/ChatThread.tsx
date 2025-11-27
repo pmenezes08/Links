@@ -100,9 +100,19 @@ export default function ChatThread(){
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (!el) return
-    requestAnimationFrame(() => requestAnimationFrame(() => { 
-      el.scrollTop = el.scrollHeight 
-    }))
+    // Use multiple requestAnimationFrame calls to ensure DOM is fully updated
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // Scroll to absolute maximum
+        el.scrollTop = el.scrollHeight
+        // Double-check after a short delay to ensure we're at the bottom
+        setTimeout(() => {
+          if (el.scrollHeight > el.clientHeight) {
+            el.scrollTop = el.scrollHeight
+          }
+        }, 50)
+      })
+    })
   }, [])
   
 
@@ -150,13 +160,11 @@ export default function ChatThread(){
       const kh = Math.max(0, window.innerHeight - vvh)
       setKeyboardHeight(kh)
       
-      // Auto-scroll to bottom when keyboard opens
-      if (kh > 50 && listRef.current) {
+      // Auto-scroll to bottom when keyboard opens/closes
+      if (listRef.current && didInitialAutoScrollRef.current) {
         setTimeout(() => {
-          if (listRef.current) {
-            listRef.current.scrollTop = listRef.current.scrollHeight
-          }
-        }, 50)
+          scrollToBottom()
+        }, 100)
       }
     }
     
@@ -175,7 +183,7 @@ export default function ChatThread(){
       }
       window.removeEventListener('resize', updateLayout)
     }
-  }, [])
+  }, [scrollToBottom])
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -421,9 +429,12 @@ export default function ChatThread(){
     if (!el) return
     if (!didInitialAutoScrollRef.current) {
       if (messages.length > 0){
-        scrollToBottom()
-        didInitialAutoScrollRef.current = true
-        lastCountRef.current = messages.length
+        // Wait for layout to settle before scrolling
+        setTimeout(() => {
+          scrollToBottom()
+          didInitialAutoScrollRef.current = true
+          lastCountRef.current = messages.length
+        }, 200)
         return
       }
     }
@@ -1235,8 +1246,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           // Padding: top for headers, bottom for composer + keyboard + safe area
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
           paddingBottom: keyboardHeight > 0 
-            ? `${composerHeight + keyboardHeight + 20}px`
-            : `calc(${composerHeight}px + 20px + ${safeBottom})`,
+            ? `${composerHeight + keyboardHeight + 24}px`
+            : `calc(${composerHeight}px + 24px + ${safeBottom})`,
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
