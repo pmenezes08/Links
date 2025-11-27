@@ -21,37 +21,18 @@
         --sab: env(safe-area-inset-bottom, 0px);
       }
       
-      html {
+      html, body {
         margin: 0;
         padding: 0;
         height: 100%;
         background: #000000;
         color: #ffffff;
         color-scheme: dark;
-        /* Prevent html from scrolling - only nested containers scroll */
-        overflow: hidden;
-        overscroll-behavior: none;
-      }
-      
-      body {
-        margin: 0;
-        padding: 0;
-        height: 100%;
-        width: 100%;
-        background: #000000;
-        color: #ffffff;
-        color-scheme: dark;
-        /* Prevent body from scrolling */
-        overflow: hidden;
-        overscroll-behavior: none;
       }
       
       #root {
         height: 100%;
-        width: 100%;
         background: #000000;
-        overflow: hidden;
-        overscroll-behavior: none;
       }
       
       /* Hide scrollbars but allow scrolling */

@@ -15,14 +15,11 @@ const config: CapacitorConfig = {
     preferredContentMode: 'mobile',
     backgroundColor: appBackground,
     contentInset: 'always',
-    // Let WKWebView have some scroll behavior for elastic scroll
     scrollEnabled: true,
   },
   plugins: {
     Keyboard: {
-      // 'none' - we handle keyboard positioning manually via plugin events
-      // This gives us full control and avoids double-offsetting
-      resize: 'none',
+      resize: 'native',
       style: 'dark',
     },
   },
