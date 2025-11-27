@@ -15,3 +15,77 @@
     -webkit-appearance: none !important;
   }
 }
+
+:root {
+  --glass-base: rgba(12, 12, 16, 0.68);
+  --glass-tint: rgba(77, 182, 172, 0.22);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-highlight: rgba(255, 255, 255, 0.09);
+  --glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  --glass-gradient: radial-gradient(
+      circle at 10% 20%,
+      rgba(77, 182, 172, 0.25),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 80% 10%,
+      rgba(105, 119, 255, 0.16),
+      transparent 50%
+    ),
+    #020202;
+}
+
+.chat-thread-bg {
+  background: var(--glass-gradient);
+  min-height: 100%;
+}
+
+.liquid-glass-surface {
+  position: relative;
+  background: var(--glass-base);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(32px) saturate(160%);
+  -webkit-backdrop-filter: blur(32px) saturate(160%);
+}
+
+.liquid-glass-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(130deg, var(--glass-highlight), transparent 60%);
+  opacity: 0.4;
+}
+
+.liquid-glass-bubble {
+  position: relative;
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+}
+
+.liquid-glass-bubble--sent {
+  background: linear-gradient(135deg, rgba(77, 182, 172, 0.9), rgba(32, 84, 78, 0.85));
+  border-color: rgba(77, 182, 172, 0.65);
+}
+
+.liquid-glass-bubble--received {
+  background: rgba(18, 18, 22, 0.78);
+}
+
+.liquid-glass-input {
+  background: rgba(18, 18, 22, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), var(--glass-shadow);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+.liquid-glass-chip {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}

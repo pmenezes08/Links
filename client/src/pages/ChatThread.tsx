@@ -213,7 +213,7 @@ export default function ChatThread(){
   }, [scrollToBottom])
   
   // Bottom padding for messages list (space for composer + safe area)
-  const bottomPadding = 90
+  const bottomPadding = 76
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -1169,26 +1169,27 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
 
   return (
     <div 
-      className="chat-page-container"
+      className="chat-page-container chat-thread-bg"
       style={{
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        background: '#000000',
         position: 'relative',
+        isolation: 'isolate',
       }}
     >
       {/* ====== CHAT HEADER - FIXED AT TOP ====== */}
       <div 
-        className="border-b border-white/10 flex items-center gap-3 px-4 bg-black"
+        className="liquid-glass-surface border-b border-white/5 flex items-center gap-3 px-4"
         style={{
           position: 'fixed',
           top: `calc(${globalHeaderHeight}px + ${safeTop})`,
-          left: 0,
-          right: 0,
+          left: 10,
+          right: 10,
           height: `${chatHeaderHeight}px`,
           zIndex: 1000,
-          background: '#000000',
+          borderRadius: '24px',
+          overflow: 'hidden',
         }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3 relative">
@@ -1261,7 +1262,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             transition: 'opacity 0.2s ease'
           }}
         >
-          <div className="bg-black/90 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-sm text-white shadow-lg">
+          <div className="liquid-glass-chip px-4 py-2 rounded-full text-sm text-white shadow-lg">
             {currentDateLabel}
           </div>
         </div>
@@ -1270,16 +1271,16 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* ====== MESSAGES LIST - SCROLLABLE ====== */}
       <div
         ref={listRef}
-        className="space-y-1 bg-black text-white"
+        className="space-y-0.5 text-white"
         style={{
           flex: 1,
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
-          paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
+          paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 12px)`,
           paddingBottom: `calc(${bottomPadding}px + ${safeBottom} + ${keyboardOffset}px)`,
-          paddingLeft: '12px',
-          paddingRight: '12px',
+          paddingLeft: '10px',
+          paddingRight: '10px',
         } as CSSProperties}
         onScroll={(e)=> {
           const el = e.currentTarget
