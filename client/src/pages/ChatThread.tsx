@@ -93,92 +93,42 @@ export default function ChatThread(){
   const skipNextPollsUntil = useRef<number>(0)
 
   // ============================================================================
-  // 2025 iOS BULLETPROOF SOLUTION: transform-based keyboard avoidance
-  // This is the ONLY method that works 100% on iOS WKWebView/Capacitor
+  // PROVEN 2023+ PRODUCTION CHAT LAYOUT - Simple --vh variable for iOS
   // ============================================================================
   const composerRef = useRef<HTMLDivElement>(null)
   
-  // iOS-only: Use transform to move composer above keyboard
+  // iOS-only: Set --vh CSS variable based on visualViewport
   useEffect(() => {
     const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
-    if (!isIOS || !window.visualViewport) return
     
-    const updateComposer = () => {
-      const kh = Math.max(0, window.innerHeight - window.visualViewport!.height)
-      
-      // Direct DOM manipulation with transform (most reliable on iOS)
-      if (composerRef.current) {
-        composerRef.current.style.transform = kh > 0 ? `translateY(-${kh}px)` : 'translateY(0)'
-        composerRef.current.style.transition = 'transform 0.15s ease-out'
-      }
-      
-      // Also adjust messages list bottom
-      if (listRef.current) {
-        const composerH = 70 // approximate
-        listRef.current.style.bottom = kh > 0 ? `${kh + composerH}px` : ''
-        
-        // Scroll to bottom when keyboard opens
-        if (kh > 50) {
-          setTimeout(() => {
-            if (listRef.current) {
-              listRef.current.scrollTop = listRef.current.scrollHeight
-            }
-          }, 100)
-        }
-      }
-    }
-    
-    // Initial call
-    updateComposer()
-    
-    // Listen to visualViewport
-    window.visualViewport.addEventListener('resize', updateComposer)
-    window.visualViewport.addEventListener('scroll', updateComposer)
-    
-    // Also update on focus
-    const handleFocus = () => {
-      setTimeout(updateComposer, 100)
-    }
-    const textarea = textareaRef.current
-    if (textarea) {
-      textarea.addEventListener('focus', handleFocus)
-    }
-    
-    return () => {
-      window.visualViewport?.removeEventListener('resize', updateComposer)
-      window.visualViewport?.removeEventListener('scroll', updateComposer)
-      if (textarea) {
-        textarea.removeEventListener('focus', handleFocus)
-      }
-    }
-  }, [])
-  
-  // Non-iOS fallback: adjust via DOM as well for consistency
-  useEffect(() => {
-    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
-    if (isIOS) return // iOS uses the transform method above
-    
-    const updateViewport = () => {
+    const setVh = () => {
       const vh = window.visualViewport?.height ?? window.innerHeight
-      const kh = Math.max(0, window.innerHeight - vh)
+      document.documentElement.style.setProperty('--vh', `${vh}px`)
       
-      // Direct DOM manipulation for non-iOS too
-      if (composerRef.current && kh > 0) {
-        composerRef.current.style.transform = `translateY(-${kh}px)`
-      } else if (composerRef.current) {
-        composerRef.current.style.transform = 'translateY(0)'
+      // Auto-scroll to bottom when keyboard opens (viewport shrinks)
+      if (isIOS && listRef.current) {
+        setTimeout(() => {
+          if (listRef.current) {
+            listRef.current.scrollTop = listRef.current.scrollHeight
+          }
+        }, 100)
       }
     }
     
-    updateViewport()
+    setVh()
+    
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', updateViewport)
+      window.visualViewport.addEventListener('resize', setVh)
+      window.visualViewport.addEventListener('scroll', setVh)
     }
-    window.addEventListener('resize', updateViewport)
+    window.addEventListener('resize', setVh)
     
     return () => {
-      window.visualViewport?.removeEventListener('resize', updateViewport)
-      window.removeEventListener('resize', updateViewport)
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', setVh)
+        window.visualViewport.removeEventListener('scroll', setVh)
+      }
+      window.removeEventListener('resize', setVh)
     }
   }, [])
   
@@ -1171,8 +1121,21 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     })
   }
 
+  // Total header height (global + chat header)
+  const totalHeaderHeight = globalHeaderHeight + chatHeaderHeight
+
   return (
-    <>
+    <div 
+      className="chat-page-container"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: 'var(--vh, 100dvh)',
+        background: '#000000',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
       {/* ====== CHAT HEADER - FIXED AT TOP ====== */}
       <div 
         className="border-b border-white/10 flex items-center gap-3 px-4 bg-black"
@@ -1262,23 +1225,21 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         </div>
       )}
       
-      {/* ====== MESSAGES LIST - SCROLLABLE, KEYBOARD-AWARE ====== */}
+      {/* ====== MESSAGES LIST - FLEX CHILD, SCROLLABLE ====== */}
       <div
         ref={listRef}
         className="space-y-1 bg-black text-white"
         style={{
-          position: 'fixed',
-          top: `calc(${globalHeaderHeight}px + ${chatHeaderHeight}px + ${safeTop})`,
-          left: 0,
-          right: 0,
-          // Default bottom (iOS adjusts via DOM in useEffect)
-          bottom: `calc(${composerHeight}px + ${safeBottom} + 10px)`,
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
-          paddingTop: '16px',
-          paddingBottom: '16px',
+          // Padding: top for headers, bottom for composer + safe area
+          paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
+          paddingBottom: `calc(${composerHeight}px + 20px + ${safeBottom})`,
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
@@ -1487,21 +1448,19 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* ====== COMPOSER - FIXED AT BOTTOM, USES TRANSFORM ON iOS ====== */}
+      {/* ====== COMPOSER - FIXED AT BOTTOM ====== */}
       <div 
         ref={composerRef}
         className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 message-composer" 
         style={{
           position: 'fixed',
-          bottom: 0, // Always at bottom, transform moves it up on iOS
+          bottom: 0,
           left: 0,
           right: 0,
+          width: '100%',
           zIndex: 1000,
           background: '#000000',
           paddingBottom: `calc(8px + ${safeBottom})`,
-          pointerEvents: 'auto',
-          touchAction: 'manipulation',
-          willChange: 'transform', // Optimize for transform animation
         }}
       >
         <div className="max-w-3xl mx-auto">
@@ -2027,7 +1986,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           await handleGifSelection(gif)
         }}
       />
-    </>
+    </div>
   )
 }
 
