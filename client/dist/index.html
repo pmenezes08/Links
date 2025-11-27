@@ -57,9 +57,14 @@
         overscroll-behavior-y: none;
       }
       
-      /* Absolutely force dark mode safe areas */
+      /* Global styles: hide scrollbars + force dark mode */
       * {
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE/Edge */
         color-scheme: dark !important;
+      }
+      *::-webkit-scrollbar {
+        display: none; /* Chrome, Safari, Opera */
       }
       
       input, textarea, select { 
@@ -67,7 +72,7 @@
       }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script type="module" crossorigin src="/assets/index-BT2xFqWc-1764262386595.js"></script>
+    <script type="module" crossorigin src="/assets/index-DzqPYW7f-1764262572589.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-CrVZLuuz.css">
   </head>
   <body>

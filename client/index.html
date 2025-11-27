@@ -57,9 +57,14 @@
         overscroll-behavior-y: none;
       }
       
-      /* Absolutely force dark mode safe areas */
+      /* Global styles: hide scrollbars + force dark mode */
       * {
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE/Edge */
         color-scheme: dark !important;
+      }
+      *::-webkit-scrollbar {
+        display: none; /* Chrome, Safari, Opera */
       }
       
       input, textarea, select { 
