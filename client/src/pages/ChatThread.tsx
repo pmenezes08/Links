@@ -101,6 +101,29 @@ export default function ChatThread(){
     setComposerHeight(composerRef.current?.offsetHeight ?? 0)
   }, [])
   
+  // Auto-scroll logic - declared early so it can be used in useEffects
+  const lastCountRef = useRef(0)
+  const didInitialAutoScrollRef = useRef(false)
+  const [showScrollDown, setShowScrollDown] = useState(false)
+  
+  const scrollToBottom = useCallback(() => {
+    const el = listRef.current
+    if (!el) return
+    // Use multiple requestAnimationFrame calls to ensure DOM is fully updated
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // Scroll to maximum possible position
+        el.scrollTop = el.scrollHeight - el.clientHeight
+        // Double-check: ensure we're at the bottom
+        setTimeout(() => {
+          if (el.scrollHeight > el.clientHeight) {
+            el.scrollTop = el.scrollHeight - el.clientHeight
+          }
+        }, 50)
+      })
+    })
+  }, [])
+  
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined' || typeof navigator === 'undefined') return
     
@@ -462,29 +485,6 @@ export default function ChatThread(){
       }
     }).catch(()=>{})
   }, [username])
-
-  // Auto-scroll logic
-  const lastCountRef = useRef(0)
-  const didInitialAutoScrollRef = useRef(false)
-  const [showScrollDown, setShowScrollDown] = useState(false)
-  
-  const scrollToBottom = useCallback(() => {
-    const el = listRef.current
-    if (!el) return
-    // Use multiple requestAnimationFrame calls to ensure DOM is fully updated
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        // Scroll to maximum possible position
-        el.scrollTop = el.scrollHeight - el.clientHeight
-        // Double-check: ensure we're at the bottom
-        setTimeout(() => {
-          if (el.scrollHeight > el.clientHeight) {
-            el.scrollTop = el.scrollHeight - el.clientHeight
-          }
-        }, 50)
-      })
-    })
-  }, [])
   
   useEffect(() => {
     const el = listRef.current
