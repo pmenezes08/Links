@@ -1139,6 +1139,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
+        minHeight: '100vh',
         background: '#000000',
         position: 'relative',
         overflow: 'hidden',
@@ -1238,19 +1239,12 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         ref={listRef}
         className="space-y-1 bg-black text-white"
         style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
+          flex: 1,
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
-          // Allow elastic/rubber-band scrolling on iOS
           overscrollBehavior: 'auto',
-          // Padding: top for headers, bottom for composer + safe area
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
-          // Bottom padding = space for composer + safe area
           paddingBottom: `calc(${bottomPadding}px + ${safeBottom})`,
           paddingLeft: '12px',
           paddingRight: '12px',
