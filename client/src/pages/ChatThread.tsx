@@ -96,6 +96,7 @@ export default function ChatThread(){
   const lastCountRef = useRef(0)
   const didInitialAutoScrollRef = useRef(false)
   const [showScrollDown, setShowScrollDown] = useState(false)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
   
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -154,6 +155,40 @@ export default function ChatThread(){
   const totalHeaderHeight = globalHeaderHeight + chatHeaderHeight
   
   const composerRef = useRef<HTMLDivElement | null>(null)
+  const keyboardOffsetRef = useRef(0)
+  
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+    
+    let rafId: number | null = null
+    
+    const updateOffset = () => {
+      const nextOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 2) return
+      keyboardOffsetRef.current = nextOffset
+      setKeyboardOffset(nextOffset)
+      if (nextOffset > 0) {
+        requestAnimationFrame(scrollToBottom)
+      }
+    }
+    
+    const handleChange = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updateOffset)
+    }
+    
+    viewport.addEventListener('resize', handleChange)
+    viewport.addEventListener('scroll', handleChange)
+    updateOffset()
+    
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', handleChange)
+      viewport.removeEventListener('scroll', handleChange)
+    }
+  }, [scrollToBottom])
   
   // Scroll to bottom when window resizes (Capacitor native keyboard resize)
   useEffect(() => {
@@ -1241,10 +1276,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
-          // 'contain' allows elastic scroll but keeps it within this element
-          overscrollBehavior: 'contain',
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
-          paddingBottom: `calc(${bottomPadding}px + ${safeBottom})`,
+          paddingBottom: `calc(${bottomPadding}px + ${safeBottom} + ${keyboardOffset}px)`,
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
@@ -1457,7 +1490,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           <button
             className="fixed right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
             style={{ 
-              bottom: `calc(${bottomPadding}px + ${safeBottom})`
+              bottom: `calc(${bottomPadding}px + ${safeBottom} + ${keyboardOffset}px)`
             }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
             aria-label="Scroll to latest"
@@ -1480,6 +1513,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           zIndex: 1000,
           background: '#000000',
           paddingBottom: `calc(8px + ${safeBottom})`,
+          transform: keyboardOffset ? `translateY(-${keyboardOffset}px)` : undefined,
+          transition: 'transform 120ms ease-out',
         }}
       >
         <div className="max-w-3xl mx-auto">
