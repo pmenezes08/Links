@@ -1228,14 +1228,15 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           top: `calc(${globalHeaderHeight}px + ${chatHeaderHeight}px + ${safeTop})`,
           left: 0,
           right: 0,
-          // Use viewportHeight to calculate bottom - shrinks when keyboard opens
-          height: `calc(${viewportHeight}px - ${globalHeaderHeight}px - ${chatHeaderHeight}px - ${composerHeight}px)`,
+          // When keyboard open: viewportHeight is smaller, so bottom adjusts
+          bottom: `${window.innerHeight - viewportHeight}px`,
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
           paddingTop: '16px',
-          paddingBottom: '16px',
+          // Padding at bottom = composer height + safe area + extra buffer
+          paddingBottom: `calc(${composerHeight}px + ${safeBottom} + 24px)`,
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
