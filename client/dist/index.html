@@ -21,18 +21,37 @@
         --sab: env(safe-area-inset-bottom, 0px);
       }
       
-      html, body {
+      html {
         margin: 0;
         padding: 0;
         height: 100%;
         background: #000000;
         color: #ffffff;
         color-scheme: dark;
+        /* Prevent html from scrolling - only nested containers scroll */
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        background: #000000;
+        color: #ffffff;
+        color-scheme: dark;
+        /* Prevent body from scrolling */
+        overflow: hidden;
+        overscroll-behavior: none;
       }
       
       #root {
         height: 100%;
+        width: 100%;
         background: #000000;
+        overflow: hidden;
+        overscroll-behavior: none;
       }
       
       /* Hide scrollbars but allow scrolling */
@@ -43,7 +62,7 @@
       input, textarea, select { font-size: 16px !important; }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script type="module" crossorigin src="/assets/index-BUzq-gWj-1764285062274.js"></script>
+    <script type="module" crossorigin src="/assets/index-B2qLWXKt-1764285741950.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-C2WVLlaz.css">
   </head>
   <body>
