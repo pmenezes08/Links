@@ -1302,8 +1302,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
-          // iOS FIX: Use 'none' for iOS Capacitor to prevent bounce-back
-          overscrollBehavior: isIOSCapacitor ? 'none' : 'contain',
+          // Allow elastic/rubber-band scrolling on iOS
+          overscrollBehavior: 'auto',
           // Padding: top for headers, bottom for composer + keyboard + safe area
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
           // iOS FIX: For iOS Capacitor, use fixed px value (env() may not work correctly)
