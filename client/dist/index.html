@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/static/logo.png" />
     <link rel="shortcut icon" type="image/png" href="/static/logo.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="color-scheme" content="dark">
     <title>C-Point</title>
     <link rel="manifest" href="/manifest.webmanifest">
@@ -15,60 +15,35 @@
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
-      /* iOS Capacitor friendly layout - allows natural keyboard behavior */
       :root {
         color-scheme: dark;
         --sat: env(safe-area-inset-top, 0px);
         --sab: env(safe-area-inset-bottom, 0px);
       }
       
-      html {
+      html, body {
+        margin: 0;
+        padding: 0;
         height: 100%;
         background: #000000;
+        color: #ffffff;
         color-scheme: dark;
       }
       
-      body {
-        min-height: 100%;
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        background: #000000;
-        color: #ffffff;
-        /* Allow iOS elastic scroll */
-        overscroll-behavior-y: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-      
-      /* #root fills the viewport */
       #root {
-        min-height: 100%;
-        min-height: 100dvh; /* Dynamic viewport height - adjusts with keyboard */
+        height: 100%;
         background: #000000;
-        -webkit-overflow-scrolling: touch;
       }
       
-      /* Hide ALL scrollbars globally */
-      * { scrollbar-width: none !important; -ms-overflow-style: none !important; }
-      *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+      /* Hide scrollbars but allow scrolling */
+      * { scrollbar-width: none; -ms-overflow-style: none; }
+      *::-webkit-scrollbar { display: none; width: 0; height: 0; }
       
       /* Prevent iOS text zoom on input focus */
       input, textarea, select { font-size: 16px !important; }
     </style>
-    <script>
-      // Minimal iOS setup - keyboard handling done in React with Capacitor plugin
-      (function() {
-        // Set viewport height CSS variable for fallback
-        function setVH() {
-          var vh = window.innerHeight * 0.01;
-          document.documentElement.style.setProperty('--vh', vh + 'px');
-        }
-        setVH();
-        window.addEventListener('resize', setVH);
-      })();
-    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script type="module" crossorigin src="/assets/index-T-dLNv3g-1764281028011.js"></script>
+    <script type="module" crossorigin src="/assets/index-Btr8tfXG-1764281485845.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-C2WVLlaz.css">
   </head>
   <body>

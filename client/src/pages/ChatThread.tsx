@@ -9,7 +9,6 @@ import { encryptionService } from '../services/simpleEncryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
-import { Keyboard } from '@capacitor/keyboard'
 
 interface Message {
   id: number | string
@@ -160,115 +159,24 @@ export default function ChatThread(){
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const totalHeaderHeight = globalHeaderHeight + chatHeaderHeight
   
-  // iOS KEYBOARD FIX: Track keyboard height, move composer above it
-  const [keyboardHeight, setKeyboardHeight] = useState(0)
-  
-  // iOS FIX: Dynamically measure composer height for accurate scroll padding
-  const [measuredComposerHeight, setMeasuredComposerHeight] = useState(80)
   const composerRef = useRef<HTMLDivElement | null>(null)
   
-  // Measure composer height on mount and when it might change
-  useEffect(() => {
-    const measureComposer = () => {
-      if (composerRef.current) {
-        const height = composerRef.current.getBoundingClientRect().height
-        // Use measured height but ensure minimum of 80px
-        if (height > 0) {
-          setMeasuredComposerHeight(Math.max(80, height))
-        }
-      }
-    }
-    // Measure after render
-    measureComposer()
-    const timer = setTimeout(measureComposer, 100)
-    const timer2 = setTimeout(measureComposer, 500)
-    return () => { clearTimeout(timer); clearTimeout(timer2) }
-  }, [replyTo, recording, recordingPreview])
+  // Bottom padding for messages list - ensures last message visible above composer
+  // iOS Capacitor with resize:'native' handles keyboard automatically
+  const bottomPadding = isIOSCapacitor ? 200 : 120
   
-  // iOS Capacitor: LARGE buffer to ensure last message is visible above composer
-  // Total bottom padding = composerHeight + iosNativeBuffer + iosSafeAreaBuffer + baseBuffer
-  const iosNativeBuffer = isIOSCapacitor ? 100 : 0
-  const iosSafeAreaBuffer = isIOSCapacitor ? 80 : 0
-  const baseBuffer = 50
-  
-  // Use Capacitor Keyboard plugin for iOS to get accurate keyboard height
+  // Scroll to bottom when window resizes (keyboard open/close on iOS)
   useEffect(() => {
-    if (!isIOSCapacitor) return
-    
-    let showListener: any = null
-    let hideListener: any = null
-    
-    const setupKeyboardListeners = async () => {
-      try {
-        showListener = await Keyboard.addListener('keyboardWillShow', (info) => {
-          const kh = info.keyboardHeight || 0
-          setKeyboardHeight(kh)
-          // Scroll to bottom when keyboard opens
-          if (listRef.current && didInitialAutoScrollRef.current) {
-            setTimeout(scrollToBottom, 50)
-            setTimeout(scrollToBottom, 150)
-            setTimeout(scrollToBottom, 300)
-          }
-        })
-        
-        hideListener = await Keyboard.addListener('keyboardWillHide', () => {
-          setKeyboardHeight(0)
-          // Scroll to bottom when keyboard closes
-          if (listRef.current && didInitialAutoScrollRef.current) {
-            setTimeout(scrollToBottom, 50)
-            setTimeout(scrollToBottom, 150)
-          }
-        })
-      } catch (e) {
-        console.log('Keyboard plugin not available:', e)
-      }
-    }
-    
-    setupKeyboardListeners()
-    
-    return () => {
-      if (showListener) showListener.remove()
-      if (hideListener) hideListener.remove()
-    }
-  }, [isIOSCapacitor, scrollToBottom])
-  
-  // Fallback: visualViewport for web browsers
-  useEffect(() => {
-    if (isIOSCapacitor) return // Skip for iOS Capacitor, using plugin instead
-    
-    const updateLayout = () => {
-      const vvh = window.visualViewport?.height ?? window.innerHeight
-      const kh = Math.max(0, window.innerHeight - vvh)
-      const prevKeyboardHeight = keyboardHeight
-      setKeyboardHeight(kh)
-      
-      // Auto-scroll to bottom when keyboard opens/closes
+    const handleResize = () => {
       if (listRef.current && didInitialAutoScrollRef.current) {
-        scrollToBottom()
-        setTimeout(scrollToBottom, 50)
-        setTimeout(scrollToBottom, 150)
-        if (kh > prevKeyboardHeight) {
-          setTimeout(scrollToBottom, 300)
-        }
+        setTimeout(scrollToBottom, 100)
+        setTimeout(scrollToBottom, 300)
       }
     }
     
-    updateLayout()
-    
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', updateLayout)
-      window.visualViewport.addEventListener('scroll', updateLayout)
-    }
-    window.addEventListener('resize', updateLayout)
-    
-    return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', updateLayout)
-        window.visualViewport.removeEventListener('scroll', updateLayout)
-      }
-      window.removeEventListener('resize', updateLayout)
-    }
-  }, [isIOSCapacitor, scrollToBottom, keyboardHeight])
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [scrollToBottom])
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -1227,10 +1135,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        minHeight: '100dvh',
-        height: '100%',
+        height: '100dvh',
         background: '#000000',
         position: 'relative',
+        overflow: 'hidden',
       }}
     >
       {/* ====== CHAT HEADER - FIXED AT TOP ====== */}
@@ -1335,15 +1243,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           WebkitOverflowScrolling: 'touch',
           // Allow elastic/rubber-band scrolling on iOS
           overscrollBehavior: 'auto',
-          // Padding: top for headers, bottom for composer + keyboard + safe area
+          // Padding: top for headers, bottom for composer + safe area
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
-          // iOS FIX: For iOS Capacitor, use keyboard height from Capacitor plugin
-          // For web, use visualViewport-based keyboard height
-          paddingBottom: isIOSCapacitor
-            ? `${measuredComposerHeight + keyboardHeight + baseBuffer + iosNativeBuffer + iosSafeAreaBuffer}px`
-            : (keyboardHeight > 0 
-                ? `${measuredComposerHeight + keyboardHeight + baseBuffer}px`
-                : `calc(${measuredComposerHeight}px + ${baseBuffer}px + ${safeBottom})`),
+          // Large bottom padding ensures last message is visible above composer
+          paddingBottom: `calc(${bottomPadding}px + ${safeBottom})`,
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
@@ -1556,12 +1459,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           <button
             className="fixed right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
             style={{ 
-              // Position above the composer (accounting for keyboard)
-              bottom: isIOSCapacitor
-                ? `${measuredComposerHeight + keyboardHeight + 16 + iosNativeBuffer + iosSafeAreaBuffer}px`
-                : (keyboardHeight > 0 
-                    ? `${measuredComposerHeight + keyboardHeight + 16}px`
-                    : `calc(${measuredComposerHeight}px + 16px + ${safeBottom})`)
+              bottom: `calc(100px + ${safeBottom})`
             }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
             aria-label="Scroll to latest"
@@ -1571,20 +1469,19 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* ====== COMPOSER - FIXED ABOVE KEYBOARD ====== */}
+      {/* ====== COMPOSER - FIXED AT BOTTOM, iOS native resize pushes it up ====== */}
       <div 
         ref={composerRef}
         className="bg-black px-2 sm:px-3 py-2 border-t border-white/10" 
         style={{
           position: 'fixed',
-          // iOS Capacitor: use keyboard height from plugin
-          bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 0,
+          bottom: 0,
           left: 0,
           right: 0,
           width: '100%',
           zIndex: 1000,
           background: '#000000',
-          paddingBottom: keyboardHeight > 0 ? '8px' : `calc(8px + ${safeBottom})`,
+          paddingBottom: `calc(8px + ${safeBottom})`,
         }}
       >
         <div className="max-w-3xl mx-auto">

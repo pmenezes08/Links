@@ -12,19 +12,17 @@ const config: CapacitorConfig = {
   },
   backgroundColor: appBackground,
   ios: {
-    contentInset: 'always',
-    // Enable hardware keyboard in simulator
+    contentInset: 'automatic',
     preferredContentMode: 'mobile',
     backgroundColor: appBackground,
-    // iOS keyboard behavior - let iOS handle keyboard avoidance
     scrollEnabled: true,
   },
   plugins: {
     Keyboard: {
-      // 'none' - we handle keyboard positioning ourselves via the plugin events
-      resize: 'none',
+      // 'native' uses iOS native keyboard avoidance - pushes content up
+      resize: 'native',
       style: 'dark',
-      resizeOnFullScreen: false,
+      resizeOnFullScreen: true,
     },
   },
 };
