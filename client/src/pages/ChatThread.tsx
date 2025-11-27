@@ -47,37 +47,6 @@ export default function ChatThread(){
     checkMobile()
   }, [])
 
-  // WhatsApp-style keyboard handling using visualViewport API (web standard)
-  // When keyboard opens, visualViewport.height shrinks - we use this to resize
-  const [keyboardHeight, setKeyboardHeight] = useState(0)
-  
-  useEffect(() => {
-    const viewport = window.visualViewport
-    if (!viewport) return
-    
-    const handleResize = () => {
-      // Calculate keyboard height as difference between window and visual viewport
-      const keyboardH = window.innerHeight - viewport.height
-      setKeyboardHeight(keyboardH > 50 ? keyboardH : 0) // Threshold to avoid false positives
-      
-      // Scroll to bottom when keyboard opens
-      if (keyboardH > 50 && listRef.current) {
-        setTimeout(() => {
-          if (listRef.current) {
-            listRef.current.scrollTop = listRef.current.scrollHeight
-          }
-        }, 50)
-      }
-    }
-    
-    viewport.addEventListener('resize', handleResize)
-    viewport.addEventListener('scroll', handleResize)
-    
-    return () => {
-      viewport.removeEventListener('resize', handleResize)
-      viewport.removeEventListener('scroll', handleResize)
-    }
-  }, [])
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Message[]>([])
@@ -123,23 +92,20 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // WhatsApp-style layout: fixed container that shrinks when keyboard opens
-  // Instead of fighting the viewport, we resize to fit above the keyboard
-  const viewportStyles = useMemo<CSSProperties>(() => {
-    return {
-      position: 'fixed' as const,
-      top: 0,
-      left: 0,
-      right: 0,
-      // Key: bottom is keyboard height, so container shrinks to fit above keyboard
-      bottom: keyboardHeight,
-      display: 'flex',
-      flexDirection: 'column' as const,
-      overflow: 'hidden',
-      // Padding top for global header + safe area
-      paddingTop: 'calc(56px + env(safe-area-inset-top, 0px))',
-    }
-  }, [keyboardHeight])
+  // Layout: uses 100dvh (dynamic viewport height) which auto-adjusts on iOS keyboard
+  // Capacitor Keyboard plugin with resize: 'body' handles the resize automatically
+  const viewportStyles: CSSProperties = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    // Padding top for global header + safe area
+    paddingTop: 'calc(56px + env(safe-area-inset-top, 0px))',
+  }
 
   useEffect(() => {
     if (!headerMenuOpen) return
