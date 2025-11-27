@@ -95,41 +95,51 @@ export default function ChatThread(){
   // ============================================================================
   // 2025 iOS BULLETPROOF SOLUTION: visualViewport-aware layout
   // ============================================================================
-  const [viewportHeight, setViewportHeight] = useState(window.innerHeight)
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
   const composerRef = useRef<HTMLDivElement>(null)
   
   // Listen to visualViewport resize (keyboard open/close)
   useEffect(() => {
-    const updateHeight = () => {
+    const updateViewport = () => {
       const vh = window.visualViewport?.height ?? window.innerHeight
-      setViewportHeight(vh)
+      const kh = Math.max(0, window.innerHeight - vh)
+      setKeyboardHeight(kh)
+      
+      // When keyboard opens, scroll messages to bottom
+      if (kh > 50 && listRef.current) {
+        setTimeout(() => {
+          if (listRef.current) {
+            listRef.current.scrollTop = listRef.current.scrollHeight
+          }
+        }, 100)
+      }
     }
     
     // Initial
-    updateHeight()
+    updateViewport()
     
     // Listen to visualViewport (iOS keyboard)
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', updateHeight)
-      window.visualViewport.addEventListener('scroll', updateHeight)
+      window.visualViewport.addEventListener('resize', updateViewport)
+      window.visualViewport.addEventListener('scroll', updateViewport)
     }
-    window.addEventListener('resize', updateHeight)
+    window.addEventListener('resize', updateViewport)
     
     return () => {
       if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', updateHeight)
-        window.visualViewport.removeEventListener('scroll', updateHeight)
+        window.visualViewport.removeEventListener('resize', updateViewport)
+        window.visualViewport.removeEventListener('scroll', updateViewport)
       }
-      window.removeEventListener('resize', updateHeight)
+      window.removeEventListener('resize', updateViewport)
     }
   }, [])
   
-  // Auto-scroll composer into view when focused
+  // Auto-scroll input into view when focused
   useEffect(() => {
     const handleFocus = () => {
       setTimeout(() => {
-        composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-      }, 300)
+        textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 350)
     }
     
     const textarea = textareaRef.current
@@ -1228,15 +1238,16 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           top: `calc(${globalHeaderHeight}px + ${chatHeaderHeight}px + ${safeTop})`,
           left: 0,
           right: 0,
-          // When keyboard open: viewportHeight is smaller, so bottom adjusts
-          bottom: `${window.innerHeight - viewportHeight}px`,
+          // Bottom = keyboard height + composer height + margin
+          bottom: keyboardHeight > 0 
+            ? `${keyboardHeight + composerHeight + 20}px`
+            : `calc(${composerHeight}px + ${safeBottom} + 10px)`,
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
           paddingTop: '16px',
-          // Padding at bottom = composer height + safe area + extra buffer
-          paddingBottom: `calc(${composerHeight}px + ${safeBottom} + 24px)`,
+          paddingBottom: '16px',
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
@@ -1445,18 +1456,20 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* ====== COMPOSER - FIXED AT BOTTOM, TAPPABLE ====== */}
+      {/* ====== COMPOSER - FIXED ABOVE KEYBOARD ====== */}
       <div 
         ref={composerRef}
         className="bg-black px-2 sm:px-3 py-2 border-t border-white/10" 
         style={{
           position: 'fixed',
-          bottom: 0,
+          // When keyboard open, position above it with 10px margin
+          bottom: keyboardHeight > 0 ? `${keyboardHeight + 10}px` : 0,
           left: 0,
           right: 0,
           zIndex: 1000,
           background: '#000000',
-          paddingBottom: `calc(8px + ${safeBottom})`,
+          // Only add safe area padding when keyboard is closed
+          paddingBottom: keyboardHeight > 0 ? '8px' : `calc(8px + ${safeBottom})`,
           pointerEvents: 'auto',
           touchAction: 'manipulation',
         }}
