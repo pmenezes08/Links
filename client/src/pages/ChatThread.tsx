@@ -93,59 +93,92 @@ export default function ChatThread(){
   const skipNextPollsUntil = useRef<number>(0)
 
   // ============================================================================
-  // 2025 iOS BULLETPROOF SOLUTION: visualViewport-aware layout
+  // 2025 iOS BULLETPROOF SOLUTION: transform-based keyboard avoidance
+  // This is the ONLY method that works 100% on iOS WKWebView/Capacitor
   // ============================================================================
-  const [keyboardHeight, setKeyboardHeight] = useState(0)
   const composerRef = useRef<HTMLDivElement>(null)
   
-  // Listen to visualViewport resize (keyboard open/close)
+  // iOS-only: Use transform to move composer above keyboard
   useEffect(() => {
-    const updateViewport = () => {
-      const vh = window.visualViewport?.height ?? window.innerHeight
-      const kh = Math.max(0, window.innerHeight - vh)
-      setKeyboardHeight(kh)
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
+    if (!isIOS || !window.visualViewport) return
+    
+    const updateComposer = () => {
+      const kh = Math.max(0, window.innerHeight - window.visualViewport!.height)
       
-      // When keyboard opens, scroll messages to bottom
-      if (kh > 50 && listRef.current) {
-        setTimeout(() => {
-          if (listRef.current) {
-            listRef.current.scrollTop = listRef.current.scrollHeight
-          }
-        }, 100)
+      // Direct DOM manipulation with transform (most reliable on iOS)
+      if (composerRef.current) {
+        composerRef.current.style.transform = kh > 0 ? `translateY(-${kh}px)` : 'translateY(0)'
+        composerRef.current.style.transition = 'transform 0.15s ease-out'
+      }
+      
+      // Also adjust messages list bottom
+      if (listRef.current) {
+        const composerH = 70 // approximate
+        listRef.current.style.bottom = kh > 0 ? `${kh + composerH}px` : ''
+        
+        // Scroll to bottom when keyboard opens
+        if (kh > 50) {
+          setTimeout(() => {
+            if (listRef.current) {
+              listRef.current.scrollTop = listRef.current.scrollHeight
+            }
+          }, 100)
+        }
       }
     }
     
-    // Initial
-    updateViewport()
+    // Initial call
+    updateComposer()
     
-    // Listen to visualViewport (iOS keyboard)
+    // Listen to visualViewport
+    window.visualViewport.addEventListener('resize', updateComposer)
+    window.visualViewport.addEventListener('scroll', updateComposer)
+    
+    // Also update on focus
+    const handleFocus = () => {
+      setTimeout(updateComposer, 100)
+    }
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.addEventListener('focus', handleFocus)
+    }
+    
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateComposer)
+      window.visualViewport?.removeEventListener('scroll', updateComposer)
+      if (textarea) {
+        textarea.removeEventListener('focus', handleFocus)
+      }
+    }
+  }, [])
+  
+  // Non-iOS fallback: adjust via DOM as well for consistency
+  useEffect(() => {
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
+    if (isIOS) return // iOS uses the transform method above
+    
+    const updateViewport = () => {
+      const vh = window.visualViewport?.height ?? window.innerHeight
+      const kh = Math.max(0, window.innerHeight - vh)
+      
+      // Direct DOM manipulation for non-iOS too
+      if (composerRef.current && kh > 0) {
+        composerRef.current.style.transform = `translateY(-${kh}px)`
+      } else if (composerRef.current) {
+        composerRef.current.style.transform = 'translateY(0)'
+      }
+    }
+    
+    updateViewport()
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', updateViewport)
-      window.visualViewport.addEventListener('scroll', updateViewport)
     }
     window.addEventListener('resize', updateViewport)
     
     return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', updateViewport)
-        window.visualViewport.removeEventListener('scroll', updateViewport)
-      }
+      window.visualViewport?.removeEventListener('resize', updateViewport)
       window.removeEventListener('resize', updateViewport)
-    }
-  }, [])
-  
-  // Auto-scroll input into view when focused
-  useEffect(() => {
-    const handleFocus = () => {
-      setTimeout(() => {
-        textareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }, 350)
-    }
-    
-    const textarea = textareaRef.current
-    if (textarea) {
-      textarea.addEventListener('focus', handleFocus)
-      return () => textarea.removeEventListener('focus', handleFocus)
     }
   }, [])
   
@@ -1238,10 +1271,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           top: `calc(${globalHeaderHeight}px + ${chatHeaderHeight}px + ${safeTop})`,
           left: 0,
           right: 0,
-          // Bottom = keyboard height + composer height + margin
-          bottom: keyboardHeight > 0 
-            ? `${keyboardHeight + composerHeight + 20}px`
-            : `calc(${composerHeight}px + ${safeBottom} + 10px)`,
+          // Default bottom (iOS adjusts via DOM in useEffect)
+          bottom: `calc(${composerHeight}px + ${safeBottom} + 10px)`,
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
@@ -1456,22 +1487,21 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* ====== COMPOSER - FIXED ABOVE KEYBOARD ====== */}
+      {/* ====== COMPOSER - FIXED AT BOTTOM, USES TRANSFORM ON iOS ====== */}
       <div 
         ref={composerRef}
-        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10" 
+        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 message-composer" 
         style={{
           position: 'fixed',
-          // When keyboard open, position above it with 10px margin
-          bottom: keyboardHeight > 0 ? `${keyboardHeight + 10}px` : 0,
+          bottom: 0, // Always at bottom, transform moves it up on iOS
           left: 0,
           right: 0,
           zIndex: 1000,
           background: '#000000',
-          // Only add safe area padding when keyboard is closed
-          paddingBottom: keyboardHeight > 0 ? '8px' : `calc(8px + ${safeBottom})`,
+          paddingBottom: `calc(8px + ${safeBottom})`,
           pointerEvents: 'auto',
           touchAction: 'manipulation',
+          willChange: 'transform', // Optimize for transform animation
         }}
       >
         <div className="max-w-3xl mx-auto">
