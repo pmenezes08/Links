@@ -9,6 +9,8 @@ import { encryptionService } from '../services/simpleEncryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import { Keyboard, type KeyboardInfo } from '@capacitor/keyboard'
+import { Capacitor } from '@capacitor/core'
 
 interface Message {
   id: number | string
@@ -47,22 +49,42 @@ export default function ChatThread(){
     checkMobile()
   }, [])
 
-  // iOS keyboard handling - prevent body scroll when keyboard opens
+  // WhatsApp-style keyboard handling: resize content instead of fighting viewport
+  // This is how native apps handle keyboard - they shrink the content area
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
+  
   useEffect(() => {
-    // Scroll the textarea into view when focused (helps on iOS)
-    const handleFocusIn = (e: FocusEvent) => {
-      if (e.target instanceof HTMLTextAreaElement) {
-        // Small delay to let keyboard open
-        setTimeout(() => {
-          e.target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        }, 300)
-      }
+    // Only use Capacitor keyboard events on native iOS
+    if (!Capacitor.isNativePlatform()) {
+      return
     }
     
-    document.addEventListener('focusin', handleFocusIn)
+    let showListener: { remove: () => void } | null = null
+    let hideListener: { remove: () => void } | null = null
+    
+    const setup = async () => {
+      // When keyboard shows, resize our container to make room
+      showListener = await Keyboard.addListener('keyboardWillShow', (info: KeyboardInfo) => {
+        setKeyboardHeight(info.keyboardHeight)
+        // Scroll messages to bottom so user sees latest
+        setTimeout(() => {
+          if (listRef.current) {
+            listRef.current.scrollTop = listRef.current.scrollHeight
+          }
+        }, 50)
+      })
+      
+      // When keyboard hides, restore full height
+      hideListener = await Keyboard.addListener('keyboardWillHide', () => {
+        setKeyboardHeight(0)
+      })
+    }
+    
+    setup()
     
     return () => {
-      document.removeEventListener('focusin', handleFocusIn)
+      showListener?.remove()
+      hideListener?.remove()
     }
   }, [])
 
@@ -112,24 +134,23 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // Viewport styles - position below global header, use absolute not fixed for children
-  // Use transform to counteract iOS visual viewport shift
+  // WhatsApp-style layout: fixed container that shrinks when keyboard opens
+  // Instead of fighting the viewport, we resize to fit above the keyboard
   const viewportStyles = useMemo<CSSProperties>(() => {
     return {
       position: 'fixed' as const,
       top: 0,
       left: 0,
       right: 0,
-      bottom: 0,
+      // Key: bottom is keyboard height, so container shrinks to fit above keyboard
+      bottom: keyboardHeight,
       display: 'flex',
       flexDirection: 'column' as const,
       overflow: 'hidden',
-      // Shift the entire container up by the keyboard offset to keep it in place
-      transform: keyboardOffset > 0 ? `translateY(-${keyboardOffset}px)` : 'none',
       // Padding top for global header + safe area
       paddingTop: 'calc(56px + env(safe-area-inset-top, 0px))',
     }
-  }, [keyboardOffset])
+  }, [keyboardHeight])
 
   useEffect(() => {
     if (!headerMenuOpen) return
