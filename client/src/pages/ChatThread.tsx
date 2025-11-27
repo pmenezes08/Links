@@ -147,7 +147,11 @@ export default function ChatThread(){
   
   useEffect(() => {
     measureHeights()
-  }, [measureHeights, draft, replyTo, recording, showAttachMenu, gifPickerOpen])
+    // When composer height changes (e.g., keyboard opens/closes), scroll to bottom
+    if (didInitialAutoScrollRef.current && messages.length > 0) {
+      setTimeout(() => scrollToBottom(), 100)
+    }
+  }, [measureHeights, draft, replyTo, recording, showAttachMenu, gifPickerOpen, composerHeight, messages.length, scrollToBottom])
 
   useEffect(() => {
     if (!headerMenuOpen) return
@@ -204,7 +208,7 @@ export default function ChatThread(){
     overflowY: 'auto',
     WebkitOverflowScrolling: 'touch',
     overscrollBehavior: 'contain',
-    padding: '0.75rem 0.75rem 1.25rem',
+    padding: `0.75rem 0.75rem calc(${(composerHeight || 80)}px + env(safe-area-inset-bottom, 0px) + 0.75rem)`,
   }
   const rootStyle: CSSProperties = {
     position: 'fixed',
@@ -464,36 +468,51 @@ export default function ChatThread(){
   const didInitialAutoScrollRef = useRef(false)
   const [showScrollDown, setShowScrollDown] = useState(false)
   
-  function scrollToBottom(){
+  const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (!el) return
-    requestAnimationFrame(() => requestAnimationFrame(() => { 
-      el.scrollTop = el.scrollHeight 
-    }))
-  }
+    // Use multiple requestAnimationFrame calls to ensure DOM is fully updated
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // Scroll to maximum possible position
+        el.scrollTop = el.scrollHeight - el.clientHeight
+        // Double-check: ensure we're at the bottom
+        setTimeout(() => {
+          if (el.scrollHeight > el.clientHeight) {
+            el.scrollTop = el.scrollHeight - el.clientHeight
+          }
+        }, 50)
+      })
+    })
+  }, [])
   
   useEffect(() => {
     const el = listRef.current
     if (!el) return
     if (!didInitialAutoScrollRef.current) {
       if (messages.length > 0){
-        scrollToBottom()
-        didInitialAutoScrollRef.current = true
-        lastCountRef.current = messages.length
+        // Initial scroll on mount - wait a bit for layout to settle
+        setTimeout(() => {
+          scrollToBottom()
+          didInitialAutoScrollRef.current = true
+          lastCountRef.current = messages.length
+        }, 150)
         return
       }
     }
     if (messages.length > lastCountRef.current){
       const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
       if (near){
+        // User is near bottom - auto-scroll to show new message
         scrollToBottom()
         setShowScrollDown(false)
       } else {
+        // User scrolled up - show scroll button
         setShowScrollDown(true)
       }
     }
     lastCountRef.current = messages.length
-  }, [messages])
+  }, [messages, scrollToBottom])
 
   // Load metadata from localStorage
   useEffect(() => {
