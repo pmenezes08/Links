@@ -92,15 +92,6 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  const headerRef = useRef<HTMLDivElement | null>(null)
-  const composerRef = useRef<HTMLDivElement | null>(null)
-  const [headerHeight, setHeaderHeight] = useState(0)
-  const [composerHeight, setComposerHeight] = useState(0)
-  const measureHeights = useCallback(() => {
-    setHeaderHeight(headerRef.current?.offsetHeight ?? 0)
-    setComposerHeight(composerRef.current?.offsetHeight ?? 0)
-  }, [])
-  
   // Auto-scroll logic - declared early so it can be used in useEffects
   const lastCountRef = useRef(0)
   const didInitialAutoScrollRef = useRef(false)
@@ -114,57 +105,6 @@ export default function ChatThread(){
     }))
   }, [])
   
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined' || typeof navigator === 'undefined') return
-    
-    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
-    const setHeight = () => {
-      const height = window.visualViewport?.height || window.innerHeight
-      document.documentElement.style.setProperty('--vv-height', `${height}px`)
-    }
-    
-    setHeight()
-    
-    if (isIOS) {
-      window.visualViewport?.addEventListener('resize', setHeight)
-      window.visualViewport?.addEventListener('scroll', setHeight)
-      return () => {
-        window.visualViewport?.removeEventListener('resize', setHeight)
-        window.visualViewport?.removeEventListener('scroll', setHeight)
-      }
-    } else {
-      window.addEventListener('resize', setHeight)
-      return () => { window.removeEventListener('resize', setHeight) }
-    }
-  }, [])
-  
-  useLayoutEffect(() => {
-    if (typeof window === 'undefined') return
-    measureHeights()
-    
-    if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', measureHeights)
-      return () => { window.removeEventListener('resize', measureHeights) }
-    }
-    
-    const observer = new ResizeObserver(() => measureHeights())
-    if (headerRef.current) observer.observe(headerRef.current)
-    if (composerRef.current) observer.observe(composerRef.current)
-    window.addEventListener('resize', measureHeights)
-    
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('resize', measureHeights)
-    }
-  }, [measureHeights])
-  
-  useEffect(() => {
-    measureHeights()
-    // When composer height changes (e.g., keyboard opens/closes), scroll to bottom
-    if (didInitialAutoScrollRef.current && messages.length > 0) {
-      setTimeout(() => scrollToBottom(), 100)
-    }
-  }, [measureHeights, draft, replyTo, recording, showAttachMenu, gifPickerOpen, composerHeight, messages.length, scrollToBottom])
 
   useEffect(() => {
     if (!headerMenuOpen) return
@@ -193,52 +133,50 @@ export default function ChatThread(){
   
   // E2E Encryption is initialized globally in App.tsx, so it's always ready
   const globalHeaderHeight = 56
-  const headerTopOffset = `calc(${globalHeaderHeight}px + env(safe-area-inset-top, 0px))`
-  const headerStyle: CSSProperties = {
-    position: 'fixed',
-    top: headerTopOffset,
-    left: 0,
-    right: 0,
-    zIndex: 40,
-    backgroundColor: '#000',
-    borderBottom: '1px solid rgba(255,255,255,0.1)',
-  }
-  const composerStyle: CSSProperties = {
-    position: 'fixed',
-    left: 0,
-    right: 0,
-    bottom: 'env(safe-area-inset-bottom, 0px)',
-    zIndex: 45,
-    backgroundColor: '#000',
-    paddingBottom: '8px',
-  }
-  const messagesStyle: CSSProperties = {
-    position: 'fixed',
-    top: `calc(${headerTopOffset} + ${(headerHeight || 56)}px)`,
-    left: 0,
-    right: 0,
-    bottom: `calc(env(safe-area-inset-bottom, 0px) + ${(composerHeight || 80)}px)`,
-    overflowY: 'auto',
-    WebkitOverflowScrolling: 'touch',
-    overscrollBehavior: 'contain',
-    paddingLeft: '0.75rem',
-    paddingRight: '0.75rem',
-    paddingTop: '0.75rem',
-    paddingBottom: `calc(${(composerHeight || 80)}px + env(safe-area-inset-bottom, 0px) + 2rem)`,
-  }
-  const rootStyle: CSSProperties = {
-    position: 'fixed',
-    top: `${globalHeaderHeight}px`,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    minHeight: `calc(var(--vv-height, 100vh) - ${globalHeaderHeight}px)`,
-    backgroundColor: '#000',
-    color: '#fff',
-    overflow: 'hidden',
-  }
-  const scrollButtonBottom = `calc(env(safe-area-inset-bottom, 0px) + ${(composerHeight || 80)}px + 16px)`
-  const floatingDateTop = `calc(${headerTopOffset} + ${(headerHeight || 56)}px + 12px)`
+  const chatHeaderHeight = 56
+  const composerHeight = 60
+  const safeTop = 'env(safe-area-inset-top, 0px)'
+  const safeBottom = 'env(safe-area-inset-bottom, 0px)'
+  const totalHeaderHeight = globalHeaderHeight + chatHeaderHeight
+  
+  // iOS KEYBOARD FIX: Track keyboard height, move composer above it
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
+  
+  const headerRef = useRef<HTMLDivElement | null>(null)
+  const composerRef = useRef<HTMLDivElement | null>(null)
+  
+  useEffect(() => {
+    const updateLayout = () => {
+      const vvh = window.visualViewport?.height ?? window.innerHeight
+      const kh = Math.max(0, window.innerHeight - vvh)
+      setKeyboardHeight(kh)
+      
+      // Auto-scroll to bottom when keyboard opens
+      if (kh > 50 && listRef.current) {
+        setTimeout(() => {
+          if (listRef.current) {
+            listRef.current.scrollTop = listRef.current.scrollHeight
+          }
+        }, 50)
+      }
+    }
+    
+    updateLayout()
+    
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', updateLayout)
+      window.visualViewport.addEventListener('scroll', updateLayout)
+    }
+    window.addEventListener('resize', updateLayout)
+    
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', updateLayout)
+        window.visualViewport.removeEventListener('scroll', updateLayout)
+      }
+      window.removeEventListener('resize', updateLayout)
+    }
+  }, [])
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -1183,11 +1121,29 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   }
 
   return (
-    <div className="bg-black text-white" style={rootStyle}>
+    <div 
+      className="chat-page-container"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100dvh',
+        background: '#000000',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* ====== CHAT HEADER - FIXED AT TOP ====== */}
       <div 
-        ref={headerRef}
-        className="h-14 border-b border-white/10 flex items-center gap-3 px-4"
-        style={headerStyle}
+        className="border-b border-white/10 flex items-center gap-3 px-4 bg-black"
+        style={{
+          position: 'fixed',
+          top: `calc(${globalHeaderHeight}px + ${safeTop})`,
+          left: 0,
+          right: 0,
+          height: `${chatHeaderHeight}px`,
+          zIndex: 1000,
+          background: '#000000',
+        }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3 relative">
           <button 
@@ -1248,10 +1204,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* Floating date indicator */}
       {currentDateLabel && showDateFloat && (
         <div 
-          className="fixed left-1/2 z-[60] pointer-events-none"
           style={{ 
-            top: floatingDateTop,
-            transform: `translateX(-50%) translateY(${showDateFloat ? '0' : '-10px'})`,
+            position: 'fixed',
+            top: `calc(${globalHeaderHeight}px + ${chatHeaderHeight}px + ${safeTop} + 8px)`,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 999,
+            pointerEvents: 'none',
             opacity: showDateFloat ? 1 : 0,
             transition: 'opacity 0.2s ease'
           }}
@@ -1262,10 +1221,26 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         </div>
       )}
       
+      {/* ====== MESSAGES LIST - FLEX CHILD, SCROLLABLE ====== */}
       <div
         ref={listRef}
-        className="space-y-1"
-        style={messagesStyle}
+        className="space-y-1 bg-black text-white"
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+          // Padding: top for headers, bottom for composer + keyboard + safe area
+          paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
+          paddingBottom: keyboardHeight > 0 
+            ? `${composerHeight + keyboardHeight + 20}px`
+            : `calc(${composerHeight}px + 20px + ${safeBottom})`,
+          paddingLeft: '12px',
+          paddingRight: '12px',
+        } as CSSProperties}
         onScroll={(e)=> {
           const el = e.currentTarget
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
@@ -1463,7 +1438,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         {showScrollDown && (
           <button
             className="fixed right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
-            style={{ bottom: scrollButtonBottom }}
+            style={{ 
+              bottom: keyboardHeight > 0 
+                ? `${composerHeight + keyboardHeight + 16}px`
+                : `calc(${composerHeight}px + 16px + ${safeBottom})`
+            }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
             aria-label="Scroll to latest"
           >
@@ -1472,10 +1451,20 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
+      {/* ====== COMPOSER - FIXED ABOVE KEYBOARD ====== */}
       <div 
         ref={composerRef}
         className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 message-composer" 
-        style={composerStyle}
+        style={{
+          position: 'fixed',
+          bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 0,
+          left: 0,
+          right: 0,
+          width: '100%',
+          zIndex: 1000,
+          background: '#000000',
+          paddingBottom: keyboardHeight > 0 ? '8px' : `calc(8px + ${safeBottom})`,
+        }}
       >
         <div className="max-w-3xl mx-auto">
           {replyTo && (
