@@ -109,28 +109,9 @@ export default function ChatThread(){
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (!el) return
-    // Use multiple requestAnimationFrame calls to ensure DOM is fully updated
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        // Calculate maximum scroll position
-        const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
-        el.scrollTop = maxScroll
-        // Double-check with multiple attempts to ensure we're truly at the bottom
-        setTimeout(() => {
-          const newMaxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
-          if (Math.abs(el.scrollTop - newMaxScroll) > 1) {
-            el.scrollTop = newMaxScroll
-          }
-          // Final check after a short delay to handle any dynamic content
-          setTimeout(() => {
-            const finalMaxScroll = Math.max(0, el.scrollHeight - el.clientHeight)
-            if (Math.abs(el.scrollTop - finalMaxScroll) > 1) {
-              el.scrollTop = finalMaxScroll
-            }
-          }, 100)
-        }, 50)
-      })
-    })
+    requestAnimationFrame(() => requestAnimationFrame(() => { 
+      el.scrollTop = el.scrollHeight 
+    }))
   }, [])
   
   useEffect(() => {
@@ -503,23 +484,18 @@ export default function ChatThread(){
     if (!el) return
     if (!didInitialAutoScrollRef.current) {
       if (messages.length > 0){
-        // Initial scroll on mount - wait a bit for layout to settle
-        setTimeout(() => {
-          scrollToBottom()
-          didInitialAutoScrollRef.current = true
-          lastCountRef.current = messages.length
-        }, 150)
+        scrollToBottom()
+        didInitialAutoScrollRef.current = true
+        lastCountRef.current = messages.length
         return
       }
     }
     if (messages.length > lastCountRef.current){
       const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
       if (near){
-        // User is near bottom - auto-scroll to show new message
         scrollToBottom()
         setShowScrollDown(false)
       } else {
-        // User scrolled up - show scroll button
         setShowScrollDown(true)
       }
     }
@@ -1483,14 +1459,6 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             </div>
           )
         })}
-        
-        {/* Bottom spacer to ensure last message is fully scrollable above composer */}
-        <div style={{ 
-          height: `calc(${(composerHeight || 80)}px + env(safe-area-inset-bottom, 0px) + 1rem)`,
-          minHeight: `calc(${(composerHeight || 80)}px + env(safe-area-inset-bottom, 0px) + 1rem)`,
-          width: '100%',
-          flexShrink: 0
-        }} />
         
         {showScrollDown && (
           <button
