@@ -92,56 +92,59 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // 2025 WhatsApp/Telegram pattern: fixed header + scrollable messages + fixed composer
-  // Container fills the available viewport (keyboard-aware via --keyboard-height)
-  const containerStyles: CSSProperties = {
-    position: 'fixed',
-    top: 'calc(56px + env(safe-area-inset-top, 0px))', // Below global header
-    left: 0,
-    right: 0,
-    bottom: 'var(--keyboard-height, 0px)',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    background: '#000000',
-  }
+  // ============================================================================
+  // 2025 iOS BULLETPROOF SOLUTION: visualViewport-aware layout
+  // ============================================================================
+  const [viewportHeight, setViewportHeight] = useState(window.innerHeight)
+  const composerRef = useRef<HTMLDivElement>(null)
   
-  // Chat header: fixed at top of chat area
-  const chatHeaderStyles: CSSProperties = {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '56px',
-    zIndex: 100,
-    background: '#000000',
-  }
+  // Listen to visualViewport resize (keyboard open/close)
+  useEffect(() => {
+    const updateHeight = () => {
+      const vh = window.visualViewport?.height ?? window.innerHeight
+      setViewportHeight(vh)
+    }
+    
+    // Initial
+    updateHeight()
+    
+    // Listen to visualViewport (iOS keyboard)
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', updateHeight)
+      window.visualViewport.addEventListener('scroll', updateHeight)
+    }
+    window.addEventListener('resize', updateHeight)
+    
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', updateHeight)
+        window.visualViewport.removeEventListener('scroll', updateHeight)
+      }
+      window.removeEventListener('resize', updateHeight)
+    }
+  }, [])
   
-  // Messages area: scrollable, padded for header and composer
-  const messagesStyles: CSSProperties = {
-    flex: 1,
-    overflowY: 'auto',
-    overflowX: 'hidden',
-    WebkitOverflowScrolling: 'touch',
-    overscrollBehavior: 'contain',
-    paddingTop: '72px', // 56px header + 16px spacing
-    paddingBottom: '80px', // Space for composer
-    paddingLeft: '12px',
-    paddingRight: '12px',
-  }
+  // Auto-scroll composer into view when focused
+  useEffect(() => {
+    const handleFocus = () => {
+      setTimeout(() => {
+        composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }, 300)
+    }
+    
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.addEventListener('focus', handleFocus)
+      return () => textarea.removeEventListener('focus', handleFocus)
+    }
+  }, [])
   
-  // Composer: fixed at bottom, must receive touches
-  const composerStyles: CSSProperties = {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-    background: '#000000',
-    paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
-    pointerEvents: 'auto',
-    touchAction: 'manipulation',
-  }
+  // Calculate heights (global header = 56px, chat header = 56px, composer ~60px)
+  const globalHeaderHeight = 56
+  const chatHeaderHeight = 56
+  const composerHeight = 60
+  const safeTop = 'env(safe-area-inset-top, 0px)'
+  const safeBottom = 'env(safe-area-inset-bottom, 0px)'
 
   useEffect(() => {
     if (!headerMenuOpen) return
@@ -1126,14 +1129,19 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   }
 
   return (
-    <div 
-      className="bg-black text-white" 
-      style={containerStyles}
-    >
-      {/* Chat header - FIXED at top */}
+    <>
+      {/* ====== CHAT HEADER - FIXED AT TOP ====== */}
       <div 
-        className="h-14 border-b border-white/10 flex items-center gap-3 px-4 bg-black"
-        style={chatHeaderStyles}
+        className="border-b border-white/10 flex items-center gap-3 px-4 bg-black"
+        style={{
+          position: 'fixed',
+          top: `calc(${globalHeaderHeight}px + ${safeTop})`,
+          left: 0,
+          right: 0,
+          height: `${chatHeaderHeight}px`,
+          zIndex: 1000,
+          background: '#000000',
+        }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3 relative">
           <button 
@@ -1194,10 +1202,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* Floating date indicator */}
       {currentDateLabel && showDateFloat && (
         <div 
-          className="absolute left-1/2 z-50 pointer-events-none"
           style={{ 
-            top: '64px',
-            transform: `translateX(-50%)`,
+            position: 'fixed',
+            top: `calc(${globalHeaderHeight}px + ${chatHeaderHeight}px + ${safeTop} + 8px)`,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 999,
+            pointerEvents: 'none',
             opacity: showDateFloat ? 1 : 0,
             transition: 'opacity 0.2s ease'
           }}
@@ -1208,11 +1219,26 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         </div>
       )}
       
-      {/* Messages list - SCROLLABLE */}
+      {/* ====== MESSAGES LIST - SCROLLABLE, KEYBOARD-AWARE ====== */}
       <div
         ref={listRef}
-        className="space-y-1"
-        style={messagesStyles}
+        className="space-y-1 bg-black text-white"
+        style={{
+          position: 'fixed',
+          top: `calc(${globalHeaderHeight}px + ${chatHeaderHeight}px + ${safeTop})`,
+          left: 0,
+          right: 0,
+          // Use viewportHeight to calculate bottom - shrinks when keyboard opens
+          height: `calc(${viewportHeight}px - ${globalHeaderHeight}px - ${chatHeaderHeight}px - ${composerHeight}px)`,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+          paddingTop: '16px',
+          paddingBottom: '16px',
+          paddingLeft: '12px',
+          paddingRight: '12px',
+        } as CSSProperties}
         onScroll={(e)=> {
           const el = e.currentTarget
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
@@ -1418,10 +1444,21 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* Composer - FIXED at bottom, receives all touches */}
+      {/* ====== COMPOSER - FIXED AT BOTTOM, TAPPABLE ====== */}
       <div 
+        ref={composerRef}
         className="bg-black px-2 sm:px-3 py-2 border-t border-white/10" 
-        style={composerStyles}
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 1000,
+          background: '#000000',
+          paddingBottom: `calc(8px + ${safeBottom})`,
+          pointerEvents: 'auto',
+          touchAction: 'manipulation',
+        }}
       >
         <div className="max-w-3xl mx-auto">
           {replyTo && (
@@ -1946,7 +1983,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           await handleGifSelection(gif)
         }}
       />
-    </div>
+    </>
   )
 }
 
