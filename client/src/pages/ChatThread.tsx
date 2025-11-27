@@ -9,7 +9,6 @@ import { encryptionService } from '../services/simpleEncryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
-import { Keyboard } from '@capacitor/keyboard'
 import { Capacitor } from '@capacitor/core'
 
 interface Message {
@@ -63,21 +62,29 @@ export default function ChatThread(){
     let hideListener: { remove: () => void } | null = null
     
     const setup = async () => {
-      // When keyboard shows, resize our container to make room
-      showListener = await Keyboard.addListener('keyboardWillShow', (info) => {
-        setKeyboardHeight(info.keyboardHeight)
-        // Scroll messages to bottom so user sees latest
-        setTimeout(() => {
-          if (listRef.current) {
-            listRef.current.scrollTop = listRef.current.scrollHeight
-          }
-        }, 50)
-      })
-      
-      // When keyboard hides, restore full height
-      hideListener = await Keyboard.addListener('keyboardWillHide', () => {
-        setKeyboardHeight(0)
-      })
+      try {
+        // Dynamic import to avoid build errors if package not available
+        const { Keyboard } = await import('@capacitor/keyboard')
+        
+        // When keyboard shows, resize our container to make room
+        showListener = await Keyboard.addListener('keyboardWillShow', (info: { keyboardHeight: number }) => {
+          setKeyboardHeight(info.keyboardHeight)
+          // Scroll messages to bottom so user sees latest
+          setTimeout(() => {
+            if (listRef.current) {
+              listRef.current.scrollTop = listRef.current.scrollHeight
+            }
+          }, 50)
+        })
+        
+        // When keyboard hides, restore full height
+        hideListener = await Keyboard.addListener('keyboardWillHide', () => {
+          setKeyboardHeight(0)
+        })
+      } catch (e) {
+        // Keyboard plugin not available, fall back to no resize
+        console.log('Capacitor Keyboard plugin not available')
+      }
     }
     
     setup()
