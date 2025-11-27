@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
@@ -142,7 +142,6 @@ export default function ChatThread(){
   // iOS KEYBOARD FIX: Track keyboard height, move composer above it
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   
-  const headerRef = useRef<HTMLDivElement | null>(null)
   const composerRef = useRef<HTMLDivElement | null>(null)
   
   useEffect(() => {
