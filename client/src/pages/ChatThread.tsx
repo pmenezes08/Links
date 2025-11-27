@@ -36,19 +36,13 @@ export default function ChatThread(){
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
   useEffect(() => { setTitle(username ? `Chat: ${username}` : 'Chat') }, [setTitle, username])
 
-  // Detect mobile device and iOS Capacitor
-  const [isIOSCapacitor, setIsIOSCapacitor] = useState(false)
+  // Detect mobile device
   useEffect(() => {
     const checkMobile = () => {
       const ua = navigator.userAgent || ''
       const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
                             (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /MacIntel/.test(navigator.platform))
       setIsMobile(Boolean(isMobileDevice))
-      
-      // Detect iOS Capacitor app specifically
-      const isCapacitor = !!(window as any).Capacitor
-      const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /MacIntel/.test(navigator.platform))
-      setIsIOSCapacitor(Boolean(isCapacitor && isIOS))
     }
     checkMobile()
   }, [])
@@ -161,22 +155,41 @@ export default function ChatThread(){
   
   const composerRef = useRef<HTMLDivElement | null>(null)
   
-  // Bottom padding for messages list - ensures last message visible above composer
-  // iOS Capacitor with resize:'native' handles keyboard automatically
-  const bottomPadding = isIOSCapacitor ? 110 : 90
+  // Track keyboard height via visualViewport (pure web approach)
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
   
-  // Scroll to bottom when window resizes (keyboard open/close on iOS)
   useEffect(() => {
-    const handleResize = () => {
-      if (listRef.current && didInitialAutoScrollRef.current) {
-        setTimeout(scrollToBottom, 100)
-        setTimeout(scrollToBottom, 300)
+    const updateKeyboard = () => {
+      if (window.visualViewport) {
+        const kh = Math.max(0, window.innerHeight - window.visualViewport.height)
+        setKeyboardHeight(kh)
+        
+        // Scroll to bottom when keyboard opens/closes
+        if (listRef.current && didInitialAutoScrollRef.current) {
+          setTimeout(scrollToBottom, 50)
+          setTimeout(scrollToBottom, 150)
+        }
       }
     }
     
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', updateKeyboard)
+      window.visualViewport.addEventListener('scroll', updateKeyboard)
+    }
+    window.addEventListener('resize', updateKeyboard)
+    updateKeyboard()
+    
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', updateKeyboard)
+        window.visualViewport.removeEventListener('scroll', updateKeyboard)
+      }
+      window.removeEventListener('resize', updateKeyboard)
+    }
   }, [scrollToBottom])
+  
+  // Bottom padding - fixed value, keyboard handled separately
+  const bottomPadding = 100
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -1135,9 +1148,12 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100%',
+        height: 'var(--viewport-height, 100vh)',
         background: '#000000',
-        position: 'relative',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
         overflow: 'hidden',
       }}
     >
@@ -1243,10 +1259,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           WebkitOverflowScrolling: 'touch',
           // Allow elastic/rubber-band scrolling on iOS
           overscrollBehavior: 'auto',
-          // Padding: top for headers, bottom for composer + safe area
+          // Padding: top for headers, bottom for composer + keyboard + safe area
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
-          // Large bottom padding ensures last message is visible above composer
-          paddingBottom: `calc(${bottomPadding}px + ${safeBottom})`,
+          // Bottom padding = composer height + keyboard height + safe area
+          paddingBottom: `calc(${bottomPadding}px + ${keyboardHeight}px + ${safeBottom})`,
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
@@ -1459,7 +1475,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           <button
             className="fixed right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
             style={{ 
-              bottom: `calc(100px + ${safeBottom})`
+              bottom: `calc(${bottomPadding}px + ${keyboardHeight}px + ${safeBottom})`
             }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
             aria-label="Scroll to latest"
@@ -1469,13 +1485,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* ====== COMPOSER - FIXED AT BOTTOM, iOS native resize pushes it up ====== */}
+      {/* ====== COMPOSER - FIXED ABOVE KEYBOARD ====== */}
       <div 
         ref={composerRef}
         className="bg-black px-2 sm:px-3 py-2 border-t border-white/10" 
         style={{
           position: 'fixed',
-          bottom: 0,
+          bottom: keyboardHeight,
           left: 0,
           right: 0,
           width: '100%',
