@@ -9,7 +9,6 @@ import { encryptionService } from '../services/simpleEncryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
-import { Capacitor } from '@capacitor/core'
 
 interface Message {
   id: number | string
@@ -48,50 +47,35 @@ export default function ChatThread(){
     checkMobile()
   }, [])
 
-  // WhatsApp-style keyboard handling: resize content instead of fighting viewport
-  // This is how native apps handle keyboard - they shrink the content area
+  // WhatsApp-style keyboard handling using visualViewport API (web standard)
+  // When keyboard opens, visualViewport.height shrinks - we use this to resize
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   
   useEffect(() => {
-    // Only use Capacitor keyboard events on native iOS
-    if (!Capacitor.isNativePlatform()) {
-      return
-    }
+    const viewport = window.visualViewport
+    if (!viewport) return
     
-    let showListener: { remove: () => void } | null = null
-    let hideListener: { remove: () => void } | null = null
-    
-    const setup = async () => {
-      try {
-        // Dynamic import to avoid build errors if package not available
-        const { Keyboard } = await import('@capacitor/keyboard')
-        
-        // When keyboard shows, resize our container to make room
-        showListener = await Keyboard.addListener('keyboardWillShow', (info: { keyboardHeight: number }) => {
-          setKeyboardHeight(info.keyboardHeight)
-          // Scroll messages to bottom so user sees latest
-          setTimeout(() => {
-            if (listRef.current) {
-              listRef.current.scrollTop = listRef.current.scrollHeight
-            }
-          }, 50)
-        })
-        
-        // When keyboard hides, restore full height
-        hideListener = await Keyboard.addListener('keyboardWillHide', () => {
-          setKeyboardHeight(0)
-        })
-      } catch (e) {
-        // Keyboard plugin not available, fall back to no resize
-        console.log('Capacitor Keyboard plugin not available')
+    const handleResize = () => {
+      // Calculate keyboard height as difference between window and visual viewport
+      const keyboardH = window.innerHeight - viewport.height
+      setKeyboardHeight(keyboardH > 50 ? keyboardH : 0) // Threshold to avoid false positives
+      
+      // Scroll to bottom when keyboard opens
+      if (keyboardH > 50 && listRef.current) {
+        setTimeout(() => {
+          if (listRef.current) {
+            listRef.current.scrollTop = listRef.current.scrollHeight
+          }
+        }, 50)
       }
     }
     
-    setup()
+    viewport.addEventListener('resize', handleResize)
+    viewport.addEventListener('scroll', handleResize)
     
     return () => {
-      showListener?.remove()
-      hideListener?.remove()
+      viewport.removeEventListener('resize', handleResize)
+      viewport.removeEventListener('scroll', handleResize)
     }
   }, [])
 
