@@ -1139,7 +1139,6 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        minHeight: '100vh',
         background: '#000000',
         position: 'relative',
         overflow: 'hidden',
