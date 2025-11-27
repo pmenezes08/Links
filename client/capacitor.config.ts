@@ -21,10 +21,10 @@ const config: CapacitorConfig = {
   },
   plugins: {
     Keyboard: {
-      // 'body' resizes the webview body when keyboard opens (WhatsApp-like behavior)
-      resize: 'body',
+      // 'none' - we handle keyboard positioning ourselves via the plugin events
+      resize: 'none',
       style: 'dark',
-      resizeOnFullScreen: true,
+      resizeOnFullScreen: false,
     },
   },
 };
