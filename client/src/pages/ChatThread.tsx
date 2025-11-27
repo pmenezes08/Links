@@ -1117,12 +1117,15 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       className="bg-black text-white flex flex-col" 
       style={viewportStyles}
     >
-      {/* Chat header */}
+      {/* Chat header - fixed at top */}
       <div 
         className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0 bg-black"
         style={{ 
-          marginTop: 'calc(56px + env(safe-area-inset-top, 0px))',
-          zIndex: 10
+          position: 'fixed' as const,
+          top: 'calc(56px + env(safe-area-inset-top, 0px))',
+          left: 0,
+          right: 0,
+          zIndex: 100
         }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3 relative">
@@ -1186,7 +1189,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         <div 
           className="fixed left-1/2 z-50 pointer-events-none"
           style={{ 
-            top: 'calc(8rem)',
+            top: 'calc(56px + 56px + env(safe-area-inset-top, 0px) + 1rem)',
             transform: `translateX(-50%) translateY(${showDateFloat ? '0' : '-10px'})`,
             opacity: showDateFloat ? 1 : 0,
             transition: 'all 0.3s ease-in-out'
@@ -1201,10 +1204,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* Messages list */}
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-1"
+        className="flex-1 overflow-y-auto overscroll-contain px-3 space-y-1"
         style={{ 
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
+          paddingTop: 'calc(56px + 56px + env(safe-area-inset-top, 0px) + 1rem)', // Global header + Chat header + spacing
           paddingBottom: '100px', // Space for fixed composer bar
           position: 'relative' as const
         }}
@@ -1221,7 +1225,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           for (let i = 0; i < messageElements.length; i++) {
             const msgEl = messageElements[i] as HTMLElement
             const rect = msgEl.getBoundingClientRect()
-            const headerHeight = 120 // Global header (56px) + Chat header (56px) + some spacing
+            const headerHeight = 128 // Global header (56px) + Chat header (56px) + spacing (16px)
             
             if (rect.top >= headerHeight && rect.top <= headerHeight + 100) {
               visibleDate = msgEl.getAttribute('data-message-date') || ''
