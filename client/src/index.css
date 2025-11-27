@@ -2,8 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Hide scrollbars globally */
+/* 2025 iOS: Hide all scrollbars while keeping content scrollable */
 @layer base {
-  * { scrollbar-width: none; -ms-overflow-style: none; }
-  *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+  *, *::before, *::after {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+  }
+  *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    -webkit-appearance: none !important;
+  }
 }

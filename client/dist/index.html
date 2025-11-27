@@ -15,59 +15,65 @@
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
-      /* 2025 iOS keyboard fix: visualViewport + safe-area */
+      /* 2025 iOS gold-standard: scrollable content + fixed header + keyboard-aware */
       :root {
         color-scheme: dark;
+        --sat: env(safe-area-inset-top, 0px);
+        --sab: env(safe-area-inset-bottom, 0px);
         --keyboard-height: 0px;
         --viewport-height: 100dvh;
       }
       
-      html {
+      /* Lock html/body to viewport - prevents whole-page bounce */
+      html, body {
         position: fixed;
-        width: 100%;
-        height: 100%;
-        height: var(--viewport-height, 100dvh);
-        overflow: hidden;
-        background: #000000;
-        color-scheme: dark;
-      }
-      
-      body {
-        position: fixed;
-        width: 100%;
-        height: 100%;
-        height: var(--viewport-height, 100dvh);
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
         margin: 0;
         padding: 0;
         overflow: hidden;
         background: #000000;
         color: #ffffff;
+        color-scheme: dark;
         overscroll-behavior: none;
-        -webkit-overflow-scrolling: touch;
       }
       
+      /* Root is the single scrolling container */
       #root {
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         bottom: var(--keyboard-height, 0px);
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-y: none;
         background: #000000;
       }
       
-      /* Hide scrollbars globally */
-      * { scrollbar-width: none; -ms-overflow-style: none; }
-      *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+      /* Hide ALL scrollbars - iOS thin scrollbar included */
+      *, *::before, *::after {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+      }
+      *::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        background: transparent !important;
+        -webkit-appearance: none !important;
+      }
       
       /* Prevent iOS text zoom on input focus */
       input, textarea, select { font-size: 16px !important; }
     </style>
     <script>
-      // 2025 iOS keyboard fix: track visualViewport to detect keyboard
+      // 2025 iOS keyboard fix: visualViewport resize detection
       (function() {
         var root = document.documentElement;
-        var lastHeight = window.innerHeight;
         
         function update() {
           var vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
@@ -83,7 +89,7 @@
         window.addEventListener('resize', update);
         update();
         
-        // Auto-scroll focused input into view
+        // Auto-scroll focused input into view when keyboard opens
         document.addEventListener('focusin', function(e) {
           if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
             setTimeout(function() {
@@ -94,8 +100,8 @@
       })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script type="module" crossorigin src="/assets/index-BdohpSLl-1764267984149.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-7O3Bv6ex.css">
+    <script type="module" crossorigin src="/assets/index-BDnmcnGc-1764268901635.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-C2WVLlaz.css">
   </head>
   <body>
     <div id="root" style="background-color: #000000;"></div>

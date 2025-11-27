@@ -92,12 +92,11 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // Layout: uses --viewport-height set by JS (shrinks when iOS keyboard opens)
+  // Layout: flex column, messages scroll in the middle
   const viewportStyles: CSSProperties = {
-    height: 'var(--viewport-height, 100dvh)',
+    minHeight: '100%',
     display: 'flex',
     flexDirection: 'column',
-    overflow: 'hidden',
     paddingTop: 'calc(56px + env(safe-area-inset-top, 0px))',
   }
 
