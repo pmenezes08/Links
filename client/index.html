@@ -15,58 +15,49 @@
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
-      /* Force dark color scheme - prevents iOS from using white safe areas */
+      /* Force dark color scheme */
       :root {
         color-scheme: dark;
       }
       
-      /* iOS Safe Area - Lock viewport with pure black background */
+      /* Allow iOS keyboard to resize - don't lock with position:fixed */
       html { 
-        position: fixed;
-        width: 100%;
         height: 100%;
-        overflow: hidden;
         background: #000000 !important;
         color-scheme: dark !important;
       }
       
       body { 
-        position: fixed;
-        width: 100%;
         height: 100%;
         margin: 0;
         padding: 0;
-        overflow: hidden;
         background: #000000 !important;
         color: #ffffff;
         overscroll-behavior: none;
         color-scheme: dark !important;
       }
       
-      /* Root fills viewport and is scrollable */
+      /* Root uses dynamic viewport height - adjusts with keyboard */
       #root {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        overflow-y: auto;
-        overflow-x: hidden;
+        min-height: 100%;
+        min-height: 100dvh; /* Dynamic viewport height - shrinks when keyboard opens */
         background: #000000 !important;
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior-y: none;
+        overflow-x: hidden;
       }
       
-      /* Global styles: hide scrollbars + force dark mode */
+      /* Hide all scrollbars globally */
       * {
-        scrollbar-width: none; /* Firefox */
-        -ms-overflow-style: none; /* IE/Edge */
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
         color-scheme: dark !important;
       }
       *::-webkit-scrollbar {
-        display: none; /* Chrome, Safari, Opera */
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
       }
       
+      /* Prevent iOS text size adjustment and ensure proper input sizing */
       input, textarea, select { 
         font-size: 16px !important;
       }

@@ -95,11 +95,7 @@ export default function ChatThread(){
   // Layout: uses 100dvh (dynamic viewport height) which auto-adjusts on iOS keyboard
   // Capacitor Keyboard plugin with resize: 'body' handles the resize automatically
   const viewportStyles: CSSProperties = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    height: '100dvh', // Dynamic viewport height - shrinks when keyboard opens
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
