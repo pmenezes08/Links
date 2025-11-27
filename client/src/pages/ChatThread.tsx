@@ -116,11 +116,11 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // Viewport styles with fixed positioning to prevent keyboard pushing screen down
+  // Viewport styles - position below global header, use absolute not fixed for children
   const viewportStyles = useMemo<CSSProperties>(() => {
     return {
-      position: 'fixed' as const,
-      top: 0,
+      position: 'absolute' as const,
+      top: 'calc(56px + env(safe-area-inset-top, 0px))',
       left: 0,
       right: 0,
       bottom: 0,
@@ -1117,16 +1117,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       className="bg-black text-white flex flex-col" 
       style={viewportStyles}
     >
-      {/* Chat header - fixed at top */}
+      {/* Chat header - flex child at top */}
       <div 
         className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0 bg-black"
-        style={{ 
-          position: 'fixed' as const,
-          top: 'calc(56px + env(safe-area-inset-top, 0px))',
-          left: 0,
-          right: 0,
-          zIndex: 100
-        }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3 relative">
           <button 
@@ -1184,12 +1177,12 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         </div>
       </div>
       
-      {/* Floating date indicator */}
+      {/* Floating date indicator - positioned relative to messages list */}
       {currentDateLabel && showDateFloat && (
         <div 
-          className="fixed left-1/2 z-50 pointer-events-none"
+          className="absolute left-1/2 z-50 pointer-events-none"
           style={{ 
-            top: 'calc(56px + 56px + env(safe-area-inset-top, 0px) + 1rem)',
+            top: 'calc(56px + 1rem)', // Below chat header
             transform: `translateX(-50%) translateY(${showDateFloat ? '0' : '-10px'})`,
             opacity: showDateFloat ? 1 : 0,
             transition: 'all 0.3s ease-in-out'
@@ -1208,8 +1201,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         style={{ 
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
-          paddingTop: 'calc(56px + 56px + env(safe-area-inset-top, 0px) + 1rem)', // Global header + Chat header + spacing
-          paddingBottom: '100px', // Space for fixed composer bar
+          paddingTop: '1rem',
+          paddingBottom: '0.5rem',
           position: 'relative' as const
         }}
         onScroll={(e)=> {
@@ -1417,19 +1410,14 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* Composer - fixed at bottom like WhatsApp */}
+      {/* Composer - flex child at bottom */}
       <div 
-        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10" 
+        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 flex-shrink-0" 
         style={{ 
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
           paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))',
           pointerEvents: 'auto',
           touchAction: 'manipulation',
-          WebkitTapHighlightColor: 'transparent',
-          zIndex: 1000
+          WebkitTapHighlightColor: 'transparent'
         }}
       >
         <div className="max-w-3xl mx-auto">
