@@ -47,47 +47,22 @@ export default function ChatThread(){
     checkMobile()
   }, [])
 
-  // Prevent iOS from pushing screen down when keyboard opens
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
-  
+  // iOS keyboard handling - prevent body scroll when keyboard opens
   useEffect(() => {
-    const handleViewportChange = () => {
-      if (!window.visualViewport) return
-      
-      // Calculate how much the visual viewport has shifted from the layout viewport
-      const offset = window.visualViewport.offsetTop
-      setKeyboardOffset(offset)
-      
-      // Also update CSS variable for height
-      document.documentElement.style.setProperty('--viewport-height', `${window.visualViewport.height}px`)
-    }
-    
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleViewportChange)
-      window.visualViewport.addEventListener('scroll', handleViewportChange)
-      handleViewportChange()
-    }
-    
-    // Also listen for focus events on inputs to force scroll adjustment
-    const handleFocusIn = () => {
-      // Small delay to let iOS finish its viewport adjustment
-      setTimeout(() => {
-        if (window.visualViewport) {
-          setKeyboardOffset(window.visualViewport.offsetTop)
-        }
-      }, 100)
+    // Scroll the textarea into view when focused (helps on iOS)
+    const handleFocusIn = (e: FocusEvent) => {
+      if (e.target instanceof HTMLTextAreaElement) {
+        // Small delay to let keyboard open
+        setTimeout(() => {
+          e.target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }, 300)
+      }
     }
     
     document.addEventListener('focusin', handleFocusIn)
     
     return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleViewportChange)
-        window.visualViewport.removeEventListener('scroll', handleViewportChange)
-      }
       document.removeEventListener('focusin', handleFocusIn)
-      // Reset offset on unmount
-      setKeyboardOffset(0)
     }
   }, [])
 
