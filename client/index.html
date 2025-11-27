@@ -15,18 +15,18 @@
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
-      /* 2025 iOS 100vh fix: use 100dvh + -webkit-fill-available */
+      /* 2025 iOS keyboard fix: visualViewport + safe-area */
       :root {
         color-scheme: dark;
+        --keyboard-height: 0px;
+        --viewport-height: 100dvh;
       }
       
-      /* Lock outer containers to prevent whole-page scroll */
       html {
         position: fixed;
         width: 100%;
         height: 100%;
-        height: 100dvh;
-        height: -webkit-fill-available;
+        height: var(--viewport-height, 100dvh);
         overflow: hidden;
         background: #000000;
         color-scheme: dark;
@@ -36,8 +36,7 @@
         position: fixed;
         width: 100%;
         height: 100%;
-        height: 100dvh;
-        height: -webkit-fill-available;
+        height: var(--viewport-height, 100dvh);
         margin: 0;
         padding: 0;
         overflow: hidden;
@@ -52,11 +51,7 @@
         top: 0;
         left: 0;
         right: 0;
-        bottom: 0;
-        width: 100%;
-        height: 100%;
-        height: 100dvh;
-        height: -webkit-fill-available;
+        bottom: var(--keyboard-height, 0px);
         overflow: hidden;
         background: #000000;
       }
@@ -68,6 +63,36 @@
       /* Prevent iOS text zoom on input focus */
       input, textarea, select { font-size: 16px !important; }
     </style>
+    <script>
+      // 2025 iOS keyboard fix: track visualViewport to detect keyboard
+      (function() {
+        var root = document.documentElement;
+        var lastHeight = window.innerHeight;
+        
+        function update() {
+          var vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+          var keyboardH = Math.max(0, window.innerHeight - vh);
+          root.style.setProperty('--viewport-height', vh + 'px');
+          root.style.setProperty('--keyboard-height', keyboardH + 'px');
+        }
+        
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', update);
+          window.visualViewport.addEventListener('scroll', update);
+        }
+        window.addEventListener('resize', update);
+        update();
+        
+        // Auto-scroll focused input into view
+        document.addEventListener('focusin', function(e) {
+          if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+            setTimeout(function() {
+              e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 300);
+          }
+        });
+      })();
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   </head>
   <body>

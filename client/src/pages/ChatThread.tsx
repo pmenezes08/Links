@@ -92,9 +92,9 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // Layout: 100dvh handles iOS viewport correctly
+  // Layout: uses --viewport-height set by JS (shrinks when iOS keyboard opens)
   const viewportStyles: CSSProperties = {
-    height: '100dvh',
+    height: 'var(--viewport-height, 100dvh)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',

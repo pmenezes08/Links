@@ -19,8 +19,9 @@ const config: CapacitorConfig = {
   },
   plugins: {
     Keyboard: {
-      resize: 'native',  // Let iOS handle keyboard resize natively
+      resize: 'none',  // We handle resize via visualViewport JS
       style: 'dark',
+      resizeOnFullScreen: false,
     },
   },
 };
