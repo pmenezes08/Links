@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/static/logo.png" />
     <link rel="shortcut icon" type="image/png" href="/static/logo.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark">
     <title>C-Point</title>
     <link rel="manifest" href="/manifest.webmanifest">
@@ -15,48 +15,37 @@
     <meta name="apple-mobile-web-app-title" content="C-Point">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <style>
-      /* 2025 iOS gold-standard: scrollable content + fixed header + keyboard-aware */
+      /* iOS Capacitor friendly layout - allows natural keyboard behavior */
       :root {
         color-scheme: dark;
         --sat: env(safe-area-inset-top, 0px);
         --sab: env(safe-area-inset-bottom, 0px);
-        --keyboard-height: 0px;
       }
       
-      /* Lock html/body - prevent outer scroll/bounce */
       html {
-        position: fixed;
-        width: 100%;
         height: 100%;
-        overflow: hidden;
         background: #000000;
         color-scheme: dark;
       }
       
       body {
-        position: fixed;
-        width: 100%;
+        min-height: 100%;
         height: 100%;
         margin: 0;
         padding: 0;
-        overflow: hidden;
         background: #000000;
         color: #ffffff;
-        overscroll-behavior: none;
+        /* Allow iOS elastic scroll */
+        overscroll-behavior-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
       
-      /* #root is the SINGLE scrolling container */
+      /* #root fills the viewport */
       #root {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: var(--keyboard-height, 0px);
-        overflow-x: hidden;
-        overflow-y: scroll;
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior-y: none;
+        min-height: 100%;
+        min-height: 100dvh; /* Dynamic viewport height - adjusts with keyboard */
         background: #000000;
+        -webkit-overflow-scrolling: touch;
       }
       
       /* Hide ALL scrollbars globally */
@@ -67,36 +56,19 @@
       input, textarea, select { font-size: 16px !important; }
     </style>
     <script>
-      // 2025 iOS keyboard fix: visualViewport resize detection
+      // Minimal iOS setup - keyboard handling done in React with Capacitor plugin
       (function() {
-        var root = document.documentElement;
-        
-        function update() {
-          var vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-          var keyboardH = Math.max(0, window.innerHeight - vh);
-          root.style.setProperty('--viewport-height', vh + 'px');
-          root.style.setProperty('--keyboard-height', keyboardH + 'px');
+        // Set viewport height CSS variable for fallback
+        function setVH() {
+          var vh = window.innerHeight * 0.01;
+          document.documentElement.style.setProperty('--vh', vh + 'px');
         }
-        
-        if (window.visualViewport) {
-          window.visualViewport.addEventListener('resize', update);
-          window.visualViewport.addEventListener('scroll', update);
-        }
-        window.addEventListener('resize', update);
-        update();
-        
-        // Auto-scroll focused input into view when keyboard opens
-        document.addEventListener('focusin', function(e) {
-          if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
-            setTimeout(function() {
-              e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 300);
-          }
-        });
+        setVH();
+        window.addEventListener('resize', setVH);
       })();
     </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script type="module" crossorigin src="/assets/index-BkK1iLZU-1764280479974.js"></script>
+    <script type="module" crossorigin src="/assets/index-T-dLNv3g-1764281028011.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-C2WVLlaz.css">
   </head>
   <body>

@@ -164,7 +164,7 @@ export default function ChatThread(){
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   
   // iOS FIX: Dynamically measure composer height for accurate scroll padding
-  const [measuredComposerHeight, setMeasuredComposerHeight] = useState(72)
+  const [measuredComposerHeight, setMeasuredComposerHeight] = useState(80)
   const composerRef = useRef<HTMLDivElement | null>(null)
   
   // Measure composer height on mount and when it might change
@@ -172,8 +172,9 @@ export default function ChatThread(){
     const measureComposer = () => {
       if (composerRef.current) {
         const height = composerRef.current.getBoundingClientRect().height
+        // Use measured height but ensure minimum of 80px
         if (height > 0) {
-          setMeasuredComposerHeight(height)
+          setMeasuredComposerHeight(Math.max(80, height))
         }
       }
     }
@@ -184,11 +185,11 @@ export default function ChatThread(){
     return () => { clearTimeout(timer); clearTimeout(timer2) }
   }, [replyTo, recording, recordingPreview])
   
-  // iOS Capacitor needs much larger buffer due to safe area handling differences
-  // Significantly increased buffer for better visibility of last message
-  const iosNativeBuffer = isIOSCapacitor ? 90 : 0
-  const iosSafeAreaBuffer = isIOSCapacitor ? 60 : 0
-  const baseBuffer = 40
+  // iOS Capacitor: LARGE buffer to ensure last message is visible above composer
+  // Total bottom padding = composerHeight + iosNativeBuffer + iosSafeAreaBuffer + baseBuffer
+  const iosNativeBuffer = isIOSCapacitor ? 100 : 0
+  const iosSafeAreaBuffer = isIOSCapacitor ? 80 : 0
+  const baseBuffer = 50
   
   // Use Capacitor Keyboard plugin for iOS to get accurate keyboard height
   useEffect(() => {
