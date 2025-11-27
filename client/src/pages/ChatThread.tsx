@@ -48,25 +48,46 @@ export default function ChatThread(){
   }, [])
 
   // Prevent iOS from pushing screen down when keyboard opens
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+  
   useEffect(() => {
-    // Set viewport height to window.visualViewport height to prevent keyboard resize
-    const handleResize = () => {
-      if (window.visualViewport) {
-        document.documentElement.style.setProperty('--viewport-height', `${window.visualViewport.height}px`)
-      }
+    const handleViewportChange = () => {
+      if (!window.visualViewport) return
+      
+      // Calculate how much the visual viewport has shifted from the layout viewport
+      const offset = window.visualViewport.offsetTop
+      setKeyboardOffset(offset)
+      
+      // Also update CSS variable for height
+      document.documentElement.style.setProperty('--viewport-height', `${window.visualViewport.height}px`)
     }
     
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize)
-      window.visualViewport.addEventListener('scroll', handleResize)
-      handleResize()
+      window.visualViewport.addEventListener('resize', handleViewportChange)
+      window.visualViewport.addEventListener('scroll', handleViewportChange)
+      handleViewportChange()
     }
+    
+    // Also listen for focus events on inputs to force scroll adjustment
+    const handleFocusIn = () => {
+      // Small delay to let iOS finish its viewport adjustment
+      setTimeout(() => {
+        if (window.visualViewport) {
+          setKeyboardOffset(window.visualViewport.offsetTop)
+        }
+      }, 100)
+    }
+    
+    document.addEventListener('focusin', handleFocusIn)
     
     return () => {
       if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleResize)
-        window.visualViewport.removeEventListener('scroll', handleResize)
+        window.visualViewport.removeEventListener('resize', handleViewportChange)
+        window.visualViewport.removeEventListener('scroll', handleViewportChange)
       }
+      document.removeEventListener('focusin', handleFocusIn)
+      // Reset offset on unmount
+      setKeyboardOffset(0)
     }
   }, [])
 
@@ -117,18 +138,23 @@ export default function ChatThread(){
   const skipNextPollsUntil = useRef<number>(0)
 
   // Viewport styles - position below global header, use absolute not fixed for children
+  // Use transform to counteract iOS visual viewport shift
   const viewportStyles = useMemo<CSSProperties>(() => {
     return {
-      position: 'absolute' as const,
-      top: 'calc(56px + env(safe-area-inset-top, 0px))',
+      position: 'fixed' as const,
+      top: 0,
       left: 0,
       right: 0,
       bottom: 0,
       display: 'flex',
       flexDirection: 'column' as const,
       overflow: 'hidden',
+      // Shift the entire container up by the keyboard offset to keep it in place
+      transform: keyboardOffset > 0 ? `translateY(-${keyboardOffset}px)` : 'none',
+      // Padding top for global header + safe area
+      paddingTop: 'calc(56px + env(safe-area-inset-top, 0px))',
     }
-  }, [])
+  }, [keyboardOffset])
 
   useEffect(() => {
     if (!headerMenuOpen) return
@@ -1177,12 +1203,12 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         </div>
       </div>
       
-      {/* Floating date indicator - positioned relative to messages list */}
+      {/* Floating date indicator - positioned below chat header */}
       {currentDateLabel && showDateFloat && (
         <div 
           className="absolute left-1/2 z-50 pointer-events-none"
           style={{ 
-            top: 'calc(56px + 1rem)', // Below chat header
+            top: 'calc(56px + 0.5rem)', // Below chat header (56px)
             transform: `translateX(-50%) translateY(${showDateFloat ? '0' : '-10px'})`,
             opacity: showDateFloat ? 1 : 0,
             transition: 'all 0.3s ease-in-out'
