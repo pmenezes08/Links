@@ -36,13 +36,19 @@ export default function ChatThread(){
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
   useEffect(() => { setTitle(username ? `Chat: ${username}` : 'Chat') }, [setTitle, username])
 
-  // Detect mobile device
+  // Detect mobile device and iOS Capacitor
+  const [isIOSCapacitor, setIsIOSCapacitor] = useState(false)
   useEffect(() => {
     const checkMobile = () => {
       const ua = navigator.userAgent || ''
       const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
                             (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /MacIntel/.test(navigator.platform))
       setIsMobile(Boolean(isMobileDevice))
+      
+      // Detect iOS Capacitor app specifically
+      const isCapacitor = !!(window as any).Capacitor
+      const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /MacIntel/.test(navigator.platform))
+      setIsIOSCapacitor(Boolean(isCapacitor && isIOS))
     }
     checkMobile()
   }, [])
@@ -148,18 +154,37 @@ export default function ChatThread(){
   // E2E Encryption is initialized globally in App.tsx, so it's always ready
   const globalHeaderHeight = 56
   const chatHeaderHeight = 56
-  // iOS FIX: Increased composer height estimate to ensure full scroll visibility
-  const composerHeight = 72
   const safeTop = 'env(safe-area-inset-top, 0px)'
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const totalHeaderHeight = globalHeaderHeight + chatHeaderHeight
-  // iOS FIX: Extra buffer to ensure last message is always visible above composer
-  const iosScrollBuffer = 16
   
   // iOS KEYBOARD FIX: Track keyboard height, move composer above it
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   
+  // iOS FIX: Dynamically measure composer height for accurate scroll padding
+  const [measuredComposerHeight, setMeasuredComposerHeight] = useState(72)
   const composerRef = useRef<HTMLDivElement | null>(null)
+  
+  // Measure composer height on mount and when it might change
+  useEffect(() => {
+    const measureComposer = () => {
+      if (composerRef.current) {
+        const height = composerRef.current.getBoundingClientRect().height
+        if (height > 0) {
+          setMeasuredComposerHeight(height)
+        }
+      }
+    }
+    // Measure after render
+    measureComposer()
+    const timer = setTimeout(measureComposer, 100)
+    const timer2 = setTimeout(measureComposer, 500)
+    return () => { clearTimeout(timer); clearTimeout(timer2) }
+  }, [replyTo, recording, recordingPreview])
+  
+  // iOS Capacitor needs much larger buffer due to safe area handling differences
+  const iosNativeBuffer = isIOSCapacitor ? 44 : 0
+  const baseBuffer = 24
   
   useEffect(() => {
     const updateLayout = () => {
@@ -1267,11 +1292,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           overscrollBehavior: 'contain',
           // Padding: top for headers, bottom for composer + keyboard + safe area
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
-          // iOS FIX: Much larger bottom padding to ensure last message is fully visible
-          // Formula: composer height + extra buffer + safe area inset
+          // iOS FIX: Dynamic bottom padding using measured composer height
+          // Formula: measured composer height + base buffer + iOS native buffer + safe area
           paddingBottom: keyboardHeight > 0 
-            ? `${composerHeight + keyboardHeight + iosScrollBuffer + 40}px`
-            : `calc(${composerHeight}px + ${iosScrollBuffer}px + 40px + ${safeBottom})`,
+            ? `${measuredComposerHeight + keyboardHeight + baseBuffer + iosNativeBuffer}px`
+            : `calc(${measuredComposerHeight}px + ${baseBuffer}px + ${iosNativeBuffer}px + ${safeBottom})`,
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
@@ -1486,8 +1511,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             style={{ 
               // iOS FIX: Position above the composer with proper safe area
               bottom: keyboardHeight > 0 
-                ? `${composerHeight + keyboardHeight + iosScrollBuffer + 24}px`
-                : `calc(${composerHeight}px + ${iosScrollBuffer}px + 24px + ${safeBottom})`
+                ? `${measuredComposerHeight + keyboardHeight + 16 + iosNativeBuffer}px`
+                : `calc(${measuredComposerHeight}px + 16px + ${iosNativeBuffer}px + ${safeBottom})`
             }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
             aria-label="Scroll to latest"
