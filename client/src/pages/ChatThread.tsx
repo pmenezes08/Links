@@ -93,42 +93,41 @@ export default function ChatThread(){
   const skipNextPollsUntil = useRef<number>(0)
 
   // ============================================================================
-  // PROVEN 2023+ PRODUCTION CHAT LAYOUT - Simple --vh variable for iOS
+  // iOS KEYBOARD FIX: Track keyboard height, move composer above it
   // ============================================================================
   const composerRef = useRef<HTMLDivElement>(null)
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
   
-  // iOS-only: Set --vh CSS variable based on visualViewport
   useEffect(() => {
-    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
-    
-    const setVh = () => {
-      const vh = window.visualViewport?.height ?? window.innerHeight
-      document.documentElement.style.setProperty('--vh', `${vh}px`)
+    const updateLayout = () => {
+      const vvh = window.visualViewport?.height ?? window.innerHeight
+      const kh = Math.max(0, window.innerHeight - vvh)
+      setKeyboardHeight(kh)
       
-      // Auto-scroll to bottom when keyboard opens (viewport shrinks)
-      if (isIOS && listRef.current) {
+      // Auto-scroll to bottom when keyboard opens
+      if (kh > 50 && listRef.current) {
         setTimeout(() => {
           if (listRef.current) {
             listRef.current.scrollTop = listRef.current.scrollHeight
           }
-        }, 100)
+        }, 50)
       }
     }
     
-    setVh()
+    updateLayout()
     
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', setVh)
-      window.visualViewport.addEventListener('scroll', setVh)
+      window.visualViewport.addEventListener('resize', updateLayout)
+      window.visualViewport.addEventListener('scroll', updateLayout)
     }
-    window.addEventListener('resize', setVh)
+    window.addEventListener('resize', updateLayout)
     
     return () => {
       if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', setVh)
-        window.visualViewport.removeEventListener('scroll', setVh)
+        window.visualViewport.removeEventListener('resize', updateLayout)
+        window.visualViewport.removeEventListener('scroll', updateLayout)
       }
-      window.removeEventListener('resize', setVh)
+      window.removeEventListener('resize', updateLayout)
     }
   }, [])
   
@@ -1130,7 +1129,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: 'var(--vh, 100dvh)',
+        height: '100dvh',
         background: '#000000',
         position: 'relative',
         overflow: 'hidden',
@@ -1237,9 +1236,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
-          // Padding: top for headers, bottom for composer + safe area
+          // Padding: top for headers, bottom for composer + keyboard + safe area
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
-          paddingBottom: `calc(${composerHeight}px + 20px + ${safeBottom})`,
+          paddingBottom: keyboardHeight > 0 
+            ? `${composerHeight + keyboardHeight + 20}px`
+            : `calc(${composerHeight}px + 20px + ${safeBottom})`,
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
@@ -1448,19 +1449,20 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* ====== COMPOSER - FIXED AT BOTTOM ====== */}
+      {/* ====== COMPOSER - FIXED ABOVE KEYBOARD ====== */}
       <div 
         ref={composerRef}
         className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 message-composer" 
         style={{
           position: 'fixed',
-          bottom: 0,
+          bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 0,
           left: 0,
           right: 0,
           width: '100%',
           zIndex: 1000,
           background: '#000000',
-          paddingBottom: `calc(8px + ${safeBottom})`,
+          paddingBottom: keyboardHeight > 0 ? '8px' : `calc(8px + ${safeBottom})`,
+          transition: 'bottom 0.1s ease-out',
         }}
       >
         <div className="max-w-3xl mx-auto">
