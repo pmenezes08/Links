@@ -9,7 +9,7 @@ import { encryptionService } from '../services/simpleEncryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
-import { Keyboard, type KeyboardInfo } from '@capacitor/keyboard'
+import { Keyboard } from '@capacitor/keyboard'
 import { Capacitor } from '@capacitor/core'
 
 interface Message {
@@ -64,7 +64,7 @@ export default function ChatThread(){
     
     const setup = async () => {
       // When keyboard shows, resize our container to make room
-      showListener = await Keyboard.addListener('keyboardWillShow', (info: KeyboardInfo) => {
+      showListener = await Keyboard.addListener('keyboardWillShow', (info) => {
         setKeyboardHeight(info.keyboardHeight)
         // Scroll messages to bottom so user sees latest
         setTimeout(() => {
