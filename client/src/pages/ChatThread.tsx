@@ -92,11 +92,55 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // Layout: flex column filling available space, messages scroll in middle
-  const viewportStyles: CSSProperties = {
+  // 2025 WhatsApp/Telegram pattern: fixed header + scrollable messages + fixed composer
+  // Container fills the available viewport (keyboard-aware via --keyboard-height)
+  const containerStyles: CSSProperties = {
+    position: 'fixed',
+    top: 'calc(56px + env(safe-area-inset-top, 0px))', // Below global header
+    left: 0,
+    right: 0,
+    bottom: 'var(--keyboard-height, 0px)',
     display: 'flex',
     flexDirection: 'column',
-    minHeight: 'calc(100vh - 56px - env(safe-area-inset-top, 0px))',
+    overflow: 'hidden',
+    background: '#000000',
+  }
+  
+  // Chat header: fixed at top of chat area
+  const chatHeaderStyles: CSSProperties = {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '56px',
+    zIndex: 100,
+    background: '#000000',
+  }
+  
+  // Messages area: scrollable, padded for header and composer
+  const messagesStyles: CSSProperties = {
+    flex: 1,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehavior: 'contain',
+    paddingTop: '72px', // 56px header + 16px spacing
+    paddingBottom: '80px', // Space for composer
+    paddingLeft: '12px',
+    paddingRight: '12px',
+  }
+  
+  // Composer: fixed at bottom, must receive touches
+  const composerStyles: CSSProperties = {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    background: '#000000',
+    paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
+    pointerEvents: 'auto',
+    touchAction: 'manipulation',
   }
 
   useEffect(() => {
@@ -1083,12 +1127,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
 
   return (
     <div 
-      className="bg-black text-white flex flex-col" 
-      style={viewportStyles}
+      className="bg-black text-white" 
+      style={containerStyles}
     >
-      {/* Chat header - flex child at top */}
+      {/* Chat header - FIXED at top */}
       <div 
-        className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0 bg-black"
+        className="h-14 border-b border-white/10 flex items-center gap-3 px-4 bg-black"
+        style={chatHeaderStyles}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3 relative">
           <button 
@@ -1146,15 +1191,15 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         </div>
       </div>
       
-      {/* Floating date indicator - positioned below chat header */}
+      {/* Floating date indicator */}
       {currentDateLabel && showDateFloat && (
         <div 
           className="absolute left-1/2 z-50 pointer-events-none"
           style={{ 
-            top: 'calc(56px + 0.5rem)', // Below chat header (56px)
-            transform: `translateX(-50%) translateY(${showDateFloat ? '0' : '-10px'})`,
+            top: '64px',
+            transform: `translateX(-50%)`,
             opacity: showDateFloat ? 1 : 0,
-            transition: 'all 0.3s ease-in-out'
+            transition: 'opacity 0.2s ease'
           }}
         >
           <div className="bg-black/90 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-sm text-white shadow-lg">
@@ -1163,17 +1208,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         </div>
       )}
       
-      {/* Messages list */}
+      {/* Messages list - SCROLLABLE */}
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto overscroll-contain px-3 space-y-1"
-        style={{ 
-          WebkitOverflowScrolling: 'touch' as any, 
-          overscrollBehavior: 'contain' as any,
-          paddingTop: '1rem',
-          paddingBottom: '0.5rem',
-          position: 'relative' as const
-        }}
+        className="space-y-1"
+        style={messagesStyles}
         onScroll={(e)=> {
           const el = e.currentTarget
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
@@ -1379,15 +1418,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* Composer - flex child at bottom */}
+      {/* Composer - FIXED at bottom, receives all touches */}
       <div 
-        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 flex-shrink-0" 
-        style={{ 
-          paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))',
-          pointerEvents: 'auto',
-          touchAction: 'manipulation',
-          WebkitTapHighlightColor: 'transparent'
-        }}
+        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10" 
+        style={composerStyles}
       >
         <div className="max-w-3xl mx-auto">
           {replyTo && (
@@ -1542,14 +1576,22 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 autoCorrect="off"
                 autoCapitalize="sentences"
                 spellCheck="true"
+                tabIndex={0}
+                inputMode="text"
+                enterKeyHint="send"
+                style={{ 
+                  touchAction: 'manipulation',
+                  WebkitUserSelect: 'text',
+                  userSelect: 'text',
+                  pointerEvents: 'auto'
+                } as CSSProperties}
                 onPaste={handlePaste}
                 onClick={(e) => {
-                  // iOS fix: ensure textarea gets focus on tap
                   e.currentTarget.focus()
                 }}
-                onTouchStart={(e) => {
-                  // iOS fix: ensure touch events are recognized
-                  e.stopPropagation()
+                onTouchEnd={(e) => {
+                  // iOS: focus on touch end for reliable keyboard opening
+                  e.currentTarget.focus()
                 }}
                 onChange={e=> {
                   setDraft(e.target.value)
@@ -1568,16 +1610,6 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                       body: JSON.stringify({ peer: username, is_typing: false }) 
                     }).catch(()=>{})
                   }, 1200)
-                }}
-                style={{
-                  lineHeight: '1.4',
-                  scrollbarWidth: 'none',
-                  msOverflowStyle: 'none',
-                  WebkitUserSelect: 'text',
-                  userSelect: 'text',
-                  touchAction: 'manipulation',
-                  pointerEvents: 'auto',
-                  zIndex: 1
                 }}
               />
             )}
