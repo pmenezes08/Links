@@ -97,19 +97,14 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
+  // Simplified viewport styles - match PremiumDashboard approach
   const viewportStyles = useMemo<CSSProperties>(() => {
-    const positionStyles = isIOS
-      ? { position: 'relative' as const, overflow: 'visible' as const }
-      : { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0 }
     return {
-      height: '100dvh',
-      minHeight: '100dvh',
-      maxHeight: '100dvh',
-      paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
-      paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-      ...positionStyles,
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column' as const,
     }
-  }, [isIOS])
+  }, [])
 
   useEffect(() => {
     if (!headerMenuOpen) return
@@ -1098,20 +1093,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       className="bg-black text-white flex flex-col" 
       style={viewportStyles}
     >
-      {/* Chat header (fixed below global header for iOS focus stability) */}
+      {/* Chat header */}
       <div 
-        className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0"
-        style={{
-          backgroundColor: 'rgb(0, 0, 0)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          zIndex: 10010,
-          position: 'fixed',
-          top: 'calc(56px + env(safe-area-inset-top, 0px))',
-          left: 0,
-          right: 0,
-          minHeight: '3.5rem',
-          maxHeight: '3.5rem'
-        }}
+        className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0 sticky top-14 bg-black z-10"
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3 relative">
           <button 
@@ -1174,7 +1158,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         <div 
           className="fixed left-1/2 z-50 pointer-events-none"
           style={{ 
-            top: 'calc(7rem + env(safe-area-inset-top, 0px))',
+            top: 'calc(8rem)',
             transform: `translateX(-50%) translateY(${showDateFloat ? '0' : '-10px'})`,
             opacity: showDateFloat ? 1 : 0,
             transition: 'all 0.3s ease-in-out'
@@ -1189,13 +1173,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* Messages list */}
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto overscroll-contain px-3 py-2 space-y-1"
+        className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-1"
         style={{ 
-          position: 'relative',
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
-          paddingTop: '56px',
-          paddingBottom: '8px'
+          paddingBottom: '100px' // Space for fixed composer bar
         }}
         onScroll={(e)=> {
           const el = e.currentTarget
@@ -1210,7 +1192,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           for (let i = 0; i < messageElements.length; i++) {
             const msgEl = messageElements[i] as HTMLElement
             const rect = msgEl.getBoundingClientRect()
-            const headerHeight = 112
+            const headerHeight = 120 // Global header (56px) + Chat header (56px) + some spacing
             
             if (rect.top >= headerHeight && rect.top <= headerHeight + 100) {
               visibleDate = msgEl.getAttribute('data-message-date') || ''
@@ -1402,14 +1384,19 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* Composer - flex child at bottom */}
+      {/* Composer - fixed at bottom like WhatsApp */}
       <div 
-        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 flex-shrink-0" 
+        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10" 
         style={{ 
-          position: 'relative', 
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))',
           pointerEvents: 'auto',
           touchAction: 'manipulation',
-          WebkitTapHighlightColor: 'transparent'
+          WebkitTapHighlightColor: 'transparent',
+          zIndex: 1000
         }}
       >
         <div className="max-w-3xl mx-auto">
