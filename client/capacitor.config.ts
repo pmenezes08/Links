@@ -14,11 +14,12 @@ const config: CapacitorConfig = {
   ios: {
     preferredContentMode: 'mobile',
     backgroundColor: appBackground,
+    contentInset: 'always',
+    scrollEnabled: true,
   },
   plugins: {
     Keyboard: {
-      // CRITICAL: 'none' disables native resize - we handle keyboard with visualViewport
-      resize: 'none',
+      resize: 'native',
       style: 'dark',
     },
   },

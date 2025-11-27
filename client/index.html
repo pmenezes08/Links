@@ -19,8 +19,6 @@
         color-scheme: dark;
         --sat: env(safe-area-inset-top, 0px);
         --sab: env(safe-area-inset-bottom, 0px);
-        --keyboard-height: 0px;
-        --viewport-height: 100vh;
       }
       
       html, body {
@@ -30,20 +28,11 @@
         background: #000000;
         color: #ffffff;
         color-scheme: dark;
-        overflow: hidden;
-        position: fixed;
-        width: 100%;
       }
       
       #root {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        height: var(--viewport-height, 100vh);
+        height: 100%;
         background: #000000;
-        overflow: hidden;
       }
       
       /* Hide scrollbars but allow scrolling */
@@ -53,24 +42,6 @@
       /* Prevent iOS text zoom on input focus */
       input, textarea, select { font-size: 16px !important; }
     </style>
-    <script>
-      // Pure web keyboard handling via visualViewport API
-      (function() {
-        function updateViewport() {
-          var vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-          var kh = Math.max(0, window.innerHeight - vh);
-          document.documentElement.style.setProperty('--viewport-height', vh + 'px');
-          document.documentElement.style.setProperty('--keyboard-height', kh + 'px');
-        }
-        
-        if (window.visualViewport) {
-          window.visualViewport.addEventListener('resize', updateViewport);
-          window.visualViewport.addEventListener('scroll', updateViewport);
-        }
-        window.addEventListener('resize', updateViewport);
-        updateViewport();
-      })();
-    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   </head>
   <body>

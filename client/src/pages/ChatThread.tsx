@@ -9,7 +9,6 @@ import { encryptionService } from '../services/simpleEncryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
-import { Keyboard } from '@capacitor/keyboard'
 
 interface Message {
   id: number | string
@@ -156,41 +155,20 @@ export default function ChatThread(){
   
   const composerRef = useRef<HTMLDivElement | null>(null)
   
-  // Track keyboard height via visualViewport (pure web approach)
-  const [keyboardHeight, setKeyboardHeight] = useState(0)
-  
+  // Scroll to bottom when window resizes (Capacitor native keyboard resize)
   useEffect(() => {
-    const updateKeyboard = () => {
-      if (window.visualViewport) {
-        const kh = Math.max(0, window.innerHeight - window.visualViewport.height)
-        setKeyboardHeight(kh)
-        
-        // Scroll to bottom when keyboard opens/closes
-        if (listRef.current && didInitialAutoScrollRef.current) {
-          setTimeout(scrollToBottom, 50)
-          setTimeout(scrollToBottom, 150)
-        }
+    const handleResize = () => {
+      if (listRef.current && didInitialAutoScrollRef.current) {
+        setTimeout(scrollToBottom, 100)
+        setTimeout(scrollToBottom, 300)
       }
     }
-    
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', updateKeyboard)
-      window.visualViewport.addEventListener('scroll', updateKeyboard)
-    }
-    window.addEventListener('resize', updateKeyboard)
-    updateKeyboard()
-    
-    return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', updateKeyboard)
-        window.visualViewport.removeEventListener('scroll', updateKeyboard)
-      }
-      window.removeEventListener('resize', updateKeyboard)
-    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [scrollToBottom])
   
-  // Bottom padding - fixed value, keyboard handled separately
-  const bottomPadding = 100
+  // Bottom padding for messages list (space for composer + safe area)
+  const bottomPadding = 90
 
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
@@ -1149,12 +1127,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: 'var(--viewport-height, 100vh)',
+        height: '100%',
         background: '#000000',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
+        position: 'relative',
         overflow: 'hidden',
       }}
     >
@@ -1260,10 +1235,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           WebkitOverflowScrolling: 'touch',
           // Allow elastic/rubber-band scrolling on iOS
           overscrollBehavior: 'auto',
-          // Padding: top for headers, bottom for composer + keyboard + safe area
+          // Padding: top for headers, bottom for composer + safe area
           paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 16px)`,
-          // Bottom padding = composer height + keyboard height + safe area
-          paddingBottom: `calc(${bottomPadding}px + ${keyboardHeight}px + ${safeBottom})`,
+          // Bottom padding = space for composer + safe area
+          paddingBottom: `calc(${bottomPadding}px + ${safeBottom})`,
           paddingLeft: '12px',
           paddingRight: '12px',
         } as CSSProperties}
@@ -1476,7 +1451,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           <button
             className="fixed right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
             style={{ 
-              bottom: `calc(${bottomPadding}px + ${keyboardHeight}px + ${safeBottom})`
+              bottom: `calc(${bottomPadding}px + ${safeBottom})`
             }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
             aria-label="Scroll to latest"
@@ -1486,13 +1461,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         )}
       </div>
 
-      {/* ====== COMPOSER - FIXED ABOVE KEYBOARD ====== */}
+      {/* ====== COMPOSER - FIXED AT BOTTOM (Capacitor native resize handles keyboard) ====== */}
       <div 
         ref={composerRef}
         className="bg-black px-2 sm:px-3 py-2 border-t border-white/10" 
         style={{
           position: 'fixed',
-          bottom: keyboardHeight,
+          bottom: 0,
           left: 0,
           right: 0,
           width: '100%',
