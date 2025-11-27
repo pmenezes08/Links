@@ -47,6 +47,29 @@ export default function ChatThread(){
     checkMobile()
   }, [])
 
+  // Prevent iOS from pushing screen down when keyboard opens
+  useEffect(() => {
+    // Set viewport height to window.visualViewport height to prevent keyboard resize
+    const handleResize = () => {
+      if (window.visualViewport) {
+        document.documentElement.style.setProperty('--viewport-height', `${window.visualViewport.height}px`)
+      }
+    }
+    
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize)
+      window.visualViewport.addEventListener('scroll', handleResize)
+      handleResize()
+    }
+    
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleResize)
+        window.visualViewport.removeEventListener('scroll', handleResize)
+      }
+    }
+  }, [])
+
   // (wave animation CSS no longer required for unified recorder)
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
@@ -93,12 +116,17 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // Simplified viewport styles - match PremiumDashboard approach
+  // Viewport styles with fixed positioning to prevent keyboard pushing screen down
   const viewportStyles = useMemo<CSSProperties>(() => {
     return {
-      minHeight: '100vh',
+      position: 'fixed' as const,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
       display: 'flex',
       flexDirection: 'column' as const,
+      overflow: 'hidden',
     }
   }, [])
 
@@ -1091,7 +1119,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     >
       {/* Chat header */}
       <div 
-        className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0 sticky top-14 bg-black z-10"
+        className="h-14 border-b border-white/10 flex items-center gap-3 px-4 flex-shrink-0 bg-black"
+        style={{ 
+          marginTop: 'calc(56px + env(safe-area-inset-top, 0px))',
+          zIndex: 10
+        }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3 relative">
           <button 
@@ -1173,7 +1205,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         style={{ 
           WebkitOverflowScrolling: 'touch' as any, 
           overscrollBehavior: 'contain' as any,
-          paddingBottom: '100px' // Space for fixed composer bar
+          paddingBottom: '100px', // Space for fixed composer bar
+          position: 'relative' as const
         }}
         onScroll={(e)=> {
           const el = e.currentTarget
