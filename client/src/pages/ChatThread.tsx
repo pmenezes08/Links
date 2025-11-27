@@ -163,7 +163,7 @@ export default function ChatThread(){
   
   // Bottom padding for messages list - ensures last message visible above composer
   // iOS Capacitor with resize:'native' handles keyboard automatically
-  const bottomPadding = isIOSCapacitor ? 200 : 120
+  const bottomPadding = isIOSCapacitor ? 110 : 90
   
   // Scroll to bottom when window resizes (keyboard open/close on iOS)
   useEffect(() => {
@@ -1135,10 +1135,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100dvh',
+        height: '100%',
+        minHeight: '100dvh',
         background: '#000000',
         position: 'relative',
         overflow: 'hidden',
+        // Prevent iOS layout shift on keyboard close
+        transform: 'translateZ(0)',
       }}
     >
       {/* ====== CHAT HEADER - FIXED AT TOP ====== */}
@@ -1152,6 +1155,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           height: `${chatHeaderHeight}px`,
           zIndex: 1000,
           background: '#000000',
+          // Prevent shift on keyboard close
+          transform: 'translateZ(0)',
+          WebkitTransform: 'translateZ(0)',
         }}
       >
         <div className="max-w-3xl mx-auto w-full flex items-center gap-3 relative">
