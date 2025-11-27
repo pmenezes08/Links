@@ -1256,7 +1256,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* ====== MESSAGES LIST - FLEX CHILD, SCROLLABLE ====== */}
       <div
         ref={listRef}
-        className="space-y-1 bg-black text-white ios-messages-scroll"
+        className="space-y-1 bg-black text-white"
         style={{
           flex: 1,
           display: 'flex',
@@ -1500,7 +1500,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* ====== COMPOSER - FIXED ABOVE KEYBOARD ====== */}
       <div 
         ref={composerRef}
-        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10 message-composer" 
+        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10" 
         style={{
           position: 'fixed',
           bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : 0,
