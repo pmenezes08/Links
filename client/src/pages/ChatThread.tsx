@@ -153,6 +153,7 @@ export default function ChatThread(){
   const safeTop = 'env(safe-area-inset-top, 0px)'
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const totalHeaderHeight = globalHeaderHeight + chatHeaderHeight
+  const containerOffsetTop = `calc(${globalHeaderHeight}px + ${safeTop})`
   
   const composerRef = useRef<HTMLDivElement | null>(null)
   const keyboardOffsetRef = useRef(0)
@@ -190,15 +191,6 @@ export default function ChatThread(){
     }
   }, [scrollToBottom])
 
-  useEffect(() => {
-    if (typeof document === 'undefined') return
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previousOverflow
-    }
-  }, [])
-  
   // Scroll to bottom when window resizes (Capacitor native keyboard resize)
   useEffect(() => {
     let lastHeight = window.innerHeight
@@ -1180,11 +1172,16 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     <div 
       className="chat-page-container chat-thread-bg"
       style={{
+        position: 'fixed',
+        top: containerOffsetTop,
+        left: 0,
+        right: 0,
+        bottom: 0,
         display: 'flex',
         flexDirection: 'column',
-        height: '100%',
-        position: 'relative',
+        background: '#000000',
         isolation: 'isolate',
+        overflow: 'hidden',
       }}
     >
       {/* ====== CHAT HEADER - FIXED AT TOP ====== */}
@@ -1286,7 +1283,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           overflowY: 'auto',
           overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
-          paddingTop: `calc(${totalHeaderHeight}px + ${safeTop} + 12px)`,
+          paddingTop: `calc(${chatHeaderHeight}px + 24px)`,
           paddingBottom: `calc(${bottomPadding}px + ${safeBottom} + ${keyboardOffset}px)`,
           paddingLeft: '10px',
           paddingRight: '10px',
