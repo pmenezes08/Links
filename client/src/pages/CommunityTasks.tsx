@@ -127,8 +127,11 @@ export default function CommunityTasks(){
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-black text-white">
-      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+    <div className="min-h-screen bg-black text-white">
+      <div
+        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
+      >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
@@ -150,7 +153,13 @@ export default function CommunityTasks(){
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-20 px-3 overflow-y-auto no-scrollbar">
+      <div
+        className="app-subnav-offset max-w-2xl mx-auto pb-20 px-3 overflow-y-auto no-scrollbar"
+        style={{
+          WebkitOverflowScrolling: 'touch' as any,
+          minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
+        }}
+      >
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : (

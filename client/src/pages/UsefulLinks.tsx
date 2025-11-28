@@ -102,7 +102,14 @@ export default function UsefulLinks(){
         </div>
       </div>
 
-      <div ref={scrollRef} className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-20 px-3 overflow-y-auto no-scrollbar">
+      <div
+        ref={scrollRef}
+        className="app-subnav-offset max-w-2xl mx-auto pb-20 px-3 overflow-y-auto no-scrollbar"
+        style={{
+          WebkitOverflowScrolling: 'touch' as any,
+          minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
+        }}
+      >
         {activeTab === 'add' ? (
           <div className="space-y-3">
             <div className="rounded-2xl border border_WHITE/10 bg_WHITE/[0.035] p-3">

@@ -789,7 +789,7 @@ export default function Profile() {
 
   return (
     <div className="h-screen overflow-hidden bg-black text-white">
-      <div className="h-full overflow-y-auto pt-14">
+      <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
         {summary.cover_photo ? (
           <div className="rounded-xl border border-white/10 overflow-hidden">

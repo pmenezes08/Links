@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -291,28 +291,40 @@ function AppRoutes(){
     return <OnboardingWelcome />
   })()
 
+  const currentPath = location.pathname
+  const hideHeader =
+    isFirstPage ||
+    currentPath === '/welcome' ||
+    currentPath === '/onboarding' ||
+    currentPath === '/login' ||
+    currentPath === '/signup' ||
+    currentPath === '/signup_react'
+  const showHeader = !hideHeader
+  const headerHeightValue = showHeader ? 'calc(56px + env(safe-area-inset-top, 0px))' : 'env(safe-area-inset-top, 0px)'
+  const contentOffsetValue = headerHeightValue
+  const mainStyle = {
+    paddingTop: contentOffsetValue,
+    minHeight: '100%',
+    paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+    '--app-header-offset': contentOffsetValue,
+    '--app-header-height': headerHeightValue,
+    '--app-subnav-height': '40px',
+  } as CSSProperties
+
   // ProtectedRoute no longer used after simplifying guards
 
   return (
     <UserProfileContext.Provider value={userProfileValue}>
       {/* <NativePushInit /> */}
       <HeaderContext.Provider value={{ setTitle }}>
-        {(() => {
-          const path = location.pathname
-          const hideHeader = isFirstPage || path === '/welcome' || path === '/onboarding' || path === '/login' || path === '/signup' || path === '/signup_react'
-          return !hideHeader
-        })() && (
+        {showHeader && (
           <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
         )}
         <main
           ref={scrollRegionRef}
           data-scroll-region="true"
           className="app-scroll-region ios-scroll-region"
-          style={{
-            paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : 'calc(56px + env(safe-area-inset-top, 0px))' })(),
-            minHeight: '100%',
-            paddingBottom: 'env(safe-area-inset-bottom, 0px)'
-          }}
+          style={mainStyle}
         >
             <ErrorBoundary>
               <Routes>

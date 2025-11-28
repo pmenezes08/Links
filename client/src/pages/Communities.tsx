@@ -280,7 +280,12 @@ export default function Communities(){
       {/* Slide-out menu (90% width) same as feed */}
       {/* Menu unified via HeaderBar */}
 
-      <div className="max-w-2xl mx-auto pb-6 px-3" style={{ paddingTop: 'calc(56px + 48px + env(safe-area-inset-top, 0px) + 16px)' }}>
+      <div
+        className="max-w-2xl mx-auto pb-6 px-3"
+        style={{
+          paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 56px)',
+        }}
+      >
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (

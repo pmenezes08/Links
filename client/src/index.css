@@ -154,6 +154,10 @@
   overflow: visible !important;
 }
 
+.app-subnav-offset {
+  padding-top: var(--app-subnav-height, 40px);
+}
+
 .header-with-safe-area {
   top: 0 !important;
   padding-top: env(safe-area-inset-top, 0px);

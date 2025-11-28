@@ -134,7 +134,7 @@ export default function EncryptionSettings() {
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto px-6 pb-6" style={{ paddingTop: 'calc(70px + env(safe-area-inset-top))' }}>
+      <div className="max-w-2xl mx-auto px-6 pb-6">
         
         {/* Header */}
         <div className="mb-8">
