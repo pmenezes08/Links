@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
@@ -147,13 +147,38 @@ export default function ChatThread(){
   // Mic always enabled for audio messages
   const MIC_ENABLED = true
   
-  // E2E Encryption is initialized globally in App.tsx, so it's always ready
+  // Layout helpers
   const headerOffsetVar = 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))'
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const conversationMinHeight = `calc(100vh - ${headerOffsetVar})`
+  const defaultComposerPadding = 120
+  const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   
   const composerRef = useRef<HTMLDivElement | null>(null)
+  const composerCardRef = useRef<HTMLDivElement | null>(null)
   const keyboardOffsetRef = useRef(0)
+  
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
+    const node = composerCardRef.current
+    if (!node) return
+    
+    const updateHeight = () => {
+      const height = node.getBoundingClientRect().height
+      if (!height) return
+      setComposerHeight(prev => (Math.abs(prev - height) < 1 ? prev : height))
+    }
+    
+    updateHeight()
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(node)
+    
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+  
+  const listBottomPadding = `calc(${Math.max(composerHeight, defaultComposerPadding)}px + ${keyboardOffset}px + ${safeBottom})`
   
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -210,9 +235,6 @@ export default function ChatThread(){
     return () => window.removeEventListener('resize', handleResize)
   }, [scrollToBottom])
   
-  // Bottom padding for messages list (space for composer + safe area)
-  const bottomPadding = 76
-
   // Date formatting functions
   function formatDateLabel(dateStr: string): string {
     const messageDate = new Date(dateStr)
@@ -1166,10 +1188,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   }
 
   return (
-    <div className="glass-page min-h-screen text-white chat-thread-bg">
-      <div className="app-content">
+    <div className="glass-page min-h-screen overflow-hidden text-white chat-thread-bg">
+      <div className="app-content px-0">
         <div
-          className="mx-auto flex max-w-3xl flex-col gap-3"
+          className="mx-auto flex max-w-3xl flex-1 flex-col gap-3 overflow-hidden"
           style={{ minHeight: conversationMinHeight }}
         >
         <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/5 px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur-md">
@@ -1252,9 +1274,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         ref={listRef}
         className="flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden text-white px-1 sm:px-2"
         style={{
-          flex: 1,
           WebkitOverflowScrolling: 'touch',
-          paddingBottom: `calc(${bottomPadding}px + ${safeBottom} + ${keyboardOffset}px)`,
+          paddingBottom: listBottomPadding,
+          scrollPaddingBottom: listBottomPadding,
         } as CSSProperties}
         onScroll={(e)=> {
           const el = e.currentTarget
@@ -1461,7 +1483,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           <button
             className="fixed z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
             style={{ 
-              bottom: `calc(${bottomPadding}px + ${safeBottom} + ${keyboardOffset}px)`,
+              bottom: listBottomPadding,
               right: '22px'
             }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
@@ -1471,8 +1493,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           </button>
         )}
       </div>
-        </div>
       </div>
+    </div>
 
     {/* ====== COMPOSER - FIXED AT BOTTOM (Capacitor native resize handles keyboard) ====== */}
     <div 
@@ -1486,7 +1508,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         transition: 'transform 140ms ease-out',
       }}
     >
-      <div className="max-w-3xl mx-auto w-full rounded-[30px] bg-[#050607]/90 px-3 py-2 shadow-[0_20px_50px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+      <div
+        ref={composerCardRef}
+        className="max-w-3xl mx-auto w-full rounded-[30px] bg-[#050607]/90 px-3 py-2 shadow-[0_20px_50px_rgba(0,0,0,0.55)] backdrop-blur-xl"
+      >
           {replyTo && (
             <div className="mb-2 px-3 py-2 liquid-glass-chip rounded-xl border border-white/10">
               <div className="flex items-center justify-between mb-1">
