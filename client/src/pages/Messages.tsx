@@ -289,9 +289,12 @@ export default function Messages(){
     })
 
   return (
-    <div className="h-screen overflow-hidden bg-black text-white">
+    <div className="min-h-screen bg-black text-white">
       {/* Secondary header (match Polls) */}
-      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+      <div
+        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
+      >
         <div className="max-w-3xl mx-auto h-full flex items-center gap-2 px-2">
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> { if (window.history.length > 1) navigate(-1); else navigate('/home') }} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
@@ -309,7 +312,13 @@ export default function Messages(){
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto pt-[70px] h-[calc(100vh-70px)] px-1 sm:px-3 pb-2 overflow-y-auto overscroll-auto" style={{ WebkitOverflowScrolling: 'touch' as any }}>
+      <div
+        className="app-subnav-offset max-w-3xl mx-auto px-1 sm:px-3 pb-2 overflow-y-auto overscroll-auto"
+        style={{
+          WebkitOverflowScrolling: 'touch' as any,
+          minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
+        }}
+      >
         {activeTab === 'chats' ? (
           <div className="space-y-3">
             <div className="bg-black border border-white/10 rounded-xl p-3">
