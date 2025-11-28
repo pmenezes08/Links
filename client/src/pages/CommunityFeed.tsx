@@ -582,13 +582,13 @@ export default function CommunityFeed() {
       {/* Scrollable content area below fixed global header */}
       <div
         ref={scrollRef}
-        className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
+        className={`app-content max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + ${pullPx}px)`,
+          paddingTop: `calc(var(--app-content-gap, 8px) + ${pullPx}px)`,
         }}
       >
         <div className="space-y-3">
