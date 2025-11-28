@@ -108,6 +108,35 @@ function AppRoutes(){
     if (typeof window.scrollTo === 'function') {
       window.scrollTo({ top: 0, behavior: 'auto' })
     }
+
+    const scrollableSelectors = [
+      '.overflow-y-auto',
+      '.overflow-auto',
+      '.overflow-scroll',
+      '.no-scrollbar',
+      '[data-scroll-region-child]',
+      '[data-scrollable]',
+    ]
+
+    if (scrollRegionRef.current && scrollableSelectors.length) {
+      try {
+        const nodes = scrollRegionRef.current.querySelectorAll<HTMLElement>(scrollableSelectors.join(','))
+        nodes.forEach(node => {
+          const style = window.getComputedStyle(node)
+          const overflowY = style.overflowY || style.overflow
+          const isScrollable = /auto|scroll/i.test(overflowY)
+          if (!isScrollable) return
+          if (node.scrollHeight - node.clientHeight <= 1) return
+          if (typeof node.scrollTo === 'function') {
+            node.scrollTo({ top: 0, behavior: 'auto' })
+          } else {
+            node.scrollTop = 0
+          }
+        })
+      } catch (err) {
+        console.warn('scroll reset failed', err)
+      }
+    }
   }, [])
 
   const loadProfile = useCallback(async (path?: string): Promise<UserProfile> => {
