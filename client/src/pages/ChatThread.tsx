@@ -189,6 +189,15 @@ export default function ChatThread(){
       viewport.removeEventListener('scroll', handleChange)
     }
   }, [scrollToBottom])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [])
   
   // Scroll to bottom when window resizes (Capacitor native keyboard resize)
   useEffect(() => {
