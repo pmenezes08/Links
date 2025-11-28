@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
@@ -83,8 +83,11 @@ export default function CommunityResources(){
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-black text-white">
-      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+    <div className="min-h-screen bg-black text-white">
+      <div
+        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
+      >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
@@ -93,7 +96,15 @@ export default function CommunityResources(){
         </div>
       </div>
 
-      <div ref={scrollRef} className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-20 px-3 overflow-y-auto no-scrollbar">
+      <div
+        ref={scrollRef}
+        className="app-subnav-offset max-w-2xl mx-auto pb-20 px-3 overflow-y-auto no-scrollbar"
+        style={{
+          WebkitOverflowScrolling: 'touch' as any,
+          minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
+          '--app-subnav-height': '40px',
+        } as CSSProperties}
+      >
         <div className="rounded-2xl border border-white/10 bg-white/[0.035]">
           <div className="px-3 py-2 flex items-center justify-between border-b border-white/10">
             <div className="text-sm font-semibold">Create a Post</div>

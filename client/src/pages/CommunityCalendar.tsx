@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -388,8 +388,11 @@ export default function CommunityCalendar(){
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-black text-white">
-      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+    <div className="min-h-screen bg-black text-white">
+      <div
+        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
+      >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
@@ -411,7 +414,15 @@ export default function CommunityCalendar(){
         </div>
       </div>
 
-      <div ref={scrollRef} className="max-w-2xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-20 px-3 overflow-y-auto no-scrollbar">
+      <div
+        ref={scrollRef}
+        className="app-subnav-offset max-w-2xl mx-auto pb-20 px-3 overflow-y-auto no-scrollbar"
+        style={{
+          WebkitOverflowScrolling: 'touch' as any,
+          minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
+          '--app-subnav-height': '40px',
+        } as CSSProperties}
+      >
         {successMsg && (
           <div className="mb-3 text-sm px-3 py-2 rounded-md bg-teal-700/15 text-teal-300 border border-teal-700/30">{successMsg}</div>
         )}

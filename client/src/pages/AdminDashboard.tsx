@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -687,9 +687,12 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-black text-white">
+    <div className="min-h-screen bg-black text-white">
       {/* Secondary nav like Communities page */}
-      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+      <div
+        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
+      >
         <div className="max-w-4xl mx-auto h-full flex">
           <button 
             onClick={() => setActiveTab('overview')}
@@ -731,7 +734,14 @@ export default function AdminDashboard() {
       </div>
 
       {/* Content */}
-      <div className="max-w-4xl mx-auto pt-[70px] h-[calc(100vh-70px)] pb-6 px-3 overflow-y-auto no-scrollbar">
+      <div
+        className="app-subnav-offset max-w-4xl mx-auto pb-6 px-3 overflow-y-auto no-scrollbar"
+        style={{
+          WebkitOverflowScrolling: 'touch' as any,
+          minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
+          '--app-subnav-height': '40px',
+        } as CSSProperties}
+      >
         {/* Overview Tab */}
         {activeTab === 'overview' && stats && (
           <div className="space-y-4">
