@@ -145,9 +145,9 @@
 }
 
 .header-with-safe-area {
-  top: env(safe-area-inset-top, 0px) !important;
-  height: 56px;
-  padding-top: 0 !important;
+  top: 0 !important;
+  padding-top: env(safe-area-inset-top, 0px);
+  height: calc(56px + env(safe-area-inset-top, 0px));
 }
 
 .ios-scroll-region,
