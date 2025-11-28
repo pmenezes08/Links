@@ -120,8 +120,8 @@ export default function AccountSettings(){
   }
 
   return (
-    <div className="min-h-screen bg-black text-white pb-safe">
-      <div className="app-content max-w-2xl mx-auto px-4 pb-32">
+    <div className="glass-page min-h-screen text-white pb-safe">
+      <div className="glass-card max-w-2xl mx-auto px-4 pb-8 space-y-8">
         {message && (
           <div
             className={`mb-6 rounded-lg border p-4 ${

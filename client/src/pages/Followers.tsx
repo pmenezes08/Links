@@ -556,7 +556,7 @@ export default function Followers() {
   )
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="glass-page min-h-screen text-white">
       <div
         className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
@@ -588,7 +588,7 @@ export default function Followers() {
       </div>
 
       <div
-        className="app-subnav-offset max-w-3xl mx-auto px-1 sm:px-3 pb-2 overflow-y-auto overscroll-auto"
+        className="app-subnav-offset max-w-3xl mx-auto px-1 sm:px-3 pb-2 overflow-y-auto overscroll-auto glass-card"
         style={{ WebkitOverflowScrolling: 'touch' as any }}
       >
         {activeSection === 'manage' ? (
