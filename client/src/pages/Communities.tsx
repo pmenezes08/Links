@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
+import type { CSSProperties, Dispatch, SetStateAction } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { formatSmartTime } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
@@ -223,7 +223,10 @@ export default function Communities(){
       {/* Secondary nav like X - fixed below global header */}
       <div 
         className="fixed left-0 right-0 h-12 bg-black/95 backdrop-blur z-40 border-b border-white/5" 
-        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 56px)' }}
+        style={{
+          top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))',
+          '--app-subnav-height': '48px',
+        } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center">
           <button
@@ -281,10 +284,8 @@ export default function Communities(){
       {/* Menu unified via HeaderBar */}
 
       <div
-        className="max-w-2xl mx-auto pb-6 px-3"
-        style={{
-          paddingTop: 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + 56px)',
-        }}
+        className="app-subnav-offset max-w-2xl mx-auto pb-6 px-3"
+        style={{ '--app-subnav-height': '48px' } as CSSProperties}
       >
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>

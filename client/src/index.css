@@ -155,7 +155,10 @@
 }
 
 .app-subnav-offset {
-  padding-top: var(--app-subnav-height, 40px);
+  padding-top: calc(
+    var(--app-subnav-height, 40px) +
+    var(--app-subnav-gap, 12px)
+  );
 }
 
 .header-with-safe-area {
