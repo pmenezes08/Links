@@ -148,11 +148,9 @@ export default function ChatThread(){
   const MIC_ENABLED = true
   
   // E2E Encryption is initialized globally in App.tsx, so it's always ready
-  const globalHeaderHeight = 56
-  const chatHeaderHeight = 56
-  const safeTop = 'env(safe-area-inset-top, 0px)'
+  const headerOffsetVar = 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))'
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
-  const containerOffsetTop = `calc(${globalHeaderHeight}px + ${safeTop})`
+  const conversationMinHeight = `calc(100vh - ${headerOffsetVar})`
   
   const composerRef = useRef<HTMLDivElement | null>(null)
   const keyboardOffsetRef = useRef(0)
@@ -1168,36 +1166,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   }
 
   return (
-    <div 
-      className="chat-page-container chat-thread-bg"
-      style={{
-        position: 'fixed',
-        top: containerOffsetTop,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        background: '#000000',
-        isolation: 'isolate',
-        overflow: 'hidden',
-      }}
-    >
-      {/* ====== CHAT HEADER - FIXED AT TOP ====== */}
-      <div 
-        className="liquid-glass-surface border-b border-white/5 flex items-center gap-3 px-4"
-        style={{
-          position: 'fixed',
-          top: `calc(${globalHeaderHeight}px + ${safeTop})`,
-          left: 10,
-          right: 10,
-          height: `${chatHeaderHeight}px`,
-          zIndex: 1000,
-          borderRadius: '24px',
-          overflow: 'hidden',
-        }}
-      >
-        <div className="max-w-3xl mx-auto w-full flex items-center gap-3 relative">
+    <div className="glass-page min-h-screen text-white chat-thread-bg">
+      <div className="app-content">
+        <div
+          className="mx-auto flex max-w-3xl flex-col gap-3"
+          style={{ minHeight: conversationMinHeight }}
+        >
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/5 px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur-md">
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             onClick={()=> navigate('/user_chat')} 
@@ -1251,14 +1226,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             </div>
           )}
         </div>
-      </div>
       
       {/* Floating date indicator */}
       {currentDateLabel && showDateFloat && (
         <div 
           style={{ 
             position: 'fixed',
-            top: `calc(${globalHeaderHeight}px + ${chatHeaderHeight}px + ${safeTop} + 8px)`,
+            top: `calc(${headerOffsetVar} + 12px)`,
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 999,
@@ -1276,19 +1250,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* ====== MESSAGES LIST - SCROLLABLE ====== */}
       <div
         ref={listRef}
-        className="space-y-0.5 text-white liquid-glass-surface"
+        className="flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden text-white px-1 sm:px-2"
         style={{
           flex: 1,
-          overflowY: 'auto',
-          overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
-          paddingTop: `calc(${chatHeaderHeight}px + 24px)`,
           paddingBottom: `calc(${bottomPadding}px + ${safeBottom} + ${keyboardOffset}px)`,
-          paddingLeft: '10px',
-          paddingRight: '10px',
-          marginLeft: '10px',
-          marginRight: '10px',
-          borderRadius: '28px',
         } as CSSProperties}
         onScroll={(e)=> {
           const el = e.currentTarget
@@ -1303,7 +1269,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           for (let i = 0; i < messageElements.length; i++) {
             const msgEl = messageElements[i] as HTMLElement
             const rect = msgEl.getBoundingClientRect()
-            const headerHeight = 128 // Global header (56px) + Chat header (56px) + spacing (16px)
+            const headerHeight = 96 // Global header plus page padding
             
             if (rect.top >= headerHeight && rect.top <= headerHeight + 100) {
               visibleDate = msgEl.getAttribute('data-message-date') || ''
@@ -1505,25 +1471,22 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           </button>
         )}
       </div>
+        </div>
+      </div>
 
-      {/* ====== COMPOSER - FIXED AT BOTTOM (Capacitor native resize handles keyboard) ====== */}
-      <div 
-        ref={composerRef}
-        className="liquid-glass-surface px-3 sm:px-4 py-2 border border-white/5" 
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 10,
-          right: 10,
-          width: 'auto',
-          zIndex: 1000,
-          paddingBottom: `calc(6px + ${safeBottom})`,
-          borderRadius: '32px',
-          transform: keyboardOffset ? `translateY(-${keyboardOffset}px)` : undefined,
-          transition: 'transform 120ms ease-out',
-        }}
-      >
-        <div className="max-w-3xl mx-auto w-full">
+    {/* ====== COMPOSER - FIXED AT BOTTOM (Capacitor native resize handles keyboard) ====== */}
+    <div 
+      ref={composerRef}
+      className="fixed left-0 right-0 px-4 sm:px-5"
+      style={{
+        bottom: 0,
+        zIndex: 1000,
+        paddingBottom: `calc(${safeBottom} + 12px)`,
+        transform: keyboardOffset ? `translateY(-${keyboardOffset}px)` : undefined,
+        transition: 'transform 140ms ease-out',
+      }}
+    >
+      <div className="max-w-3xl mx-auto w-full rounded-[30px] bg-[#050607]/90 px-3 py-2 shadow-[0_20px_50px_rgba(0,0,0,0.55)] backdrop-blur-xl">
           {replyTo && (
             <div className="mb-2 px-3 py-2 liquid-glass-chip rounded-xl border border-white/10">
               <div className="flex items-center justify-between mb-1">
@@ -1543,18 +1506,18 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             </div>
           )}
 
-          <div className="flex items-end gap-1 sm:gap-1.5">
+          <div className="relative flex items-end gap-2 sm:gap-3">
             {/* Attachment button */}
             <button 
-              className="w-8 h-8 sm:w-9 sm:h-9 flex-shrink-0 flex items-center justify-center rounded-full liquid-glass-chip hover:bg-white/20 active:bg-white/30 transition-colors"
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 active:bg-white/30 transition-colors"
               onClick={() => setShowAttachMenu(!showAttachMenu)}
               style={{
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent'
               }}
             >
-              <i className={`fa-solid text-white/70 text-base sm:text-lg transition-transform duration-200 ${
-                showAttachMenu ? 'fa-times rotate-90' : 'fa-plus'
+              <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 ${
+                showAttachMenu ? 'fa-xmark rotate-90' : 'fa-plus'
               }`} />
             </button>
 
@@ -1570,7 +1533,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 }}
               />
               <div 
-                className="absolute bottom-12 left-0 z-50 liquid-glass-surface border border-white/10 rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
+                className="absolute bottom-14 left-0 z-50 liquid-glass-surface border border-white/10 rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
                 style={{
                   touchAction: 'manipulation'
                 }}
@@ -1642,7 +1605,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
 
           {/* Message input container */}
           <div 
-            className="flex-1 flex items-center liquid-glass-input rounded-3xl overflow-hidden relative"
+            className="flex-1 flex items-center rounded-3xl bg-white/10 overflow-hidden relative"
             style={{
               touchAction: 'manipulation',
               WebkitTapHighlightColor: 'transparent',
@@ -1793,8 +1756,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             </div>
           </div>
         </div>
-        </div>
       </div>
+    </div>
 
 
       {/* Permission guide modal */}
