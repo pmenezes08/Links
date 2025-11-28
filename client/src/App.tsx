@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
 import MobileLogin from './pages/MobileLogin'
@@ -143,10 +143,6 @@ function AppRoutes(){
         setIsVerified(!!(profile as any)?.email_verified)
         setProfileError(null)
 
-        if (currentPath === '/') {
-          navigate('/premium_dashboard', { replace: true })
-        }
-
         const resetRequested = localStorage.getItem('encryption_reset_requested')
         if (resetRequested === 'true') {
           console.log('🔐 Reset requested - deleting old encryption database...')
@@ -238,12 +234,6 @@ function AppRoutes(){
     }
   }, [profileData])
 
-  useEffect(() => {
-    if (location.pathname === '/' && profileData) {
-      navigate('/premium_dashboard', { replace: true })
-    }
-  }, [location.pathname, navigate, profileData])
-
   const userProfileValue = useMemo(
     () => ({
       profile: profileData,
@@ -254,6 +244,23 @@ function AppRoutes(){
     }),
     [profileData, profileLoading, profileError, loadProfile],
   )
+
+  const rootRouteElement = (() => {
+    if (!authLoaded) {
+      return (
+        <div className="h-screen bg-black text-white flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <i className="fa-solid fa-spinner fa-spin text-2xl" aria-hidden="true" />
+            <span className="text-sm text-white/70">Loading your dashboard…</span>
+          </div>
+        </div>
+      )
+    }
+    if (profileData) {
+      return <Navigate to="/premium_dashboard" replace />
+    }
+    return <OnboardingWelcome />
+  })()
 
   // ProtectedRoute no longer used after simplifying guards
 
@@ -280,7 +287,7 @@ function AppRoutes(){
         >
             <ErrorBoundary>
               <Routes>
-                <Route path="/" element={<OnboardingWelcome />} />
+                <Route path="/" element={rootRouteElement} />
                 <Route path="/welcome" element={<OnboardingWelcome />} />
                 <Route path="/login" element={<MobileLogin />} />
                 <Route path="/signup" element={<Signup />} />
