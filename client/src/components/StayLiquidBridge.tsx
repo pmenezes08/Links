@@ -116,11 +116,20 @@ export default function StayLiquidBridge() {
 
     async function detectSupport() {
       try {
-        if (Capacitor.getPlatform() !== 'ios') return
+        const platform = Capacitor.getPlatform()
+        console.log('[StayLiquid] platform detected:', platform)
+        if (platform !== 'ios') {
+          console.log('[StayLiquid] non-iOS platform, skipping native tabs')
+          return
+        }
         const info = await Device.getInfo()
+        console.log('[StayLiquid] device info:', info)
         if (cancelled) return
         if (isLiquidGlassSupported(info)) {
+          console.log('[StayLiquid] liquid glass supported – enabling bridge')
           setSupported(true)
+        } else {
+          console.log('[StayLiquid] iOS build below requirement, skipping')
         }
       } catch (error) {
         console.warn('[StayLiquid] Unable to detect device info', error)
@@ -145,9 +154,12 @@ export default function StayLiquidBridge() {
 
     async function configure() {
       try {
-        await ensureTabsConfigured(routeToTabId(location.pathname) ?? DEFAULT_TAB_ID)
+        const initialId = routeToTabId(location.pathname) ?? DEFAULT_TAB_ID
+        console.log('[StayLiquid] configuring tabs with initial id:', initialId)
+        await ensureTabsConfigured(initialId)
         if (cancelled) return
         const listener = await TabsBar.addListener('selected', ({ id }) => {
+          console.log('[StayLiquid] native tab selected:', id)
           const targetPath = tabIdToPath(id)
           if (!targetPath) return
           lastSelectedRef.current = id
@@ -174,10 +186,12 @@ export default function StayLiquidBridge() {
 
     if (!tabId) {
       lastSelectedRef.current = null
+      console.log('[StayLiquid] no tab match for route, hiding native bar')
       TabsBar.hide().catch(() => {})
       return
     }
 
+    console.log('[StayLiquid] showing native bar for tab:', tabId)
     TabsBar.show().catch(() => {})
     if (lastSelectedRef.current !== tabId) {
       lastSelectedRef.current = tabId
