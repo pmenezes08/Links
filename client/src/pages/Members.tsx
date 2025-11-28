@@ -435,7 +435,10 @@ export default function Members(){
 
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
-      <div className="sticky left-0 right-0 top-0 h-12 border-b border-white/10 bg-black/95 backdrop-blur flex items-center px-3 z-40" style={{ top: 'calc(env(safe-area-inset-top) + 56px)' }}>
+      <div
+        className="sticky left-0 right-0 h-12 border-b border-white/10 bg-black/95 backdrop-blur flex items-center px-3 z-40"
+        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
+      >
         <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
           <i className="fa-solid fa-arrow-left" />
         </button>
