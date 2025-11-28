@@ -154,6 +154,10 @@
   overflow: visible !important;
 }
 
+.app-content {
+  padding-top: var(--app-content-gap, 8px);
+}
+
 .app-subnav-offset {
   padding-top: calc(
     var(--app-subnav-height, 40px) +

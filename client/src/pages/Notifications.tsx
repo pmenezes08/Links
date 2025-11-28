@@ -135,7 +135,7 @@ export default function Notifications(){
 
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
-      <div className="max-w-xl mx-auto px-3 pb-20">
+      <div className="app-content max-w-xl mx-auto px-3 pb-20">
         <div className="flex items-center justify-center gap-3 mb-3 border-b border-white/10 pb-2">
           <button
             onClick={markAll}

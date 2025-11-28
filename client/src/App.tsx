@@ -310,6 +310,7 @@ function AppRoutes(){
     '--app-header-height': headerHeightValue,
     '--app-subnav-height': '40px',
     '--app-subnav-gap': '12px',
+    '--app-content-gap': '8px',
   } as CSSProperties
 
   // ProtectedRoute no longer used after simplifying guards

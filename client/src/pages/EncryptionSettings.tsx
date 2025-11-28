@@ -134,7 +134,7 @@ export default function EncryptionSettings() {
         </div>
       )}
 
-      <div className="max-w-2xl mx-auto px-6 pb-6">
+      <div className="app-content max-w-2xl mx-auto px-6 pb-6">
         
         {/* Header */}
         <div className="mb-8">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 export default function EditCommunity(){
@@ -105,14 +105,20 @@ export default function EditCommunity(){
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="fixed left-0 right-0 top-0 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
+      <div
+        className="fixed left-0 right-0 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40"
+        style={{
+          top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))',
+          '--app-subnav-height': '48px',
+        } as CSSProperties}
+      >
         <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(-1)}>
           <i className="fa-solid fa-arrow-left" />
         </button>
         <div className="ml-2 font-semibold">Manage Community</div>
       </div>
 
-      <div className="max-w-2xl mx-auto pt-14 px-3 pb-24">
+      <div className="app-subnav-offset max-w-2xl mx-auto px-3 pb-24" style={{ '--app-subnav-height': '48px' } as CSSProperties}>
         <form ref={formRef} onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Community name</label>

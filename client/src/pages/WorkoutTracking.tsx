@@ -236,8 +236,11 @@ export default function WorkoutTracking(){
   }
 
   return (
-    <div className="min-h-screen bg-black text-white pt-14">
-      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+    <div className="app-content min-h-screen bg-black text-white">
+      <div
+        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
+      >
         <div className="max-w-3xl mx-auto h-full flex items-center px-3">
           <button
             type="button"

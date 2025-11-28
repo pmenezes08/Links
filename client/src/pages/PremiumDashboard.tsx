@@ -366,7 +366,7 @@ export default function PremiumDashboard() {
   const profilePreviewSrc = picPreview || existingProfilePic
 
     return (
-      <div className="min-h-screen chat-thread-bg text-white pb-safe relative">
+      <div className="app-content min-h-screen chat-thread-bg text-white pb-safe relative">
       {/* Desktop sidebar - same menu as mobile burger */}
       <div className="fixed left-0 top-14 bottom-0 w-52 hidden md:flex flex-col z-30 liquid-glass-surface border border-white/10 rounded-r-3xl shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
         <nav className="flex-1 overflow-y-auto py-3">
@@ -423,8 +423,8 @@ export default function PremiumDashboard() {
         )}
 
       {/* Main content area with proper positioning */}
-      <div className="min-h-screen pt-14 md:ml-52 pb-20">
-        <div className="max-w-5xl mx-auto px-3 py-6">
+      <div className="min-h-screen md:ml-52 pb-20">
+        <div className="app-content max-w-5xl mx-auto px-3 py-6">
             {communities.length === 0 ? (
               <div className="px-3 py-10">
                 <div className="mx-auto max-w-xl liquid-glass-surface border border-white/10 rounded-2xl p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">

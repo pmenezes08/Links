@@ -50,7 +50,7 @@ export default function AccountSecurity() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="max-w-2xl mx-auto px-4 pb-6 space-y-4">
+      <div className="app-content max-w-2xl mx-auto px-4 pb-6 space-y-4">
         <button
           type="button"
           className="inline-flex items-center gap-2 text-sm text-[#9fb0b5] hover:text-white"
