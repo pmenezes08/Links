@@ -69,6 +69,9 @@ function tabIdToPath(tabId: string): string | null {
   return blueprint?.path ?? null
 }
 
+const LIQUID_IOS_BUILD_THRESHOLD = 180000 // ios 18.0.0+
+const LIQUID_OS_VERSION_THRESHOLD = 18
+
 async function ensureTabsConfigured(initialId: string) {
   const config: TabsBarConfigureOptions = {
     visible: true,
@@ -95,10 +98,10 @@ function isLiquidGlassSupported(info: Awaited<ReturnType<typeof Device.getInfo>>
         : undefined
 
   if (typeof build === 'number') {
-    return build >= 260000
+    return build >= LIQUID_IOS_BUILD_THRESHOLD
   }
   if (typeof osVersion === 'number') {
-    return osVersion >= 18
+    return osVersion >= LIQUID_OS_VERSION_THRESHOLD
   }
   return false
 }
