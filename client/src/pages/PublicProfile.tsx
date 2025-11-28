@@ -215,7 +215,7 @@ export default function PublicProfile() {
 
   return (
     <div className="glass-page min-h-screen text-white pb-10">
-      <div className="glass-card max-w-3xl mx-auto px-4 py-4 space-y-4">
+      <div className="glass-card glass-card--plain max-w-3xl mx-auto px-4 py-4 space-y-4">
 
         <section className="glass-section">
           <div className="flex flex-wrap items-center gap-4">
@@ -229,22 +229,28 @@ export default function PublicProfile() {
             >
               <Avatar username={profile.username} url={profile.profile_picture || undefined} size={64} />
             </button>
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-lg truncate">{profile.display_name || profile.username}</div>
-                <div className="text-sm text-[#9fb0b5] truncate">
-                  @{profile.username}{profile.subscription ? ` • ${profile.subscription}` : ''}
-                </div>
-                {location ? (
-                  <div className="text-xs text-[#9fb0b5] flex items-center gap-1">
-                    <i className="fa-solid fa-location-dot" />
-                    <span>{location}</span>
-                  </div>
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="font-semibold text-lg leading-tight break-words">{profile.display_name || profile.username}</div>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-[#cfd8dc]">
+                <span className="truncate">@{profile.username}</span>
+                {profile.subscription ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs uppercase tracking-wide text-white/80">
+                    <i className="fa-solid fa-gem text-[10px]" />
+                    {profile.subscription}
+                  </span>
                 ) : null}
-                <div className="text-xs text-[#9fb0b5] flex items-center gap-3 mt-1">
-                  <span><span className="text-white font-semibold">{followersCount}</span> followers</span>
-                  <span><span className="text-white font-semibold">{followingCount}</span> following</span>
-                </div>
               </div>
+              {location ? (
+                <div className="flex flex-wrap items-center gap-1 text-xs text-[#9fb0b5]">
+                  <i className="fa-solid fa-location-dot" />
+                  <span className="truncate">{location}</span>
+                </div>
+              ) : null}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#9fb0b5]">
+                <span><span className="text-white font-semibold">{followersCount}</span> followers</span>
+                <span><span className="text-white font-semibold">{followingCount}</span> following</span>
+              </div>
+            </div>
               {isSelf ? (
                 <button
                   className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
@@ -277,7 +283,7 @@ export default function PublicProfile() {
           </section>
 
         {(bioText || formattedDob || location) ? (
-          <section className="rounded-xl border border-white/10 p-4 space-y-3">
+          <section className="glass-section space-y-3">
             <div className="font-semibold">Personal information</div>
             <div className="space-y-2 text-sm text-white/90">
               {bioText ? (
@@ -303,7 +309,7 @@ export default function PublicProfile() {
         ) : null}
 
         {hasProfessional ? (
-          <section className="rounded-xl border border-white/10 p-4 space-y-3">
+          <section className="glass-section space-y-3">
             <div className="font-semibold">Professional</div>
             <div className="space-y-2 text-sm text-white/90">
               {professional.about ? (
@@ -368,7 +374,7 @@ export default function PublicProfile() {
         ) : null}
 
         {hasInterests ? (
-          <section className="rounded-xl border border-white/10 p-4 space-y-2">
+          <section className="glass-section space-y-2">
             <div className="font-semibold">Personal interests</div>
             <div className="flex flex-wrap gap-2">
               {interestTags.map(tag => (
@@ -381,7 +387,7 @@ export default function PublicProfile() {
         ) : null}
 
         {(profile.website || profile.instagram || profile.twitter) ? (
-          <section className="rounded-xl border border-white/10 p-4 space-y-2">
+          <section className="glass-section space-y-2">
             <div className="font-semibold">Links</div>
             <div className="flex flex-wrap gap-3 text-sm">
               {profile.website ? (

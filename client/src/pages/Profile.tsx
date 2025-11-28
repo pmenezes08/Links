@@ -789,7 +789,7 @@ export default function Profile() {
 
   return (
     <div className="glass-page min-h-screen text-white">
-      <div className="glass-card max-w-3xl mx-auto px-4 py-4 space-y-4">
+      <div className="glass-card glass-card--plain max-w-3xl mx-auto px-4 py-4 space-y-4">
         {summary.cover_photo ? (
           <div className="rounded-xl border border-white/10 overflow-hidden">
             <img
@@ -814,7 +814,7 @@ export default function Profile() {
             </div>
           )}
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="relative">
             <Avatar username={summary.username} url={summary.profile_picture || undefined} size={64} />
             <button
@@ -833,15 +833,21 @@ export default function Profile() {
               onChange={onSelectPhoto}
             />
           </div>
-          <div className="min-w-0">
-            <div className="font-semibold text-lg truncate">{summary.display_name || summary.username}</div>
-            <div className="text-sm text-[#9fb0b5] truncate">
-              @{summary.username}{summary.subscription ? ` • ${summary.subscription}` : ''}
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="font-semibold text-lg leading-tight break-words">{summary.display_name || summary.username}</div>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-[#cfd8dc]">
+              <span className="truncate">@{summary.username}</span>
+              {summary.subscription ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs uppercase tracking-wide text-white/80">
+                  <i className="fa-solid fa-gem text-[10px]" />
+                  {summary.subscription}
+                </span>
+              ) : null}
             </div>
             {locationPreview ? (
-              <div className="text-xs text-[#9fb0b5] flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1 text-xs text-[#9fb0b5]">
                 <i className="fa-solid fa-location-dot" />
-                <span>{locationPreview}</span>
+                <span className="truncate">{locationPreview}</span>
               </div>
             ) : null}
           </div>
@@ -878,24 +884,24 @@ export default function Profile() {
               </div>
             )}
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-sm">
+              <label className="text-sm min-w-0">
                 Display name
                 <input
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
                   value={personal.display_name}
                   onChange={event => setPersonal(prev => ({ ...prev, display_name: event.target.value }))}
                 />
               </label>
-              <label className="text-sm">
+              <label className="text-sm min-w-0">
                 Date of birth
                 <input
                   type="date"
-                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  className="mt-1 w-full min-w-0 rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
                   value={personal.date_of_birth}
                   onChange={event => setPersonal(prev => ({ ...prev, date_of_birth: event.target.value }))}
                 />
               </label>
-                <label className="text-sm">
+                <label className="text-sm min-w-0">
                   Gender
                   <div className="mt-1">
                     <SelectField
@@ -906,7 +912,7 @@ export default function Profile() {
                     />
                   </div>
                 </label>
-                <label className="text-sm">
+                <label className="text-sm min-w-0">
                   Country
                   <div className="mt-1">
                     <SelectField
@@ -920,7 +926,7 @@ export default function Profile() {
                     />
                   </div>
                 </label>
-                <label className="text-sm">
+                <label className="text-sm min-w-0">
                   City
                   <div className="mt-1">
                     <SelectField

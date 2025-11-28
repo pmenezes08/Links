@@ -121,7 +121,7 @@ export default function AccountSettings(){
 
   return (
     <div className="glass-page min-h-screen text-white pb-safe">
-      <div className="glass-card max-w-2xl mx-auto px-4 pb-8 space-y-8">
+      <div className="glass-card glass-card--plain max-w-2xl mx-auto px-4 pb-8 space-y-8">
         {message && (
           <div
             className={`mb-6 rounded-lg border p-4 ${
@@ -136,7 +136,7 @@ export default function AccountSettings(){
 
         <form onSubmit={handleSave} className="space-y-6">
           {/* Account Information */}
-          <div className="space-y-4 rounded-xl border border-white/10 bg-black p-6">
+        <div className="glass-section space-y-4">
             <div>
               <h2 className="text-lg font-semibold">Account Information</h2>
               <p className="text-sm text-white/60">Update the email tied to your account.</p>
@@ -177,7 +177,7 @@ export default function AccountSettings(){
           </div>
 
           {/* Privacy & Security summary */}
-          <div className="rounded-xl border border-white/10 bg-black p-6">
+        <div className="glass-section">
             <div className="space-y-2">
               <h2 className="text-lg font-semibold">Privacy &amp; Security</h2>
               <p className="text-sm text-white/60">
@@ -195,7 +195,7 @@ export default function AccountSettings(){
           </div>
 
           {/* Subscription Management */}
-          <div className="rounded-xl border border-white/10 bg-black p-6">
+        <div className="glass-section">
             <h2 className="text-lg font-semibold mb-4">Subscription Management</h2>
             <p className="text-sm text-white/60 mb-4">
               View your current status and manage upgrades or downgrades.

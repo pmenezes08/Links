@@ -14,6 +14,10 @@
   overflow: hidden;
 }
 
+.glass-card--plain {
+  border: none;
+}
+
 .glass-section {
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.06);
