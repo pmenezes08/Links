@@ -152,7 +152,6 @@ export default function ChatThread(){
   const chatHeaderHeight = 56
   const safeTop = 'env(safe-area-inset-top, 0px)'
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
-  const totalHeaderHeight = globalHeaderHeight + chatHeaderHeight
   const containerOffsetTop = `calc(${globalHeaderHeight}px + ${safeTop})`
   
   const composerRef = useRef<HTMLDivElement | null>(null)
