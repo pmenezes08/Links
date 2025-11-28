@@ -2,21 +2,14 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const appBackground = '#000000';
 
-const remoteServerUrl = process.env.CAP_SERVER_URL?.trim()
-const serverConfig = remoteServerUrl
-  ? {
-      server: {
-        url: remoteServerUrl,
-        cleartext: remoteServerUrl.startsWith('http://'),
-      },
-    }
-  : {}
-
 const config: CapacitorConfig = {
   appId: 'co.cpoint.app',
   appName: 'C.Point',
   webDir: 'dist',
-  ...serverConfig,
+  server: {
+    url: 'https://www.c-point.co',
+    cleartext: false,
+  },
   backgroundColor: appBackground,
   ios: {
     preferredContentMode: 'mobile',
