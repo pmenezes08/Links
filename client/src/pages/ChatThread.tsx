@@ -1271,7 +1271,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* ====== MESSAGES LIST - SCROLLABLE ====== */}
       <div
         ref={listRef}
-        className="space-y-0.5 text-white"
+        className="space-y-0.5 text-white liquid-glass-surface"
         style={{
           flex: 1,
           overflowY: 'auto',
@@ -1281,6 +1281,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           paddingBottom: `calc(${bottomPadding}px + ${safeBottom} + ${keyboardOffset}px)`,
           paddingLeft: '10px',
           paddingRight: '10px',
+          marginLeft: '10px',
+          marginRight: '10px',
+          borderRadius: '28px',
         } as CSSProperties}
         onScroll={(e)=> {
           const el = e.currentTarget
@@ -1321,8 +1324,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           return (
             <div key={m.clientKey ?? m.id}>
               {showDateSeparator && (
-                <div className="flex justify-center my-4">
-                  <div className="bg-black/60 backdrop-blur-sm px-3 py-1 rounded-lg text-xs text-white/70 border border-white/10">
+                <div className="flex justify-center my-3">
+                  <div className="liquid-glass-chip px-3 py-1 text-xs text-white/80 border">
                     {formatDateLabel(m.time)}
                   </div>
                 </div>
@@ -1356,24 +1359,20 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 >
                   <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
                     <div
-                      className={`max-w-[70%] md:max-w-[70%] px-3 py-2 rounded-2xl text-[14px] leading-snug whitespace-pre-wrap break-words shadow-sm border ${
-                        m.sent 
-                          ? 'bg-[#075E54] text-white border-[#075E54]' 
-                          : 'bg-[#1a1a1a] text-white border-white/10'
-                      } ${m.sent ? 'rounded-br-md' : 'rounded-bl-md'} ${
-                        m.isOptimistic ? 'opacity-70' : 'opacity-100'
-                      }`}
+                      className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} max-w-[82%] md:max-w-[65%] px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
+                        m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
+                      } ${m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
                       style={{ 
                         position: 'relative', 
                         ...(m.reaction ? { paddingRight: '1.75rem', paddingBottom: '1.25rem' } : {}) 
                       } as any}
                     >
                       {m.replySnippet ? (
-                        <div className="mb-2 px-2 py-1.5 rounded-lg bg-white/5 border-l-2 border-[#4db6ac]">
-                          <div className="text-[11px] text-[#4db6ac] font-medium mb-0.5">
+                        <div className="mb-1.5 px-2 py-1.25 rounded-xl bg-white/10 border border-white/15">
+                          <div className="text-[11px] text-[#7fe7df] font-medium mb-0.5 uppercase tracking-wide">
                             {m.sent ? 'You' : (otherProfile?.display_name || username || 'User')}
                           </div>
-                          <div className="text-[12px] text-white/70 line-clamp-2">
+                          <div className="text-[12px] text-white/80 line-clamp-2">
                             {m.replySnippet}
                           </div>
                         </div>
@@ -1388,7 +1387,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                       ) : null}
                       {/* Image display with loader */}
                       {m.image_path ? (
-                        <div className="mb-2">
+                        <div className="mb-1.5">
                           <MessageImage
                             src={`/uploads/${m.image_path}`}
                             alt="Shared photo"
@@ -1402,7 +1401,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                       
                       {/* Encryption indicator - BIGGER AND MORE VISIBLE */}
                       {m.is_encrypted && !m.decryption_error && (
-                        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-[#4db6ac]">
+                        <div className="flex items-center gap-1.5 mb-1.5 text-[11px] text-[#7fe7df]">
                           <i className="fa-solid fa-lock text-[10px]" />
                           <span className="font-medium">End-to-end encrypted</span>
                         </div>
@@ -1410,7 +1409,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                       
                       {/* Decryption error indicator */}
                       {m.decryption_error && (
-                        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-red-400">
+                        <div className="flex items-center gap-1.5 mb-1.5 text-[11px] text-red-400">
                           <i className="fa-solid fa-triangle-exclamation text-[10px]" />
                           <span className="font-medium">Decryption failed</span>
                         </div>
@@ -1460,7 +1459,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                           </div>
                         ) : null
                       )}
-                      <div className={`text-[10px] mt-1 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>
+                      <div className={`text-[10px] mt-0.5 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>
                         {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                       {m.reaction ? (
@@ -1489,9 +1488,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         
         {showScrollDown && (
           <button
-            className="fixed right-4 z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
+            className="fixed z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
             style={{ 
-              bottom: `calc(${bottomPadding}px + ${safeBottom} + ${keyboardOffset}px)`
+              bottom: `calc(${bottomPadding}px + ${safeBottom} + ${keyboardOffset}px)`,
+              right: '22px'
             }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
             aria-label="Scroll to latest"
@@ -1504,25 +1504,25 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* ====== COMPOSER - FIXED AT BOTTOM (Capacitor native resize handles keyboard) ====== */}
       <div 
         ref={composerRef}
-        className="bg-black px-2 sm:px-3 py-2 border-t border-white/10" 
+        className="liquid-glass-surface px-3 sm:px-4 py-2 border border-white/5" 
         style={{
           position: 'fixed',
           bottom: 0,
-          left: 0,
-          right: 0,
-          width: '100%',
+          left: 10,
+          right: 10,
+          width: 'auto',
           zIndex: 1000,
-          background: '#000000',
-          paddingBottom: `calc(8px + ${safeBottom})`,
+          paddingBottom: `calc(6px + ${safeBottom})`,
+          borderRadius: '32px',
           transform: keyboardOffset ? `translateY(-${keyboardOffset}px)` : undefined,
           transition: 'transform 120ms ease-out',
         }}
       >
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto w-full">
           {replyTo && (
-            <div className="mb-2 px-3 py-2 bg-[#1a1a1a] rounded-lg border-l-4 border-[#4db6ac]">
+            <div className="mb-2 px-3 py-2 liquid-glass-chip rounded-xl border border-white/10">
               <div className="flex items-center justify-between mb-1">
-                <div className="text-[11px] text-[#4db6ac] font-semibold">
+                <div className="text-[11px] text-[#7fe7df] font-semibold uppercase tracking-wide">
                   Replying to {replyTo.sender === 'You' ? 'yourself' : (otherProfile?.display_name || username || 'User')}
                 </div>
                 <button 
@@ -1532,16 +1532,16 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                   <i className="fa-solid fa-xmark text-sm" />
                 </button>
               </div>
-              <div className="text-[13px] text-white/70 line-clamp-2">
+              <div className="text-[13px] text-white/80 line-clamp-2">
                 {replyTo.text.length > 100 ? replyTo.text.slice(0, 100) + '…' : replyTo.text}
               </div>
             </div>
           )}
 
-          <div className="flex items-end gap-1.5 sm:gap-2">
+          <div className="flex items-end gap-1 sm:gap-1.5">
             {/* Attachment button */}
             <button 
-              className="w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 flex items-center justify-center rounded-full hover:bg-white/10 active:bg-white/20 transition-colors"
+              className="w-8 h-8 sm:w-9 sm:h-9 flex-shrink-0 flex items-center justify-center rounded-full liquid-glass-chip hover:bg-white/20 active:bg-white/30 transition-colors"
               onClick={() => setShowAttachMenu(!showAttachMenu)}
               style={{
                 touchAction: 'manipulation',
@@ -1565,7 +1565,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 }}
               />
               <div 
-                className="absolute bottom-12 left-0 z-50 bg-[#1a1a1a] border border-white/20 rounded-2xl shadow-xl overflow-hidden min-w-[180px]"
+                className="absolute bottom-12 left-0 z-50 liquid-glass-surface border border-white/10 rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
                 style={{
                   touchAction: 'manipulation'
                 }}
@@ -1637,10 +1637,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
 
           {/* Message input container */}
           <div 
-            className="flex-1 flex items-center bg-[#1a1a1a] rounded-3xl border border-white/20 overflow-hidden relative"
+            className="flex-1 flex items-center liquid-glass-input rounded-3xl overflow-hidden relative"
             style={{
               touchAction: 'manipulation',
-              WebkitTapHighlightColor: 'transparent'
+              WebkitTapHighlightColor: 'transparent',
+              borderRadius: '28px'
             }}
           >
             {/* Recording sound bar - replaces text input during recording */}
