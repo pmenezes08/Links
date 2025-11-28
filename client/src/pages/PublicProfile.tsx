@@ -154,8 +154,8 @@ export default function PublicProfile() {
     }
   }
 
-  if (loading) return <div className="min-h-screen pt-16 bg-black text-white px-4">Loading…</div>
-  if (error || !profile) return <div className="min-h-screen pt-16 bg-black text-white px-4 text-red-400">{error || 'Profile not found'}</div>
+  if (loading) return <div className="glass-page min-h-screen text-white px-4">Loading…</div>
+  if (error || !profile) return <div className="glass-page min-h-screen text-white px-4 text-red-400">{error || 'Profile not found'}</div>
 
   const personal = profile.personal || {}
   const professional = profile.professional || {}
@@ -214,10 +214,10 @@ export default function PublicProfile() {
   const profilePictureUrl = resolveMediaUrl(profile.profile_picture)
 
   return (
-    <div className="min-h-screen bg-black text-white pt-16 pb-10">
-        <div className="max-w-3xl mx-auto px-4 space-y-4">
+    <div className="glass-page min-h-screen text-white pb-10">
+      <div className="glass-card max-w-3xl mx-auto px-4 py-4 space-y-4">
 
-        <section className="rounded-xl border border-white/10 p-4">
+        <section className="glass-section">
           <div className="flex flex-wrap items-center gap-4">
             <button
               type="button"
