@@ -5,7 +5,6 @@ import ErrorBoundary from './components/ErrorBoundary'
 import MobileLogin from './pages/MobileLogin'
 import PremiumDashboard from './pages/PremiumDashboard'
 import HeaderBar from './components/HeaderBar'
-import StayLiquidBridge from './components/StayLiquidBridge'
 import { HeaderContext } from './contexts/HeaderContext'
 import { UserProfileContext, type UserProfile } from './contexts/UserProfileContext'
 import PushInit from './components/PushInit'
@@ -211,7 +210,6 @@ function AppRoutes(){
     <UserProfileContext.Provider value={userProfileValue}>
       {/* <NativePushInit /> */}
       <HeaderContext.Provider value={{ setTitle }}>
-        <StayLiquidBridge />
         {(() => {
           const path = location.pathname
           const hideHeader = isFirstPage || path === '/welcome' || path === '/onboarding' || path === '/login' || path === '/signup' || path === '/signup_react'

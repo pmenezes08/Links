@@ -6,10 +6,10 @@ const config: CapacitorConfig = {
   appId: 'co.cpoint.app',
   appName: 'C.Point',
   webDir: 'dist',
-  // server: {
-  //   url: 'https://www.c-point.co',
-  //   cleartext: false,
-  // },
+  server: {
+    url: 'https://www.c-point.co',
+    cleartext: false,
+  },
   backgroundColor: appBackground,
   ios: {
     preferredContentMode: 'mobile',

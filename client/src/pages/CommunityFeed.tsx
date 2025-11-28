@@ -869,18 +869,19 @@ export default function CommunityFeed() {
 
       {/* Bottom navigation bar - fixed at bottom like WhatsApp */}
       <div 
-        className="fixed bottom-0 left-0 right-0 z-[100] bg-black/95 backdrop-blur shadow-lg border-t border-white/10" 
+        className="fixed bottom-0 left-0 right-0 z-[100] px-3 sm:px-6"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
       >
-        <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc] max-w-[1200px] mx-auto">
-          <button className="p-3 rounded-full hover:bg-white/5 active:bg-white/10" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
+        <div className="liquid-glass-surface border border-white/10 rounded-[32px] shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-[1200px] mx-auto">
+          <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
+            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
             <i className="fa-solid fa-house text-lg" />
           </button>
-          <button className="p-3 rounded-full hover:bg-white/5 active:bg-white/10" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
+            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
             <i className="fa-solid fa-users text-lg" />
           </button>
           <button 
-            className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
+              className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
             aria-label="New Post" 
             onClick={()=> { 
               const isFromOnboarding = highlightStep === 'post'
@@ -899,15 +900,16 @@ export default function CommunityFeed() {
           >
             <i className="fa-solid fa-plus" />
           </button>
-          <button className="relative p-3 rounded-full hover:bg-white/5 active:bg-white/10" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
+            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
             <span className="relative inline-block">
               <i className="fa-solid fa-bullhorn text-lg" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
               {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
             </span>
           </button>
-          <button className="p-3 rounded-full hover:bg-white/5 active:bg-white/10" aria-label="More" onClick={()=> setMoreOpen(true)}>
+            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="More" onClick={()=> setMoreOpen(true)}>
             <i className="fa-solid fa-ellipsis text-lg" />
           </button>
+          </div>
         </div>
       </div>
 
