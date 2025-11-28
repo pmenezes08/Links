@@ -366,9 +366,9 @@ export default function PremiumDashboard() {
   const profilePreviewSrc = picPreview || existingProfilePic
 
     return (
-      <div className="min-h-screen bg-black text-white pb-safe">
+      <div className="min-h-screen chat-thread-bg text-white pb-safe relative">
       {/* Desktop sidebar - same menu as mobile burger */}
-      <div className="fixed left-0 top-14 bottom-0 w-52 border-r border-[#333] bg-black hidden md:flex flex-col z-30">
+      <div className="fixed left-0 top-14 bottom-0 w-52 hidden md:flex flex-col z-30 liquid-glass-surface border border-white/10 rounded-r-3xl shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
         <nav className="flex-1 overflow-y-auto py-3">
           <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/premium_dashboard">Dashboard</a>
           <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/profile">Profile</a>
@@ -397,20 +397,20 @@ export default function PremiumDashboard() {
 
       {/* Mobile dropdown menu */}
         {mobileMenuOpen && (
-          <div className="fixed top-14 left-0 right-0 bottom-0 z-40 border-t border-[#333] bg-[#1a1a1a] md:hidden flex flex-col">
-            <nav className="flex-1 overflow-y-auto flex flex-col">
-              <a className="px-5 py-3 border-b border-[#222]" href="/dashboard" onClick={() => setMobileMenuOpen(false)}>Dashboard</a>
-              <a className="px-5 py-3 border-b border-[#222]" href="/profile" onClick={() => setMobileMenuOpen(false)}>Profile</a>
-                <a className="px-5 py-3 border-b border-[#222]" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>Messages</a>
-                <a className="px-5 py-3 border-b border-[#222]" href="/followers" onClick={() => setMobileMenuOpen(false)}>Followers</a>
-              {hasGymAccess && <a className="px-5 py-3 border-b border-[#222]" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>Your Sports</a>}
-              <a className="px-5 py-3 border-b border-[#222]" href="/logout" onClick={() => setMobileMenuOpen(false)}>Logout</a>
+          <div className="fixed top-14 left-0 right-0 bottom-0 z-40 md:hidden flex flex-col px-3">
+            <nav className="flex-1 overflow-y-auto flex flex-col liquid-glass-surface border border-white/10 rounded-3xl mt-3">
+              <a className="px-5 py-3 border-b border-white/10" href="/dashboard" onClick={() => setMobileMenuOpen(false)}>Dashboard</a>
+              <a className="px-5 py-3 border-b border-white/10" href="/profile" onClick={() => setMobileMenuOpen(false)}>Profile</a>
+                <a className="px-5 py-3 border-b border-white/10" href="/user_chat" onClick={() => setMobileMenuOpen(false)}>Messages</a>
+                <a className="px-5 py-3 border-b border-white/10" href="/followers" onClick={() => setMobileMenuOpen(false)}>Followers</a>
+              {hasGymAccess && <a className="px-5 py-3 border-b border-white/10" href="/your_sports" onClick={() => setMobileMenuOpen(false)}>Your Sports</a>}
+              <a className="px-5 py-3 border-b border-white/10" href="/logout" onClick={() => setMobileMenuOpen(false)}>Logout</a>
               <a className="px-5 py-3" href="/account_settings" onClick={() => setMobileMenuOpen(false)}><i className="fa-solid fa-cog mr-2" />Settings</a>
             </nav>
-            <div className="px-4 py-4 border-t border-[#222] bg-gradient-to-r from-[#0a4e4e] via-[#0e6d6d] to-[#0a4e4e]">
+            <div className="px-4 py-4">
               <button
                 type="button"
-                  className="w-full rounded-2xl border border-teal-200/50 bg-white/10 px-4 py-3 text-sm font-semibold text-teal-50 tracking-[0.2em] uppercase shadow-[0_5px_25px_rgba(0,255,255,0.25)] hover:shadow-[0_10px_30px_rgba(0,255,255,0.35)] backdrop-blur transition"
+                  className="w-full rounded-2xl liquid-glass-chip border border-[#4db6ac]/30 px-4 py-3 text-sm font-semibold text-teal-50 tracking-[0.2em] uppercase shadow-[0_15px_35px_rgba(0,0,0,0.4)] hover:shadow-[0_20px_45px_rgba(0,0,0,0.55)] transition"
                 onClick={() => {
                   setMobileMenuOpen(false)
                   navigate('/subscription_plans')
@@ -427,7 +427,7 @@ export default function PremiumDashboard() {
         <div className="max-w-5xl mx-auto px-3 py-6">
             {communities.length === 0 ? (
               <div className="px-3 py-10">
-                <div className="mx-auto max-w-xl rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center">
+                <div className="mx-auto max-w-xl liquid-glass-surface border border-white/10 rounded-2xl p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
                   <div className="text-sm font-bold text-white">Your new world awaits you</div>
                   <div className="mt-2 text-sm text-[#9fb0b5]">
                     Enter an invite code to join a community or create your own. Welcome to CPoint, the network where ideas connect people.
@@ -828,21 +828,17 @@ function Card({ iconClass, title, onClick }:{ iconClass:string; title:string; on
     <button
       onClick={onClick}
       aria-label={title}
-      className="group relative w-full h-40 rounded-2xl overflow-hidden text-white transition-all duration-300
-                 bg-black border border-white/10 hover:border-teal-400/30
-                 shadow-[0_10px_30px_rgba(0,0,0,0.4)] hover:shadow-[0_16px_40px_rgba(0,0,0,0.55)] hover:-translate-y-0.5"
+      className="group relative w-full h-40 rounded-2xl overflow-hidden text-white transition-all duration-300 liquid-glass-surface border border-white/15 hover:border-teal-400/40 shadow-[0_20px_50px_rgba(0,0,0,0.45)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.55)] hover:-translate-y-0.5"
     >
-      {/* subtle glow on hover */}
       <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-           style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.10), transparent 40%)' }} />
+           style={{ background: 'radial-gradient(600px circle at var(--x,50%) var(--y,50%), rgba(77,182,172,0.18), transparent 45%)' }} />
 
       <div className="absolute inset-0 flex flex-row items-center justify-start gap-3 px-6">
-        <i className={iconClass} style={{ fontSize: 24, color: '#4db6ac' }} />
+        <i className={iconClass} style={{ fontSize: 24, color: '#7fe7df' }} />
         <div className="text-[15px] font-semibold tracking-tight text-white/90">{title}</div>
       </div>
 
-      {/* top accent line */}
-      <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-teal-400/40 to-transparent opacity-60" />
+      <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-teal-300/60 to-transparent opacity-80" />
     </button>
   )
 }
