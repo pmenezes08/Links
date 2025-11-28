@@ -136,12 +136,20 @@ export default function Notifications(){
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
       <div className="max-w-xl mx-auto px-3 pb-20">
-        <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
-          <div className="text-lg font-semibold">Notifications</div>
-          <div className="flex items-center gap-2">
-            <button onClick={markAll} className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#4db6ac]">Mark all read</button>
-            <button onClick={clearAll} disabled={clearing} className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#e53935] disabled:opacity-50">Clear all</button>
-          </div>
+        <div className="flex items-center justify-center gap-3 mb-3 border-b border-white/10 pb-2">
+          <button
+            onClick={markAll}
+            className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#4db6ac]"
+          >
+            Mark all read
+          </button>
+          <button
+            onClick={clearAll}
+            disabled={clearing}
+            className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#e53935] disabled:opacity-50"
+          >
+            Clear all
+          </button>
         </div>
         {items.length === 0 ? (
           <div className="text-[#9fb0b5] py-10 text-center">
