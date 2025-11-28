@@ -24,20 +24,9 @@ type CommunityNode = {
 export default function Messages(){
   const { setTitle } = useHeader()
   const navigate = useNavigate()
-  // Show current user's name in the top header
   useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      try{
-        const r = await fetch('/api/profile_me', { credentials:'include' })
-        if (!mounted) return
-        if (r.ok){
-          const j = await r.json()
-          if (j && j.username){ setTitle(j.username) }
-        }
-      }catch{}
-    })()
-    return () => { mounted = false }
+    setTitle('Messages')
+    return () => setTitle('')
   }, [setTitle])
 
   const [threads, setThreads] = useState<Thread[]>([])
