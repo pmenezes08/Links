@@ -309,7 +309,7 @@ export default function Messages(){
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto pt-[70px] h-[calc(100vh-70px)] px-1 sm:px-3 pb-2 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' as any }}>
+      <div className="max-w-3xl mx-auto pt-[70px] h-[calc(100vh-70px)] px-1 sm:px-3 pb-2 overflow-y-auto overscroll-auto" style={{ WebkitOverflowScrolling: 'touch' as any }}>
         {activeTab === 'chats' ? (
           <div className="space-y-3">
             <div className="bg-black border border-white/10 rounded-xl p-3">

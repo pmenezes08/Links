@@ -580,7 +580,7 @@ export default function CommunityFeed() {
         </div>
       )}
       {/* Scrollable content area below fixed global header */}
-      <div ref={scrollRef} className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`} style={{ WebkitOverflowScrolling: 'touch' as any, overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto', overscrollBehaviorY: 'contain', touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y', paddingTop: `calc(70px + env(safe-area-inset-top) + ${pullPx}px)` }}>
+      <div ref={scrollRef} className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`} style={{ WebkitOverflowScrolling: 'touch' as any, overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto', overscrollBehaviorY: 'auto', touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y', paddingTop: `calc(70px + env(safe-area-inset-top) + ${pullPx}px)` }}>
         <div className="space-y-3">
           {/* Back to communities (parent) + Search */}
           <div className="flex items-center gap-2">

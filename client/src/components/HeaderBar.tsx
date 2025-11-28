@@ -16,18 +16,6 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
   const [unreadMsgs, setUnreadMsgs] = useState<number>(0)
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0)
   
-  // Add CSS for safe area support
-  if (typeof document !== 'undefined' && !document.getElementById('header-safe-area-styles')) {
-    const style = document.createElement('style')
-    style.id = 'header-safe-area-styles'
-    style.textContent = `
-      .header-with-safe-area {
-        padding-top: env(safe-area-inset-top);
-        height: calc(56px + env(safe-area-inset-top)) !important;
-      }
-    `
-    document.head.appendChild(style)
-  }
   // PWA install state handled on login page now
 
   // Light polling for unread counts
@@ -132,7 +120,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
 
         {menuOpen && (
         <div className="fixed inset-0 z-[90] flex bg-black/50" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
-          <div className="w-[90%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-3 text-white overflow-y-auto overscroll-contain" style={{ paddingTop: '1rem', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div className="w-[90%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-3 text-white overflow-y-auto overscroll-auto" style={{ paddingTop: '1rem', paddingBottom: 'env(safe-area-inset-bottom)' }}>
             <div className="flex items-center gap-2 pb-2 border-b border-white/10">
               <Avatar username={username || ''} url={resolvedAvatar} size={40} />
               <div className="font-medium truncate">{displayName || username || ''}</div>

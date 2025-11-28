@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -67,11 +67,48 @@ function AppRoutes(){
   const [profileError, setProfileError] = useState<string | null>(null)
 
   const locationRef = useRef(location.pathname)
+  const scrollRegionRef = useRef<HTMLDivElement | null>(null)
   const publicPaths = useMemo(
     () => new Set(['/', '/welcome', '/onboarding', '/login', '/signup', '/signup_react', '/verify_required']),
     [],
   )
   const encryptionUserRef = useRef<string | null>(null)
+  const resetScrollPosition = useCallback(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+
+    const scrollToTop = (target: any) => {
+      if (!target) return
+      if (typeof target.scrollTo === 'function') {
+        try {
+          target.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+          return
+        } catch {
+          try {
+            target.scrollTo(0, 0)
+            return
+          } catch {
+            // ignore
+          }
+        }
+      }
+      if (typeof target.scrollTop === 'number') {
+        target.scrollTop = 0
+      }
+    }
+
+    const candidates: any[] = [
+      scrollRegionRef.current,
+      document.scrollingElement,
+      document.documentElement,
+      document.body,
+    ]
+
+    candidates.forEach(scrollToTop)
+
+    if (typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: 0, behavior: 'auto' })
+    }
+  }, [])
 
   const loadProfile = useCallback(async (path?: string): Promise<UserProfile> => {
     const currentPath = path ?? locationRef.current
@@ -173,8 +210,22 @@ function AppRoutes(){
   }, [location.pathname])
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && 'scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual'
+    }
+  }, [])
+
+  useEffect(() => {
     loadProfile(locationRef.current)
   }, [loadProfile])
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return
+    const raf = window.requestAnimationFrame(() => {
+      resetScrollPosition()
+    })
+    return () => window.cancelAnimationFrame(raf)
+  }, [location.pathname, location.search, resetScrollPosition])
 
   useEffect(() => {
     if (profileData) {
@@ -217,11 +268,16 @@ function AppRoutes(){
         })() && (
           <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
         )}
-        <div style={{ 
-          paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : 'calc(56px + env(safe-area-inset-top, 0px))' })(),
-          minHeight: '100%',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)'
-        }}>
+        <main
+          ref={scrollRegionRef}
+          data-scroll-region="true"
+          className="app-scroll-region ios-scroll-region"
+          style={{
+            paddingTop: (() => { const p = location.pathname; return (isFirstPage || p === '/welcome' || p === '/onboarding' || p === '/login' || p === '/signup' || p === '/signup_react') ? 0 : 'calc(56px + env(safe-area-inset-top, 0px))' })(),
+            minHeight: '100%',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+          }}
+        >
             <ErrorBoundary>
               <Routes>
                 <Route path="/" element={<OnboardingWelcome />} />
@@ -275,7 +331,7 @@ function AppRoutes(){
                 <Route path="*" element={<PremiumDashboard />} />
               </Routes>
             </ErrorBoundary>
-        </div>
+        </main>
         {requireVerification && authLoaded && isVerified === false && (
           <VerifyOverlay onRecheck={async ()=>{
             try{

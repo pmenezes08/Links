@@ -585,7 +585,7 @@ export default function Followers() {
       </div>
 
       <div
-        className="max-w-3xl mx-auto pt-[70px] h-[calc(100vh-70px)] px-1 sm:px-3 pb-2 overflow-y-auto overscroll-contain"
+        className="max-w-3xl mx-auto pt-[70px] h-[calc(100vh-70px)] px-1 sm:px-3 pb-2 overflow-y-auto overscroll-auto"
         style={{ WebkitOverflowScrolling: 'touch' as any }}
       >
         {activeSection === 'manage' ? (
