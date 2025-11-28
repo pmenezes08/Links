@@ -132,9 +132,17 @@
 }
 
 .app-scroll-region {
+  position: fixed;
+  inset: 0;
   width: 100%;
   min-height: 100%;
+  height: 100%;
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  z-index: 0;
+  background-color: transparent;
+  touch-action: pan-y;
 }
 
 .app-scroll-region > .h-screen.overflow-hidden,
