@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 
@@ -436,8 +436,8 @@ export default function Members(){
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
       <div
-        className="sticky left-0 right-0 h-12 border-b border-white/10 bg-black/95 backdrop-blur flex items-center px-3 z-40"
-        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
+        className="fixed left-0 right-0 h-12 border-b border-white/10 bg-black/95 backdrop-blur flex items-center px-3 z-40"
+        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '48px' } as CSSProperties}
       >
         <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
           <i className="fa-solid fa-arrow-left" />
@@ -466,7 +466,10 @@ export default function Members(){
           )}
         </div>
       </div>
-      <div className="max-w-2xl mx-auto pt-3 px-3 pb-6">
+      <div
+        className="app-subnav-offset max-w-2xl mx-auto px-3 pb-6"
+        style={{ minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))', '--app-subnav-height': '48px' } as CSSProperties}
+      >
         {loading ? (
           <div className="text-[#9fb0b5]">Loading…</div>
         ) : error ? (
