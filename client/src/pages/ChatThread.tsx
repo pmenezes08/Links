@@ -78,9 +78,6 @@ export default function ChatThread(){
   const [, setTyping] = useState(false) // keep setter for API calls; UI label removed
   const typingTimer = useRef<any>(null)
   const pollTimer = useRef<any>(null)
-  const [currentDateLabel, setCurrentDateLabel] = useState<string>('')
-  const [showDateFloat, setShowDateFloat] = useState(false)
-  const dateFloatTimer = useRef<any>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
@@ -1444,26 +1441,6 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       >
         <div className="mx-auto flex max-w-3xl w-full flex-1 flex-col min-h-0">
       
-      {/* Floating date indicator */}
-      {currentDateLabel && showDateFloat && (
-        <div 
-          style={{ 
-            position: 'fixed',
-            top: 'calc(env(safe-area-inset-top, 0px) + 48px + 12px)',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 999,
-            pointerEvents: 'none',
-            opacity: showDateFloat ? 1 : 0,
-            transition: 'opacity 0.2s ease'
-          }}
-        >
-          <div className="liquid-glass-chip px-4 py-2 rounded-full text-sm text-white shadow-lg">
-            {currentDateLabel}
-          </div>
-        </div>
-      )}
-      
       {/* ====== MESSAGES LIST - SCROLLABLE ====== */}
       <div
         ref={listRef}
@@ -1485,31 +1462,6 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           const el = e.currentTarget
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
           if (near) setShowScrollDown(false)
-          
-          setShowDateFloat(true)
-          
-          const messageElements = el.querySelectorAll('[data-message-date]')
-          let visibleDate = ''
-          
-          for (let i = 0; i < messageElements.length; i++) {
-            const msgEl = messageElements[i] as HTMLElement
-            const rect = msgEl.getBoundingClientRect()
-            const headerHeight = 96 // Global header plus page padding
-            
-            if (rect.top >= headerHeight && rect.top <= headerHeight + 100) {
-              visibleDate = msgEl.getAttribute('data-message-date') || ''
-              break
-            }
-          }
-          
-          if (visibleDate) {
-            setCurrentDateLabel(formatDateLabel(visibleDate))
-          }
-          
-          if (dateFloatTimer.current) clearTimeout(dateFloatTimer.current)
-          dateFloatTimer.current = setTimeout(() => {
-            setShowDateFloat(false)
-          }, 1500)
         }}
       >
         {messages.map((m, index) => {
@@ -1641,23 +1593,30 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                         </div>
                       ) : (
                         m.text ? (
-                          <div onDoubleClick={()=> {
-                            if (!m.sent) return
-                            // Enforce 5-minute window on client: hide editor entry if expired
-                            const dt = parseMessageTime(m.time)
-                            if (dt && (Date.now() - dt.getTime()) > 5*60*1000) return
-                            setEditingId(m.id); setEditText(m.text)
-                          }}>
+                          <div 
+                            className="inline"
+                            onDoubleClick={()=> {
+                              if (!m.sent) return
+                              // Enforce 5-minute window on client: hide editor entry if expired
+                              const dt = parseMessageTime(m.time)
+                              if (dt && (Date.now() - dt.getTime()) > 5*60*1000) return
+                              setEditingId(m.id); setEditText(m.text)
+                            }}
+                          >
                             {linkifyText(m.text)}
                             {m.edited_at ? (
-                              <div className="text-[10px] text-white/50 mt-0.5">edited</div>
+                              <span className="text-[10px] text-white/50 ml-1">edited</span>
                             ) : null}
+                            <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
+                              {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
                           </div>
-                        ) : null
+                        ) : (
+                          <span className={`text-[10px] ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
+                            {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )
                       )}
-                      <div className={`text-[10px] mt-0.5 ${m.sent ? 'text-white/70' : 'text-white/50'} text-right`}>
-                        {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </div>
                       {m.reaction ? (
                         <span className="absolute bottom-0.5 right-1 text-base leading-none select-none z-10">
                           {m.reaction}
@@ -1718,7 +1677,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* Composer card - sits above the safe area */}
       <div
         ref={composerCardRef}
-        className="max-w-3xl w-[calc(100%-24px)] mx-auto border border-white/12 rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
+        className="max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3"
         style={{
           background: '#0a0a0c',
           marginBottom: 0,
