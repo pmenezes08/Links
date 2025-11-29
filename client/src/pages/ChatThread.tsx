@@ -1670,7 +1670,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     {/* ====== COMPOSER - FIXED AT BOTTOM (Capacitor native resize handles keyboard) ====== */}
     <div 
       ref={composerRef}
-      className="fixed left-0 right-0 px-4 sm:px-5 bg-black"
+      className="fixed left-0 right-0 px-4 sm:px-5"
       style={{
         bottom: 0,
         zIndex: 1000,
@@ -1681,7 +1681,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     >
       <div
         ref={composerCardRef}
-        className="max-w-3xl mx-auto w-full rounded-[30px] bg-[#050607]/90 px-3 py-2 shadow-[0_20px_50px_rgba(0,0,0,0.55)] backdrop-blur-xl"
+        className="max-w-3xl mx-auto w-full liquid-glass-surface border border-white/12 rounded-[26px] px-4 sm:px-5 py-3 sm:py-3.5 shadow-[0_30px_70px_rgba(0,0,0,0.65)] backdrop-blur-2xl"
       >
           {replyTo && (
             <div className="mb-2 px-3 py-2 liquid-glass-chip rounded-xl border border-white/10">
@@ -1702,10 +1702,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             </div>
           )}
 
-          <div className="relative flex items-end gap-2 sm:gap-3">
+          <div className="relative flex items-end gap-3 sm:gap-4">
             {/* Attachment button */}
             <button 
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full bg-white/15 hover:bg-white/25 active:bg-white/30 transition-colors"
+              className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-2xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-colors"
               onClick={() => setShowAttachMenu(!showAttachMenu)}
               style={{
                 touchAction: 'manipulation',
@@ -1801,11 +1801,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
 
           {/* Message input container */}
           <div 
-            className="flex-1 flex items-center rounded-3xl bg-white/10 overflow-hidden relative"
+            className="flex-1 flex items-center rounded-2xl bg-white/8 overflow-hidden relative border border-white/8"
             style={{
               touchAction: 'manipulation',
-              WebkitTapHighlightColor: 'transparent',
-              borderRadius: '28px'
+              WebkitTapHighlightColor: 'transparent'
             }}
           >
             {/* Recording sound bar - replaces text input during recording */}
@@ -1876,7 +1875,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             
             {/* Mic + Send - Conditional based on recording state */}
             <div 
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2"
+              className="absolute right-2.5 sm:right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2.5 sm:gap-3"
               style={{ 
                 pointerEvents: 'auto',
                 zIndex: 2,
