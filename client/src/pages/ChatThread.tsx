@@ -160,7 +160,7 @@ export default function ChatThread(){
   
   // Layout helpers
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
-  const defaultComposerPadding = 120
+  const defaultComposerPadding = 64
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
@@ -228,7 +228,7 @@ export default function ChatThread(){
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
-  const composerGapPx = 0  // No gap between messages and composer
+  const composerGapPx = 8  // Small gap between messages and composer
   // Padding to ensure messages don't hide behind the composer
   const listPaddingBottom = showKeyboard
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
