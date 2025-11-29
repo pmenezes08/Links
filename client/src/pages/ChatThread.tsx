@@ -1703,24 +1703,27 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       </button>
     )}
 
-    {/* ====== COMPOSER - FIXED AT BOTTOM, solid background to hide scrolling content ====== */}
+    {/* ====== COMPOSER - FIXED AT BOTTOM ====== */}
     <div 
       ref={composerRef}
-      className="fixed left-0 right-0 px-3"
+      className="fixed left-0 right-0"
       style={{
         bottom: showKeyboard ? `${keyboardLift}px` : 0,
         zIndex: 1000,
         width: '100%',
-        paddingTop: '6px',
-        paddingBottom: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
-        paddingLeft: 'env(safe-area-inset-left, 0px)',
-        paddingRight: 'env(safe-area-inset-right, 0px)',
-        background: '#000',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
+      {/* Composer card - sits above the safe area */}
       <div
         ref={composerCardRef}
-        className="max-w-3xl mx-auto w-full liquid-glass-surface bg-[#040406]/95 border border-white/12 rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3 shadow-[0_30px_70px_rgba(0,0,0,0.6)] backdrop-blur-2xl"
+        className="max-w-3xl mx-auto w-full liquid-glass-surface bg-[#0a0a0c] border border-white/12 rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
+        style={{
+          marginLeft: '12px',
+          marginRight: '12px',
+          marginBottom: '6px',
+        }}
       >
           {replyTo && (
             <div className="mb-2 px-3 py-2 liquid-glass-chip rounded-xl border border-white/10">
@@ -1986,6 +1989,14 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           </div>
         </div>
       </div>
+      {/* Safe area spacer - black area below composer */}
+      <div 
+        style={{
+          height: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
+          background: '#000',
+          flexShrink: 0,
+        }}
+      />
     </div>
 
 
