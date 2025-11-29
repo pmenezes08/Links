@@ -163,11 +163,15 @@ export default function ChatThread(){
   // Layout helpers
   const headerOffsetVar = 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))'
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
-  const conversationMinHeight = `calc(100vh - ${headerOffsetVar})`
   const defaultComposerPadding = 120
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
+  const conversationMinHeight = `calc(100vh - ${headerOffsetVar})`
+  const conversationDynamicHeight = viewportHeight
+    ? `calc(${viewportHeight.toFixed(2)}px - ${headerOffsetVar})`
+    : conversationMinHeight
   
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
@@ -291,6 +295,7 @@ export default function ChatThread(){
     
     const updateOffset = () => {
       const currentHeight = viewport.height
+      setViewportHeight(prev => (Math.abs((prev ?? currentHeight) - currentHeight) < 1 ? prev : currentHeight))
       if (
         viewportBaseRef.current === null ||
         currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
@@ -1350,10 +1355,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   return (
     <div className="glass-page min-h-screen overflow-hidden text-white chat-thread-bg">
       <div className="app-content px-0">
-        <div
-          className="mx-auto flex max-w-3xl flex-1 flex-col gap-3 overflow-hidden"
-          style={{ minHeight: conversationMinHeight }}
-        >
+          <div
+            className="mx-auto flex max-w-3xl flex-1 flex-col gap-3 overflow-hidden"
+            style={{ minHeight: conversationDynamicHeight }}
+          >
         <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/5 px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur-md">
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
@@ -1442,6 +1447,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         onPointerUp={handleContentPointerUp}
         onPointerCancel={handleContentPointerCancel}
         onScroll={(e)=> {
+          if (touchDismissRef.current.active) {
+            touchDismissRef.current.active = false
+          }
           const el = e.currentTarget
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
           if (near) setShowScrollDown(false)
