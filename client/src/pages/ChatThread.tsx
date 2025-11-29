@@ -1703,20 +1703,18 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       </button>
     )}
 
-    {/* ====== COMPOSER - FIXED AT BOTTOM, hugs screen edge ====== */}
+    {/* ====== COMPOSER - FIXED AT BOTTOM ====== */}
     <div 
       ref={composerRef}
-      className="fixed left-0 right-0 px-4 sm:px-5"
+      className="fixed left-0 right-0 px-3"
       style={{
-        bottom: showKeyboard ? `${keyboardLift}px` : 0,
+        bottom: showKeyboard ? `${keyboardLift}px` : 'calc(env(safe-area-inset-bottom, 0px) + 8px)',
         zIndex: 1000,
         width: '100%',
-        paddingTop: showKeyboard ? '4px' : '8px',
-        paddingBottom: showKeyboard ? '4px' : `calc(env(safe-area-inset-bottom, 0px) + 6px)`,
+        paddingTop: '8px',
+        paddingBottom: '8px',
         paddingLeft: 'env(safe-area-inset-left, 0px)',
         paddingRight: 'env(safe-area-inset-right, 0px)',
-        transition: 'transform 140ms ease-out',
-        background: 'linear-gradient(180deg, rgba(3,3,4,0) 0%, rgba(3,3,4,0.65) 30%, rgba(3,3,4,0.9) 65%, #000 90%)',
       }}
     >
       <div
