@@ -108,6 +108,7 @@
       transparent 50%
     ),
     #020202;
+  --keyboard-offset: 0px;
 }
 
 .chat-thread-bg {

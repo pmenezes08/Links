@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, memo } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, memo } from 'react'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -121,6 +121,61 @@ export default function PostDetail(){
   const [pullPx, setPullPx] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   const viewRecordedRef = useRef(false)
+  const headerOffsetVar = 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))'
+  const safeBottom = 'env(safe-area-inset-bottom, 0px)'
+  const conversationMinHeight = `calc(100vh - ${headerOffsetVar})`
+  const defaultComposerPadding = 200
+  const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
+  const composerRef = useRef<HTMLDivElement | null>(null)
+  const composerCardRef = useRef<HTMLDivElement | null>(null)
+  const keyboardOffsetRef = useRef(0)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
+    const node = composerCardRef.current
+    if (!node) return
+
+    const updateHeight = () => {
+      const height = node.getBoundingClientRect().height
+      if (!height) return
+      setComposerHeight(prev => (Math.abs(prev - height) < 1 ? prev : height))
+    }
+
+    updateHeight()
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(node)
+
+    return () => observer.disconnect()
+  }, [])
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    let rafId: number | null = null
+
+    const updateOffset = () => {
+      const nextOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 1) return
+      keyboardOffsetRef.current = nextOffset
+      setKeyboardOffset(nextOffset)
+    }
+
+    const handleChange = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updateOffset)
+    }
+
+    viewport.addEventListener('resize', handleChange)
+    viewport.addEventListener('scroll', handleChange)
+    updateOffset()
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', handleChange)
+      viewport.removeEventListener('scroll', handleChange)
+    }
+  }, [])
   
   useEffect(() => {
     if (!post_id) return
@@ -527,8 +582,12 @@ export default function PostDetail(){
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
 
+  const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
+  const contentPaddingBottom = `calc(${effectiveComposerHeight}px + ${keyboardOffset}px + ${safeBottom} + 2rem)`
+  const contentPaddingTop = `calc(3.5rem + ${pullPx}px)`
+
   return (
-    <div className="min-h-dvh bg-black text-white pb-24">
+    <div className="glass-page min-h-screen overflow-hidden text-white">
       {(refreshHint || refreshing) ? (
         <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
@@ -536,7 +595,12 @@ export default function PostDetail(){
           </div>
         </div>
       ) : null}
-      <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 14rem)', paddingTop: `calc(3.5rem + ${pullPx}px)` }}>
+      <div className="app-content px-0">
+        <div
+          className="mx-auto flex max-w-2xl flex-1 flex-col overflow-visible"
+          style={{ minHeight: conversationMinHeight }}
+        >
+          <div className="w-full px-3" style={{ paddingBottom: contentPaddingBottom, paddingTop: contentPaddingTop }}>
         <div className="mb-2">
           <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
             <i className="fa-solid fa-arrow-left mr-1" /> Back
@@ -621,9 +685,9 @@ export default function PostDetail(){
             />
           ))}
         </div>
-        {/* Spacer to prevent fixed composer overlap with first replies */}
-        <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 12rem)' }} />
       </div>
+    </div>
+  </div>
       {/* Image preview modal */}
           {previewSrc ? (
         <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewSrc(null)}>
@@ -637,8 +701,19 @@ export default function PostDetail(){
       ) : null}
 
       {/* Fixed-bottom reply composer */}
-      <div className="fixed left-0 right-0 bottom-0 z-[100] bg-black/85 border-t border-white/10 backdrop-blur pointer-events-auto">
-        <div className="px-3 py-2 flex flex-col gap-1.5">
+      <div
+        ref={composerRef}
+        className="fixed left-0 right-0 bottom-0 z-[100] border-t border-white/10 bg-black/85 backdrop-blur pointer-events-auto px-3"
+        style={{
+          paddingBottom: `calc(${safeBottom} + 12px)`,
+          transform: keyboardOffset ? `translateY(-${keyboardOffset}px)` : undefined,
+          transition: 'transform 140ms ease-out',
+        }}
+      >
+        <div
+          ref={composerCardRef}
+          className="px-3 py-2 flex flex-col gap-1.5 max-w-2xl mx-auto"
+        >
           <MentionTextarea
             value={content}
             onChange={setContent}
@@ -778,7 +853,7 @@ export default function PostDetail(){
           if (fileInputRef.current) fileInputRef.current.value = ''
         }}
       />
-      
+
     </div>
   )
 }

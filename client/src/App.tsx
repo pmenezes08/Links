@@ -65,6 +65,7 @@ function AppRoutes(){
   const [profileData, setProfileData] = useState<UserProfile>(null)
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
 
   const locationRef = useRef(location.pathname)
   const scrollRegionRef = useRef<HTMLDivElement | null>(null)
@@ -73,6 +74,41 @@ function AppRoutes(){
     [],
   )
   const encryptionUserRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    let rafId: number | null = null
+
+    const updateOffset = () => {
+      const nextOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      setKeyboardOffset(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
+      document.documentElement.style.setProperty('--keyboard-offset', `${nextOffset}px`)
+      if (document.body) {
+        document.body.dataset.keyboard = nextOffset > 0 ? 'open' : 'closed'
+      }
+    }
+
+    const handleChange = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updateOffset)
+    }
+
+    viewport.addEventListener('resize', handleChange)
+    viewport.addEventListener('scroll', handleChange)
+    updateOffset()
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', handleChange)
+      viewport.removeEventListener('scroll', handleChange)
+      document.documentElement.style.removeProperty('--keyboard-offset')
+      if (document.body) {
+        delete document.body.dataset.keyboard
+      }
+    }
+  }, [])
   const resetScrollPosition = useCallback(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
 
@@ -305,7 +341,7 @@ function AppRoutes(){
   const mainStyle = {
     paddingTop: contentOffsetValue,
     minHeight: '100%',
-    paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+    paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${keyboardOffset}px)`,
     '--app-header-offset': contentOffsetValue,
     '--app-header-height': headerHeightValue,
     '--app-subnav-height': '40px',
