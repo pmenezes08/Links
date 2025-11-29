@@ -213,16 +213,16 @@ export default function ChatThread(){
 
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const keyboardLift = Math.max(0, keyboardOffset - safeBottomPx)
-  const restingListPaddingPx = 6
-  const overlapPaddingPx = Math.max(effectiveComposerHeight - keyboardLift, 0)
-  const listPaddingBottom =
-    keyboardLift > 0
-      ? `calc(${safeBottom} + ${overlapPaddingPx.toFixed(2)}px)`
-      : `calc(${safeBottom} + ${restingListPaddingPx}px)`
-  const listScrollPaddingBottom = `calc(${safeBottom} + ${(effectiveComposerHeight + 24).toFixed(2)}px)`
-  const composerPaddingBottom = keyboardLift > 0 ? '0px' : `calc(${safeBottom} + 12px)`
+  const showKeyboard = keyboardLift > 0
+  const listPaddingBottom = showKeyboard
+    ? `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight).toFixed(2)}px)`
+    : `calc(${safeBottom} + 0px)`
+  const listScrollPaddingBottom = showKeyboard
+    ? `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + 16).toFixed(2)}px)`
+    : `calc(${safeBottom} + ${(effectiveComposerHeight + 16).toFixed(2)}px)`
+  const composerPaddingBottom = showKeyboard ? '0px' : `calc(${safeBottom} + 12px)`
   const scrollButtonBottom =
-    keyboardLift > 0
+    showKeyboard
       ? `calc(${keyboardLift.toFixed(2)}px + ${effectiveComposerHeight.toFixed(2)}px + 16px)`
       : listScrollPaddingBottom
   
@@ -1369,11 +1369,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       <div
         ref={listRef}
         className="flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden text-white px-1 sm:px-2"
-            style={{
-              WebkitOverflowScrolling: 'touch',
-              paddingBottom: listPaddingBottom,
-              scrollPaddingBottom: listScrollPaddingBottom,
-            } as CSSProperties}
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          paddingBottom: listPaddingBottom,
+          scrollPaddingBottom: listScrollPaddingBottom,
+        } as CSSProperties}
         onScroll={(e)=> {
           const el = e.currentTarget
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
@@ -1595,7 +1595,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     {/* ====== COMPOSER - FIXED AT BOTTOM (Capacitor native resize handles keyboard) ====== */}
     <div 
       ref={composerRef}
-      className="fixed left-0 right-0 px-4 sm:px-5"
+      className="fixed left-0 right-0 px-4 sm:px-5 bg-black"
       style={{
         bottom: 0,
         zIndex: 1000,
