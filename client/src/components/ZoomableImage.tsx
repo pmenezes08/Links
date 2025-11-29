@@ -40,6 +40,9 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
     const p = (src || '').trim()
     const out: string[] = []
     if (!p) return out
+    // Handle blob URLs directly (for pasted images, local previews)
+    if (p.startsWith('blob:')) return [p]
+    if (p.startsWith('data:')) return [p]
     if (p.startsWith('http')) return [p]
     if (p.startsWith('/uploads')) out.push(p)
     if (p.startsWith('uploads/')) out.push('/' + p)
