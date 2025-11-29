@@ -228,7 +228,7 @@ export default function ChatThread(){
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
-  const composerGapPx = 4  // Minimal gap between messages and composer
+  const composerGapPx = 0  // No gap between messages and composer
   // Padding to ensure messages don't hide behind the composer
   const listPaddingBottom = showKeyboard
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
@@ -1677,47 +1677,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* Composer card - sits above the safe area */}
       <div
         ref={composerCardRef}
-        className="max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3"
+        className="relative max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3"
         style={{
           background: '#0a0a0c',
           marginBottom: 0,
         }}
       >
-          {replyTo && (
-            <div className="mb-2 px-3 py-2 liquid-glass-chip rounded-xl border border-white/10">
-              <div className="flex items-center justify-between mb-1">
-                <div className="text-[11px] text-[#7fe7df] font-semibold uppercase tracking-wide">
-                  Replying to {replyTo.sender === 'You' ? 'yourself' : (otherProfile?.display_name || username || 'User')}
-                </div>
-                <button 
-                  className="text-white/50 hover:text-white/80 transition-colors p-1" 
-                  onClick={()=> setReplyTo(null)}
-                >
-                  <i className="fa-solid fa-xmark text-sm" />
-                </button>
-              </div>
-              <div className="text-[13px] text-white/80 line-clamp-2">
-                {replyTo.text.length > 100 ? replyTo.text.slice(0, 100) + '…' : replyTo.text}
-              </div>
-            </div>
-          )}
-
-          <div className="relative flex items-end gap-2.5 sm:gap-3.5">
-            {/* Attachment button */}
-            <button 
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-colors"
-              onClick={() => setShowAttachMenu(!showAttachMenu)}
-              style={{
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent'
-              }}
-            >
-              <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 ${
-                showAttachMenu ? 'fa-xmark rotate-90' : 'fa-plus'
-              }`} />
-            </button>
-
-          {/* Attachment menu */}
+          {/* Attachment menu - positioned above the entire composer */}
           {showAttachMenu && (
             <>
               <div 
@@ -1729,10 +1695,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 }}
               />
               <div 
-                className="absolute left-0 z-50 liquid-glass-surface border border-white/10 rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
+                className="absolute z-50 liquid-glass-surface border border-white/10 rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
                 style={{
                   touchAction: 'manipulation',
                   bottom: 'calc(100% + 8px)',
+                  left: 0,
                 }}
               >
                 <button
@@ -1774,6 +1741,40 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
               </div>
             </>
           )}
+
+          {replyTo && (
+            <div className="mb-2 px-3 py-2 liquid-glass-chip rounded-xl border border-white/10">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-[11px] text-[#7fe7df] font-semibold uppercase tracking-wide">
+                  Replying to {replyTo.sender === 'You' ? 'yourself' : (otherProfile?.display_name || username || 'User')}
+                </div>
+                <button 
+                  className="text-white/50 hover:text-white/80 transition-colors p-1" 
+                  onClick={()=> setReplyTo(null)}
+                >
+                  <i className="fa-solid fa-xmark text-sm" />
+                </button>
+              </div>
+              <div className="text-[13px] text-white/80 line-clamp-2">
+                {replyTo.text.length > 100 ? replyTo.text.slice(0, 100) + '…' : replyTo.text}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-end gap-2.5 sm:gap-3.5">
+            {/* Attachment button */}
+            <button 
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-colors"
+              onClick={() => setShowAttachMenu(!showAttachMenu)}
+              style={{
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent'
+              }}
+            >
+              <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 ${
+                showAttachMenu ? 'fa-xmark rotate-90' : 'fa-plus'
+              }`} />
+            </button>
 
           {/* Hidden file inputs */}
           <input
@@ -1899,7 +1900,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           {/* Send/Stop button */}
           {MIC_ENABLED && recording ? (
             <button
-              className="w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white"
+              className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white"
               onClick={stopVoiceRecording}
               aria-label="Stop recording"
               style={{
@@ -1907,16 +1908,16 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 WebkitTapHighlightColor: 'transparent'
               }}
             >
-              <i className="fa-solid fa-stop text-sm" />
+              <i className="fa-solid fa-stop text-base" />
             </button>
           ) : (
             <button
-              className={`w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center ${
+              className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
                 sending 
                   ? 'bg-gray-600 text-gray-300' 
                   : draft.trim()
                     ? 'bg-[#4db6ac] text-black'
-                    : 'bg-white/20 text-white/70'
+                    : 'bg-white/12 text-white/70'
               }`}
               onClick={draft.trim() ? send : undefined}
               disabled={sending || !draft.trim()}
@@ -1927,9 +1928,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
               }}
             >
               {sending ? (
-                <i className="fa-solid fa-spinner fa-spin text-sm" />
+                <i className="fa-solid fa-spinner fa-spin text-base" />
               ) : (
-                <i className="fa-solid fa-paper-plane text-sm" />
+                <i className="fa-solid fa-paper-plane text-base" />
               )}
             </button>
           )}
