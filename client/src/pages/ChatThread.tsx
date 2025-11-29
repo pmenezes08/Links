@@ -1355,7 +1355,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         left: 0,
         right: 0,
         top: 0,
-        bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0,
+        bottom: 0,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -1363,12 +1363,12 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     >
       {/* Header - fixed at top with safe area */}
       <div 
-        className="flex-shrink-0 border-b border-[#262f30] bg-black"
+        className="flex-shrink-0 border-b border-[#262f30] bg-black w-full"
         style={{
           paddingTop: 'env(safe-area-inset-top, 0px)',
         }}
       >
-        <div className="h-14 flex items-center gap-3 px-3">
+        <div className="h-12 flex items-center gap-2 px-3">
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             onClick={()=> navigate('/user_chat')} 
@@ -1688,14 +1688,14 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     {/* ====== COMPOSER - FIXED AT BOTTOM (Capacitor native resize handles keyboard) ====== */}
     <div 
       ref={composerRef}
-      className="fixed left-0 right-0 px-4 sm:px-5"
+      className="fixed left-0 right-0 px-3 sm:px-4"
       style={{
-        bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0,
+        bottom: `${keyboardLift}px`,
         zIndex: 1000,
-        paddingBottom: showKeyboard ? '8px' : `calc(env(safe-area-inset-bottom, 0px) + 8px)`,
-        paddingTop: '8px',
+        paddingBottom: showKeyboard ? '12px' : `calc(env(safe-area-inset-bottom, 0px) + 12px)`,
+        paddingTop: '12px',
         transition: 'bottom 140ms ease-out',
-        background: '#000',
+        background: 'transparent',
       }}
     >
       <div
