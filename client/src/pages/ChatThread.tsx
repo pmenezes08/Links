@@ -1718,11 +1718,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* Composer card - sits above the safe area */}
       <div
         ref={composerCardRef}
-        className="max-w-3xl mx-auto w-full liquid-glass-surface bg-[#0a0a0c] border border-white/12 rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
+        className="max-w-3xl w-[calc(100%-24px)] mx-auto border border-white/12 rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
         style={{
-          marginLeft: '12px',
-          marginRight: '12px',
-          marginBottom: '6px',
+          background: '#0a0a0c',
+          marginBottom: 0,
         }}
       >
           {replyTo && (
@@ -1851,7 +1850,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           >
             {/* Recording sound bar - replaces text input during recording */}
             {MIC_ENABLED && recording && (
-              <div className="flex-1 flex items-center px-4 py-2.5 gap-3 pr-16">
+              <div className="flex-1 flex items-center px-4 py-2.5 gap-3">
                 <div className="flex items-center gap-3 flex-1">
                   <span className="inline-block w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
                   {/* Unified level bar (simple) */}
@@ -1870,7 +1869,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
               <textarea
                 ref={textareaRef}
                 rows={1}
-                className="flex-1 bg-transparent px-3 sm:px-3.5 pr-[64px] sm:pr-16 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
+                className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
                 placeholder="Message"
                 value={draft}
                 autoComplete="off"
@@ -1914,79 +1913,60 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 }}
               />
             )}
-            
-            {/* Mic + Send - Conditional based on recording state */}
-            <div 
-              className="absolute right-2.5 sm:right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-2.5 sm:gap-3"
-              style={{ 
-                pointerEvents: 'auto',
-                zIndex: 2,
-                touchAction: 'manipulation'
+          </div>
+
+          {/* Mic button - outside input container, side by side with send */}
+          {MIC_ENABLED && !recording && (
+            <button
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 text-white/80 transition-colors"
+              onClick={checkMicrophonePermission}
+              aria-label="Start voice message"
+              style={{
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent'
               }}
             >
-              {/* When recording: Show STOP + visualizer (consistent with posts) */}
-              {MIC_ENABLED && recording ? (
-                <button
-                  className="w-9 h-9 rounded-full flex items-center justify-center bg-[#4db6ac] text-white"
-                  onClick={stopVoiceRecording}
-                  aria-label="Stop recording"
-                  style={{
-                    touchAction: 'manipulation',
-                    WebkitTapHighlightColor: 'transparent'
-                  }}
-                >
-                  <i className="fa-solid fa-stop text-sm" />
-                </button>
+              <i className="fa-solid fa-microphone text-base" />
+            </button>
+          )}
+
+          {/* Send/Stop button */}
+          {MIC_ENABLED && recording ? (
+            <button
+              className="w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white"
+              onClick={stopVoiceRecording}
+              aria-label="Stop recording"
+              style={{
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent'
+              }}
+            >
+              <i className="fa-solid fa-stop text-sm" />
+            </button>
+          ) : (
+            <button
+              className={`w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center ${
+                sending 
+                  ? 'bg-gray-600 text-gray-300' 
+                  : draft.trim()
+                    ? 'bg-[#4db6ac] text-black'
+                    : 'bg-white/20 text-white/70'
+              }`}
+              onClick={draft.trim() ? send : undefined}
+              disabled={sending || !draft.trim()}
+              aria-label="Send"
+              style={{
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent'
+              }}
+            >
+              {sending ? (
+                <i className="fa-solid fa-spinner fa-spin text-sm" />
               ) : (
-                <button
-                  className={`w-7 h-7 rounded-full flex items-center justify-center ${
-                    sending 
-                      ? 'bg-gray-600 text-gray-300' 
-                      : draft.trim()
-                        ? 'bg-[#4db6ac] text-black'
-                        : 'bg-white/20 text-white/70'
-                  }`}
-                  onClick={draft.trim() ? send : undefined}
-                  disabled={sending || !draft.trim()}
-                  aria-label="Send"
-                  style={{
-                    touchAction: 'manipulation',
-                    WebkitTapHighlightColor: 'transparent'
-                  }}
-                >
-                  {sending ? (
-                    <i className="fa-solid fa-spinner fa-spin text-xs" />
-                  ) : (
-                    <i className="fa-solid fa-paper-plane text-xs" />
-                  )}
-                </button>
+                <i className="fa-solid fa-paper-plane text-sm" />
               )}
-              {MIC_ENABLED && recording && (
-                <div className="hidden sm:flex items-center gap-2 ml-2">
-                  <div className="text-xs text-white/70 whitespace-nowrap">{Math.min(60, Math.round((recordMs||0)/1000))}s</div>
-                  <div className="h-2 w-24 bg-white/10 rounded overflow-hidden">
-                    <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recordMs||0)/600) )}%` }} />
-                  </div>
-                  <div className="h-6 w-16 bg-white/10 rounded items-center hidden md:flex">
-                    <div className="h-2 bg-[#7fe7df] rounded transition-all" style={{ width: `${Math.max(6, Math.min(96, (level||0)*100))}%`, marginLeft: '2%' }} />
-                  </div>
-                </div>
-              )}
-            </div>
-            {MIC_ENABLED && !recording && (
-              <button
-                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 text-white/80 transition-colors"
-                onClick={checkMicrophonePermission}
-                aria-label="Start voice message"
-                style={{
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent'
-                }}
-              >
-                <i className="fa-solid fa-microphone text-base" />
-              </button>
-            )}
-          </div>
+            </button>
+          )}
         </div>
       </div>
       {/* Safe area spacer - black area below composer */}
