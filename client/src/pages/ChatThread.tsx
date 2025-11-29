@@ -182,7 +182,12 @@ export default function ChatThread(){
     }
   }, [])
   
-  const listBottomPadding = `calc(${Math.max(composerHeight, defaultComposerPadding)}px + ${keyboardOffset}px + ${safeBottom})`
+  const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
+  const listBottomPadding =
+    keyboardOffset > 0
+      ? `calc(${effectiveComposerHeight}px + ${keyboardOffset}px + ${safeBottom})`
+      : `calc(${effectiveComposerHeight}px + ${safeBottom})`
+  const composerPaddingBottom = keyboardOffset > 0 ? safeBottom : `calc(${safeBottom} + 12px)`
   
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -250,6 +255,22 @@ export default function ChatThread(){
       hideSub?.remove()
     }
   }, [scrollToBottom])
+
+  useEffect(() => {
+    if (keyboardOffset < 0) return
+    scrollToBottom()
+    const t1 = setTimeout(scrollToBottom, 120)
+    const t2 = setTimeout(scrollToBottom, 260)
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+    }
+  }, [keyboardOffset, scrollToBottom])
+
+  useEffect(() => {
+    const timer = setTimeout(scrollToBottom, 80)
+    return () => clearTimeout(timer)
+  }, [composerHeight, scrollToBottom])
 
   // Scroll to bottom when window resizes (Capacitor native keyboard resize)
   useEffect(() => {
@@ -1541,7 +1562,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       style={{
         bottom: 0,
         zIndex: 1000,
-        paddingBottom: `calc(${safeBottom} + 12px)`,
+        paddingBottom: composerPaddingBottom,
         transform: keyboardOffset ? `translateY(-${keyboardOffset}px)` : undefined,
         transition: 'transform 140ms ease-out',
       }}
