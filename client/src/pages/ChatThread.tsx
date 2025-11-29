@@ -1348,6 +1348,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   }
 
   return (
+    <>
+    {/* Main container with overflow:hidden */}
     <div 
       className="glass-page text-white chat-thread-bg"
       style={{
@@ -1683,6 +1685,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       </div>
       </div>
     </div>
+    </div>
+    {/* End of main container - compositor and scroll button rendered outside to avoid overflow:hidden clipping */}
 
     {/* Scroll to bottom button - positioned above composer */}
     {showScrollDown && (
@@ -2236,7 +2240,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           await handleGifSelection(gif)
         }}
       />
-    </div>
+    </>
   )
 }
 
