@@ -197,10 +197,10 @@ export default function CreatePost(){
 
   const effectiveComposerHeight = Math.max(composerHeight, composerBaseline)
   const contentPaddingBottom = `calc(${effectiveComposerHeight}px + ${keyboardOffset}px + ${safeBottom} + 2rem)`
-  const contentPaddingTop = '6rem'
+  const contentPaddingTop = 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + var(--app-content-gap, 8px))'
 
   return (
-    <div className="glass-page min-h-screen overflow-hidden text-white">
+    <div className="glass-page text-white">
       {/* Praise notification */}
       {showPraise && (
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">
@@ -216,10 +216,11 @@ export default function CreatePost(){
           <i className="fa-solid fa-arrow-left" />
         </button>
       </div>
-      <div className="app-content px-0">
+      <div className="app-content px-0" style={{ paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom }}>
         <div
-          className="max-w-2xl mx-auto flex flex-col"
-          style={{ paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom, minHeight: conversationMinHeight }}
+          className="max-w-2xl mx-auto flex flex-col gap-4"
+          style={{ minHeight: conversationMinHeight }}
+          data-scroll-region-child="true"
         >
         <MentionTextarea
           value={content}
