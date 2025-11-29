@@ -228,7 +228,7 @@ export default function ChatThread(){
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
-  const composerGapPx = 8  // Small gap between messages and composer
+  const composerGapPx = 4  // Tighter gap between messages and composer
   // Padding to ensure messages don't hide behind the composer
   const listPaddingBottom = showKeyboard
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
@@ -1986,7 +1986,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           </div>
 
           {/* Mic button - outside input container, side by side with send */}
-          {MIC_ENABLED && !recording && (
+          {MIC_ENABLED && !recording && !draft.trim() && (
             <button
               className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
               onClick={checkMicrophonePermission}
