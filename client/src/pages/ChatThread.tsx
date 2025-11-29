@@ -1248,22 +1248,33 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   }
 
   async function checkMicrophonePermission() {
+    // Check if we've already granted permission before (stored locally)
+    const hasGrantedBefore = localStorage.getItem('mic_permission_granted') === 'true'
+    
+    if (hasGrantedBefore) {
+      // Permission was granted before, start recording directly
+      startVoiceRecording()
+      return
+    }
+    
     try {
-      // Check current permission state
+      // Check current permission state via browser API
       const permissionStatus = await navigator.permissions.query({ name: 'microphone' as PermissionName })
       
       if (permissionStatus.state === 'granted') {
-        // Permission already granted, start recording directly
+        // Permission already granted, save it and start recording
+        localStorage.setItem('mic_permission_granted', 'true')
         startVoiceRecording()
       } else if (permissionStatus.state === 'denied') {
         // Permission denied, show help modal
-        setShowMicPermissionModal(true)
+        setShowPermissionGuide(true)
       } else {
         // Permission not yet requested, show pre-permission modal
         setShowMicPermissionModal(true)
       }
     } catch (error) {
-      // Fallback for browsers that don't support permissions API
+      // Fallback for browsers that don't support permissions API (like iOS Safari)
+      // Just try to start recording - browser will show its own permission dialog
       startVoiceRecording()
     }
   }
@@ -1271,6 +1282,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   function requestMicrophoneAccess() {
     setShowMicPermissionModal(false)
     // Start recording which will trigger the browser's permission dialog
+    // Save that user has initiated mic access (will be confirmed on successful recording)
+    localStorage.setItem('mic_permission_granted', 'true')
     startVoiceRecording()
   }
 
@@ -1764,14 +1777,20 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           <div className="flex items-end gap-2.5 sm:gap-3.5">
             {/* Attachment button */}
             <button 
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-colors"
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 transition-all cursor-pointer select-none"
               onClick={() => setShowAttachMenu(!showAttachMenu)}
+              onTouchEnd={(e) => {
+                e.preventDefault()
+                setShowAttachMenu(!showAttachMenu)
+              }}
               style={{
                 touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent'
+                WebkitTapHighlightColor: 'transparent',
+                WebkitUserSelect: 'none',
+                userSelect: 'none',
               }}
             >
-              <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 ${
+              <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 pointer-events-none ${
                 showAttachMenu ? 'fa-xmark rotate-90' : 'fa-plus'
               }`} />
             </button>
