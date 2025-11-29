@@ -236,7 +236,7 @@ export default function ChatThread(){
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
-  const composerGapPx = 18
+  const composerGapPx = 26
   const listPaddingBottom = showKeyboard
     ? `calc(${safeBottom} + ${composerGapPx}px + ${keyboardLift.toFixed(2)}px)`
     : `calc(${safeBottom} + ${composerGapPx}px)`
@@ -1682,7 +1682,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     >
       <div
         ref={composerCardRef}
-        className="max-w-3xl mx-auto w-full liquid-glass-surface border border-white/12 rounded-[18px] px-4 sm:px-5 py-3 sm:py-3.5 shadow-[0_30px_70px_rgba(0,0,0,0.65)] backdrop-blur-2xl"
+        className="max-w-3xl mx-auto w-full liquid-glass-surface border border-white/12 rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3 shadow-[0_30px_70px_rgba(0,0,0,0.6)] backdrop-blur-2xl"
       >
           {replyTo && (
             <div className="mb-2 px-3 py-2 liquid-glass-chip rounded-xl border border-white/10">
@@ -1703,10 +1703,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             </div>
           )}
 
-          <div className="relative flex items-end gap-3 sm:gap-4">
+          <div className="relative flex items-end gap-2.5 sm:gap-3.5">
             {/* Attachment button */}
             <button 
-              className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-[16px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-colors"
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-colors"
               onClick={() => setShowAttachMenu(!showAttachMenu)}
               style={{
                 touchAction: 'manipulation',
@@ -1802,7 +1802,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
 
           {/* Message input container */}
           <div 
-            className="flex-1 flex items-center rounded-xl bg-white/8 overflow-hidden relative border border-white/8"
+            className="flex-1 flex items-center rounded-lg bg-white/8 overflow-hidden relative border border-white/8"
             style={{
               touchAction: 'manipulation',
               WebkitTapHighlightColor: 'transparent'
@@ -1829,7 +1829,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
               <textarea
                 ref={textareaRef}
                 rows={1}
-                className="flex-1 bg-transparent px-3 sm:px-4 pr-[70px] sm:pr-20 py-2.5 text-[16px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[40px]"
+                className="flex-1 bg-transparent px-3 sm:px-3.5 pr-[64px] sm:pr-16 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
                 placeholder="Message"
                 value={draft}
                 autoComplete="off"
@@ -1898,7 +1898,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 </button>
               ) : (
                 <button
-                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  className={`w-7 h-7 rounded-full flex items-center justify-center ${
                     sending 
                       ? 'bg-gray-600 text-gray-300' 
                       : draft.trim()
