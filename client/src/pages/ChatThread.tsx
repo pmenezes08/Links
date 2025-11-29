@@ -739,10 +739,36 @@ export default function ChatThread(){
               let stableKey = idBridgeRef.current.serverToTemp.get(m.id)
               
               if (!stableKey) {
-                // Try to find matching optimistic by content
+                // Try to find matching message by content or image_path
                 for (const [key, existing] of messagesByKey.entries()) {
-                  if (!existing.isOptimistic) continue
                   if (existing.sent !== isSentByMe) continue
+                  
+                  // For photo messages: match by server image_path
+                  if (m.image_path && existing.image_path) {
+                    // If existing already has this server path, it's the same message
+                    if (existing.image_path === m.image_path) {
+                      stableKey = key
+                      idBridgeRef.current.serverToTemp.set(m.id, key)
+                      idBridgeRef.current.tempToServer.set(key, m.id)
+                      break
+                    }
+                    // If existing is optimistic (blob URL) and same text/time, it's likely our upload
+                    if (existing.isOptimistic && existing.image_path.startsWith('blob:')) {
+                      if (existing.text === messageText) {
+                        const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
+                        if (timeDiff < 10000) { // 10 second window for photo uploads
+                          stableKey = key
+                          idBridgeRef.current.serverToTemp.set(m.id, key)
+                          idBridgeRef.current.tempToServer.set(key, m.id)
+                          break
+                        }
+                      }
+                    }
+                    continue
+                  }
+                  
+                  // For text messages: match by content (only if optimistic)
+                  if (!existing.isOptimistic) continue
                   if (existing.text !== messageText) continue
                   const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
                   if (timeDiff < 5000) {
@@ -1140,6 +1166,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   async function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
     // Helper to show image preview and dismiss keyboard
     const showImagePreview = (file: File) => {
+      // Create blob URL immediately (before any async operations that might clear clipboard)
+      const blobUrl = URL.createObjectURL(file)
+      
       // Blur the textarea to dismiss the keyboard on mobile
       if (textareaRef.current) {
         textareaRef.current.blur()
@@ -1149,11 +1178,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         document.activeElement.blur()
       }
       
+      // Set both states together - previewImage triggers the modal
       setPastedImage(file)
-      // Small delay to let keyboard dismiss before showing preview
-      setTimeout(() => {
-        setPreviewImage(URL.createObjectURL(file))
-      }, 100)
+      setPreviewImage(blobUrl)
     }
     
     // Try the modern Clipboard API first (works on native apps and desktop)
