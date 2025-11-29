@@ -1706,13 +1706,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     {/* ====== COMPOSER - FIXED AT BOTTOM, solid background to hide scrolling content ====== */}
     <div 
       ref={composerRef}
-      className="fixed left-0 right-0 px-4 sm:px-5"
+      className="fixed left-0 right-0 px-3"
       style={{
         bottom: showKeyboard ? `${keyboardLift}px` : 0,
         zIndex: 1000,
         width: '100%',
-        paddingTop: '10px',
-        paddingBottom: showKeyboard ? '6px' : `calc(env(safe-area-inset-bottom, 0px) + 8px)`,
+        paddingTop: '6px',
+        paddingBottom: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
         paddingLeft: 'env(safe-area-inset-left, 0px)',
         paddingRight: 'env(safe-area-inset-right, 0px)',
         background: '#000',
