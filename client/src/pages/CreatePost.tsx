@@ -467,8 +467,11 @@ export default function CreatePost(){
         className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3"
         style={{ background: '#0a0a0c' }}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
+        <div
+          className="grid gap-3"
+          style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}
+        >
+          <div className="flex flex-wrap items-center gap-3">
             <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">
               <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
               <input
@@ -521,7 +524,7 @@ export default function CreatePost(){
               </button>
             )}
           </div>
-          <button className={`px-4 py-2 rounded-full shrink-0 ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !gifFile && !preview && !hasVideoAttachment)}>
+          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !gifFile && !preview && !hasVideoAttachment)}>
             {submitting ? 'Posting...' : 'Post'}
           </button>
         </div>
