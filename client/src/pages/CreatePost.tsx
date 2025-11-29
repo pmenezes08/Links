@@ -39,6 +39,7 @@ export default function CreatePost(){
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const viewportBaseRef = useRef<number | null>(null)
+  const [viewportLift, setViewportLift] = useState(0)
   const [viewportHeight, setViewportHeight] = useState<number | null>(null)
 
   const videoPreviewUrl = useMemo(() => {
@@ -118,6 +119,7 @@ export default function CreatePost(){
       }
       const baseHeight = viewportBaseRef.current ?? currentHeight
       const nextOffset = Math.max(0, baseHeight - currentHeight - viewport.offsetTop)
+      setViewportLift(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
       if (Math.abs(keyboardOffsetRef.current - nextOffset) < 1) return
       keyboardOffsetRef.current = nextOffset
       setKeyboardOffset(nextOffset)
@@ -135,6 +137,37 @@ export default function CreatePost(){
       if (rafId) cancelAnimationFrame(rafId)
       viewport.removeEventListener('resize', handleChange)
       viewport.removeEventListener('scroll', handleChange)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+    let showSub: PluginListenerHandle | undefined
+    let hideSub: PluginListenerHandle | undefined
+
+    const handleShow = (info: KeyboardInfo) => {
+      const height = info?.keyboardHeight ?? 0
+      if (Math.abs(keyboardOffsetRef.current - height) < 2) return
+      keyboardOffsetRef.current = height
+      setKeyboardOffset(height)
+    }
+
+    const handleHide = () => {
+      if (keyboardOffsetRef.current === 0) return
+      keyboardOffsetRef.current = 0
+      setKeyboardOffset(0)
+    }
+
+    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
+      showSub = handle
+    })
+    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
+      hideSub = handle
+    })
+
+    return () => {
+      showSub?.remove()
+      hideSub?.remove()
     }
   }, [])
 
@@ -236,8 +269,9 @@ export default function CreatePost(){
   }
 
   const effectiveComposerHeight = Math.max(composerHeight, composerBaseline)
-  const keyboardLift = Math.max(0, keyboardOffset - safeBottomPx)
-  const showKeyboard = keyboardLift > 2
+  const liftSource = Math.max(keyboardOffset, viewportLift)
+  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
+  const showKeyboard = liftSource > 2
   const conversationDynamicHeight = viewportHeight
     ? `calc(${viewportHeight.toFixed(2)}px - ${headerOffsetVar})`
     : conversationMinHeight
