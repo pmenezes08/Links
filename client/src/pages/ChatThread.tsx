@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
+import { Keyboard } from '@capacitor/keyboard'
+import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
@@ -182,6 +186,7 @@ export default function ChatThread(){
   
   useEffect(() => {
     if (typeof window === 'undefined') return
+    if (Capacitor.getPlatform() !== 'web') return
     const viewport = window.visualViewport
     if (!viewport) return
     
@@ -210,6 +215,39 @@ export default function ChatThread(){
       if (rafId) cancelAnimationFrame(rafId)
       viewport.removeEventListener('resize', handleChange)
       viewport.removeEventListener('scroll', handleChange)
+    }
+  }, [scrollToBottom])
+
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+    let showSub: PluginListenerHandle | undefined
+    let hideSub: PluginListenerHandle | undefined
+
+    const handleShow = (info: KeyboardInfo) => {
+      const height = info?.keyboardHeight ?? 0
+      if (Math.abs(keyboardOffsetRef.current - height) < 2) return
+      keyboardOffsetRef.current = height
+      setKeyboardOffset(height)
+      requestAnimationFrame(scrollToBottom)
+    }
+
+    const handleHide = () => {
+      if (keyboardOffsetRef.current === 0) return
+      keyboardOffsetRef.current = 0
+      setKeyboardOffset(0)
+      requestAnimationFrame(scrollToBottom)
+    }
+
+    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
+      showSub = handle
+    })
+    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
+      hideSub = handle
+    })
+
+    return () => {
+      showSub?.remove()
+      hideSub?.remove()
     }
   }, [scrollToBottom])
 
