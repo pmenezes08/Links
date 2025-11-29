@@ -231,13 +231,13 @@ export default function ChatThread(){
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
-  const composerGapPx = 26
+  const composerGapPx = 40  // Increased gap between messages and composer
   // Padding to ensure messages don't hide behind the composer
   const listPaddingBottom = showKeyboard
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
     : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
   const listScrollPaddingBottom = `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
-  const composerPaddingBottom = showKeyboard ? '0px' : `calc(${safeBottom} + 12px)`
+  const composerPaddingBottom = showKeyboard ? '0px' : `calc(${safeBottom} + 4px)`  // Reduced bottom padding
   // Scroll button positioned above the composer
   const scrollButtonBottom = showKeyboard
     ? `${keyboardLift + effectiveComposerHeight + 16}px`
@@ -1366,7 +1366,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           <div
             className="mx-auto flex max-w-3xl w-full flex-1 flex-col gap-3 min-h-0"
           >
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/5 px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur-md">
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/5 px-3 py-3 mx-2 mt-2 shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur-md">
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             onClick={()=> navigate('/user_chat')} 
