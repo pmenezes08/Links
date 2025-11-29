@@ -167,11 +167,6 @@ export default function ChatThread(){
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
-  const conversationMinHeight = `calc(100vh - ${headerOffsetVar})`
-  const conversationDynamicHeight = viewportHeight
-    ? `calc(${viewportHeight.toFixed(2)}px - ${headerOffsetVar})`
-    : conversationMinHeight
   
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
@@ -237,15 +232,14 @@ export default function ChatThread(){
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
   const composerGapPx = 26
+  // Padding to ensure messages don't hide behind the composer
   const listPaddingBottom = showKeyboard
-    ? `calc(${safeBottom} + ${composerGapPx}px + ${keyboardLift.toFixed(2)}px)`
-    : `calc(${safeBottom} + ${composerGapPx}px)`
+    ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
+    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
   const listScrollPaddingBottom = `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
   const composerPaddingBottom = showKeyboard ? '0px' : `calc(${safeBottom} + 12px)`
-  const scrollButtonBottom =
-    showKeyboard
-      ? `calc(${keyboardLift.toFixed(2)}px + ${effectiveComposerHeight.toFixed(2)}px + 16px)`
-      : `calc(${safeBottom} + ${(effectiveComposerHeight + composerGapPx + 16).toFixed(2)}px)`
+  // Scroll button positioned relative to the container (which already accounts for keyboard)
+  const scrollButtonBottom = `calc(${safeBottom} + ${(effectiveComposerHeight + composerGapPx + 16).toFixed(2)}px)`
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!showKeyboard) {
@@ -295,7 +289,7 @@ export default function ChatThread(){
     
     const updateOffset = () => {
       const currentHeight = viewport.height
-      setViewportHeight(prev => (Math.abs((prev ?? currentHeight) - currentHeight) < 1 ? prev : currentHeight))
+      // Update base height when viewport expands (keyboard closed)
       if (
         viewportBaseRef.current === null ||
         currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
@@ -1353,11 +1347,22 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   }
 
   return (
-    <div className="glass-page min-h-screen overflow-hidden text-white chat-thread-bg">
-      <div className="app-content px-0">
+    <div 
+      className="glass-page text-white chat-thread-bg"
+      style={{
+        position: 'fixed',
+        left: 0,
+        right: 0,
+        top: headerOffsetVar,
+        bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <div className="flex-1 flex flex-col min-h-0 px-0">
           <div
-            className="mx-auto flex max-w-3xl flex-1 flex-col gap-3 overflow-hidden"
-            style={{ minHeight: conversationDynamicHeight }}
+            className="mx-auto flex max-w-3xl w-full flex-1 flex-col gap-3 min-h-0"
           >
         <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/5 px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur-md">
           <button 
@@ -1440,8 +1445,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         className="flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden text-white px-1 sm:px-2"
         style={{
           WebkitOverflowScrolling: 'touch',
+          overscrollBehaviorY: 'auto',
           paddingBottom: listPaddingBottom,
           scrollPaddingBottom: listScrollPaddingBottom,
+          minHeight: 0, // Required for flex child scrolling
         } as CSSProperties}
         onPointerDown={handleContentPointerDown}
         onPointerUp={handleContentPointerUp}
@@ -1650,33 +1657,33 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           aria-hidden="true"
         />
         
-        {showScrollDown && (
-          <button
-            className="fixed z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
-            style={{ 
-                  bottom: scrollButtonBottom,
-              right: '22px'
-            }}
-            onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
-            aria-label="Scroll to latest"
-          >
-            <i className="fa-solid fa-arrow-down" />
-          </button>
-        )}
       </div>
       </div>
     </div>
 
+    {/* Scroll to bottom button - positioned above composer */}
+    {showScrollDown && (
+      <button
+        className="absolute z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
+        style={{ 
+          bottom: scrollButtonBottom,
+          right: '22px'
+        }}
+        onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
+        aria-label="Scroll to latest"
+      >
+        <i className="fa-solid fa-arrow-down" />
+      </button>
+    )}
+
     {/* ====== COMPOSER - FIXED AT BOTTOM (Capacitor native resize handles keyboard) ====== */}
     <div 
       ref={composerRef}
-      className="fixed left-0 right-0 px-4 sm:px-5"
+      className="absolute left-0 right-0 px-4 sm:px-5"
       style={{
         bottom: 0,
         zIndex: 1000,
         paddingBottom: composerPaddingBottom,
-        transform: keyboardLift ? `translateY(-${keyboardLift.toFixed(2)}px)` : undefined,
-        transition: 'transform 140ms ease-out',
         background: 'linear-gradient(180deg, rgba(4,4,6,0) 0%, rgba(4,4,6,0.8) 55%, #000 100%)',
       }}
     >

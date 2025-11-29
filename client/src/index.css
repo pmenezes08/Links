@@ -113,7 +113,17 @@
 
 .chat-thread-bg {
   background: var(--glass-gradient);
-  min-height: 100%;
+}
+
+/* Chat thread specific styles for keyboard handling */
+.chat-thread-bg[style*="position: fixed"] {
+  /* When chat thread takes over viewport, ensure elastic scrolling works */
+  isolation: isolate;
+}
+
+.chat-thread-bg .overflow-y-auto {
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .liquid-glass-surface {
@@ -178,6 +188,9 @@
   z-index: 0;
   background-color: transparent;
   touch-action: pan-y;
+  /* Allow elastic/bouncy scroll behavior on iOS */
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .app-scroll-region > .h-screen.overflow-hidden,
