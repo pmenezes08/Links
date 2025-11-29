@@ -167,10 +167,18 @@ export default function ChatThread(){
   const defaultComposerPadding = 120
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const [safeBottomPx, setSafeBottomPx] = useState(0)
+  const [viewportLift, setViewportLift] = useState(0)
   
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
   const keyboardOffsetRef = useRef(0)
+  const viewportBaseRef = useRef<number | null>(null)
+  const touchDismissRef = useRef<{ active: boolean; x: number; y: number; pointerId: number | null }>({
+    active: false,
+    x: 0,
+    y: 0,
+    pointerId: null,
+  })
   
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
@@ -221,10 +229,13 @@ export default function ChatThread(){
   }, [])
 
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
-  const keyboardLift = Math.max(0, keyboardOffset - safeBottomPx)
-  const showKeyboard = keyboardLift > 0
+  const liftSource = Math.max(keyboardOffset, viewportLift)
+  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
+  const showKeyboard = liftSource > 2
   const composerGapPx = 18
-  const listPaddingBottom = `calc(${safeBottom} + ${composerGapPx}px)`
+  const listPaddingBottom = showKeyboard
+    ? `calc(${safeBottom} + ${composerGapPx}px + ${keyboardLift.toFixed(2)}px)`
+    : `calc(${safeBottom} + ${composerGapPx}px)`
   const listScrollPaddingBottom = `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
   const composerPaddingBottom = showKeyboard ? '0px' : `calc(${safeBottom} + 12px)`
   const scrollButtonBottom =
@@ -233,24 +244,63 @@ export default function ChatThread(){
       : `calc(${safeBottom} + ${(effectiveComposerHeight + composerGapPx + 16).toFixed(2)}px)`
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (!showKeyboard) return
-      if (composerRef.current && composerRef.current.contains(event.target as Node)) return
-      textareaRef.current?.blur()
+      if (!showKeyboard) {
+        touchDismissRef.current.active = false
+        return
+      }
+      if (composerRef.current && composerRef.current.contains(event.target as Node)) {
+        touchDismissRef.current.active = false
+        return
+      }
+      const isTouchLike = event.pointerType === 'touch' || event.pointerType === 'pen'
+      if (!isTouchLike) {
+        touchDismissRef.current.active = false
+        return
+      }
+      touchDismissRef.current = {
+        active: true,
+        x: event.clientX,
+        y: event.clientY,
+        pointerId: event.pointerId ?? null,
+      }
     },
     [showKeyboard]
   )
+
+  const handleContentPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = touchDismissRef.current
+    if (!start.active) return
+    if (start.pointerId !== null && event.pointerId !== start.pointerId) return
+    touchDismissRef.current.active = false
+    const deltaX = event.clientX - start.x
+    const deltaY = event.clientY - start.y
+    if (Math.hypot(deltaX, deltaY) > 10) return
+    textareaRef.current?.blur()
+  }, [])
+
+  const handleContentPointerCancel = useCallback(() => {
+    touchDismissRef.current.active = false
+  }, [])
   
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (Capacitor.getPlatform() !== 'web') return
     const viewport = window.visualViewport
     if (!viewport) return
     
     let rafId: number | null = null
     
     const updateOffset = () => {
-      const nextOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
-      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 2) return
+      const currentHeight = viewport.height
+      if (
+        viewportBaseRef.current === null ||
+        currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
+      ) {
+        viewportBaseRef.current = currentHeight
+      }
+      const baseHeight = viewportBaseRef.current ?? currentHeight
+      const nextOffset = Math.max(0, baseHeight - currentHeight - viewport.offsetTop)
+      setViewportLift(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
+      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 1) return
       keyboardOffsetRef.current = nextOffset
       setKeyboardOffset(nextOffset)
       if (nextOffset > 0) {
@@ -265,7 +315,7 @@ export default function ChatThread(){
     
     viewport.addEventListener('resize', handleChange)
     viewport.addEventListener('scroll', handleChange)
-    updateOffset()
+    handleChange()
     
     return () => {
       if (rafId) cancelAnimationFrame(rafId)
@@ -308,7 +358,7 @@ export default function ChatThread(){
   }, [scrollToBottom])
 
   useEffect(() => {
-    if (keyboardOffset < 0) return
+    if (liftSource < 0) return
     scrollToBottom()
     const t1 = setTimeout(scrollToBottom, 120)
     const t2 = setTimeout(scrollToBottom, 260)
@@ -316,7 +366,7 @@ export default function ChatThread(){
       clearTimeout(t1)
       clearTimeout(t2)
     }
-  }, [keyboardOffset, scrollToBottom])
+  }, [liftSource, scrollToBottom])
 
   useEffect(() => {
     const timer = setTimeout(scrollToBottom, 80)
@@ -1389,6 +1439,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           scrollPaddingBottom: listScrollPaddingBottom,
         } as CSSProperties}
         onPointerDown={handleContentPointerDown}
+        onPointerUp={handleContentPointerUp}
+        onPointerCancel={handleContentPointerCancel}
         onScroll={(e)=> {
           const el = e.currentTarget
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
