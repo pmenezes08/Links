@@ -183,12 +183,14 @@ export default function ChatThread(){
   }, [])
   
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
-  const listBottomPadding = `calc(${effectiveComposerHeight}px + ${safeBottom})`
+  const visibleGap = Math.max(effectiveComposerHeight - keyboardOffset, 0)
+  const listPaddingBottom = `calc(${safeBottom} + ${visibleGap}px)`
+  const listScrollPaddingBottom = `calc(${safeBottom} + ${effectiveComposerHeight}px)`
   const composerPaddingBottom = keyboardOffset > 0 ? '0px' : `calc(${safeBottom} + 12px)`
   const scrollButtonBottom =
     keyboardOffset > 0
-      ? `calc(${keyboardOffset}px + ${effectiveComposerHeight}px + 12px)`
-      : listBottomPadding
+      ? `calc(${keyboardOffset}px + ${effectiveComposerHeight}px + 16px)`
+      : listScrollPaddingBottom
   
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1333,11 +1335,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       <div
         ref={listRef}
         className="flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden text-white px-1 sm:px-2"
-        style={{
-          WebkitOverflowScrolling: 'touch',
-          paddingBottom: listBottomPadding,
-          scrollPaddingBottom: listBottomPadding,
-        } as CSSProperties}
+            style={{
+              WebkitOverflowScrolling: 'touch',
+              paddingBottom: listPaddingBottom,
+              scrollPaddingBottom: listScrollPaddingBottom,
+            } as CSSProperties}
         onScroll={(e)=> {
           const el = e.currentTarget
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
