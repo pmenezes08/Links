@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react'
 import MentionTextarea from '../components/MentionTextarea'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -28,6 +28,15 @@ export default function CreatePost(){
   const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const videoInputRef = useRef<HTMLInputElement|null>(null)
+  const headerOffsetVar = 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))'
+  const safeBottom = 'env(safe-area-inset-bottom, 0px)'
+  const conversationMinHeight = `calc(100vh - ${headerOffsetVar})`
+  const composerBaseline = 140
+  const [composerHeight, setComposerHeight] = useState(composerBaseline)
+  const composerRef = useRef<HTMLDivElement | null>(null)
+  const composerCardRef = useRef<HTMLDivElement | null>(null)
+  const keyboardOffsetRef = useRef(0)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
 
   const videoPreviewUrl = useMemo(() => {
     if (!videoFile) return null
@@ -42,6 +51,52 @@ export default function CreatePost(){
     }
   }, [videoPreviewUrl])
 
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
+    const node = composerCardRef.current
+    if (!node) return
+
+    const updateHeight = () => {
+      const height = node.getBoundingClientRect().height
+      if (!height) return
+      setComposerHeight(prev => (Math.abs(prev - height) < 1 ? prev : height))
+    }
+
+    updateHeight()
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(node)
+
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    let rafId: number | null = null
+    const updateOffset = () => {
+      const nextOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 1) return
+      keyboardOffsetRef.current = nextOffset
+      setKeyboardOffset(nextOffset)
+    }
+    const handleChange = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updateOffset)
+    }
+
+    viewport.addEventListener('resize', handleChange)
+    viewport.addEventListener('scroll', handleChange)
+    updateOffset()
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', handleChange)
+      viewport.removeEventListener('scroll', handleChange)
+    }
+  }, [])
 
   // Detect links when content changes
   useEffect(() => {
@@ -140,8 +195,12 @@ export default function CreatePost(){
     }
   }
 
+  const effectiveComposerHeight = Math.max(composerHeight, composerBaseline)
+  const contentPaddingBottom = `calc(${effectiveComposerHeight}px + ${keyboardOffset}px + ${safeBottom} + 2rem)`
+  const contentPaddingTop = '6rem'
+
   return (
-    <div className="min-h-screen bg-black text-white pb-20">
+    <div className="glass-page min-h-screen overflow-hidden text-white">
       {/* Praise notification */}
       {showPraise && (
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">
@@ -157,7 +216,11 @@ export default function CreatePost(){
           <i className="fa-solid fa-arrow-left" />
         </button>
       </div>
-      <div className="max-w-2xl mx-auto pt-24 px-3">
+      <div className="app-content px-0">
+        <div
+          className="max-w-2xl mx-auto flex flex-col"
+          style={{ paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom, minHeight: conversationMinHeight }}
+        >
         <MentionTextarea
           value={content}
           onChange={setContent}
@@ -250,6 +313,7 @@ export default function CreatePost(){
             </div>
           </div>
         )}
+        </div>
       </div>
       
       {/* Rename link modal */}
@@ -293,8 +357,19 @@ export default function CreatePost(){
           </div>
         </div>
       )}
-      <div className="fixed left-0 right-0 bottom-0 h-16 border-t border-white/10 bg-black/85 backdrop-blur z-40">
-        <div className="max-w-2xl mx-auto h-full px-4 flex items-center justify-between gap-3">
+      <div
+        ref={composerRef}
+        className="fixed left-0 right-0 bottom-0 border-t border-white/10 bg-black/90 backdrop-blur z-40 px-4"
+        style={{
+          paddingBottom: `calc(${safeBottom} + 12px)`,
+          transform: keyboardOffset ? `translateY(-${keyboardOffset}px)` : undefined,
+          transition: 'transform 140ms ease-out',
+        }}
+      >
+        <div
+          ref={composerCardRef}
+          className="max-w-2xl mx-auto flex flex-wrap items-center gap-3 py-3"
+        >
           <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">
             <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
             <input
