@@ -228,7 +228,7 @@ export default function ChatThread(){
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
-  const composerGapPx = 20  // Minimal gap between messages and composer
+  const composerGapPx = 4  // Minimal gap between messages and composer
   // Padding to ensure messages don't hide behind the composer
   const listPaddingBottom = showKeyboard
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
@@ -1729,9 +1729,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                 }}
               />
               <div 
-                className="absolute bottom-14 left-0 z-50 liquid-glass-surface border border-white/10 rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
+                className="absolute left-0 z-50 liquid-glass-surface border border-white/10 rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
                 style={{
-                  touchAction: 'manipulation'
+                  touchAction: 'manipulation',
+                  bottom: 'calc(100% + 8px)',
                 }}
               >
                 <button
@@ -1877,15 +1878,21 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           {/* Mic button - outside input container, side by side with send */}
           {MIC_ENABLED && !recording && (
             <button
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 text-white/80 transition-colors"
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
               onClick={checkMicrophonePermission}
+              onTouchEnd={(e) => {
+                e.preventDefault()
+                checkMicrophonePermission()
+              }}
               aria-label="Start voice message"
               style={{
                 touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent'
+                WebkitTapHighlightColor: 'transparent',
+                WebkitUserSelect: 'none',
+                userSelect: 'none',
               }}
             >
-              <i className="fa-solid fa-microphone text-base" />
+              <i className="fa-solid fa-microphone text-base pointer-events-none" />
             </button>
           )}
 
