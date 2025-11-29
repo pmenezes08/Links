@@ -359,7 +359,7 @@ export default function CreatePost(){
       )}
       <div
         ref={composerRef}
-        className="fixed left-0 right-0 bottom-0 border-t border-white/10 bg-black/90 backdrop-blur z-40 px-4"
+        className="fixed left-0 right-0 bottom-0 border-t border-white/10 bg-black/90 backdrop-blur z-[200] px-4"
         style={{
           paddingBottom: `calc(${safeBottom} + 12px)`,
           transform: keyboardOffset ? `translateY(-${keyboardOffset}px)` : undefined,
