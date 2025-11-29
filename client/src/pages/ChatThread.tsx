@@ -238,8 +238,10 @@ export default function ChatThread(){
     : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
   const listScrollPaddingBottom = `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
   const composerPaddingBottom = showKeyboard ? '0px' : `calc(${safeBottom} + 12px)`
-  // Scroll button positioned relative to the container (which already accounts for keyboard)
-  const scrollButtonBottom = `calc(${safeBottom} + ${(effectiveComposerHeight + composerGapPx + 16).toFixed(2)}px)`
+  // Scroll button positioned above the composer
+  const scrollButtonBottom = showKeyboard
+    ? `${keyboardLift + effectiveComposerHeight + 16}px`
+    : `calc(${safeBottom} + ${(effectiveComposerHeight + composerGapPx + 16).toFixed(2)}px)`
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!showKeyboard) {
@@ -1664,7 +1666,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     {/* Scroll to bottom button - positioned above composer */}
     {showScrollDown && (
       <button
-        className="absolute z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
+        className="fixed z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
         style={{ 
           bottom: scrollButtonBottom,
           right: '22px'
@@ -1679,11 +1681,12 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     {/* ====== COMPOSER - FIXED AT BOTTOM (Capacitor native resize handles keyboard) ====== */}
     <div 
       ref={composerRef}
-      className="absolute left-0 right-0 px-4 sm:px-5"
+      className="fixed left-0 right-0 px-4 sm:px-5"
       style={{
-        bottom: 0,
+        bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0,
         zIndex: 1000,
         paddingBottom: composerPaddingBottom,
+        transition: 'bottom 140ms ease-out',
         background: 'linear-gradient(180deg, rgba(4,4,6,0) 0%, rgba(4,4,6,0.8) 55%, #000 100%)',
       }}
     >
