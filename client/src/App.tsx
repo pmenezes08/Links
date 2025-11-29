@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Capacitor } from '@capacitor/core'
+import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -77,7 +79,13 @@ function AppRoutes(){
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
     const viewport = window.visualViewport
-    if (!viewport) return
+    if (!viewport) {
+      const fallback = window.innerHeight || document.documentElement.clientHeight
+      if (fallback) {
+        document.documentElement.style.setProperty('--app-viewport-height', `${fallback}px`)
+      }
+      return
+    }
 
     let rafId: number | null = null
 
@@ -85,6 +93,10 @@ function AppRoutes(){
       const nextOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
       setKeyboardOffset(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
       document.documentElement.style.setProperty('--keyboard-offset', `${nextOffset}px`)
+      const vh = viewport.height ?? window.innerHeight
+      if (vh) {
+        document.documentElement.style.setProperty('--app-viewport-height', `${vh}px`)
+      }
       if (document.body) {
         document.body.dataset.keyboard = nextOffset > 0 ? 'open' : 'closed'
       }
@@ -108,6 +120,11 @@ function AppRoutes(){
         delete document.body.dataset.keyboard
       }
     }
+  }, [])
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+    Keyboard.setResizeMode({ mode: KeyboardResize.None }).catch(() => {})
+    Keyboard.setScroll({ isDisabled: true }).catch(() => {})
   }, [])
   const resetScrollPosition = useCallback(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
