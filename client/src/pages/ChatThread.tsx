@@ -1138,6 +1138,24 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
   }
 
   async function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    // Helper to show image preview and dismiss keyboard
+    const showImagePreview = (file: File) => {
+      // Blur the textarea to dismiss the keyboard on mobile
+      if (textareaRef.current) {
+        textareaRef.current.blur()
+      }
+      // Also try to blur the active element
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur()
+      }
+      
+      setPastedImage(file)
+      // Small delay to let keyboard dismiss before showing preview
+      setTimeout(() => {
+        setPreviewImage(URL.createObjectURL(file))
+      }, 100)
+    }
+    
     // Try the modern Clipboard API first (works on native apps and desktop)
     if (navigator.clipboard && navigator.clipboard.read) {
       try {
@@ -1149,8 +1167,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
               event.preventDefault()
               const blob = await clipboardItem.getType(type)
               const file = new File([blob], `pasted-image.${type.split('/')[1]}`, { type })
-              setPastedImage(file)
-              setPreviewImage(URL.createObjectURL(file))
+              showImagePreview(file)
               return
             }
           }
@@ -1170,8 +1187,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         event.preventDefault()
         const file = item.getAsFile()
         if (file) {
-          setPastedImage(file)
-          setPreviewImage(URL.createObjectURL(file))
+          showImagePreview(file)
         }
         break
       }
@@ -2211,17 +2227,11 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             </div>
           </div>
 
-          {/* Bottom back button */}
-          <div className="h-16 flex items-center justify-center px-4 flex-shrink-0">
-            <button 
-              className="px-4 py-2 border border-white/30 text-white rounded-lg hover:border-white/50 hover:bg-white/5 transition-colors text-sm flex items-center gap-2"
-              onClick={() => setPreviewImage(null)}
-            >
-              <i className="fa-solid fa-arrow-left text-sm" />
-              Back to Chat
-            </button>
-            {pastedImage && (
-              <>
+          {/* Bottom action buttons */}
+          <div className="flex-shrink-0 px-4 pb-4 pt-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 16px) + 16px)' }}>
+            {pastedImage ? (
+              /* Pasted image actions - Send/Discard */
+              <div className="flex items-center justify-center gap-3">
                 <button
                   onClick={() => {
                     // CRITICAL iOS FIX: Revoke blob URL before clearing
@@ -2233,9 +2243,9 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                     setPreviewImage(null)
                     setPastedImage(null)
                   }}
-                  className="px-3 py-2 rounded-lg border border-white/10 text-white/70 hover:bg-white/5 text-sm"
+                  className="flex-1 max-w-[140px] px-4 py-3 rounded-xl border border-white/20 text-white hover:bg-white/5 text-sm font-medium flex items-center justify-center gap-2"
                 >
-                  <i className="fa-regular fa-trash-can mr-2" />
+                  <i className="fa-regular fa-trash-can" />
                   Discard
                 </button>
                 <button
@@ -2245,12 +2255,23 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                       setPreviewImage(null)
                     }
                   }}
-                  className="px-3 py-2 rounded-lg bg-[#4db6ac] text-black hover:brightness-110 text-sm"
+                  className="flex-1 max-w-[140px] px-4 py-3 rounded-xl bg-[#4db6ac] text-black hover:brightness-110 text-sm font-medium flex items-center justify-center gap-2"
                 >
-                  <i className="fa-solid fa-paper-plane mr-2" />
+                  <i className="fa-solid fa-paper-plane" />
                   Send
                 </button>
-              </>
+              </div>
+            ) : (
+              /* Regular photo view - just back button */
+              <div className="flex items-center justify-center">
+                <button 
+                  className="px-4 py-2 border border-white/30 text-white rounded-lg hover:border-white/50 hover:bg-white/5 transition-colors text-sm flex items-center gap-2"
+                  onClick={() => setPreviewImage(null)}
+                >
+                  <i className="fa-solid fa-arrow-left text-sm" />
+                  Back to Chat
+                </button>
+              </div>
             )}
           </div>
         </div>
