@@ -1778,7 +1778,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       {/* Composer card - sits above the safe area */}
       <div
         ref={composerCardRef}
-        className="relative max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3"
+        className="relative max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3"
         style={{
           background: '#0a0a0c',
           marginBottom: 0,
@@ -1864,7 +1864,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             </div>
           )}
 
-          <div className="flex items-end gap-2.5 sm:gap-3.5">
+          <div className="flex items-end gap-2 sm:gap-2.5">
             {/* Attachment button */}
             <button 
               className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 transition-all cursor-pointer select-none"
