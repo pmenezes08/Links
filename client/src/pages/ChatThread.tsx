@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
@@ -214,17 +223,22 @@ export default function ChatThread(){
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const keyboardLift = Math.max(0, keyboardOffset - safeBottomPx)
   const showKeyboard = keyboardLift > 0
-  const listPaddingBottom = showKeyboard
-    ? `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight).toFixed(2)}px)`
-    : `calc(${safeBottom} + 0px)`
-  const listScrollPaddingBottom = showKeyboard
-    ? `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + 16).toFixed(2)}px)`
-    : `calc(${safeBottom} + ${(effectiveComposerHeight + 16).toFixed(2)}px)`
+  const composerGapPx = 18
+  const listPaddingBottom = `calc(${safeBottom} + ${composerGapPx}px)`
+  const listScrollPaddingBottom = `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
   const composerPaddingBottom = showKeyboard ? '0px' : `calc(${safeBottom} + 12px)`
   const scrollButtonBottom =
     showKeyboard
       ? `calc(${keyboardLift.toFixed(2)}px + ${effectiveComposerHeight.toFixed(2)}px + 16px)`
-      : listScrollPaddingBottom
+      : `calc(${safeBottom} + ${(effectiveComposerHeight + composerGapPx + 16).toFixed(2)}px)`
+  const handleContentPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (!showKeyboard) return
+      if (composerRef.current && composerRef.current.contains(event.target as Node)) return
+      textareaRef.current?.blur()
+    },
+    [showKeyboard]
+  )
   
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1374,6 +1388,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           paddingBottom: listPaddingBottom,
           scrollPaddingBottom: listScrollPaddingBottom,
         } as CSSProperties}
+        onPointerDown={handleContentPointerDown}
         onScroll={(e)=> {
           const el = e.currentTarget
           const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
