@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
+import type { KeyboardInfo } from '@capacitor/keyboard'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -76,6 +78,14 @@ function AppRoutes(){
     [],
   )
   const encryptionUserRef = useRef<string | null>(null)
+  const applyKeyboardOffset = useCallback((nextOffset: number) => {
+    setKeyboardOffset(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
+    document.documentElement.style.setProperty('--keyboard-offset', `${nextOffset}px`)
+    if (document.body) {
+      document.body.dataset.keyboard = nextOffset > 0 ? 'open' : 'closed'
+    }
+  }, [])
+
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
     const viewport = window.visualViewport
@@ -85,11 +95,7 @@ function AppRoutes(){
 
     const updateOffset = () => {
       const nextOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
-      setKeyboardOffset(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
-      document.documentElement.style.setProperty('--keyboard-offset', `${nextOffset}px`)
-      if (document.body) {
-        document.body.dataset.keyboard = nextOffset > 0 ? 'open' : 'closed'
-      }
+      applyKeyboardOffset(nextOffset)
     }
 
     const handleChange = () => {
@@ -110,12 +116,39 @@ function AppRoutes(){
         delete document.body.dataset.keyboard
       }
     }
-  }, [])
+  }, [applyKeyboardOffset])
+
   useEffect(() => {
     if (Capacitor.getPlatform() === 'web') return
+
     Keyboard.setResizeMode({ mode: KeyboardResize.None }).catch(() => {})
     Keyboard.setScroll({ isDisabled: true }).catch(() => {})
-  }, [])
+
+    let showSub: PluginListenerHandle | undefined
+    let hideSub: PluginListenerHandle | undefined
+
+    const handleShow = (info: KeyboardInfo) => {
+      const height = info?.keyboardHeight ?? 0
+      applyKeyboardOffset(height)
+    }
+
+    const handleHide = () => {
+      applyKeyboardOffset(0)
+    }
+
+    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
+      showSub = handle
+    })
+    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
+      hideSub = handle
+    })
+
+    return () => {
+      showSub?.remove()
+      hideSub?.remove()
+      applyKeyboardOffset(0)
+    }
+  }, [applyKeyboardOffset])
   const resetScrollPosition = useCallback(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
 
