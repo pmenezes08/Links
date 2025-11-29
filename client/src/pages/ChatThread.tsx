@@ -1361,11 +1361,20 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         overflow: 'hidden',
       }}
     >
-      {/* Header - fixed at top with safe area */}
+      {/* Header - fixed at top with safe area, full viewport width */}
       <div 
-        className="flex-shrink-0 border-b border-[#262f30] bg-black w-full"
+        className="flex-shrink-0 border-b border-[#262f30]"
         style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          width: '100vw',
+          zIndex: 1001,
           paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingLeft: 'env(safe-area-inset-left, 0px)',
+          paddingRight: 'env(safe-area-inset-right, 0px)',
+          background: '#000',
         }}
       >
         <div className="h-12 flex items-center gap-2 px-3">
@@ -1424,8 +1433,13 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         </div>
       </div>
 
-      {/* Content area */}
-      <div className="flex-1 flex flex-col min-h-0 px-0">
+      {/* Content area - with top padding for fixed header */}
+      <div 
+        className="flex-1 flex flex-col min-h-0 px-0"
+        style={{
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 48px)',
+        }}
+      >
         <div className="mx-auto flex max-w-3xl w-full flex-1 flex-col min-h-0">
       
       {/* Floating date indicator */}
@@ -1433,7 +1447,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         <div 
           style={{ 
             position: 'fixed',
-            top: 'calc(env(safe-area-inset-top, 0px) + 56px + 12px)',
+            top: 'calc(env(safe-area-inset-top, 0px) + 48px + 12px)',
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 999,
@@ -1685,22 +1699,32 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       </button>
     )}
 
-    {/* ====== COMPOSER - FIXED AT BOTTOM (Capacitor native resize handles keyboard) ====== */}
+    {/* ====== COMPOSER - FIXED AT BOTTOM, full viewport width ====== */}
     <div 
       ref={composerRef}
-      className="fixed left-0 right-0 px-3 sm:px-4"
       style={{
-        bottom: `${keyboardLift}px`,
+        position: 'fixed',
+        left: 0,
+        right: 0,
+        bottom: showKeyboard ? `${keyboardLift}px` : 0,
+        width: '100vw',
         zIndex: 1000,
-        paddingBottom: showKeyboard ? '12px' : `calc(env(safe-area-inset-bottom, 0px) + 12px)`,
         paddingTop: '12px',
+        paddingBottom: showKeyboard ? '12px' : 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+        paddingLeft: 'calc(env(safe-area-inset-left, 0px) + 12px)',
+        paddingRight: 'calc(env(safe-area-inset-right, 0px) + 12px)',
         transition: 'bottom 140ms ease-out',
-        background: 'transparent',
+        background: '#000',
       }}
     >
       <div
         ref={composerCardRef}
-        className="max-w-3xl mx-auto w-full liquid-glass-surface bg-[#040406]/95 border border-white/12 rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3 shadow-[0_30px_70px_rgba(0,0,0,0.6)] backdrop-blur-2xl"
+        className="max-w-3xl mx-auto w-full border border-white/12 rounded-t-[20px] rounded-b-none px-3.5 sm:px-4.5 py-2.5 sm:py-3"
+        style={{
+          background: 'rgba(18, 18, 22, 0.95)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+        }}
       >
           {replyTo && (
             <div className="mb-2 px-3 py-2 liquid-glass-chip rounded-xl border border-white/10">
