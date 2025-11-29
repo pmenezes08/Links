@@ -183,11 +183,12 @@ export default function ChatThread(){
   }, [])
   
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
-  const listBottomPadding =
+  const listBottomPadding = `calc(${effectiveComposerHeight}px + ${safeBottom})`
+  const composerPaddingBottom = keyboardOffset > 0 ? '0px' : `calc(${safeBottom} + 12px)`
+  const scrollButtonBottom =
     keyboardOffset > 0
-      ? `calc(${effectiveComposerHeight}px + ${keyboardOffset}px + ${safeBottom})`
-      : `calc(${effectiveComposerHeight}px + ${safeBottom})`
-  const composerPaddingBottom = keyboardOffset > 0 ? safeBottom : `calc(${safeBottom} + 12px)`
+      ? `calc(${keyboardOffset}px + ${effectiveComposerHeight}px + 12px)`
+      : listBottomPadding
   
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1542,7 +1543,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           <button
             className="fixed z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
             style={{ 
-              bottom: listBottomPadding,
+                  bottom: scrollButtonBottom,
               right: '22px'
             }}
             onClick={() => { scrollToBottom(); setShowScrollDown(false) }}
