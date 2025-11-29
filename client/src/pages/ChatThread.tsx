@@ -1677,11 +1677,12 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         paddingBottom: composerPaddingBottom,
         transform: keyboardLift ? `translateY(-${keyboardLift.toFixed(2)}px)` : undefined,
         transition: 'transform 140ms ease-out',
+        background: 'linear-gradient(180deg, rgba(4,4,6,0) 0%, rgba(4,4,6,0.8) 55%, #000 100%)',
       }}
     >
       <div
         ref={composerCardRef}
-        className="max-w-3xl mx-auto w-full liquid-glass-surface border border-white/12 rounded-[26px] px-4 sm:px-5 py-3 sm:py-3.5 shadow-[0_30px_70px_rgba(0,0,0,0.65)] backdrop-blur-2xl"
+        className="max-w-3xl mx-auto w-full liquid-glass-surface border border-white/12 rounded-[18px] px-4 sm:px-5 py-3 sm:py-3.5 shadow-[0_30px_70px_rgba(0,0,0,0.65)] backdrop-blur-2xl"
       >
           {replyTo && (
             <div className="mb-2 px-3 py-2 liquid-glass-chip rounded-xl border border-white/10">
@@ -1705,7 +1706,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           <div className="relative flex items-end gap-3 sm:gap-4">
             {/* Attachment button */}
             <button 
-              className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-2xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-colors"
+              className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-[16px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-colors"
               onClick={() => setShowAttachMenu(!showAttachMenu)}
               style={{
                 touchAction: 'manipulation',
@@ -1801,7 +1802,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
 
           {/* Message input container */}
           <div 
-            className="flex-1 flex items-center rounded-2xl bg-white/8 overflow-hidden relative border border-white/8"
+            className="flex-1 flex items-center rounded-xl bg-white/8 overflow-hidden relative border border-white/8"
             style={{
               touchAction: 'manipulation',
               WebkitTapHighlightColor: 'transparent'
@@ -1896,46 +1897,28 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                   <i className="fa-solid fa-stop text-sm" />
                 </button>
               ) : (
-                <>
-                  {/* Send button */}
-                  <button
-                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      sending 
-                        ? 'bg-gray-600 text-gray-300' 
-                        : draft.trim()
-                          ? 'bg-[#4db6ac] text-black'
-                          : 'bg-white/20 text-white/70'
-                    }`}
-                    onClick={draft.trim() ? send : undefined}
-                    disabled={sending || !draft.trim()}
-                    aria-label="Send"
-                    style={{
-                      touchAction: 'manipulation',
-                      WebkitTapHighlightColor: 'transparent'
-                    }}
-                  >
-                    {sending ? (
-                      <i className="fa-solid fa-spinner fa-spin text-xs" />
-                    ) : (
-                      <i className="fa-solid fa-paper-plane text-xs" />
-                    )}
-                  </button>
-                  
-                  {/* Mic icon */}
-                  {MIC_ENABLED && (
-                  <button
-                    className="w-9 h-9 flex items-center justify-center text-white/70"
-                    onClick={checkMicrophonePermission}
-                    aria-label="Start voice message"
-                    style={{
-                      touchAction: 'manipulation',
-                      WebkitTapHighlightColor: 'transparent'
-                    }}
-                  >
-                    <i className="fa-solid fa-microphone text-lg" />
-                  </button>
+                <button
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    sending 
+                      ? 'bg-gray-600 text-gray-300' 
+                      : draft.trim()
+                        ? 'bg-[#4db6ac] text-black'
+                        : 'bg-white/20 text-white/70'
+                  }`}
+                  onClick={draft.trim() ? send : undefined}
+                  disabled={sending || !draft.trim()}
+                  aria-label="Send"
+                  style={{
+                    touchAction: 'manipulation',
+                    WebkitTapHighlightColor: 'transparent'
+                  }}
+                >
+                  {sending ? (
+                    <i className="fa-solid fa-spinner fa-spin text-xs" />
+                  ) : (
+                    <i className="fa-solid fa-paper-plane text-xs" />
                   )}
-                </>
+                </button>
               )}
               {MIC_ENABLED && recording && (
                 <div className="hidden sm:flex items-center gap-2 ml-2">
@@ -1950,6 +1933,19 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
               )}
             </div>
           </div>
+          {MIC_ENABLED && !recording && (
+            <button
+              className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-[16px] bg-white/12 hover:bg-white/22 active:bg-white/28 text-white/80 transition-colors"
+              onClick={checkMicrophonePermission}
+              aria-label="Start voice message"
+              style={{
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent'
+              }}
+            >
+              <i className="fa-solid fa-microphone text-lg" />
+            </button>
+          )}
         </div>
       </div>
     </div>
