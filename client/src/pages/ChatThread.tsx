@@ -157,6 +157,7 @@ export default function ChatThread(){
   const conversationMinHeight = `calc(100vh - ${headerOffsetVar})`
   const defaultComposerPadding = 120
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
+  const [safeBottomPx, setSafeBottomPx] = useState(0)
   
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
@@ -182,14 +183,47 @@ export default function ChatThread(){
     }
   }, [])
   
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    const probe = document.createElement('div')
+    probe.style.position = 'fixed'
+    probe.style.bottom = '0'
+    probe.style.left = '0'
+    probe.style.width = '0'
+    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
+    probe.style.pointerEvents = 'none'
+    probe.style.opacity = '0'
+    probe.style.zIndex = '-1'
+    document.body.appendChild(probe)
+
+    const updateSafeBottom = () => {
+      const rect = probe.getBoundingClientRect()
+      const next = rect.height || 0
+      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
+    }
+
+    updateSafeBottom()
+    window.addEventListener('resize', updateSafeBottom)
+
+    return () => {
+      window.removeEventListener('resize', updateSafeBottom)
+      probe.remove()
+    }
+  }, [])
+
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
-  const visibleGap = Math.max(effectiveComposerHeight - keyboardOffset, 0)
-  const listPaddingBottom = `calc(${safeBottom} + ${visibleGap}px)`
-  const listScrollPaddingBottom = `calc(${safeBottom} + ${effectiveComposerHeight}px)`
-  const composerPaddingBottom = keyboardOffset > 0 ? '0px' : `calc(${safeBottom} + 12px)`
+  const keyboardLift = Math.max(0, keyboardOffset - safeBottomPx)
+  const restingListPaddingPx = 6
+  const overlapPaddingPx = Math.max(effectiveComposerHeight - keyboardLift, 0)
+  const listPaddingBottom =
+    keyboardLift > 0
+      ? `calc(${safeBottom} + ${overlapPaddingPx.toFixed(2)}px)`
+      : `calc(${safeBottom} + ${restingListPaddingPx}px)`
+  const listScrollPaddingBottom = `calc(${safeBottom} + ${(effectiveComposerHeight + 24).toFixed(2)}px)`
+  const composerPaddingBottom = keyboardLift > 0 ? '0px' : `calc(${safeBottom} + 12px)`
   const scrollButtonBottom =
-    keyboardOffset > 0
-      ? `calc(${keyboardOffset}px + ${effectiveComposerHeight}px + 16px)`
+    keyboardLift > 0
+      ? `calc(${keyboardLift.toFixed(2)}px + ${effectiveComposerHeight.toFixed(2)}px + 16px)`
       : listScrollPaddingBottom
   
   useEffect(() => {
@@ -1566,7 +1600,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         bottom: 0,
         zIndex: 1000,
         paddingBottom: composerPaddingBottom,
-        transform: keyboardOffset ? `translateY(-${keyboardOffset}px)` : undefined,
+        transform: keyboardLift ? `translateY(-${keyboardLift.toFixed(2)}px)` : undefined,
         transition: 'transform 140ms ease-out',
       }}
     >
