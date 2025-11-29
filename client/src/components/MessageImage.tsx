@@ -80,7 +80,8 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
         loading="lazy"
         style={{ 
           display: error ? 'none' : 'block',
-          transition: 'opacity 0.5s ease-in-out, transform 0.5s ease-in-out'
+          transition: 'opacity 0.5s ease-in-out, transform 0.5s ease-in-out',
+          imageOrientation: 'from-image' as any,
         }}
       />
 

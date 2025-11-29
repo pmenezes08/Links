@@ -37,6 +37,9 @@ export default function CreatePost(){
   const composerCardRef = useRef<HTMLDivElement | null>(null)
   const keyboardOffsetRef = useRef(0)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [safeBottomPx, setSafeBottomPx] = useState(0)
+  const viewportBaseRef = useRef<number | null>(null)
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
 
   const videoPreviewUrl = useMemo(() => {
     if (!videoFile) return null
@@ -71,13 +74,50 @@ export default function CreatePost(){
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    const probe = document.createElement('div')
+    probe.style.position = 'fixed'
+    probe.style.bottom = '0'
+    probe.style.left = '0'
+    probe.style.width = '0'
+    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
+    probe.style.pointerEvents = 'none'
+    probe.style.opacity = '0'
+    probe.style.zIndex = '-1'
+    document.body.appendChild(probe)
+
+    const updateSafeBottom = () => {
+      const rect = probe.getBoundingClientRect()
+      const next = rect.height || 0
+      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
+    }
+
+    updateSafeBottom()
+    window.addEventListener('resize', updateSafeBottom)
+
+    return () => {
+      window.removeEventListener('resize', updateSafeBottom)
+      probe.remove()
+    }
+  }, [])
+
+  useEffect(() => {
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
     if (!viewport) return
 
     let rafId: number | null = null
     const updateOffset = () => {
-      const nextOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      const currentHeight = viewport.height
+      setViewportHeight(prev => (Math.abs((prev ?? currentHeight) - currentHeight) < 1 ? prev : currentHeight))
+      if (
+        viewportBaseRef.current === null ||
+        currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
+      ) {
+        viewportBaseRef.current = currentHeight
+      }
+      const baseHeight = viewportBaseRef.current ?? currentHeight
+      const nextOffset = Math.max(0, baseHeight - currentHeight - viewport.offsetTop)
       if (Math.abs(keyboardOffsetRef.current - nextOffset) < 1) return
       keyboardOffsetRef.current = nextOffset
       setKeyboardOffset(nextOffset)
@@ -89,7 +129,7 @@ export default function CreatePost(){
 
     viewport.addEventListener('resize', handleChange)
     viewport.addEventListener('scroll', handleChange)
-    updateOffset()
+    handleChange()
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId)
@@ -196,10 +236,16 @@ export default function CreatePost(){
   }
 
   const effectiveComposerHeight = Math.max(composerHeight, composerBaseline)
-  const contentPaddingBottom = `calc(${effectiveComposerHeight}px + ${keyboardOffset}px + ${safeBottom} + 2rem)`
+  const keyboardLift = Math.max(0, keyboardOffset - safeBottomPx)
+  const showKeyboard = keyboardLift > 2
+  const conversationDynamicHeight = viewportHeight
+    ? `calc(${viewportHeight.toFixed(2)}px - ${headerOffsetVar})`
+    : conversationMinHeight
+  const contentPaddingBottom = `calc(${effectiveComposerHeight}px + ${keyboardLift}px + ${safeBottom} + 2rem)`
   const contentPaddingTop = 'calc(var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))) + var(--app-content-gap, 8px))'
 
   return (
+    <>
     <div className="glass-page text-white">
       {/* Praise notification */}
       {showPraise && (
@@ -219,7 +265,7 @@ export default function CreatePost(){
       <div className="app-content px-0" style={{ paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom }}>
         <div
           className="max-w-2xl mx-auto flex flex-col gap-4"
-          style={{ minHeight: conversationMinHeight }}
+          style={{ minHeight: conversationDynamicHeight }}
           data-scroll-region-child="true"
         >
         <MentionTextarea
@@ -358,19 +404,32 @@ export default function CreatePost(){
           </div>
         </div>
       )}
+    </div>
+    
+    {/* Floating composer */}
+    <div 
+      ref={composerRef}
+      className="fixed left-0 right-0"
+      style={{
+        bottom: showKeyboard ? `${keyboardLift}px` : 0,
+        zIndex: 1000,
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        paddingTop: showKeyboard ? '4px' : '8px',
+        paddingBottom: showKeyboard ? '4px' : `calc(env(safe-area-inset-bottom, 0px) + 6px)`,
+        paddingLeft: 'env(safe-area-inset-left, 0px)',
+        paddingRight: 'env(safe-area-inset-right, 0px)',
+        background: 'linear-gradient(180deg, rgba(3,3,4,0) 0%, rgba(3,3,4,0.65) 30%, rgba(3,3,4,0.9) 65%, #000 90%)',
+        transition: 'transform 140ms ease-out',
+      }}
+    >
       <div
-        ref={composerRef}
-        className="fixed left-0 right-0 bottom-0 border-t border-white/10 bg-black/90 backdrop-blur z-[200] px-4"
-        style={{
-          paddingBottom: `calc(${safeBottom} + 12px)`,
-          transform: keyboardOffset ? `translateY(-${keyboardOffset}px)` : undefined,
-          transition: 'transform 140ms ease-out',
-        }}
+        ref={composerCardRef}
+        className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3"
+        style={{ background: '#0a0a0c' }}
       >
-        <div
-          ref={composerCardRef}
-          className="max-w-2xl mx-auto flex flex-wrap items-center gap-3 py-3"
-        >
+        <div className="flex flex-wrap items-center gap-3">
           <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">
             <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
             <input
@@ -422,33 +481,42 @@ export default function CreatePost(){
               <i className="fa-solid fa-trash" />
             </button>
           )}
-          <div className="flex-1" />
+          <div className="flex-1 min-w-[120px]" />
           <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !gifFile && !preview && !hasVideoAttachment)}>
             {submitting ? 'Posting...' : 'Post'}
           </button>
         </div>
       </div>
-      <GifPicker
-        isOpen={gifPickerOpen}
-        onClose={()=> setGifPickerOpen(false)}
-        onSelect={async (gif) => {
-          try {
-            const converted = await gifSelectionToFile(gif, 'post-gif')
-            setSelectedGif(gif)
-            setGifFile(converted)
-            setFile(null)
-            setVideoFile(null)
-            if (fileInputRef.current) fileInputRef.current.value = ''
-            if (videoInputRef.current) videoInputRef.current.value = ''
-          } catch (err) {
-            console.error('Failed to prepare GIF for post', err)
-            alert('Unable to attach GIF. Please try again.')
-          } finally {
-            setGifPickerOpen(false)
-          }
+      <div 
+        style={{
+          height: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
+          background: '#000',
+          flexShrink: 0,
         }}
       />
     </div>
+
+    <GifPicker
+      isOpen={gifPickerOpen}
+      onClose={()=> setGifPickerOpen(false)}
+      onSelect={async (gif) => {
+        try {
+          const converted = await gifSelectionToFile(gif, 'post-gif')
+          setSelectedGif(gif)
+          setGifFile(converted)
+          setFile(null)
+          setVideoFile(null)
+          if (fileInputRef.current) fileInputRef.current.value = ''
+          if (videoInputRef.current) videoInputRef.current.value = ''
+        } catch (err) {
+          console.error('Failed to prepare GIF for post', err)
+          alert('Unable to attach GIF. Please try again.')
+        } finally {
+          setGifPickerOpen(false)
+        }
+      }}
+    />
+    </>
   )
 }
 
