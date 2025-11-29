@@ -231,7 +231,7 @@ export default function ChatThread(){
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
-  const composerGapPx = 40  // Increased gap between messages and composer
+  const composerGapPx = 20  // Minimal gap between messages and composer
   // Padding to ensure messages don't hide behind the composer
   const listPaddingBottom = showKeyboard
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
@@ -239,8 +239,8 @@ export default function ChatThread(){
   const listScrollPaddingBottom = `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
   // Scroll button positioned above the composer
   const scrollButtonBottom = showKeyboard
-    ? `${keyboardLift + effectiveComposerHeight + 16}px`
-    : `calc(${safeBottom} + ${(effectiveComposerHeight + composerGapPx + 16).toFixed(2)}px)`
+    ? `${keyboardLift + effectiveComposerHeight + 12}px`
+    : `calc(${safeBottom} + ${(effectiveComposerHeight + composerGapPx + 12).toFixed(2)}px)`
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!showKeyboard) {
@@ -1699,7 +1699,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       </button>
     )}
 
-    {/* ====== COMPOSER - FIXED AT BOTTOM, full viewport width ====== */}
+    {/* ====== COMPOSER - FIXED AT BOTTOM, hugs screen edge ====== */}
     <div 
       ref={composerRef}
       style={{
@@ -1709,21 +1709,23 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         bottom: showKeyboard ? `${keyboardLift}px` : 0,
         width: '100vw',
         zIndex: 1000,
-        paddingTop: '12px',
-        paddingBottom: showKeyboard ? '12px' : 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
-        paddingLeft: 'calc(env(safe-area-inset-left, 0px) + 12px)',
-        paddingRight: 'calc(env(safe-area-inset-right, 0px) + 12px)',
-        transition: 'bottom 140ms ease-out',
+        paddingTop: '8px',
+        paddingBottom: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
+        paddingLeft: 'env(safe-area-inset-left, 0px)',
+        paddingRight: 'env(safe-area-inset-right, 0px)',
         background: '#000',
       }}
     >
       <div
         ref={composerCardRef}
-        className="max-w-3xl mx-auto w-full border border-white/12 rounded-t-[20px] rounded-b-none px-3.5 sm:px-4.5 py-2.5 sm:py-3"
+        className="max-w-3xl mx-auto w-full border border-white/12 rounded-[16px] mx-3 sm:mx-4"
         style={{
           background: 'rgba(18, 18, 22, 0.95)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
+          padding: '10px 14px',
+          marginLeft: '12px',
+          marginRight: '12px',
         }}
       >
           {replyTo && (
