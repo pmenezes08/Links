@@ -1043,6 +1043,32 @@ export default function ChatThread(){
 
 function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     setSending(true)
+    
+    // Create optimistic message with temp ID (same pattern as text messages)
+    const tempId = `temp_photo_${Date.now()}_${Math.random()}`
+    const now = new Date().toISOString().slice(0,19).replace('T',' ')
+    const previewUrl = URL.createObjectURL(file)
+    
+    const optimisticMessage: Message = {
+      id: tempId,
+      text: kind === 'gif' ? '🎞️ GIF' : '📷 Photo',
+      image_path: previewUrl, // Show local preview while uploading
+      sent: true,
+      time: now,
+      isOptimistic: true,
+      clientKey: tempId
+    }
+    
+    // Add optimistic message immediately
+    setMessages(prev => [...prev, optimisticMessage])
+    
+    // Register in recent optimistic to prevent poll from removing it
+    recentOptimisticRef.current.set(tempId, {
+      message: optimisticMessage,
+      timestamp: Date.now()
+    })
+    
+    setTimeout(scrollToBottom, 50)
 
     // Create FormData for photo upload
     const formData = new FormData()
@@ -1058,20 +1084,29 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     .then(r => r.json())
     .then(j => {
       if (j?.success) {
-        const now = new Date().toISOString().slice(0,19).replace('T',' ')
-
-        const photoMessage: Message = {
-          id: j.id || `photo_${Date.now()}`,
-          text: kind === 'gif' ? '🎞️ GIF' : '📷 Photo',
-          image_path: j.image_path,
-          sent: true,
-          time: now,
-          isOptimistic: false
+        // Set up bridge mapping for deduplication
+        if (j.id) {
+          idBridgeRef.current.tempToServer.set(tempId, j.id)
+          idBridgeRef.current.serverToTemp.set(j.id, tempId)
         }
-        setMessages(prev => [...prev, photoMessage])
-
-        // Force poll to get real message
-        lastFetchTime.current = 0
+        
+        // Update optimistic message with real server data
+        setMessages(prev => prev.map(m => {
+          if ((m.clientKey || m.id) === tempId) {
+            return {
+              ...m,
+              id: j.id || m.id,
+              image_path: j.image_path, // Use server path instead of blob
+              isOptimistic: false,
+              time: j.time || m.time,
+              clientKey: tempId // Keep stable key
+            }
+          }
+          return m
+        }))
+        
+        // Revoke the blob URL after server responds
+        setTimeout(() => URL.revokeObjectURL(previewUrl), 100)
 
         // Stop typing state
         fetch('/api/typing', {
@@ -1081,10 +1116,16 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           body: JSON.stringify({ peer: username, is_typing: false })
         }).catch(()=>{})
       } else {
+        // Remove optimistic message on failure
+        setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
+        URL.revokeObjectURL(previewUrl)
         alert('Failed to send photo: ' + (j.error || 'Unknown error'))
       }
     })
     .catch(() => {
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
+      URL.revokeObjectURL(previewUrl)
       alert('Error sending photo. Please try again.')
     })
     .finally(() => {
@@ -1529,12 +1570,16 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
                       } as any}
                     >
                       {m.replySnippet ? (
-                        <div className="mb-1.5 px-2 py-1.25 rounded-xl bg-white/10 border border-white/15">
-                          <div className="text-[11px] text-[#7fe7df] font-medium mb-0.5 uppercase tracking-wide">
-                            {m.sent ? 'You' : (otherProfile?.display_name || username || 'User')}
-                          </div>
-                          <div className="text-[12px] text-white/80 line-clamp-2">
-                            {m.replySnippet}
+                        <div className="mb-2 flex items-stretch gap-0 bg-black/20 rounded-lg overflow-hidden">
+                          {/* WhatsApp-style left accent bar */}
+                          <div className={`w-1 flex-shrink-0 ${m.sent ? 'bg-white/40' : 'bg-[#4db6ac]'}`} />
+                          <div className="flex-1 px-2.5 py-1.5 min-w-0">
+                            <div className={`text-[11px] font-medium truncate ${m.sent ? 'text-white/70' : 'text-[#4db6ac]'}`}>
+                              {m.sent ? (otherProfile?.display_name || username || 'User') : 'You'}
+                            </div>
+                            <div className="text-[12px] text-white/60 line-clamp-1 mt-0.5">
+                              {m.replySnippet}
+                            </div>
                           </div>
                         </div>
                       ) : null}
@@ -1756,21 +1801,23 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           )}
 
           {replyTo && (
-            <div className="mb-2 px-3 py-2 liquid-glass-chip rounded-xl border border-white/10">
-              <div className="flex items-center justify-between mb-1">
-                <div className="text-[11px] text-[#7fe7df] font-semibold uppercase tracking-wide">
-                  Replying to {replyTo.sender === 'You' ? 'yourself' : (otherProfile?.display_name || username || 'User')}
+            <div className="mb-2 flex items-stretch gap-0 bg-white/5 rounded-lg overflow-hidden">
+              {/* WhatsApp-style left accent bar */}
+              <div className="w-1 bg-[#4db6ac] flex-shrink-0" />
+              <div className="flex-1 px-3 py-2 min-w-0">
+                <div className="text-[12px] text-[#4db6ac] font-medium truncate">
+                  {replyTo.sender === 'You' ? 'You' : (otherProfile?.display_name || username || 'User')}
                 </div>
-                <button 
-                  className="text-white/50 hover:text-white/80 transition-colors p-1" 
-                  onClick={()=> setReplyTo(null)}
-                >
-                  <i className="fa-solid fa-xmark text-sm" />
-                </button>
+                <div className="text-[13px] text-white/70 line-clamp-1 mt-0.5">
+                  {replyTo.text.length > 80 ? replyTo.text.slice(0, 80) + '…' : replyTo.text}
+                </div>
               </div>
-              <div className="text-[13px] text-white/80 line-clamp-2">
-                {replyTo.text.length > 100 ? replyTo.text.slice(0, 100) + '…' : replyTo.text}
-              </div>
+              <button 
+                className="px-3 flex items-center justify-center text-white/40 hover:text-white/70 transition-colors flex-shrink-0" 
+                onClick={()=> setReplyTo(null)}
+              >
+                <i className="fa-solid fa-xmark text-sm" />
+              </button>
             </div>
           )}
 
