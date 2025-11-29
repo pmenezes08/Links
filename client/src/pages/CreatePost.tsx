@@ -467,60 +467,61 @@ export default function CreatePost(){
         className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-3.5 sm:px-4.5 py-2.5 sm:py-3"
         style={{ background: '#0a0a0c' }}
       >
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">
-            <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={(e)=> {
-                const next = e.target.files?.[0] || null
-                setFile(next)
-                setSelectedGif(null)
-                setGifFile(null)
-                setVideoFile(null)
-                if (videoInputRef.current) videoInputRef.current.value = ''
-              }}
-              style={{ display: 'none' }}
-            />
-          </label>
-          {!isGroupPost && (
-            <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add video">
-              <i className="fa-solid fa-video" style={{ color: '#4db6ac' }} />
+        <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 flex-1 min-w-0">
+            <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">
+              <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
               <input
-                ref={videoInputRef}
+                ref={fileInputRef}
                 type="file"
-                accept="video/mp4,video/webm,video/quicktime"
+                accept="image/*"
                 onChange={(e)=> {
                   const next = e.target.files?.[0] || null
-                  setVideoFile(next)
-                  setFile(null)
-                  if (fileInputRef.current) fileInputRef.current.value = ''
+                  setFile(next)
                   setSelectedGif(null)
                   setGifFile(null)
+                  setVideoFile(null)
+                  if (videoInputRef.current) videoInputRef.current.value = ''
                 }}
                 style={{ display: 'none' }}
               />
             </label>
-          )}
-          <button
-            className="px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5"
-            aria-label="Add GIF"
-            onClick={()=> setGifPickerOpen(true)}
-          >
-            <i className="fa-solid fa-images" />
-          </button>
-          <button className={`px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5 ${recording ? 'brightness-125' : ''}`} aria-label={recording ? "Stop recording" : "Record audio"} onClick={()=> recording ? stop() : start()}>
-            <i className={`fa-solid ${recording ? 'fa-stop' : 'fa-microphone'}`} />
-          </button>
-          {preview && (
-            <button className="px-3 py-2 rounded-full text-white/70 hover:bg-white/5" onClick={clearPreview} aria-label="Discard audio">
-              <i className="fa-solid fa-trash" />
+            {!isGroupPost && (
+              <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add video">
+                <i className="fa-solid fa-video" style={{ color: '#4db6ac' }} />
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime"
+                  onChange={(e)=> {
+                    const next = e.target.files?.[0] || null
+                    setVideoFile(next)
+                    setFile(null)
+                    if (fileInputRef.current) fileInputRef.current.value = ''
+                    setSelectedGif(null)
+                    setGifFile(null)
+                  }}
+                  style={{ display: 'none' }}
+                />
+              </label>
+            )}
+            <button
+              className="px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5"
+              aria-label="Add GIF"
+              onClick={()=> setGifPickerOpen(true)}
+            >
+              <i className="fa-solid fa-images" />
             </button>
-          )}
-          <div className="flex-1 min-w-[120px]" />
-          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !gifFile && !preview && !hasVideoAttachment)}>
+            <button className={`px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5 ${recording ? 'brightness-125' : ''}`} aria-label={recording ? "Stop recording" : "Record audio"} onClick={()=> recording ? stop() : start()}>
+              <i className={`fa-solid ${recording ? 'fa-stop' : 'fa-microphone'}`} />
+            </button>
+            {preview && (
+              <button className="px-3 py-2 rounded-full text-white/70 hover:bg-white/5" onClick={clearPreview} aria-label="Discard audio">
+                <i className="fa-solid fa-trash" />
+              </button>
+            )}
+          </div>
+          <button className={`px-4 py-2 rounded-full shrink-0 ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !gifFile && !preview && !hasVideoAttachment)}>
             {submitting ? 'Posting...' : 'Post'}
           </button>
         </div>
