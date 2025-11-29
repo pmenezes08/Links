@@ -47,7 +47,8 @@ export default function ChatThread(){
   const { username } = useParams()
   const navigate = useNavigate()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
-  useEffect(() => { setTitle(username ? `Chat: ${username}` : 'Chat') }, [setTitle, username])
+  // Hide the main header - we use our own header in this page
+  useEffect(() => { setTitle('') }, [setTitle])
 
   // Detect mobile device
   useEffect(() => {
@@ -161,7 +162,6 @@ export default function ChatThread(){
   const MIC_ENABLED = true
   
   // Layout helpers
-  const headerOffsetVar = 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))'
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const defaultComposerPadding = 120
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
@@ -237,7 +237,6 @@ export default function ChatThread(){
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
     : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
   const listScrollPaddingBottom = `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
-  const composerPaddingBottom = showKeyboard ? '0px' : `calc(${safeBottom} + 4px)`  // Reduced bottom padding
   // Scroll button positioned above the composer
   const scrollButtonBottom = showKeyboard
     ? `${keyboardLift + effectiveComposerHeight + 16}px`
@@ -1355,18 +1354,21 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
         position: 'fixed',
         left: 0,
         right: 0,
-        top: headerOffsetVar,
+        top: 0,
         bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
       }}
     >
-      <div className="flex-1 flex flex-col min-h-0 px-0">
-          <div
-            className="mx-auto flex max-w-3xl w-full flex-1 flex-col gap-3 min-h-0"
-          >
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/5 px-3 py-3 mx-2 mt-2 shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur-md">
+      {/* Header - fixed at top with safe area */}
+      <div 
+        className="flex-shrink-0 border-b border-[#262f30] bg-black"
+        style={{
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+        }}
+      >
+        <div className="h-14 flex items-center gap-3 px-3">
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             onClick={()=> navigate('/user_chat')} 
@@ -1403,7 +1405,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           {headerMenuOpen && (
             <div
               ref={headerMenuRef}
-              className="absolute right-0 top-full mt-2 z-[10020] w-48"
+              className="absolute right-3 top-full mt-2 z-[10020] w-48"
               onMouseDown={(event)=> event.stopPropagation()}
               onClick={(event)=> event.stopPropagation()}
             >
@@ -1420,13 +1422,18 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Content area */}
+      <div className="flex-1 flex flex-col min-h-0 px-0">
+        <div className="mx-auto flex max-w-3xl w-full flex-1 flex-col min-h-0">
       
       {/* Floating date indicator */}
       {currentDateLabel && showDateFloat && (
         <div 
           style={{ 
             position: 'fixed',
-            top: `calc(${headerOffsetVar} + 12px)`,
+            top: 'calc(env(safe-area-inset-top, 0px) + 56px + 12px)',
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 999,
@@ -1685,9 +1692,10 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
       style={{
         bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0,
         zIndex: 1000,
-        paddingBottom: composerPaddingBottom,
+        paddingBottom: showKeyboard ? '8px' : `calc(env(safe-area-inset-bottom, 0px) + 8px)`,
+        paddingTop: '8px',
         transition: 'bottom 140ms ease-out',
-        background: 'linear-gradient(180deg, rgba(4,4,6,0) 0%, rgba(4,4,6,0.8) 55%, #000 100%)',
+        background: '#000',
       }}
     >
       <div
