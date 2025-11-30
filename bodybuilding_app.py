@@ -9094,10 +9094,22 @@ def edit_message_api():
             if (_dt.now() - sent_dt).total_seconds() > 5*60:
                 return jsonify({'success': False, 'error': 'Edit window expired'}), 400
             # Update only if sender is current user
-            c.execute(
-                "UPDATE messages SET message = ?, edited_at = ? WHERE id = ? AND sender = ?",
-                (new_text, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), message_id, username)
-            )
+            # Clear encryption fields since we're storing plain text now
+            # (Re-encrypting would require access to both users' keys which we don't have here)
+            try:
+                c.execute(
+                    """UPDATE messages 
+                       SET message = ?, edited_at = ?, is_encrypted = 0, 
+                           encrypted_body = NULL, encrypted_body_for_sender = NULL 
+                       WHERE id = ? AND sender = ?""",
+                    (new_text, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), message_id, username)
+                )
+            except Exception:
+                # Fallback if encryption columns don't exist
+                c.execute(
+                    "UPDATE messages SET message = ?, edited_at = ? WHERE id = ? AND sender = ?",
+                    (new_text, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), message_id, username)
+                )
             if c.rowcount == 0:
                 return jsonify({'success': False, 'error': 'Not found or not permitted'}), 403
             conn.commit()

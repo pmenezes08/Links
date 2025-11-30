@@ -445,7 +445,18 @@ export default function ChatThread(){
     if (!newBody) { alert('Message cannot be empty'); return }
     const prev = messages
     setEditingSaving(true)
-    setMessages(list => list.map(m => m.id===editingId ? ({ ...m, text: newBody, edited_at: new Date().toISOString() }) : m))
+    // Optimistically update - clear encryption flags since server will store as plain text
+    setMessages(list => list.map(m => m.id===editingId ? ({ 
+      ...m, 
+      text: newBody, 
+      edited_at: new Date().toISOString(),
+      is_encrypted: false,
+      encrypted_body: undefined,
+      encrypted_body_for_sender: undefined,
+      decryption_error: false
+    }) : m))
+    // Clear decryption cache for this message so it doesn't use stale cached decryption
+    decryptionCache.current.delete(editingId)
     try{
       const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
       const j = await res.json().catch(()=>null)
