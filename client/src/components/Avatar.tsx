@@ -10,24 +10,28 @@ type AvatarProps = {
   onClick?: (event: MouseEvent<HTMLDivElement | HTMLAnchorElement>) => void
 }
 
-function ImageWithLoader({ src, alt, style, fallbacks = [] as string[] }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[] }) {
+function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[], initials?: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [currentSrc, setCurrentSrc] = useState<string>(src)
 
+  // If error, show initials fallback (same as when no image URL provided)
+  if (error) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <span className="text-white/80" style={{ fontSize: 'inherit' }}>
+          {initials || '?'}
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div className="relative w-full h-full">
       {/* Loading state */}
-      {loading && !error && (
+      {loading && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-4 h-4 border border-white/20 border-t-white/60 rounded-full animate-spin"></div>
-        </div>
-      )}
-
-      {/* Error state */}
-      {error && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <i className="fa-solid fa-user text-white/40 text-sm"></i>
         </div>
       )}
 
@@ -74,11 +78,12 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
   const interactive = linkToProfile || typeof onClick === 'function'
 
   function renderImage(){
+    const fontSize = Math.max(12, Math.floor(size * 0.45))
     return resolved ? (
       <ImageWithLoader
         src={resolved}
         alt=""
-        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', fontSize }}
         fallbacks={(() => {
           const p = (url || '').trim()
           const opts: string[] = []
@@ -92,9 +97,10 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
           }
           return opts
         })()}
+        initials={initials}
       />
     ) : (
-      <span style={{ fontSize: Math.max(12, Math.floor(size * 0.45)) }} className="text-white/80">
+      <span style={{ fontSize }} className="text-white/80">
         {initials}
       </span>
     )

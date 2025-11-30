@@ -25,6 +25,7 @@ export default function AdminProfile(){
   const [loading, setLoading] = useState(true)
   const [admin, setAdmin] = useState<AdminInfo | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
+  const [imageError, setImageError] = useState(false)
 
   useEffect(() => { setTitle('Admin Profile') }, [setTitle])
   useEffect(() => { load() }, [])
@@ -78,8 +79,13 @@ export default function AdminProfile(){
         {/* Header */}
         <div className="flex items-center gap-4 bg-white/5 border border-white/10 rounded-xl p-4">
           <div className="w-16 h-16 rounded-full overflow-hidden bg-white/10 flex items-center justify-center">
-            {admin.profile_picture ? (
-              <img src={admin.profile_picture.startsWith('http') ? admin.profile_picture : `/static/${admin.profile_picture}`} alt="avatar" className="w-full h-full object-cover" />
+            {admin.profile_picture && !imageError ? (
+              <img 
+                src={admin.profile_picture.startsWith('http') ? admin.profile_picture : `/static/${admin.profile_picture}`} 
+                alt="avatar" 
+                className="w-full h-full object-cover"
+                onError={() => setImageError(true)}
+              />
             ) : (
               <div className="text-2xl font-bold text-[#4db6ac]">{admin.username[0].toUpperCase()}</div>
             )}
