@@ -230,7 +230,12 @@ export default function CommunityFeed() {
   useEffect(() => {
     let isMounted = true
     setLoading(true)
-    fetch(`/api/community_feed/${community_id}`, { credentials: 'include' })
+    // Add cache-busting timestamp to prevent browser HTTP caching
+    const cacheBuster = Date.now()
+    fetch(`/api/community_feed/${community_id}?_t=${cacheBuster}`, { 
+      credentials: 'include',
+      cache: 'no-store'  // Prevent browser from caching this request
+    })
       .then(r => r.json().catch(() => ({ success: false, error: 'Invalid response' })))
       .then(json => { 
         if (!isMounted) return; 
