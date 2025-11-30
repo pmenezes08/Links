@@ -1719,7 +1719,8 @@ export default function ChatThread(){
                       ) : null}
                       
                       {/* Encryption indicator - BIGGER AND MORE VISIBLE */}
-                      {m.is_encrypted && !m.decryption_error && (
+                      {/* Use Boolean() to prevent rendering "0" when is_encrypted is 0 */}
+                      {Boolean(m.is_encrypted) && !m.decryption_error && (
                         <div className="flex items-center gap-1.5 mb-1.5 text-[11px] text-[#7fe7df]">
                           <i className="fa-solid fa-lock text-[10px]" />
                           <span className="font-medium">End-to-end encrypted</span>
