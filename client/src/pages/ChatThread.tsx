@@ -1900,7 +1900,7 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
           )}
 
         <div className="flex flex-wrap items-end gap-2 sm:gap-2.5 w-full">
-          <div className="flex items-center gap-2 flex-1 min-w-0 w-full basis-full sm:basis-auto">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0 w-full basis-full sm:basis-auto">
             {/* Attachment button */}
             <button 
               className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 transition-all cursor-pointer select-none"
