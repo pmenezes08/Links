@@ -1864,7 +1864,8 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             </div>
           )}
 
-          <div className="flex items-end gap-2 sm:gap-2.5">
+        <div className="flex flex-wrap items-end gap-2 sm:gap-2.5 w-full">
+          <div className="flex items-center gap-2 flex-1 min-w-0 w-full basis-full sm:basis-auto">
             {/* Attachment button */}
             <button 
               className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 transition-all cursor-pointer select-none"
@@ -1885,39 +1886,39 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
               }`} />
             </button>
 
-          {/* Hidden file inputs */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={handleFileChange}
-            className="hidden"
-          />
-          <input
-            ref={audioInputRef}
-            type="file"
-            accept="audio/*"
-            capture
-            onChange={handleAudioFileChange}
-            className="hidden"
-          />
+            {/* Hidden file inputs */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            <input
+              ref={audioInputRef}
+              type="file"
+              accept="audio/*"
+              capture
+              onChange={handleAudioFileChange}
+              className="hidden"
+            />
 
-          {/* Message input container */}
-          <div 
-            className="flex-1 flex items-center rounded-lg bg-white/8 overflow-hidden relative"
-            style={{
-              touchAction: 'manipulation',
-              WebkitTapHighlightColor: 'transparent'
-            }}
-          >
+            {/* Message input container */}
+            <div 
+              className="flex-1 flex items-center rounded-lg bg-white/8 overflow-hidden relative min-w-[150px]"
+              style={{
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent'
+              }}
+            >
             {/* Recording sound bar - replaces text input during recording */}
             {MIC_ENABLED && recording && (
               <div className="flex-1 flex items-center px-4 py-2.5 gap-3">
@@ -1985,64 +1986,66 @@ function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
             )}
           </div>
 
-          {/* Mic button - outside input container, side by side with send */}
-          {MIC_ENABLED && !recording && !draft.trim() && (
-            <button
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
-              onClick={checkMicrophonePermission}
-              onTouchEnd={(e) => {
-                e.preventDefault()
-                checkMicrophonePermission()
-              }}
-              aria-label="Start voice message"
-              style={{
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent',
-                WebkitUserSelect: 'none',
-                userSelect: 'none',
-              }}
-            >
-              <i className="fa-solid fa-microphone text-base pointer-events-none" />
-            </button>
-          )}
+          <div className="flex items-center gap-2 sm:gap-2.5 ml-auto w-full justify-end basis-full sm:w-auto sm:justify-start sm:basis-auto">
+            {/* Mic button - outside input container, side by side with send */}
+            {MIC_ENABLED && !recording && !draft.trim() && (
+              <button
+                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
+                onClick={checkMicrophonePermission}
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  checkMicrophonePermission()
+                }}
+                aria-label="Start voice message"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                  WebkitUserSelect: 'none',
+                  userSelect: 'none',
+                }}
+              >
+                <i className="fa-solid fa-microphone text-base pointer-events-none" />
+              </button>
+            )}
 
-          {/* Send/Stop button */}
-          {MIC_ENABLED && recording ? (
-            <button
-              className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white"
-              onClick={stopVoiceRecording}
-              aria-label="Stop recording"
-              style={{
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent'
-              }}
-            >
-              <i className="fa-solid fa-stop text-base" />
-            </button>
-          ) : (
-            <button
-              className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
-                sending 
-                  ? 'bg-gray-600 text-gray-300' 
-                  : draft.trim()
-                    ? 'bg-[#4db6ac] text-black'
-                    : 'bg-white/12 text-white/70'
-              }`}
-              onClick={draft.trim() ? send : undefined}
-              disabled={sending || !draft.trim()}
-              aria-label="Send"
-              style={{
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent'
-              }}
-            >
-              {sending ? (
-                <i className="fa-solid fa-spinner fa-spin text-base" />
-              ) : (
-                <i className="fa-solid fa-paper-plane text-base" />
-              )}
-            </button>
-          )}
+            {/* Send/Stop button */}
+            {MIC_ENABLED && recording ? (
+              <button
+                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white"
+                onClick={stopVoiceRecording}
+                aria-label="Stop recording"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent'
+                }}
+              >
+                <i className="fa-solid fa-stop text-base" />
+              </button>
+            ) : (
+              <button
+                className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
+                  sending 
+                    ? 'bg-gray-600 text-gray-300' 
+                    : draft.trim()
+                      ? 'bg-[#4db6ac] text-black'
+                      : 'bg-white/12 text-white/70'
+                }`}
+                onClick={draft.trim() ? send : undefined}
+                disabled={sending || !draft.trim()}
+                aria-label="Send"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent'
+                }}
+              >
+                {sending ? (
+                  <i className="fa-solid fa-spinner fa-spin text-base" />
+                ) : (
+                  <i className="fa-solid fa-paper-plane text-base" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
       {/* Safe area spacer - black area below composer */}
