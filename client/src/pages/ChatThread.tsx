@@ -84,6 +84,7 @@ export default function ChatThread(){
   const [otherProfile, setOtherProfile] = useState<{ display_name:string; profile_picture?:string|null }|null>(null)
   const [, setTyping] = useState(false) // keep setter for API calls; UI label removed
   const typingTimer = useRef<any>(null)
+  const isTypingRef = useRef(false) // Track if we've already sent typing indicator
   const pollTimer = useRef<any>(null)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
@@ -2036,14 +2037,22 @@ export default function ChatThread(){
                 }}
                 onChange={e=> {
                   setDraft(e.target.value)
-                  fetch('/api/typing', { 
-                    method:'POST', 
-                    credentials:'include', 
-                    headers:{ 'Content-Type':'application/json' }, 
-                    body: JSON.stringify({ peer: username, is_typing: true }) 
-                  }).catch(()=>{})
+                  
+                  // Only send typing indicator once, not on every keystroke
+                  if (!isTypingRef.current) {
+                    isTypingRef.current = true
+                    fetch('/api/typing', { 
+                      method:'POST', 
+                      credentials:'include', 
+                      headers:{ 'Content-Type':'application/json' }, 
+                      body: JSON.stringify({ peer: username, is_typing: true }) 
+                    }).catch(()=>{})
+                  }
+                  
+                  // Reset the stop-typing timer on each keystroke
                   if (typingTimer.current) clearTimeout(typingTimer.current)
                   typingTimer.current = setTimeout(() => {
+                    isTypingRef.current = false
                     fetch('/api/typing', { 
                       method:'POST', 
                       credentials:'include', 
