@@ -365,6 +365,144 @@ export default function CommunityFeed() {
     })
   }
 
+  // Optimistic delete - removes post from UI immediately, syncs with server in background
+  async function handleDeletePost(postId: number) {
+    // Store the post in case we need to restore it
+    const deletedPost = postsOnly.find((p: Post) => p.id === postId)
+    if (!deletedPost) return
+
+    // Optimistically remove from state
+    setData((prev: any) => {
+      if (!prev) return prev
+      const posts = Array.isArray(prev.posts) ? prev.posts : []
+      return { ...prev, posts: posts.filter((p: any) => p.id !== postId) }
+    })
+
+    // Call API in background
+    try {
+      const fd = new FormData()
+      fd.append('post_id', String(postId))
+      const res = await fetch('/delete_post', { method: 'POST', credentials: 'include', body: fd })
+      const j = await res.json().catch(() => null)
+      if (!j?.success) {
+        // Restore the post if delete failed
+        setData((prev: any) => {
+          if (!prev) return prev
+          const posts = Array.isArray(prev.posts) ? prev.posts : []
+          // Insert back in original position (approximation - add to top)
+          return { ...prev, posts: [deletedPost, ...posts] }
+        })
+        alert(j?.error || 'Failed to delete post')
+      }
+    } catch {
+      // Restore on network error
+      setData((prev: any) => {
+        if (!prev) return prev
+        const posts = Array.isArray(prev.posts) ? prev.posts : []
+        return { ...prev, posts: [deletedPost, ...posts] }
+      })
+      alert('Network error. Could not delete post.')
+    }
+  }
+
+  // Optimistic edit - updates post content immediately
+  async function handleEditPost(postId: number, newContent: string) {
+    const originalPost = postsOnly.find((p: Post) => p.id === postId)
+    if (!originalPost) return false
+
+    // Optimistically update content
+    setData((prev: any) => {
+      if (!prev) return prev
+      const posts = Array.isArray(prev.posts) ? prev.posts : []
+      return {
+        ...prev,
+        posts: posts.map((p: any) => p.id === postId ? { ...p, content: newContent } : p)
+      }
+    })
+
+    // Call API
+    try {
+      const fd = new URLSearchParams({ post_id: String(postId), content: newContent })
+      const res = await fetch('/edit_post', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
+      const j = await res.json().catch(() => null)
+      if (!j?.success) {
+        // Restore original content
+        setData((prev: any) => {
+          if (!prev) return prev
+          const posts = Array.isArray(prev.posts) ? prev.posts : []
+          return {
+            ...prev,
+            posts: posts.map((p: any) => p.id === postId ? { ...p, content: originalPost.content } : p)
+          }
+        })
+        alert(j?.error || 'Failed to update post')
+        return false
+      }
+      return true
+    } catch {
+      // Restore on error
+      setData((prev: any) => {
+        if (!prev) return prev
+        const posts = Array.isArray(prev.posts) ? prev.posts : []
+        return {
+          ...prev,
+          posts: posts.map((p: any) => p.id === postId ? { ...p, content: originalPost.content } : p)
+        }
+      })
+      alert('Network error. Could not update post.')
+      return false
+    }
+  }
+
+  // Optimistic poll delete
+  async function handleDeletePoll(postId: number, pollId: number) {
+    const originalPost = postsOnly.find((p: Post) => p.id === postId)
+    if (!originalPost) return
+
+    // Optimistically remove poll from post
+    setData((prev: any) => {
+      if (!prev) return prev
+      const posts = Array.isArray(prev.posts) ? prev.posts : []
+      return {
+        ...prev,
+        posts: posts.map((p: any) => p.id === postId ? { ...p, poll: null } : p)
+      }
+    })
+
+    try {
+      const res = await fetch('/delete_poll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ poll_id: pollId })
+      })
+      const j = await res.json().catch(() => null)
+      if (!j?.success) {
+        // Restore poll
+        setData((prev: any) => {
+          if (!prev) return prev
+          const posts = Array.isArray(prev.posts) ? prev.posts : []
+          return {
+            ...prev,
+            posts: posts.map((p: any) => p.id === postId ? { ...p, poll: originalPost.poll } : p)
+          }
+        })
+        alert(j?.error || 'Failed to delete poll')
+      }
+    } catch {
+      // Restore on error
+      setData((prev: any) => {
+        if (!prev) return prev
+        const posts = Array.isArray(prev.posts) ? prev.posts : []
+        return {
+          ...prev,
+          posts: posts.map((p: any) => p.id === postId ? { ...p, poll: originalPost.poll } : p)
+        }
+      })
+      alert('Error deleting poll')
+    }
+  }
+
   async function openReactors(postId: number){
     try{
       setReactorsPostId(postId)
@@ -737,6 +875,9 @@ export default function CommunityFeed() {
                   }}
                   onPreviewImage={setPreviewImageSrc}
                   onMarkViewed={markPostViewed}
+                  onDeletePost={handleDeletePost}
+                  onEditPost={handleEditPost}
+                  onDeletePoll={handleDeletePoll}
                 />
                 {/* Dark overlay for all posts except first one during reaction highlight */}
                 {highlightStep === 'reaction' && idx !== 0 && (
@@ -1089,7 +1230,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onEditPost, onDeletePoll }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void, onDeletePost?: (postId: number) => void, onEditPost?: (postId: number, content: string) => Promise<boolean>, onDeletePoll?: (postId: number, pollId: number) => void }) {
   const cardRef = useRef<HTMLDivElement | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
@@ -1212,11 +1353,17 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     }
   }
   async function saveEdit(){
-    const fd = new URLSearchParams({ post_id: String(post.id), content: editText })
-    const r = await fetch('/edit_post', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-    const j = await r.json().catch(()=>null)
-    if (j?.success){ setIsEditing(false); if (communityId) clearDeviceCache(`community-feed:${communityId}`); try{ (window as any).location.reload() }catch{} }
-    else alert(j?.error || 'Failed to update post')
+    if (onEditPost) {
+      const success = await onEditPost(post.id, editText)
+      if (success) setIsEditing(false)
+    } else {
+      // Fallback for non-optimistic edit
+      const fd = new URLSearchParams({ post_id: String(post.id), content: editText })
+      const r = await fetch('/edit_post', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){ setIsEditing(false); if (communityId) clearDeviceCache(`community-feed:${communityId}`); try{ (window as any).location.reload() }catch{} }
+      else alert(j?.error || 'Failed to update post')
+    }
   }
   return (
     <div ref={cardRef} id={`post-${post.id}`} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
@@ -1239,7 +1386,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               )}
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
                 <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
-                  onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); if (communityId) clearDeviceCache(`community-feed:${communityId}`); location.reload() }}>
+                  onClick={(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; onDeletePost?.(post.id) }}>
                   <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
                 </button>
               )}
@@ -1373,27 +1520,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   <button 
                     className="px-2 py-1 rounded-full text-red-400 hover:text-red-300" 
                     title="Delete poll"
-                    onClick={async (e)=> { 
+                    onClick={(e)=> { 
                       e.preventDefault()
                       e.stopPropagation()
                       if (!confirm('Delete this poll? This cannot be undone.')) return
-                      try {
-                        const r = await fetch('/delete_poll', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          credentials: 'include',
-                          body: JSON.stringify({ poll_id: post.poll?.id })
-                        })
-                        const j = await r.json()
-                        if (j?.success) {
-                          if (communityId) clearDeviceCache(`community-feed:${communityId}`)
-                          window.location.reload()
-                        } else {
-                          alert(j?.error || 'Failed to delete poll')
-                        }
-                      } catch (err) {
-                        alert('Error deleting poll')
-                      }
+                      if (post.poll?.id) onDeletePoll?.(post.id, post.poll.id)
                     }}
                   >
                     <i className="fa-regular fa-trash-can" />
