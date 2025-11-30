@@ -160,7 +160,8 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
     """
     Send push notification to all devices registered for a user.
     
-    Tries FCM first, then falls back to direct APNs for iOS tokens.
+    Uses FCM tokens only - FCM handles APNs delivery internally for iOS.
+    Only falls back to direct APNs if NO FCM tokens exist.
     
     Args:
         username: User to send notification to
@@ -181,30 +182,18 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
         cursor = conn.cursor()
         ph = get_sql_placeholder()
         
-        # Get user's FCM tokens
+        # Get user's FCM tokens (primary method)
         cursor.execute(
             f"SELECT token, platform FROM fcm_tokens WHERE username = {ph} AND is_active = 1",
             (username,)
         )
         fcm_tokens = cursor.fetchall()
         
-        # Also check native_push_tokens table for direct APNs tokens
-        try:
-            cursor.execute(
-                f"SELECT token, platform FROM native_push_tokens WHERE username = {ph} AND is_active = 1",
-                (username,)
-            )
-            native_tokens = cursor.fetchall()
-        except Exception:
-            native_tokens = []
-        
-        cursor.close()
-        conn.close()
-        
-        # Combine and deduplicate tokens
+        # Build token list from FCM tokens
         all_tokens = {}
+        has_ios_fcm_token = False
+        
         for row in (fcm_tokens or []):
-            # Handle both tuple and dict-like rows
             if hasattr(row, 'keys'):
                 token = row['token']
                 platform = row['platform']
@@ -212,17 +201,33 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
                 token = row[0]
                 platform = row[1]
             all_tokens[token] = platform
+            if platform == 'ios' and not is_apns_token(token):
+                has_ios_fcm_token = True
         
-        for row in (native_tokens or []):
-            # Handle both tuple and dict-like rows
-            if hasattr(row, 'keys'):
-                token = row['token']
-                platform = row['platform']
-            else:
-                token = row[0]
-                platform = row[1]
-            if token not in all_tokens:
-                all_tokens[token] = platform
+        # ONLY check native_push_tokens if we don't have any FCM tokens for iOS
+        # This prevents duplicate notifications (FCM routes to APNs internally)
+        if not has_ios_fcm_token:
+            try:
+                cursor.execute(
+                    f"SELECT token, platform FROM native_push_tokens WHERE username = {ph} AND is_active = 1",
+                    (username,)
+                )
+                native_tokens = cursor.fetchall()
+                
+                for row in (native_tokens or []):
+                    if hasattr(row, 'keys'):
+                        token = row['token']
+                        platform = row['platform']
+                    else:
+                        token = row[0]
+                        platform = row[1]
+                    if token not in all_tokens:
+                        all_tokens[token] = platform
+            except Exception:
+                pass
+        
+        cursor.close()
+        conn.close()
         
         if not all_tokens:
             logger.debug(f"No push tokens for user {username}")
@@ -243,18 +248,12 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
                 except Exception as e:
                     logger.error(f"APNs send failed for {token_preview}: {e}")
             else:
-                # Try FCM first
+                # Send via FCM (handles APNs internally for iOS)
                 logger.info(f"📱 Token {token_preview} is FCM format, sending via Firebase")
                 if send_fcm_notification(token, title, body, data):
                     sent_count += 1
-                elif platform == 'ios':
-                    # FCM failed, try APNs as fallback for iOS
-                    logger.info(f"📱 FCM failed, trying APNs fallback for {token_preview}")
-                    try:
-                        send_apns_notification(token, title, body, data)
-                        sent_count += 1
-                    except Exception as e:
-                        logger.error(f"APNs fallback also failed for {token_preview}: {e}")
+                else:
+                    logger.warning(f"FCM send failed for {token_preview}")
         
         if sent_count > 0:
             logger.info(f"✅ Sent {sent_count} notification(s) to {username}")
