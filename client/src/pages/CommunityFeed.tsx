@@ -14,7 +14,7 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import LazyVideo from '../components/LazyVideo'
-import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
+import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -1215,7 +1215,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     const fd = new URLSearchParams({ post_id: String(post.id), content: editText })
     const r = await fetch('/edit_post', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
     const j = await r.json().catch(()=>null)
-    if (j?.success){ setIsEditing(false); try{ (window as any).location.reload() }catch{} }
+    if (j?.success){ setIsEditing(false); if (communityId) clearDeviceCache(`community-feed:${communityId}`); try{ (window as any).location.reload() }catch{} }
     else alert(j?.error || 'Failed to update post')
   }
   return (
@@ -1239,7 +1239,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               )}
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
                 <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" title="Delete"
-                  onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); location.reload() }}>
+                  onClick={async(e)=> { e.stopPropagation(); const ok = confirm('Delete this post?'); if(!ok) return; const fd = new FormData(); fd.append('post_id', String(post.id)); await fetch('/delete_post', { method:'POST', credentials:'include', body: fd }); if (communityId) clearDeviceCache(`community-feed:${communityId}`); location.reload() }}>
                   <i className="fa-regular fa-trash-can" style={{ color: 'inherit' }} />
                 </button>
               )}
@@ -1386,6 +1386,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                         })
                         const j = await r.json()
                         if (j?.success) {
+                          if (communityId) clearDeviceCache(`community-feed:${communityId}`)
                           window.location.reload()
                         } else {
                           alert(j?.error || 'Failed to delete poll')

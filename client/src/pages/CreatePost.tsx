@@ -8,6 +8,7 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 import GifPicker from '../components/GifPicker'
+import { clearDeviceCache } from '../utils/deviceCache'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 
@@ -242,6 +243,14 @@ export default function CreatePost(){
         const r = await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
         // Try reading JSON when available, otherwise ignore redirects
         await r.json().catch(()=>null)
+      }
+      
+      // Clear the feed cache so the new post shows immediately on return
+      if (communityId) {
+        clearDeviceCache(`community-feed:${communityId}`)
+      }
+      if (groupId) {
+        clearDeviceCache(`group-feed:${groupId}`)
       }
       
       // Show praise for first post
