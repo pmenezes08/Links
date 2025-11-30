@@ -22,6 +22,7 @@ import { encryptionService } from '../services/simpleEncryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 
 interface Message {
   id: number | string
@@ -42,6 +43,13 @@ interface Message {
   decryption_error?: boolean
 }
 
+type CachedChatPayload = {
+  messages: Message[]
+  otherProfile?: { display_name: string; profile_picture?: string | null }
+}
+
+const CHAT_CACHE_TTL_MS = 2 * 60 * 1000
+
 export default function ChatThread(){
   const { setTitle } = useHeader()
   const { username } = useParams()
@@ -49,6 +57,29 @@ export default function ChatThread(){
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
   // Hide the main header - we use our own header in this page
   useEffect(() => { setTitle('') }, [setTitle])
+
+  useEffect(() => {
+    if (!chatDeviceCacheKey || bootstrappedFromDeviceCache.current) return
+    const cached = readDeviceCache<CachedChatPayload>(chatDeviceCacheKey)
+    if (cached?.messages?.length) {
+      bootstrappedFromDeviceCache.current = true
+      setMessages(cached.messages)
+      if (cached.otherProfile) setOtherProfile(cached.otherProfile)
+    }
+  }, [chatDeviceCacheKey])
+
+  useEffect(() => {
+    if (!chatDeviceCacheKey) return
+    if (!messages.length) return
+    writeDeviceCache(
+      chatDeviceCacheKey,
+      {
+        messages,
+        otherProfile: otherProfile ? { ...otherProfile } : undefined,
+      },
+      CHAT_CACHE_TTL_MS
+    )
+  }, [messages, otherProfile, chatDeviceCacheKey])
 
   // Detect mobile device
   useEffect(() => {
@@ -93,6 +124,8 @@ export default function ChatThread(){
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
   const headerMenuRef = useRef<HTMLDivElement | null>(null)
+  const chatDeviceCacheKey = useMemo(() => (username ? `chat-thread:${username}` : null), [username])
+  const bootstrappedFromDeviceCache = useRef(false)
   // Bridge between temp ids and server ids to avoid flicker and keep stable keys
   const idBridgeRef = useRef<{ tempToServer: Map<string, string|number>; serverToTemp: Map<string|number, string> }>({
     tempToServer: new Map(),

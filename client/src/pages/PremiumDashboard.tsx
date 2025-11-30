@@ -1,10 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
+import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
+const DASHBOARD_DEVICE_CACHE_KEY = 'dashboard-device-cache'
+const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000
+
+type DashboardCachePayload = {
+  profile: {
+    emailVerified: boolean | null
+    emailVerifiedAt: string | null
+    username: string
+    firstName: string
+    displayName: string
+    subscription: string
+    hasProfilePic: boolean
+    existingProfilePic: string
+  }
+  communities: Array<{ id: number; name: string; type: string }>
+  hasGymAccess: boolean
+  isAppAdmin: boolean
+}
 
 // type Community = { id: number; name: string; type: string }
 
@@ -67,6 +86,28 @@ export default function PremiumDashboard() {
       }
     } catch {}
   }
+
+  useEffect(() => {
+    const cached = readDeviceCache<DashboardCachePayload>(DASHBOARD_DEVICE_CACHE_KEY)
+    if (!cached) return
+    if (cached.profile) {
+      setEmailVerified(cached.profile.emailVerified)
+      setEmailVerifiedAt(cached.profile.emailVerifiedAt)
+      setUsername(cached.profile.username)
+      setFirstName(cached.profile.firstName)
+      setDisplayName(cached.profile.displayName)
+      setSubscription(cached.profile.subscription || 'free')
+      setHasProfilePic(cached.profile.hasProfilePic)
+      setExistingProfilePic(cached.profile.existingProfilePic || '')
+      setPicPreview(prev => prev || cached.profile.existingProfilePic || '')
+    }
+    if (Array.isArray(cached.communities)) {
+      setCommunities(cached.communities)
+      setCommunitiesLoaded(true)
+    }
+    setHasGymAccess(!!cached.hasGymAccess)
+    setIsAppAdmin(!!cached.isAppAdmin)
+  }, [])
 
   const clearPendingInviteTarget = () => {
     setPendingInviteTarget(null)
@@ -182,6 +223,10 @@ export default function PremiumDashboard() {
 
   useEffect(() => {
     async function loadUserData() {
+      let profileSnapshot: DashboardCachePayload['profile'] | null = null
+      let cachedCommunities: Array<{ id: number; name: string; type: string }> = []
+      let hasGymAccessFlag = false
+      let isAdminFlag = false
       try {
         // Profile (email verification status)
         try{
@@ -200,34 +245,61 @@ export default function PremiumDashboard() {
             setExistingProfilePic(resolvedPic)
             setPicPreview(prev => prev || resolvedPic)
             setSubscription((me.profile.subscription || 'free') as string)
+            profileSnapshot = {
+              emailVerified: !!me.profile.email_verified,
+              emailVerifiedAt: me.profile.email_verified_at || null,
+              username: me.profile.username || '',
+              firstName: me.profile.first_name || '',
+              displayName: me.profile.display_name || me.profile.username || '',
+              subscription: (me.profile.subscription || 'free') as string,
+              hasProfilePic: !!profilePicValue,
+              existingProfilePic: resolvedPic,
+            }
           }
         }catch{ setEmailVerified(null) }
 
         // Check gym membership
         const gymData = await fetchJson('/api/check_gym_membership')
-        setHasGymAccess(gymData.hasGymAccess || false)
+        hasGymAccessFlag = !!(gymData?.hasGymAccess)
+        setHasGymAccess(hasGymAccessFlag)
         
         // Check if user is app admin
         try {
           const adminCheck = await fetchJson('/api/check_admin')
-          setIsAppAdmin(adminCheck?.is_admin || false)
+          isAdminFlag = !!(adminCheck?.is_admin)
+          setIsAppAdmin(isAdminFlag)
         } catch {
           setIsAppAdmin(false)
+          isAdminFlag = false
         }
 
         // Get all user communities and decide using the fetched value (avoid stale state)
         const parentData = await fetchJson('/api/user_parent_community')
         console.log('Dashboard: Parent communities API response:', parentData)
-        const fetchedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
-        if (fetchedCommunities.length > 0) {
-          console.log('Dashboard: Setting communities:', fetchedCommunities)
-          setCommunities(fetchedCommunities)
+        const resolvedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
+        cachedCommunities = resolvedCommunities
+        if (resolvedCommunities.length > 0) {
+          console.log('Dashboard: Setting communities:', resolvedCommunities)
+          setCommunities(resolvedCommunities)
           setCommunitiesLoaded(true)
         } else {
           console.log('Dashboard: No communities found or API error')
           setCommunities([])
           setCommunitiesLoaded(true)
           // Direct fix: do not redirect here; welcome/join modal handles first-time case
+        }
+
+        if (profileSnapshot) {
+          writeDeviceCache(
+            DASHBOARD_DEVICE_CACHE_KEY,
+            {
+              profile: profileSnapshot,
+              communities: cachedCommunities,
+              hasGymAccess: hasGymAccessFlag,
+              isAppAdmin: isAdminFlag,
+            },
+            DASHBOARD_CACHE_TTL_MS
+          )
         }
       } catch (error) {
         console.error('Error loading user data:', error)

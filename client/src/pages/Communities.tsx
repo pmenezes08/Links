@@ -9,6 +9,7 @@ import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
+import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 
 type Community = { 
   id: number; 
@@ -19,6 +20,14 @@ type Community = {
   children?: Community[];
   creator_username?: string;
 }
+
+type CommunityManagementCache = {
+  communities: Community[]
+  meta: { parentName: string; parentType: string }
+  userData?: { username: string; current_user_profile_picture?: string | null }
+}
+
+const COMMUNITY_MGMT_CACHE_TTL_MS = 5 * 60 * 1000
 
 function collectDescendantIds(nodes?: Community[]): number[] {
   if (!nodes) return []
@@ -47,6 +56,7 @@ export default function Communities(){
   const navigate = useNavigate()
   const location = useLocation()
   const { setTitle } = useHeader()
+  const communityDeviceCacheKey = useMemo(() => `community-management:${location.search || 'root'}`, [location.search])
   const [_data, setData] = useState<{ username:string; current_user_profile_picture?:string|null; community_name?:string }|null>(null)
   const [communities, setCommunities] = useState<Community[]>([])
   const [parentName, setParentName] = useState<string>('')
@@ -109,6 +119,19 @@ export default function Communities(){
     }catch{}
   }, [showNested])
   useEffect(() => {
+    const cached = readDeviceCache<CommunityManagementCache>(communityDeviceCacheKey)
+    if (!cached) return
+    if (cached.userData) setData(cached.userData)
+    if (Array.isArray(cached.communities) && cached.communities.length > 0) {
+      setCommunities(cached.communities)
+      setLoading(false)
+    }
+    if (cached.meta) {
+      setParentName(cached.meta.parentName || '')
+      setParentType(cached.meta.parentType || '')
+    }
+  }, [communityDeviceCacheKey])
+  useEffect(() => {
     if (!showNested){
       setExpandedNestedParentId(null)
       setExpandedDeepCommunityIds({})
@@ -151,6 +174,10 @@ export default function Communities(){
   useEffect(() => {
     let mounted = true
     let inflight = false
+    let latestUserMeta: CommunityManagementCache['userData'] | null = null
+    let latestCommunitiesSnapshot: Community[] = []
+    let latestParentNameSnapshot = ''
+    let latestParentTypeSnapshot = ''
     async function load(){
       if (inflight) return
       inflight = true
@@ -161,7 +188,9 @@ export default function Communities(){
           const r = await fetch(`/api/profile_me`, { credentials:'include' })
           const j = await r.json().catch(()=>null)
           if (mounted && j?.success && j.profile){
-            setData({ username: j.profile.username, current_user_profile_picture: j.profile.profile_picture })
+            const meta = { username: j.profile.username, current_user_profile_picture: j.profile.profile_picture }
+            latestUserMeta = meta
+            setData(meta)
           }
         }catch{}
 
@@ -178,20 +207,28 @@ export default function Communities(){
             const parent = all.find(c => c.id === pid)
             if (parent) {
               const subset: Community[] = [{ ...parent, children: parent.children || [] }]
+              latestCommunitiesSnapshot = subset
+              latestParentNameSnapshot = parent.name || ''
+              latestParentTypeSnapshot = parent.type || ''
               setCommunities(subset)
               setParentName(parent.name)
               setParentType(parent.type || '')
             } else {
-              setCommunities(all)
-              setParentName('')
+              latestCommunitiesSnapshot = all
+              latestParentNameSnapshot = ''
               try {
                 // If navigated without parent_id but only one parent root is in view, capture its type
                 const roots = all.filter(c => !c.parent_community_id)
                 if (roots.length === 1) setParentType(roots[0].type || '')
                 else setParentType('')
               } catch { setParentType('') }
+              setCommunities(all)
+              setParentName('')
             }
           } else {
+            latestCommunitiesSnapshot = all
+            latestParentNameSnapshot = ''
+            latestParentTypeSnapshot = ''
             setCommunities(all)
             setParentName('')
             setParentType('')
@@ -205,11 +242,22 @@ export default function Communities(){
       } finally {
         inflight = false
         if (mounted) setLoading(false)
+        if (latestCommunitiesSnapshot.length){
+          writeDeviceCache(
+            communityDeviceCacheKey,
+            {
+              communities: latestCommunitiesSnapshot,
+              meta: { parentName: latestParentNameSnapshot, parentType: latestParentTypeSnapshot },
+              userData: latestUserMeta || undefined,
+            },
+            COMMUNITY_MGMT_CACHE_TTL_MS
+          )
+        }
       }
     }
     load()
     return () => { mounted = false }
-  }, [])
+  }, [communityDeviceCacheKey])
 
   useEffect(() => { 
     if (parentName) setTitle(`Community: ${parentName}`)

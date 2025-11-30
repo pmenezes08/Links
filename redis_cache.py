@@ -328,6 +328,15 @@ def community_feed_cache_key(community_id, page=1):
 def user_communities_cache_key(username):
     return f"user_communities:{username}"
 
+def community_feed_user_cache_key(community_id, username):
+    return f"community_feed:{community_id}:user:{username}"
+
+def user_parent_dashboard_cache_key(username):
+    return f"user_parent_dashboard:{username}"
+
+def user_community_tree_cache_key(username):
+    return f"user_community_tree:{username}"
+
 # Caching decorators
 def cache_result(key_func, ttl=DEFAULT_CACHE_TTL):
     """Decorator to cache function results"""
@@ -361,6 +370,8 @@ def invalidate_user_cache(username):
     cache.delete(user_profile_cache_key(username))
     cache.delete(chat_threads_cache_key(username))
     cache.delete(user_communities_cache_key(username))
+    cache.delete(user_parent_dashboard_cache_key(username))
+    cache.delete(user_community_tree_cache_key(username))
     logger.debug(f"🗑️ Invalidated user cache: {username}")
 
 def invalidate_community_cache(community_id):

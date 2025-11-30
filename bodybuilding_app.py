@@ -23,7 +23,17 @@ import secrets
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from hashlib import sha256
-from redis_cache import cache, cache_result, invalidate_user_cache, invalidate_community_cache, invalidate_message_cache
+from redis_cache import (
+    cache,
+    cache_result,
+    invalidate_user_cache,
+    invalidate_community_cache,
+    invalidate_message_cache,
+    community_feed_user_cache_key,
+    COMMUNITY_CACHE_TTL,
+    user_parent_dashboard_cache_key,
+    user_community_tree_cache_key,
+)
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode, urljoin, quote_plus
 from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
@@ -18421,6 +18431,11 @@ def serve_uploads(filename):
 def api_community_feed(community_id):
     """JSON API for community feed data (posts, polls, replies, reactions)."""
     username = session.get('username')
+    cache_key = community_feed_user_cache_key(community_id, username or '')
+    if cache_key:
+        cached_response = cache.get(cache_key)
+        if cached_response:
+            return jsonify(cached_response)
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -18693,7 +18708,7 @@ def api_community_feed(community_id):
                     reply['user_reaction'] = urr['reaction_type'] if urr else None
                 post['replies'] = replies
 
-            return jsonify({
+            response_payload = {
                 'success': True,
                 'community': community,
                 'parent_community': parent_community,
@@ -18702,7 +18717,13 @@ def api_community_feed(community_id):
                 'current_user_profile_picture': current_user_profile_picture,
                 'current_user_display_name': current_user_display_name,
                 'posts': posts,
-            })
+            }
+            if cache_key:
+                try:
+                    cache.set(cache_key, response_payload, COMMUNITY_CACHE_TTL)
+                except Exception:
+                    pass
+            return jsonify(response_payload)
     except Exception as e:
         logger.error(f"Error in api_community_feed for {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
@@ -20175,6 +20196,11 @@ def get_user_parent_community():
     """Get communities to display on dashboard - SIMPLIFIED"""
     username = session.get('username')
     logger.info(f"Getting dashboard communities for user: {username}")
+    cache_key = user_parent_dashboard_cache_key(username)
+    if cache_key:
+        cached = cache.get(cache_key)
+        if cached:
+            return jsonify(cached)
     
     try:
         with get_db_connection() as conn:
@@ -20367,11 +20393,17 @@ def get_user_parent_community():
             
             logger.info(f"Returning {len(communities_list)} communities for dashboard")
             
-            return jsonify({
+            response_payload = {
                 'success': True,
                 'communities': communities_list,
                 'parentCommunity': communities_list[0] if communities_list else None  # Keep backward compatibility
-            })
+            }
+            if cache_key:
+                try:
+                    cache.set(cache_key, response_payload, COMMUNITY_CACHE_TTL)
+                except Exception:
+                    pass
+            return jsonify(response_payload)
                 
     except Exception as e:
         logger.error(f"Error getting parent community for {username}: {str(e)}")

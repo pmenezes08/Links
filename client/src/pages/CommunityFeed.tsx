@@ -14,6 +14,7 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import LazyVideo from '../components/LazyVideo'
+import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -21,6 +22,7 @@ type Reply = { id: number; username: string; content: string; timestamp: string;
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean }
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
+const COMMUNITY_FEED_CACHE_TTL_MS = 2 * 60 * 1000
 
 function normalizeMediaPath(p?: string | null){
   if (!p) return ''
@@ -37,6 +39,7 @@ export default function CommunityFeed() {
     try{ community_id = window.location.pathname.split('/').filter(Boolean).pop() as any }catch{}
   }
   const navigate = useNavigate()
+  const deviceFeedCacheKey = useMemo(() => (community_id ? `community-feed:${community_id}` : null), [community_id])
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
@@ -147,6 +150,15 @@ export default function CommunityFeed() {
   useEffect(() => { if (data?.community?.name) setTitle(data.community.name) }, [setTitle, data?.community?.name])
 
   useEffect(() => {
+    if (!deviceFeedCacheKey) return
+    const cached = readDeviceCache<any>(deviceFeedCacheKey)
+    if (cached?.success) {
+      setData(cached)
+      setLoading(false)
+    }
+  }, [deviceFeedCacheKey])
+
+  useEffect(() => {
     // Pull-to-refresh behavior on overscroll at top with a small elastic offset
     const el = scrollRef.current
     if (!el) return
@@ -221,7 +233,12 @@ export default function CommunityFeed() {
       .then(r => r.json().catch(() => ({ success: false, error: 'Invalid response' })))
       .then(json => { 
         if (!isMounted) return; 
-        if (json?.success){ setData(json) }
+        if (json?.success){ 
+          setData(json) 
+          if (deviceFeedCacheKey) {
+            writeDeviceCache(deviceFeedCacheKey, json, COMMUNITY_FEED_CACHE_TTL_MS)
+          }
+        }
         else {
           setError(json?.error || 'Error loading feed')
         }
@@ -231,7 +248,13 @@ export default function CommunityFeed() {
       }})
       .finally(() => isMounted && setLoading(false))
     return () => { isMounted = false }
-  }, [community_id, refreshKey])
+  }, [community_id, refreshKey, deviceFeedCacheKey])
+
+  useEffect(() => {
+    if (!deviceFeedCacheKey) return
+    if (!data?.success) return
+    writeDeviceCache(deviceFeedCacheKey, data, COMMUNITY_FEED_CACHE_TTL_MS)
+  }, [data, deviceFeedCacheKey])
 
   // Ads removed
 
