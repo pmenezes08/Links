@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime } from '../utils/time'
@@ -40,6 +40,7 @@ export default function CommunityFeed() {
     try{ community_id = window.location.pathname.split('/').filter(Boolean).pop() as any }catch{}
   }
   const navigate = useNavigate()
+  const routerLocation = useLocation()
   const deviceFeedCacheKey = useMemo(() => (community_id ? `community-feed:${community_id}` : null), [community_id])
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -226,6 +227,20 @@ export default function CommunityFeed() {
     document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
+
+  // Refresh when navigating back with refresh state (needed for Capacitor apps)
+  useEffect(() => {
+    const state = routerLocation.state as { refresh?: number } | null
+    if (state?.refresh) {
+      // Clear the device cache and trigger a refresh
+      if (deviceFeedCacheKey) {
+        clearDeviceCache(deviceFeedCacheKey)
+      }
+      setRefreshKey(prev => prev + 1)
+      // Clear the state to prevent re-triggering on future renders
+      navigate(routerLocation.pathname, { replace: true, state: {} })
+    }
+  }, [routerLocation.state, routerLocation.pathname, navigate, deviceFeedCacheKey])
 
   useEffect(() => {
     let isMounted = true

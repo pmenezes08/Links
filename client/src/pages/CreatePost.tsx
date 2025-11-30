@@ -258,13 +258,14 @@ export default function CreatePost(){
         setShowPraise(true)
         setTimeout(() => {
           setShowPraise(false)
-          if (communityId) navigate(`/community_feed_react/${communityId}`)
+          if (communityId) navigate(`/community_feed_react/${communityId}`, { state: { refresh: Date.now() } })
           else navigate(-1)
         }, 2000)
       } else {
         // Regardless of server response, navigate back to feed to avoid double tap
-        if (groupId) navigate(`/group_feed_react/${groupId}`)
-        else if (communityId) navigate(`/community_feed_react/${communityId}`)
+        // Pass refresh state to trigger feed reload (needed for Capacitor apps where component stays mounted)
+        if (groupId) navigate(`/group_feed_react/${groupId}`, { state: { refresh: Date.now() } })
+        else if (communityId) navigate(`/community_feed_react/${communityId}`, { state: { refresh: Date.now() } })
         else navigate(-1)
       }
       setContent('')
