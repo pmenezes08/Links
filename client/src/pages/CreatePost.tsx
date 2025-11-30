@@ -10,6 +10,7 @@ import { detectLinks, replaceLinkInText, type DetectedLink } from '../utils/link
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import { clearDeviceCache } from '../utils/deviceCache'
 
 export default function CreatePost(){
   const [params] = useSearchParams()
@@ -45,6 +46,7 @@ export default function CreatePost(){
   const viewportBaseRef = useRef<number | null>(null)
   const [viewportLift, setViewportLift] = useState(0)
   const [viewportHeight, setViewportHeight] = useState<number | null>(null)
+  const communityFeedCacheKey = communityId ? `community-feed:${communityId}` : null
 
   const videoPreviewUrl = useMemo(() => {
     if (!videoFile) return null
@@ -242,6 +244,10 @@ export default function CreatePost(){
         const r = await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
         // Try reading JSON when available, otherwise ignore redirects
         await r.json().catch(()=>null)
+      }
+
+      if (communityFeedCacheKey) {
+        clearDeviceCache(communityFeedCacheKey)
       }
       
       // Show praise for first post

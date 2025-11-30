@@ -11584,6 +11584,12 @@ def post_status():
             for post in community_posts:
                 logger.info(f"  Post {post['id']}: {post['username']} - {post['content'][:50]}... (community_id: {post['community_id']})")
 
+            if community_id:
+                try:
+                    invalidate_community_cache(community_id)
+                except Exception as cache_err:
+                    logger.warning(f"community cache invalidate error for {community_id}: {cache_err}")
+
             # Record token to prevent duplicates
             try:
                 if token:
