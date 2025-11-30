@@ -8981,6 +8981,13 @@ def send_message():
             # Invalidate message caches for faster updates
             invalidate_message_cache(username, recipient_username)
             
+            # Invalidate chat threads cache so preview updates
+            try:
+                cache.delete(f"chat_threads:{username}")
+                cache.delete(f"chat_threads:{recipient_username}")
+            except Exception:
+                pass
+            
             # Create or update notification for the recipient (truly atomic)
             try:
                 c.execute("""
@@ -9453,29 +9460,50 @@ def api_chat_threads():
                     other_username = row['other_username'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0]
 
                     # Last message in either direction (preview)
-                    c.execute(
-                        """
-                        SELECT message, timestamp, sender
-                        FROM messages
-                        WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
-                        ORDER BY timestamp DESC
-                        LIMIT 1
-                        """,
-                        (username, other_username, other_username, username),
-                    )
+                    # Include is_encrypted to handle encrypted messages
+                    try:
+                        c.execute(
+                            """
+                            SELECT message, timestamp, sender, is_encrypted
+                            FROM messages
+                            WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
+                            ORDER BY timestamp DESC
+                            LIMIT 1
+                            """,
+                            (username, other_username, other_username, username),
+                        )
+                    except Exception:
+                        # Fallback if is_encrypted column doesn't exist
+                        c.execute(
+                            """
+                            SELECT message, timestamp, sender
+                            FROM messages
+                            WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)
+                            ORDER BY timestamp DESC
+                            LIMIT 1
+                            """,
+                            (username, other_username, other_username, username),
+                        )
                     last_row = c.fetchone()
                     last_message_text = None
                     last_activity_time = None
                     last_sender = None
+                    is_encrypted = False
                     if last_row:
                         if hasattr(last_row, 'keys'):
                             last_message_text = last_row['message']
                             last_activity_time = last_row['timestamp']
                             last_sender = last_row['sender']
+                            is_encrypted = bool(last_row.get('is_encrypted', 0))
                         else:
                             last_message_text = last_row[0]
                             last_activity_time = last_row[1]
                             last_sender = last_row[2]
+                            is_encrypted = bool(last_row[3]) if len(last_row) > 3 else False
+                    
+                    # If message is encrypted and text is empty, show placeholder
+                    if is_encrypted and not last_message_text:
+                        last_message_text = '🔒 Encrypted message'
 
                     # Unread count for this thread (messages sent by other -> me)
                     c.execute("SELECT COUNT(*) as count FROM messages WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
