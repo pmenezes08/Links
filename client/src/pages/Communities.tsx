@@ -28,6 +28,7 @@ type CommunityManagementCache = {
 }
 
 const COMMUNITY_MGMT_CACHE_TTL_MS = 5 * 60 * 1000
+const COMMUNITY_DEVICE_CACHE_VERSION = 'community-mgmt-v2'
 
 function collectDescendantIds(nodes?: Community[]): number[] {
   if (!nodes) return []
@@ -119,7 +120,7 @@ export default function Communities(){
     }catch{}
   }, [showNested])
   useEffect(() => {
-    const cached = readDeviceCache<CommunityManagementCache>(communityDeviceCacheKey)
+    const cached = readDeviceCache<CommunityManagementCache>(communityDeviceCacheKey, COMMUNITY_DEVICE_CACHE_VERSION)
     if (!cached) return
     if (cached.userData) setData(cached.userData)
     if (Array.isArray(cached.communities) && cached.communities.length > 0) {
@@ -250,7 +251,8 @@ export default function Communities(){
               meta: { parentName: latestParentNameSnapshot, parentType: latestParentTypeSnapshot },
               userData: latestUserMeta || undefined,
             },
-            COMMUNITY_MGMT_CACHE_TTL_MS
+            COMMUNITY_MGMT_CACHE_TTL_MS,
+            COMMUNITY_DEVICE_CACHE_VERSION
           )
         }
       }

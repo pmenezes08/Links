@@ -23,6 +23,7 @@ type Post = { id: number; username: string; content: string; image_path?: string
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 const COMMUNITY_FEED_CACHE_TTL_MS = 2 * 60 * 1000
+const COMMUNITY_FEED_CACHE_VERSION = 'community-feed-v2'
 
 function normalizeMediaPath(p?: string | null){
   if (!p) return ''
@@ -151,7 +152,7 @@ export default function CommunityFeed() {
 
   useEffect(() => {
     if (!deviceFeedCacheKey) return
-    const cached = readDeviceCache<any>(deviceFeedCacheKey)
+    const cached = readDeviceCache<any>(deviceFeedCacheKey, COMMUNITY_FEED_CACHE_VERSION)
     if (cached?.success) {
       setData(cached)
       setLoading(false)
@@ -236,7 +237,7 @@ export default function CommunityFeed() {
         if (json?.success){ 
           setData(json) 
           if (deviceFeedCacheKey) {
-            writeDeviceCache(deviceFeedCacheKey, json, COMMUNITY_FEED_CACHE_TTL_MS)
+            writeDeviceCache(deviceFeedCacheKey, json, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_FEED_CACHE_VERSION)
           }
         }
         else {
@@ -253,7 +254,7 @@ export default function CommunityFeed() {
   useEffect(() => {
     if (!deviceFeedCacheKey) return
     if (!data?.success) return
-    writeDeviceCache(deviceFeedCacheKey, data, COMMUNITY_FEED_CACHE_TTL_MS)
+    writeDeviceCache(deviceFeedCacheKey, data, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_FEED_CACHE_VERSION)
   }, [data, deviceFeedCacheKey])
 
   // Ads removed

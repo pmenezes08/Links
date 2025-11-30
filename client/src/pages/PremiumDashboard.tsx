@@ -8,6 +8,7 @@ const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
 const DASHBOARD_DEVICE_CACHE_KEY = 'dashboard-device-cache'
 const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000
+const DASHBOARD_CACHE_VERSION = 'dashboard-v2'
 
 type DashboardCachePayload = {
   profile: {
@@ -88,7 +89,7 @@ export default function PremiumDashboard() {
   }
 
   useEffect(() => {
-    const cached = readDeviceCache<DashboardCachePayload>(DASHBOARD_DEVICE_CACHE_KEY)
+    const cached = readDeviceCache<DashboardCachePayload>(DASHBOARD_DEVICE_CACHE_KEY, DASHBOARD_CACHE_VERSION)
     if (!cached) return
     if (cached.profile) {
       setEmailVerified(cached.profile.emailVerified)
@@ -298,7 +299,8 @@ export default function PremiumDashboard() {
               hasGymAccess: hasGymAccessFlag,
               isAppAdmin: isAdminFlag,
             },
-            DASHBOARD_CACHE_TTL_MS
+            DASHBOARD_CACHE_TTL_MS,
+            DASHBOARD_CACHE_VERSION
           )
         }
       } catch (error) {

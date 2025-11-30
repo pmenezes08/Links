@@ -49,6 +49,7 @@ type CachedChatPayload = {
 }
 
 const CHAT_CACHE_TTL_MS = 2 * 60 * 1000
+const CHAT_CACHE_VERSION = 'chatthread-v2'
 
 export default function ChatThread(){
   const { setTitle } = useHeader()
@@ -60,7 +61,7 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (!chatDeviceCacheKey || bootstrappedFromDeviceCache.current) return
-    const cached = readDeviceCache<CachedChatPayload>(chatDeviceCacheKey)
+    const cached = readDeviceCache<CachedChatPayload>(chatDeviceCacheKey, CHAT_CACHE_VERSION)
     if (cached?.messages?.length) {
       bootstrappedFromDeviceCache.current = true
       setMessages(cached.messages)
@@ -77,7 +78,8 @@ export default function ChatThread(){
         messages,
         otherProfile: otherProfile ? { ...otherProfile } : undefined,
       },
-      CHAT_CACHE_TTL_MS
+      CHAT_CACHE_TTL_MS,
+      CHAT_CACHE_VERSION
     )
   }, [messages, otherProfile, chatDeviceCacheKey])
 
