@@ -153,12 +153,18 @@ export default function CommunityFeed() {
 
   useEffect(() => {
     if (!deviceFeedCacheKey) return
+    // Skip cache read if we're navigating back with a refresh signal
+    const state = routerLocation.state as { refresh?: number } | null
+    if (state?.refresh) {
+      // Don't read from cache - we'll fetch fresh data
+      return
+    }
     const cached = readDeviceCache<any>(deviceFeedCacheKey, COMMUNITY_FEED_CACHE_VERSION)
     if (cached?.success) {
       setData(cached)
       setLoading(false)
     }
-  }, [deviceFeedCacheKey])
+  }, [deviceFeedCacheKey, routerLocation.state])
 
   useEffect(() => {
     // Pull-to-refresh behavior on overscroll at top with a small elastic offset
@@ -232,10 +238,14 @@ export default function CommunityFeed() {
   useEffect(() => {
     const state = routerLocation.state as { refresh?: number } | null
     if (state?.refresh) {
-      // Clear the device cache and trigger a refresh
+      // Clear the device cache
       if (deviceFeedCacheKey) {
         clearDeviceCache(deviceFeedCacheKey)
       }
+      // Reset data to force a clean fetch (prevents showing stale optimistic state)
+      setData(null)
+      setLoading(true)
+      // Trigger a fresh fetch
       setRefreshKey(prev => prev + 1)
       // Clear the state to prevent re-triggering on future renders
       navigate(routerLocation.pathname, { replace: true, state: {} })
