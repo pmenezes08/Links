@@ -191,50 +191,62 @@ def send_fcm_notification(device_token: str, title: str, body: str, data: dict =
 def send_push_to_user(target_username: str, payload: dict):
     """Send push notification to the given user (web + native)."""
     
-    # Send to native devices (iOS/Android)
+    # Extract payload data
     title = payload.get('title', 'C.Point Notification')
     body = payload.get('body', '')
+    tag = payload.get("tag") if isinstance(payload, dict) else None
     data = {'url': payload.get('url', '/')}
+    
+    # Simple dedupe window (30 seconds) to avoid flooding - check BEFORE sending any notification
+    try:
+        with get_db_connection() as conn_chk:
+            cchk = conn_chk.cursor()
+            if USE_MYSQL:
+                cchk.execute(
+                    """
+                    SELECT id FROM push_send_log
+                    WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
+                      AND sent_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+                    LIMIT 1
+                    """,
+                    (target_username, tag, title, body),
+                )
+            else:
+                cchk.execute(
+                    """
+                    SELECT id FROM push_send_log
+                    WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
+                      AND datetime(sent_at) > datetime('now','-30 seconds')
+                    LIMIT 1
+                    """,
+                    (target_username, tag, title, body),
+                )
+            if cchk.fetchone():
+                logger.info("push dedup: skipping duplicate push to %s (tag=%s)", target_username, tag)
+                return
+    except Exception as dedupe_err:
+        logger.warning("push dedupe check failed: %s", dedupe_err)
+    
+    # Send to native devices (iOS/Android) - after dedup check
     send_native_push(target_username, title, body, data)
     
     # Also send web push for desktop browsers
     if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
         logger.warning("VAPID keys missing; web push disabled")
+        # Record the push even without web push, so native doesn't get duped
+        try:
+            with get_db_connection() as conn_log:
+                clog = conn_log.cursor()
+                clog.execute(
+                    "INSERT INTO push_send_log (username, tag, title, body, url) VALUES (?,?,?,?,?)",
+                    (target_username, tag, title, body, payload.get("url")),
+                )
+                conn_log.commit()
+        except Exception as log_err:
+            logger.warning("push log write failed: %s", log_err)
         return
 
     try:
-        # Simple dedupe window (30 seconds) to avoid flooding
-        try:
-            tag = payload.get("tag") if isinstance(payload, dict) else None
-            title = payload.get("title") if isinstance(payload, dict) else None
-            body = payload.get("body") if isinstance(payload, dict) else None
-            with get_db_connection() as conn_chk:
-                cchk = conn_chk.cursor()
-                if USE_MYSQL:
-                    cchk.execute(
-                        """
-                        SELECT id FROM push_send_log
-                        WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
-                          AND sent_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
-                        LIMIT 1
-                        """,
-                        (target_username, tag, title, body),
-                    )
-                else:
-                    cchk.execute(
-                        """
-                        SELECT id FROM push_send_log
-                        WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
-                          AND datetime(sent_at) > datetime('now','-30 seconds')
-                        LIMIT 1
-                        """,
-                        (target_username, tag, title, body),
-                    )
-                if cchk.fetchone():
-                    logger.info("push dedup: skipping duplicate push to %s (tag=%s)", target_username, tag)
-                    return
-        except Exception as dedupe_err:
-            logger.warning("push dedupe check failed: %s", dedupe_err)
 
         with get_db_connection() as conn:
             c = conn.cursor()

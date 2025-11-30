@@ -273,6 +273,27 @@ def delete_read_notifications():
         return jsonify({"success": False, "error": str(exc)}), 500
 
 
+@notifications_bp.route("/api/notifications/clear-badge", methods=["POST"], endpoint="clear_notification_badge")
+@_login_required
+def clear_notification_badge():
+    """Clear the iOS app badge count by sending a silent push with badge: 0."""
+    username = session["username"]
+    try:
+        from backend.services.firebase_notifications import send_fcm_to_user_badge_only
+        
+        # Send silent push with badge: 0 to all user's devices
+        sent = send_fcm_to_user_badge_only(username, badge_count=0)
+        current_app.logger.info(f"Cleared badge for {username}, sent to {sent} device(s)")
+        return jsonify({"success": True, "devices_cleared": sent})
+    except ImportError:
+        # Function not available, just acknowledge the request
+        current_app.logger.debug("Badge clearing not available (function not implemented)")
+        return jsonify({"success": True, "devices_cleared": 0})
+    except Exception as exc:
+        current_app.logger.error("Error clearing notification badge: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
 @notifications_bp.route("/api/admin/broadcast_notification", methods=["POST"], endpoint="admin_broadcast_notification")
 @_login_required
 def admin_broadcast_notification():

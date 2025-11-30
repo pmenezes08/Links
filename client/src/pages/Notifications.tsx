@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
+import { PushNotifications } from '@capacitor/push-notifications'
 import { useHeader } from '../contexts/HeaderContext'
 
 type Notif = {
@@ -72,8 +74,29 @@ export default function Notifications(){
 
   useEffect(() => { load() }, [])
 
+  // Clear iOS notification center and badge
+  async function clearIOSNotifications() {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        // Remove all delivered notifications from iOS Notification Center
+        await PushNotifications.removeAllDeliveredNotifications()
+        console.log('✅ Cleared iOS notification center')
+      } catch (e) {
+        console.warn('Could not clear iOS notifications:', e)
+      }
+    }
+    // Also tell server to reset badge count via silent push
+    try {
+      await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
+    } catch (e) {
+      console.warn('Could not clear badge via server:', e)
+    }
+  }
+
   async function markAll(){
     await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
+    // Clear iOS notification center when marking all as read
+    await clearIOSNotifications()
     load()
   }
 
@@ -84,6 +107,8 @@ export default function Notifications(){
       setClearing(true)
       await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
       await fetch('/api/notifications/delete-read', { method:'POST', credentials:'include' })
+      // Clear iOS notification center when clearing all
+      await clearIOSNotifications()
       await load()
     } finally {
       setClearing(false)

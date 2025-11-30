@@ -266,10 +266,99 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
         return 0
 
 
+def send_fcm_to_user_badge_only(username: str, badge_count: int = 0) -> int:
+    """
+    Send a silent push notification to reset the iOS badge count.
+    
+    Args:
+        username: User to send to
+        badge_count: Badge count to set (0 to clear)
+    
+    Returns:
+        Number of devices updated
+    """
+    from backend.services.database import get_db_connection, get_sql_placeholder
+    
+    if not FIREBASE_AVAILABLE:
+        logger.debug("Firebase not available")
+        return 0
+    
+    # Initialize Firebase if not done yet
+    if _firebase_app is None:
+        if not initialize_firebase():
+            return 0
+    
+    sent_count = 0
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ph = get_sql_placeholder()
+        
+        # Get user's FCM tokens
+        cursor.execute(
+            f"SELECT token, platform FROM fcm_tokens WHERE username = {ph} AND is_active = 1",
+            (username,)
+        )
+        fcm_tokens = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        if not fcm_tokens:
+            logger.debug(f"No FCM tokens for user {username}")
+            return 0
+        
+        for row in fcm_tokens:
+            if hasattr(row, 'keys'):
+                token = row['token']
+                platform = row['platform']
+            else:
+                token = row[0]
+                platform = row[1]
+            
+            # Only send badge-only messages to iOS devices
+            if platform != 'ios':
+                continue
+            
+            try:
+                # Silent push with badge update only (no notification payload)
+                message = messaging.Message(
+                    token=token,
+                    apns=messaging.APNSConfig(
+                        headers={
+                            'apns-push-type': 'background',
+                            'apns-priority': '5',  # Lower priority for background push
+                        },
+                        payload=messaging.APNSPayload(
+                            aps=messaging.Aps(
+                                badge=badge_count,
+                                content_available=True  # Silent push
+                            )
+                        )
+                    )
+                )
+                
+                response = messaging.send(message)
+                logger.info(f"✅ Badge reset sent to {token[:16]}...: {response}")
+                sent_count += 1
+                
+            except messaging.UnregisteredError:
+                logger.warning(f"FCM token no longer valid: {token[:16]}...")
+            except Exception as e:
+                logger.warning(f"Badge reset failed for {token[:16]}...: {e}")
+        
+        return sent_count
+        
+    except Exception as e:
+        logger.error(f"Error sending badge reset to {username}: {e}")
+        return 0
+
+
 __all__ = [
     'initialize_firebase',
     'send_fcm_notification',
     'send_fcm_to_user',
+    'send_fcm_to_user_badge_only',
     'is_apns_token',
     'FIREBASE_AVAILABLE',
 ]
