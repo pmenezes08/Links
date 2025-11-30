@@ -2014,7 +2014,7 @@ export default function ChatThread(){
                 placeholder="Message"
                 value={draft}
                 autoComplete="off"
-                autoCorrect="off"
+                autoCorrect="on"
                 autoCapitalize="sentences"
                 spellCheck="true"
                 tabIndex={0}
