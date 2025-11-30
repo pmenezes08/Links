@@ -22,6 +22,11 @@ import { encryptionService } from '../services/simpleEncryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
+import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
+
+// Cache settings for chat messages
+const CHAT_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes (matches server Redis TTL)
+const CHAT_CACHE_VERSION = 'chat-v1'
 
 interface Message {
   id: number | string
@@ -73,6 +78,8 @@ export default function ChatThread(){
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
   const storageKey = useMemo(() => `chat_meta_${username || ''}`, [username])
+  const chatCacheKey = useMemo(() => username ? `chat-messages:${username}` : null, [username])
+  const profileCacheKey = useMemo(() => username ? `chat-profile:${username}` : null, [username])
   const metaRef = useRef<Record<string, { reaction?: string; replySnippet?: string }>>({})
   const [otherProfile, setOtherProfile] = useState<{ display_name:string; profile_picture?:string|null }|null>(null)
   const [, setTyping] = useState(false) // keep setter for API calls; UI label removed
@@ -555,81 +562,131 @@ export default function ChatThread(){
 
   // Encryption is initialized globally in App.tsx - no need for per-chat init
 
-  // Initial load of messages and other user info
+  // Helper to process raw messages (decrypt, parse replies, add metadata)
+  const processRawMessages = useCallback(async (rawMessages: any[]): Promise<Message[]> => {
+    // Decrypt encrypted messages first
+    const decryptedMessages = await Promise.all(
+      rawMessages.map(async (m: any) => await decryptMessageIfNeeded(m))
+    )
+    
+    return decryptedMessages.map((m: any) => {
+      // Parse reply information from message text
+      let messageText = m.text
+      let replySnippet = undefined
+      const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+      if (replyMatch) {
+        replySnippet = replyMatch[2]
+        messageText = replyMatch[3]
+      }
+      
+      const k = `${m.time}|${messageText}|${m.sent ? 'me' : 'other'}`
+      const meta = metaRef.current[k] || {}
+      return { 
+        ...m,
+        text: messageText,
+        reaction: meta.reaction, 
+        replySnippet: replySnippet || meta.replySnippet,
+        isOptimistic: false,
+        edited_at: m.edited_at || null
+      }
+    })
+  }, [])
+
+  // Load cached profile immediately
+  useEffect(() => {
+    if (!profileCacheKey) return
+    const cached = readDeviceCache<{ display_name: string; profile_picture?: string | null }>(profileCacheKey, CHAT_CACHE_VERSION)
+    if (cached) {
+      setOtherProfile(cached)
+    }
+  }, [profileCacheKey])
+
+  // Load cached messages immediately for instant display
+  useEffect(() => {
+    if (!chatCacheKey) return
+    const cached = readDeviceCache<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
+    if (cached?.messages && cached.otherUserId) {
+      setOtherUserId(cached.otherUserId)
+      // Process cached messages (no await needed since they're already decrypted in cache)
+      processRawMessages(cached.messages).then(processed => {
+        setMessages(processed)
+      })
+    }
+  }, [chatCacheKey, processRawMessages])
+
+  // Initial load of messages and other user info (fresh fetch)
   useEffect(() => {
     if (!username) return
     
-    // Get other user ID
-    fetch('/api/get_user_id_by_username', { 
-      method:'POST', 
-      credentials:'include', 
-      headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
-      body: new URLSearchParams({ username }) 
-    })
-    .then(r=>r.json())
-    .then(j=>{
-      if (j?.success && j.user_id){
-        setOtherUserId(j.user_id)
-        
-        // Load initial messages
-        const fd = new URLSearchParams({ other_user_id: String(j.user_id) })
-        fetch('/get_messages', { 
-          method:'POST', 
-          credentials:'include', 
-          headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
-          body: fd 
-        })
-        .then(r=>r.json())
-        .then(async (j) => {
-          if (j?.success && Array.isArray(j.messages)) {
-            // Decrypt encrypted messages first
-            const decryptedMessages = await Promise.all(
-              j.messages.map(async (m: any) => await decryptMessageIfNeeded(m))
-            )
-            
-            const processedMessages = decryptedMessages.map((m:any) => {
-              // Parse reply information from message text
-              let messageText = m.text
-              let replySnippet = undefined
-              const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
-              if (replyMatch) {
-                // Extract reply info and actual message
-                // const replySender = replyMatch[1] // Can use this later if needed
-                replySnippet = replyMatch[2]
-                messageText = replyMatch[3]
-              }
-              
-              const k = `${m.time}|${messageText}|${m.sent ? 'me' : 'other'}`
-              const meta = metaRef.current[k] || {}
-              return { 
-                ...m,
-                text: messageText,
-                reaction: meta.reaction, 
-                replySnippet: replySnippet || meta.replySnippet,
-                isOptimistic: false,
-                edited_at: m.edited_at || null
-              }
-            })
-            setMessages(processedMessages)
-            lastFetchTime.current = Date.now()
+    // Helper to fetch messages and profile once we have user ID
+    const fetchMessagesAndProfile = (userId: number) => {
+      // Load fresh messages
+      const fd = new URLSearchParams({ other_user_id: String(userId) })
+      fetch('/get_messages', { 
+        method:'POST', 
+        credentials:'include', 
+        headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
+        body: fd 
+      })
+      .then(r=>r.json())
+      .then(async (msgResponse) => {
+        if (msgResponse?.success && Array.isArray(msgResponse.messages)) {
+          const processedMessages = await processRawMessages(msgResponse.messages)
+          setMessages(processedMessages)
+          lastFetchTime.current = Date.now()
+          
+          // Cache the messages for next time
+          if (chatCacheKey) {
+            writeDeviceCache(chatCacheKey, { 
+              messages: msgResponse.messages, 
+              otherUserId: userId 
+            }, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
           }
-        }).catch(()=>{})
-        
-        // Load user profile
-        fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
-          .then(r => r.json())
-          .then(j => {
-            if (j?.success) {
-              setOtherProfile({ 
-                display_name: j.display_name, 
-                profile_picture: j.profile_picture || null 
-              }) 
+        }
+      }).catch(()=>{})
+      
+      // Load user profile (in parallel)
+      fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
+        .then(r => r.json())
+        .then(profileResponse => {
+          if (profileResponse?.success) {
+            const profile = { 
+              display_name: profileResponse.display_name, 
+              profile_picture: profileResponse.profile_picture || null 
             }
-          })
-          .catch(()=>{})
-      }
-    }).catch(()=>{})
-  }, [username])
+            setOtherProfile(profile)
+            // Cache the profile
+            if (profileCacheKey) {
+              writeDeviceCache(profileCacheKey, profile, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
+            }
+          }
+        })
+        .catch(()=>{})
+    }
+    
+    // Check if we have cached user ID - skip the lookup API call if so
+    const cached = chatCacheKey ? readDeviceCache<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION) : null
+    if (cached?.otherUserId) {
+      // Use cached user ID immediately, fetch messages in parallel
+      setOtherUserId(cached.otherUserId)
+      fetchMessagesAndProfile(cached.otherUserId)
+    } else {
+      // No cache - need to look up user ID first
+      fetch('/api/get_user_id_by_username', { 
+        method:'POST', 
+        credentials:'include', 
+        headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
+        body: new URLSearchParams({ username }) 
+      })
+      .then(r=>r.json())
+      .then(j=>{
+        if (j?.success && j.user_id){
+          setOtherUserId(j.user_id)
+          fetchMessagesAndProfile(j.user_id)
+        }
+      }).catch(()=>{})
+    }
+  }, [username, chatCacheKey, profileCacheKey, processRawMessages])
   
   useEffect(() => {
     const el = listRef.current
