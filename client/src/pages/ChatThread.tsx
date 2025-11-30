@@ -982,9 +982,11 @@ export default function ChatThread(){
       }
       
       // Create optimistic message WITH encryption flags
+      // Use messageText (not formattedMessage) for display - formattedMessage contains [REPLY:...] prefix
+      // which should only be sent to server, not displayed
       const optimisticMessage: Message = { 
         id: tempId, 
-        text: formattedMessage, 
+        text: messageText, 
         sent: true, 
         time: now, 
         replySnippet,
