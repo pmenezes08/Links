@@ -23,7 +23,7 @@ type Post = { id: number; username: string; content: string; image_path?: string
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 const COMMUNITY_FEED_CACHE_TTL_MS = 2 * 60 * 1000
-const COMMUNITY_FEED_CACHE_VERSION = 'community-feed-v2'
+const COMMUNITY_FEED_CACHE_VERSION = 'community-feed-v3'
 
 function normalizeMediaPath(p?: string | null){
   if (!p) return ''
@@ -385,14 +385,19 @@ export default function CommunityFeed() {
       const res = await fetch('/delete_post', { method: 'POST', credentials: 'include', body: fd })
       const j = await res.json().catch(() => null)
       if (!j?.success) {
-        // Restore the post if delete failed
-        setData((prev: any) => {
-          if (!prev) return prev
-          const posts = Array.isArray(prev.posts) ? prev.posts : []
-          // Insert back in original position (approximation - add to top)
-          return { ...prev, posts: [deletedPost, ...posts] }
-        })
-        alert(j?.error || 'Failed to delete post')
+        const errorMsg = j?.error || ''
+        // If post is already gone on server ("not found"), keep it removed from UI - don't restore
+        const alreadyDeleted = errorMsg.toLowerCase().includes('not found') || errorMsg.toLowerCase().includes('does not exist')
+        if (!alreadyDeleted) {
+          // Only restore the post if it's a real failure (not "already deleted")
+          setData((prev: any) => {
+            if (!prev) return prev
+            const posts = Array.isArray(prev.posts) ? prev.posts : []
+            return { ...prev, posts: [deletedPost, ...posts] }
+          })
+          alert(errorMsg || 'Failed to delete post')
+        }
+        // If already deleted, silently succeed (post stays removed from UI)
       }
     } catch {
       // Restore on network error
