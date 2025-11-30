@@ -11696,6 +11696,14 @@ def post_status():
             except Exception as notify_err:
                 logger.warning(f"community notify block error: {notify_err}")
         
+        # Invalidate community feed cache so new post shows immediately
+        if community_id:
+            try:
+                invalidate_community_cache(community_id)
+                logger.info(f"Invalidated cache for community {community_id} after new post")
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate cache after post for community {community_id}: {cache_err}")
+        
         # Check if this is an AJAX request
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({
@@ -15713,10 +15721,13 @@ def delete_post():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username, image_path, video_path FROM posts WHERE id= ?", (post_id,))
+            c.execute("SELECT username, image_path, video_path, community_id FROM posts WHERE id= ?", (post_id,))
             post = c.fetchone()
             if not post or (post['username'] != username and username != 'admin'):
                 return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
+            
+            # Get community_id for cache invalidation before deleting
+            post_community_id = post['community_id'] if post else None
             
             # Cancel any pending imagine jobs for this post
             try:
@@ -15759,6 +15770,15 @@ def delete_post():
             c.execute("DELETE FROM post_views WHERE post_id = ?", (post_id,))
             c.execute("DELETE FROM posts WHERE id= ?", (post_id,))
             conn.commit()
+        
+        # Invalidate community feed cache so deleted post disappears immediately
+        if post_community_id:
+            try:
+                invalidate_community_cache(post_community_id)
+                logger.info(f"Invalidated cache for community {post_community_id} after post deletion")
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate cache after delete for community {post_community_id}: {cache_err}")
+        
         logger.info(f"Post {post_id} deleted successfully by {username}")
         return jsonify({'success': True, 'message': 'Post deleted!'}), 200
     except Exception as e:
@@ -15777,16 +15797,25 @@ def edit_post():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
+            c.execute("SELECT username, community_id FROM posts WHERE id = ?", (post_id,))
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Post not found!'}), 404
             owner = row['username'] if hasattr(row, 'keys') else row[0]
+            post_community_id = row['community_id'] if hasattr(row, 'keys') else row[1]
             if owner != username and username != 'admin':
                 return jsonify({'success': False, 'error': 'Unauthorized!'}), 403
             # Do not alter the original timestamp when editing content
             c.execute("UPDATE posts SET content = ? WHERE id = ?", (new_content, post_id))
             conn.commit()
+        
+        # Invalidate community feed cache
+        if post_community_id:
+            try:
+                invalidate_community_cache(post_community_id)
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate cache after edit for community {post_community_id}: {cache_err}")
+        
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error editing post {post_id} by {username}: {e}")
