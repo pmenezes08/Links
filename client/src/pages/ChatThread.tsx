@@ -1067,7 +1067,7 @@ export default function ChatThread(){
     }
   }
 
-function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
+  function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
     setSending(true)
     
     // Create optimistic message with temp ID (same pattern as text messages)
