@@ -16005,26 +16005,71 @@ def delete_post():
 @app.route('/edit_post', methods=['POST'])
 @login_required
 def edit_post():
-    """Edit a post's content (owner or admin)."""
+    """Edit a post's content and/or media (owner or admin)."""
     username = session['username']
     post_id = request.form.get('post_id', type=int)
     new_content = (request.form.get('content') or '').strip()
-    if not post_id or not new_content:
-        return jsonify({'success': False, 'error': 'Post ID and content are required!'}), 400
+    remove_media = request.form.get('remove_media') == 'true'
+    
+    if not post_id:
+        return jsonify({'success': False, 'error': 'Post ID is required!'}), 400
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username, community_id FROM posts WHERE id = ?", (post_id,))
+            c.execute("SELECT username, community_id, image_path, video_path FROM posts WHERE id = ?", (post_id,))
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Post not found!'}), 404
             owner = row['username'] if hasattr(row, 'keys') else row[0]
             post_community_id = row['community_id'] if hasattr(row, 'keys') else row[1]
+            old_image_path = row['image_path'] if hasattr(row, 'keys') else row[2]
+            old_video_path = row['video_path'] if hasattr(row, 'keys') else row[3]
+            
             if owner != username and username != 'admin':
                 return jsonify({'success': False, 'error': 'Unauthorized!'}), 403
-            # Do not alter the original timestamp when editing content
-            c.execute("UPDATE posts SET content = ? WHERE id = ?", (new_content, post_id))
-            conn.commit()
+            
+            # Handle new media upload
+            new_image_path = None
+            new_video_path = None
+            media_file = request.files.get('media')
+            
+            if media_file and media_file.filename:
+                filename = secure_filename(media_file.filename)
+                ext = os.path.splitext(filename)[1].lower()
+                unique_filename = f"{uuid.uuid4().hex}{ext}"
+                save_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+                media_file.save(save_path)
+                
+                if ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                    new_image_path = unique_filename
+                elif ext in ['.mp4', '.webm', '.mov', '.m4v', '.avi']:
+                    new_video_path = unique_filename
+            
+            # Build update query
+            updates = []
+            params = []
+            
+            if new_content:
+                updates.append("content = ?")
+                params.append(new_content)
+            
+            if new_image_path:
+                updates.append("image_path = ?")
+                updates.append("video_path = NULL")
+                params.append(new_image_path)
+            elif new_video_path:
+                updates.append("video_path = ?")
+                updates.append("image_path = NULL")
+                params.append(new_video_path)
+            elif remove_media:
+                updates.append("image_path = NULL")
+                updates.append("video_path = NULL")
+            
+            if updates:
+                params.append(post_id)
+                c.execute(f"UPDATE posts SET {', '.join(updates)} WHERE id = ?", params)
+                conn.commit()
         
         # Invalidate community feed cache
         if post_community_id:
@@ -16033,7 +16078,7 @@ def edit_post():
             except Exception as cache_err:
                 logger.warning(f"Failed to invalidate cache after edit for community {post_community_id}: {cache_err}")
         
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'image_path': new_image_path, 'video_path': new_video_path})
     except Exception as e:
         logger.error(f"Error editing post {post_id} by {username}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500

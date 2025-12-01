@@ -440,55 +440,6 @@ export default function CommunityFeed() {
     }
   }
 
-  // Optimistic edit - updates post content immediately
-  async function handleEditPost(postId: number, newContent: string) {
-    const originalPost = postsOnly.find((p: Post) => p.id === postId)
-    if (!originalPost) return false
-
-    // Optimistically update content
-    setData((prev: any) => {
-      if (!prev) return prev
-      const posts = Array.isArray(prev.posts) ? prev.posts : []
-      return {
-        ...prev,
-        posts: posts.map((p: any) => p.id === postId ? { ...p, content: newContent } : p)
-      }
-    })
-
-    // Call API
-    try {
-      const fd = new URLSearchParams({ post_id: String(postId), content: newContent })
-      const res = await fetch('/edit_post', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
-      const j = await res.json().catch(() => null)
-      if (!j?.success) {
-        // Restore original content
-        setData((prev: any) => {
-          if (!prev) return prev
-          const posts = Array.isArray(prev.posts) ? prev.posts : []
-          return {
-            ...prev,
-            posts: posts.map((p: any) => p.id === postId ? { ...p, content: originalPost.content } : p)
-          }
-        })
-        alert(j?.error || 'Failed to update post')
-        return false
-      }
-      return true
-    } catch {
-      // Restore on error
-      setData((prev: any) => {
-        if (!prev) return prev
-        const posts = Array.isArray(prev.posts) ? prev.posts : []
-        return {
-          ...prev,
-          posts: posts.map((p: any) => p.id === postId ? { ...p, content: originalPost.content } : p)
-        }
-      })
-      alert('Network error. Could not update post.')
-      return false
-    }
-  }
-
   // Optimistic poll delete
   async function handleDeletePoll(postId: number, pollId: number) {
     const originalPost = postsOnly.find((p: Post) => p.id === postId)
@@ -908,7 +859,6 @@ export default function CommunityFeed() {
                   onPreviewImage={setPreviewImageSrc}
                   onMarkViewed={markPostViewed}
                   onDeletePost={handleDeletePost}
-                  onEditPost={handleEditPost}
                   onDeletePoll={handleDeletePoll}
                 />
                 {/* Dark overlay for all posts except first one during reaction highlight */}
@@ -1262,10 +1212,14 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onEditPost, onDeletePoll }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void, onDeletePost?: (postId: number) => void, onEditPost?: (postId: number, content: string) => Promise<boolean>, onDeletePoll?: (postId: number, pollId: number) => void }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void }) {
   const cardRef = useRef<HTMLDivElement | null>(null)
+  const mediaInputRef = useRef<HTMLInputElement | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(post.content)
+  const [editMediaFile, setEditMediaFile] = useState<File | null>(null)
+  const [editMediaPreview, setEditMediaPreview] = useState<string | null>(null)
+  const [removeMedia, setRemoveMedia] = useState(false)
   const [starring, setStarring] = useState(false)
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
@@ -1339,6 +1293,32 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     setLinkDisplayName('')
   }
 
+  function handleMediaSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setEditMediaFile(file)
+    setRemoveMedia(false)
+    // Create preview
+    const url = URL.createObjectURL(file)
+    setEditMediaPreview(url)
+  }
+
+  function clearEditMedia() {
+    setEditMediaFile(null)
+    if (editMediaPreview) {
+      URL.revokeObjectURL(editMediaPreview)
+      setEditMediaPreview(null)
+    }
+    if (mediaInputRef.current) mediaInputRef.current.value = ''
+  }
+
+  function cancelEdit() {
+    setEditText(post.content)
+    clearEditMedia()
+    setRemoveMedia(false)
+    setIsEditing(false)
+  }
+
   useEffect(() => {
     setChildReplyGif(null)
   }, [activeChildReplyFor])
@@ -1385,16 +1365,43 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     }
   }
   async function saveEdit(){
-    if (onEditPost) {
-      const success = await onEditPost(post.id, editText)
-      if (success) setIsEditing(false)
-    } else {
-      // Fallback for non-optimistic edit
-      const fd = new URLSearchParams({ post_id: String(post.id), content: editText })
-      const r = await fetch('/edit_post', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
-      const j = await r.json().catch(()=>null)
-      if (j?.success){ setIsEditing(false); if (communityId) clearDeviceCache(`community-feed:${communityId}`); try{ (window as any).location.reload() }catch{} }
-      else alert(j?.error || 'Failed to update post')
+    // Use FormData to support file uploads
+    const fd = new FormData()
+    fd.append('post_id', String(post.id))
+    fd.append('content', editText)
+    
+    if (editMediaFile) {
+      fd.append('media', editMediaFile)
+    } else if (removeMedia) {
+      fd.append('remove_media', 'true')
+    }
+    
+    try {
+      const r = await fetch('/edit_post', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        // Update post object with new media paths if returned
+        if (j.image_path) {
+          ;(post as any).image_path = j.image_path
+          ;(post as any).video_path = null
+        } else if (j.video_path) {
+          ;(post as any).video_path = j.video_path
+          ;(post as any).image_path = null
+        } else if (removeMedia) {
+          ;(post as any).image_path = null
+          ;(post as any).video_path = null
+        }
+        clearEditMedia()
+        setRemoveMedia(false)
+        setIsEditing(false)
+        if (communityId) clearDeviceCache(`community-feed:${communityId}`)
+        // Reload to show updated content
+        try { (window as any).location.reload() } catch {}
+      } else {
+        alert(j?.error || 'Failed to update post')
+      }
+    } catch (err) {
+      alert('Failed to update post')
     }
   }
   return (
@@ -1450,6 +1457,58 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           <div className="px-3 space-y-2" onClick={(e)=> e.stopPropagation()}>
             <textarea className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" value={editText} onChange={(e)=> setEditText(e.target.value)} />
             
+            {/* Current/New Media Preview */}
+            {!removeMedia && (editMediaPreview || post.image_path || post.video_path) && (
+              <div className="relative rounded-lg border border-white/10 overflow-hidden">
+                {editMediaPreview ? (
+                  // New media preview
+                  editMediaFile?.type.startsWith('video/') ? (
+                    <video src={editMediaPreview} className="w-full max-h-48 object-contain bg-black" controls />
+                  ) : (
+                    <img src={editMediaPreview} alt="New media" className="w-full max-h-48 object-contain bg-black" />
+                  )
+                ) : post.image_path ? (
+                  <img src={normalizeMediaPath(post.image_path)} alt="Current" className="w-full max-h-48 object-contain bg-black" />
+                ) : post.video_path ? (
+                  <video src={normalizeMediaPath(post.video_path)} className="w-full max-h-48 object-contain bg-black" controls />
+                ) : null}
+                <button
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/70 border border-white/20 text-white/80 hover:text-white hover:bg-black/90 flex items-center justify-center"
+                  onClick={() => {
+                    if (editMediaPreview) {
+                      clearEditMedia()
+                    } else {
+                      setRemoveMedia(true)
+                    }
+                  }}
+                  title="Remove media"
+                >
+                  <i className="fa-solid fa-xmark text-sm" />
+                </button>
+              </div>
+            )}
+            
+            {/* Media Actions */}
+            <div className="flex items-center gap-2">
+              <input
+                ref={mediaInputRef}
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={handleMediaSelect}
+              />
+              <button
+                className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm flex items-center gap-2"
+                onClick={() => mediaInputRef.current?.click()}
+              >
+                <i className="fa-solid fa-image" />
+                {post.image_path || post.video_path || editMediaPreview ? 'Replace Media' : 'Add Media'}
+              </button>
+              {removeMedia && (
+                <span className="text-xs text-red-400">Media will be removed</span>
+              )}
+            </div>
+            
             {/* Detected links */}
             {detectedLinks.length > 0 && (
               <div className="space-y-2">
@@ -1474,7 +1533,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             )}
             
             <div className="flex gap-2 justify-end">
-              <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> { setEditText(post.content); setIsEditing(false) }}>Cancel</button>
+              <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={cancelEdit}>Cancel</button>
               <button className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm hover:brightness-110" onClick={saveEdit}>Save</button>
             </div>
           </div>
