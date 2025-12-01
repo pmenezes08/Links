@@ -1668,6 +1668,22 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure image_path column on messages: {e}")
 
+            # Ensure messages table has video_path column for video messages
+            try:
+                exists = False
+                try:
+                    if USE_MYSQL:
+                        c.execute("SHOW COLUMNS FROM messages LIKE 'video_path'")
+                        exists = c.fetchone() is not None
+                except Exception:
+                    exists = False
+                if not exists:
+                    c.execute("ALTER TABLE messages ADD COLUMN video_path TEXT")
+                    conn.commit()
+                    logger.info("Added video_path column to messages table")
+            except Exception as e:
+                logger.warning(f"Could not ensure video_path column on messages: {e}")
+
             # Ensure messages table has audio columns for voice messages
             for col_name, col_type in [
                 ('audio_path', 'TEXT'),
@@ -8817,7 +8833,7 @@ def get_messages():
             try:
                 c.execute(
                     """
-                    SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, 
+                    SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
                            is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at
                     FROM messages
                     WHERE (sender = ? AND receiver = ?)
@@ -8832,7 +8848,7 @@ def get_messages():
                 try:
                     c.execute(
                         """
-                        SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
+                        SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
                         FROM messages
                         WHERE (sender = ? AND receiver = ?)
                            OR (sender = ? AND receiver = ?)
@@ -8844,7 +8860,7 @@ def get_messages():
                     with_edited = False
                     c.execute(
                         """
-                        SELECT id, sender, receiver, message, image_path, audio_path, audio_duration_seconds, audio_mime, timestamp
+                        SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp
                         FROM messages
                         WHERE (sender = ? AND receiver = ?)
                            OR (sender = ? AND receiver = ?)
@@ -8855,23 +8871,42 @@ def get_messages():
             
             messages = []
             for msg in c.fetchall():
+                if hasattr(msg, 'keys'):
+                    image_path_val = msg.get('image_path')
+                    video_path_val = msg.get('video_path')
+                    audio_path_val = msg.get('audio_path')
+                    audio_duration_val = msg.get('audio_duration_seconds')
+                    audio_mime_val = msg.get('audio_mime')
+                else:
+                    image_path_val = msg[4] if len(msg) > 4 else None
+                    video_path_val = msg[5] if len(msg) > 5 else None
+                    audio_path_val = msg[6] if len(msg) > 6 else None
+                    audio_duration_val = msg[7] if len(msg) > 7 else None
+                    audio_mime_val = msg[8] if len(msg) > 8 else None
+                edited_at_val = None
+                if with_edited:
+                    if hasattr(msg, 'get'):
+                        edited_at_val = msg.get('edited_at')
+                    elif len(msg):
+                        edited_at_val = msg[-1]
                 msg_dict = {
                     'id': msg['id'],
                     'text': msg['message'],
-                    'image_path': msg.get('image_path') if hasattr(msg, 'get') else msg[4],
-                    'audio_path': msg.get('audio_path') if hasattr(msg, 'get') else msg[5] if len(msg) > 5 else None,
-                    'audio_duration_seconds': msg.get('audio_duration_seconds') if hasattr(msg, 'get') else msg[6] if len(msg) > 6 else None,
-                    'audio_mime': msg.get('audio_mime') if hasattr(msg, 'get') else msg[7] if len(msg) > 7 else None,
+                    'image_path': image_path_val,
+                    'video_path': video_path_val,
+                    'audio_path': audio_path_val,
+                    'audio_duration_seconds': audio_duration_val,
+                    'audio_mime': audio_mime_val,
                     'sent': msg['sender'] == username,
                     'time': msg['timestamp'],
-                    'edited_at': (msg.get('edited_at') if (with_edited and hasattr(msg,'get')) else ((msg[9] if (with_edited and len(msg) > 9) else None)))
+                    'edited_at': edited_at_val
                 }
                 
                 # Add encryption fields if available
                 if with_encryption:
-                    msg_dict['is_encrypted'] = msg.get('is_encrypted') if hasattr(msg, 'get') else msg[8] if len(msg) > 8 else 0
-                    msg_dict['encrypted_body'] = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else None
-                    msg_dict['encrypted_body_for_sender'] = msg.get('encrypted_body_for_sender') if hasattr(msg, 'get') else msg[10] if len(msg) > 10 else None
+                    msg_dict['is_encrypted'] = msg.get('is_encrypted') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else 0
+                    msg_dict['encrypted_body'] = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[10] if len(msg) > 10 else None
+                    msg_dict['encrypted_body_for_sender'] = msg.get('encrypted_body_for_sender') if hasattr(msg, 'get') else msg[11] if len(msg) > 11 else None
                 
                 messages.append(msg_dict)
             
@@ -9197,6 +9232,21 @@ def send_photo_message():
             """, (username, recipient_username, message, relative_path))
             
             conn.commit()
+            inserted_id = getattr(c, 'lastrowid', None)
+            inserted_time = None
+            if inserted_id:
+                try:
+                    if USE_MYSQL:
+                        c.execute("SELECT timestamp FROM messages WHERE id = %s", (inserted_id,))
+                    else:
+                        c.execute("SELECT timestamp FROM messages WHERE id = ?", (inserted_id,))
+                    row = c.fetchone()
+                    if row is not None:
+                        inserted_time = row['timestamp'] if hasattr(row, 'keys') else row[0]
+                except Exception:
+                    inserted_time = None
+            
+            invalidate_message_cache(username, recipient_username)
             
             # Create or update notification for the recipient (truly atomic)
             try:
@@ -9247,12 +9297,124 @@ def send_photo_message():
             return jsonify({
                 'success': True, 
                 'message': 'Photo sent successfully',
-                'image_path': relative_path
+                'image_path': relative_path,
+                'id': inserted_id,
+                'time': inserted_time
             })
             
     except Exception as e:
         logger.error(f"Error sending photo message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send photo'})
+
+# Message videos served via /uploads/message_videos mapping
+
+@app.route('/send_video_message', methods=['POST'])
+@login_required
+def send_video_message():
+    """Send a video message to another user"""
+    username = session.get('username')
+    recipient_id = request.form.get('recipient_id')
+    message = request.form.get('message', '')
+    
+    if not recipient_id:
+        return jsonify({'success': False, 'error': 'Recipient required'})
+    if 'video' not in request.files:
+        return jsonify({'success': False, 'error': 'No video uploaded'})
+    
+    video = request.files['video']
+    if video.filename == '':
+        return jsonify({'success': False, 'error': 'No video selected'})
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            c.execute("SELECT username FROM users WHERE id = ?", (recipient_id,))
+            recipient = c.fetchone()
+            if not recipient:
+                return jsonify({'success': False, 'error': 'Recipient not found'})
+            recipient_username = recipient['username'] if hasattr(recipient, 'keys') else recipient[0]
+            
+            stored_path = save_uploaded_file(video, subfolder='message_videos')
+            if not stored_path:
+                return jsonify({'success': False, 'error': 'Invalid video type'})
+            relative_path = stored_path[7:] if stored_path.startswith('uploads/') else stored_path
+            
+            c.execute("""
+                INSERT INTO messages (sender, receiver, message, video_path, timestamp)
+                VALUES (?, ?, ?, ?, NOW())
+            """, (username, recipient_username, message, relative_path))
+            conn.commit()
+            
+            inserted_id = getattr(c, 'lastrowid', None)
+            inserted_time = None
+            if inserted_id:
+                try:
+                    if USE_MYSQL:
+                        c.execute("SELECT timestamp FROM messages WHERE id = %s", (inserted_id,))
+                    else:
+                        c.execute("SELECT timestamp FROM messages WHERE id = ?", (inserted_id,))
+                    row = c.fetchone()
+                    if row is not None:
+                        inserted_time = row['timestamp'] if hasattr(row, 'keys') else row[0]
+                except Exception:
+                    inserted_time = None
+            
+            invalidate_message_cache(username, recipient_username)
+            
+            try:
+                c.execute("""
+                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
+                    VALUES (?, ?, 'message', ?, NOW(), 0)
+                    ON DUPLICATE KEY UPDATE
+                        created_at = NOW(),
+                        message = VALUES(message),
+                        is_read = 0
+                """, (recipient_username, username, f"You have new messages from {username}"))
+                conn.commit()
+            except Exception as notif_e:
+                logger.warning(f"Could not create/update video message notification: {notif_e}")
+            
+            try:
+                should_push = True
+                try:
+                    with get_db_connection() as conn2:
+                        c2 = conn2.cursor()
+                        if USE_MYSQL:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND updated_at > DATE_SUB(NOW(), INTERVAL 20 SECOND)
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        else:
+                            c2.execute("""
+                                SELECT 1 FROM active_chat_status 
+                                WHERE user=? AND peer=? AND datetime(updated_at) > datetime('now','-20 seconds')
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        if c2.fetchone():
+                            should_push = False
+                except Exception as pe:
+                    logger.warning(f"active chat presence check (video) failed: {pe}")
+                if should_push:
+                    send_push_to_user(recipient_username, {
+                        'title': f'Message from {username}',
+                        'body': f'You have new messages from {username}',
+                        'url': f'/user_chat/chat/{username}',
+                        'tag': f'message-{username}',
+                    })
+            except Exception as _e:
+                logger.warning(f"push send_video_message warn: {_e}")
+            
+            return jsonify({
+                'success': True,
+                'video_path': relative_path,
+                'id': inserted_id,
+                'time': inserted_time
+            })
+    except Exception as e:
+        logger.error(f"Error sending video message: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to send video'})
 
 # Message photos served by web server static mapping (/uploads/message_photos -> uploads/message_photos)
 

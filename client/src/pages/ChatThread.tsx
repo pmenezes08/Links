@@ -23,29 +23,14 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
+import { sendImageMessage, sendVideoMessage } from '../chat/mediaSenders'
+import type { ChatMessage } from '../types/chat'
 
 // Cache settings for chat messages
 const CHAT_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes (matches server Redis TTL)
 const CHAT_CACHE_VERSION = 'chat-v1'
 
-interface Message {
-  id: number | string
-  text: string
-  image_path?: string
-  audio_path?: string
-  audio_duration_seconds?: number
-  sent: boolean
-  time: string
-  reaction?: string
-  replySnippet?: string
-  isOptimistic?: boolean // Track if this is an optimistic update
-  edited_at?: string | null
-  clientKey?: string | number
-  is_encrypted?: boolean
-  encrypted_body?: string // Encrypted for recipient
-  encrypted_body_for_sender?: string // Encrypted for sender
-  decryption_error?: boolean
-}
+type Message = ChatMessage
 
 export default function ChatThread(){
   const { setTitle } = useHeader()
@@ -91,6 +76,7 @@ export default function ChatThread(){
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const audioInputRef = useRef<HTMLInputElement|null>(null)
+  const videoInputRef = useRef<HTMLInputElement|null>(null)
   const { recording, recordMs, preview: recordingPreview, start: startVoiceRecording, stop: stopVoiceRecording, clearPreview: cancelRecordingPreview, level } = useAudioRecorder() as any
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [isMobile, setIsMobile] = useState(false)
@@ -606,6 +592,7 @@ export default function ChatThread(){
       return { 
         ...m,
         text: messageText,
+        video_path: m.video_path,
         reaction: meta.reaction, 
         replySnippet: replySnippet || meta.replySnippet,
         isOptimistic: false,
@@ -818,7 +805,7 @@ export default function ChatThread(){
               let stableKey = idBridgeRef.current.serverToTemp.get(m.id)
               
               if (!stableKey) {
-                // Try to find matching message by content or image_path
+                // Try to find matching message by content or media path
                 for (const [key, existing] of messagesByKey.entries()) {
                   if (existing.sent !== isSentByMe) continue
                   
@@ -836,6 +823,28 @@ export default function ChatThread(){
                       if (existing.text === messageText) {
                         const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
                         if (timeDiff < 10000) { // 10 second window for photo uploads
+                          stableKey = key
+                          idBridgeRef.current.serverToTemp.set(m.id, key)
+                          idBridgeRef.current.tempToServer.set(key, m.id)
+                          break
+                        }
+                      }
+                    }
+                    continue
+                  }
+                  
+                  // For video messages: match by server video_path
+                  if (m.video_path && existing.video_path) {
+                    if (existing.video_path === m.video_path) {
+                      stableKey = key
+                      idBridgeRef.current.serverToTemp.set(m.id, key)
+                      idBridgeRef.current.tempToServer.set(key, m.id)
+                      break
+                    }
+                    if (existing.isOptimistic && existing.video_path.startsWith('blob:')) {
+                      if (existing.text === messageText) {
+                        const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
+                        if (timeDiff < 10000) {
                           stableKey = key
                           idBridgeRef.current.serverToTemp.set(m.id, key)
                           idBridgeRef.current.tempToServer.set(key, m.id)
@@ -872,6 +881,7 @@ export default function ChatThread(){
                 id: m.id, // Use server ID now
                 text: messageText,
                 image_path: m.image_path,
+                video_path: m.video_path,
                 audio_path: m.audio_path,
                 audio_duration_seconds: m.audio_duration_seconds,
                 sent: isSentByMe,
@@ -1131,10 +1141,26 @@ export default function ChatThread(){
     cameraInputRef.current?.click()
   }
 
+  function handleVideoSelect() {
+    setShowAttachMenu(false)
+    videoInputRef.current?.click()
+  }
+
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file || !otherUserId) return
-    handleImageFile(file)
+    handleImageFile(file, 'photo', () => {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+    })
+  }
+
+  function handleVideoFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file || !otherUserId) return
+    handleVideoFile(file, () => {
+      if (videoInputRef.current) videoInputRef.current.value = ''
+    })
   }
 
   async function handleGifSelection(gif: GifSelection) {
@@ -1148,99 +1174,33 @@ export default function ChatThread(){
     }
   }
 
-  function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo') {
-    setSending(true)
-    
-    // Create optimistic message with temp ID (same pattern as text messages)
-    const tempId = `temp_photo_${Date.now()}_${Math.random()}`
-    const now = new Date().toISOString().slice(0,19).replace('T',' ')
-    const previewUrl = URL.createObjectURL(file)
-    
-    const optimisticMessage: Message = {
-      id: tempId,
-      text: kind === 'gif' ? '🎞️ GIF' : '📷 Photo',
-      image_path: previewUrl, // Show local preview while uploading
-      sent: true,
-      time: now,
-      isOptimistic: true,
-      clientKey: tempId
-    }
-    
-    // Add optimistic message immediately
-    setMessages(prev => [...prev, optimisticMessage])
-    
-    // Register in recent optimistic to prevent poll from removing it
-    recentOptimisticRef.current.set(tempId, {
-      message: optimisticMessage,
-      timestamp: Date.now()
+  function handleImageFile(file: File, kind: 'photo' | 'gif' = 'photo', cleanup?: () => void) {
+    sendImageMessage({
+      file,
+      kind,
+      otherUserId,
+      username,
+      setMessages,
+      scrollToBottom,
+      recentOptimisticRef,
+      idBridgeRef,
+      setSending,
+      setPastedImage,
+      cleanup,
     })
-    
-    setTimeout(scrollToBottom, 50)
+  }
 
-    // Create FormData for photo upload
-    const formData = new FormData()
-    formData.append('photo', file)
-    formData.append('recipient_id', String(otherUserId))
-    formData.append('message', '') // Optional text with photo
-
-    fetch('/send_photo_message', {
-      method: 'POST',
-      credentials: 'include',
-      body: formData
-    })
-    .then(r => r.json())
-    .then(j => {
-      if (j?.success) {
-        // Set up bridge mapping for deduplication
-        if (j.id) {
-          idBridgeRef.current.tempToServer.set(tempId, j.id)
-          idBridgeRef.current.serverToTemp.set(j.id, tempId)
-        }
-        
-        // Update optimistic message with real server data
-        setMessages(prev => prev.map(m => {
-          if ((m.clientKey || m.id) === tempId) {
-            return {
-              ...m,
-              id: j.id || m.id,
-              image_path: j.image_path, // Use server path instead of blob
-              isOptimistic: false,
-              time: j.time || m.time,
-              clientKey: tempId // Keep stable key
-            }
-          }
-          return m
-        }))
-        
-        // Revoke the blob URL after server responds
-        setTimeout(() => URL.revokeObjectURL(previewUrl), 100)
-
-        // Stop typing state
-        fetch('/api/typing', {
-          method:'POST',
-          credentials:'include',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ peer: username, is_typing: false })
-        }).catch(()=>{})
-      } else {
-        // Remove optimistic message on failure
-        setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
-        URL.revokeObjectURL(previewUrl)
-        alert('Failed to send photo: ' + (j.error || 'Unknown error'))
-      }
-    })
-    .catch(() => {
-      // Remove optimistic message on error
-      setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
-      URL.revokeObjectURL(previewUrl)
-      alert('Error sending photo. Please try again.')
-    })
-    .finally(() => {
-      setSending(false)
-      setPastedImage(null)
-      // Clear the input so user can select the same file again
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      if (cameraInputRef.current) cameraInputRef.current.value = ''
+  function handleVideoFile(file: File, cleanup?: () => void) {
+    sendVideoMessage({
+      file,
+      otherUserId,
+      username,
+      setMessages,
+      scrollToBottom,
+      recentOptimisticRef,
+      idBridgeRef,
+      setSending,
+      cleanup,
     })
   }
 
@@ -1729,6 +1689,18 @@ export default function ChatThread(){
                         </div>
                       ) : null}
                       
+                      {m.video_path ? (
+                        <div className="mb-1.5" onClick={e => e.stopPropagation()}>
+                          <video
+                            className="w-full max-h-64 rounded-2xl border border-white/10 bg-black"
+                            controls
+                            playsInline
+                            preload="metadata"
+                            src={m.video_path.startsWith('blob:') ? m.video_path : `/uploads/${m.video_path}`}
+                          />
+                        </div>
+                      ) : null}
+                      
                       {/* Encryption indicator - BIGGER AND MORE VISIBLE */}
                       {/* Use Boolean() to prevent rendering "0" when is_encrypted is 0 */}
                       {Boolean(m.is_encrypted) && !m.decryption_error && (
@@ -1921,6 +1893,18 @@ export default function ChatThread(){
                     <div className="text-white/60 text-[10px] sm:text-xs">Powered by GIPHY</div>
                   </div>
                 </button>
+                <button
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+                  onClick={handleVideoSelect}
+                >
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-video text-[#4db6ac] text-sm sm:text-base" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-white font-medium text-sm sm:text-base">Video</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">Attach from library</div>
+                  </div>
+                </button>
               </div>
             </>
           )}
@@ -1989,6 +1973,13 @@ export default function ChatThread(){
             accept="audio/*"
             capture
             onChange={handleAudioFileChange}
+            className="hidden"
+          />
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept="video/mp4,video/webm,video/quicktime,video/x-m4v,video/x-msvideo"
+            onChange={handleVideoFileChange}
             className="hidden"
           />
 

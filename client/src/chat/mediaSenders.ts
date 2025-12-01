@@ -1,0 +1,221 @@
+import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
+import type { ChatMessage } from '../types/chat'
+
+interface BridgeRef {
+  tempToServer: Map<string, string | number>
+  serverToTemp: Map<string | number, string>
+}
+
+interface OptimisticEntry {
+  message: ChatMessage
+  timestamp: number
+}
+
+type MessagesSetter = Dispatch<SetStateAction<ChatMessage[]>>
+
+interface BaseMediaOptions {
+  otherUserId: number | ''
+  username?: string
+  setMessages: MessagesSetter
+  scrollToBottom: () => void
+  recentOptimisticRef: MutableRefObject<Map<string, OptimisticEntry>>
+  idBridgeRef: MutableRefObject<BridgeRef>
+  setSending: (value: boolean) => void
+  setPastedImage?: (file: File | null) => void
+  notifyError?: (message: string) => void
+  cleanup?: () => void
+}
+
+interface ImageMediaOptions extends BaseMediaOptions {
+  file: File
+  kind?: 'photo' | 'gif'
+}
+
+interface VideoMediaOptions extends BaseMediaOptions {
+  file: File
+}
+
+const defaultNotify = (msg: string) => {
+  if (typeof window !== 'undefined') {
+    window.alert(msg)
+  }
+}
+
+function finalizeOptimisticEntry(
+  recentOptimisticRef: MutableRefObject<Map<string, OptimisticEntry>>,
+  tempId: string,
+  delayMs = 1000
+) {
+  setTimeout(() => {
+    recentOptimisticRef.current.delete(tempId)
+  }, delayMs)
+}
+
+export async function sendImageMessage(options: ImageMediaOptions) {
+  if (!options.otherUserId) return
+  const {
+    file,
+    kind = 'photo',
+    otherUserId,
+    setMessages,
+    scrollToBottom,
+    recentOptimisticRef,
+    idBridgeRef,
+    setSending,
+    setPastedImage,
+    notifyError = defaultNotify,
+    cleanup,
+  } = options
+
+  setSending(true)
+  const tempId = `temp_${kind}_${Date.now()}_${Math.random()}`
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+  const previewUrl = URL.createObjectURL(file)
+  const optimisticMessage: ChatMessage = {
+    id: tempId,
+    text: kind === 'gif' ? '🎞️ GIF' : '📷 Photo',
+    image_path: previewUrl,
+    sent: true,
+    time: now,
+    isOptimistic: true,
+    clientKey: tempId,
+  }
+
+  setMessages((prev: ChatMessage[]) => [...prev, optimisticMessage])
+  recentOptimisticRef.current.set(tempId, { message: optimisticMessage, timestamp: Date.now() })
+  setTimeout(scrollToBottom, 50)
+
+  const formData = new FormData()
+  formData.append('photo', file)
+  formData.append('recipient_id', String(otherUserId))
+  formData.append('message', '')
+
+  try {
+    const response = await fetch('/send_photo_message', {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    })
+    const payload = await response.json().catch(() => null)
+    if (!payload?.success) {
+      throw new Error(payload?.error || 'Failed to send photo')
+    }
+
+    if (payload.id) {
+      idBridgeRef.current.tempToServer.set(tempId, payload.id)
+      idBridgeRef.current.serverToTemp.set(payload.id, tempId)
+    }
+
+    setMessages((prev: ChatMessage[]) =>
+      prev.map((message: ChatMessage) => {
+        if ((message.clientKey || message.id) !== tempId) return message
+        return {
+          ...message,
+          id: payload.id || message.id,
+          image_path: payload.image_path || message.image_path,
+          isOptimistic: false,
+          time: payload.time || message.time,
+        }
+      })
+    )
+
+    finalizeOptimisticEntry(recentOptimisticRef, tempId)
+  } catch (error) {
+    console.error('Image upload failed', error)
+    setMessages((prev: ChatMessage[]) => prev.filter((message: ChatMessage) => (message.clientKey || message.id) !== tempId))
+    recentOptimisticRef.current.delete(tempId)
+    notifyError(kind === 'gif' ? 'Failed to send GIF. Please try again.' : 'Failed to send photo. Please try again.')
+  } finally {
+    try {
+      URL.revokeObjectURL(previewUrl)
+    } catch {
+      // ignore
+    }
+    setPastedImage?.(null)
+    cleanup?.()
+    setSending(false)
+  }
+}
+
+export async function sendVideoMessage(options: VideoMediaOptions) {
+  if (!options.otherUserId) return
+  const {
+    file,
+    otherUserId,
+    setMessages,
+    scrollToBottom,
+    recentOptimisticRef,
+    idBridgeRef,
+    setSending,
+    notifyError = defaultNotify,
+    cleanup,
+  } = options
+
+  setSending(true)
+  const tempId = `temp_video_${Date.now()}_${Math.random()}`
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+  const previewUrl = URL.createObjectURL(file)
+  const optimisticMessage: ChatMessage = {
+    id: tempId,
+    text: '🎬 Video',
+    video_path: previewUrl,
+    sent: true,
+    time: now,
+    isOptimistic: true,
+    clientKey: tempId,
+  }
+
+  setMessages((prev: ChatMessage[]) => [...prev, optimisticMessage])
+  recentOptimisticRef.current.set(tempId, { message: optimisticMessage, timestamp: Date.now() })
+  setTimeout(scrollToBottom, 50)
+
+  const formData = new FormData()
+  formData.append('video', file)
+  formData.append('recipient_id', String(otherUserId))
+  formData.append('message', '')
+
+  try {
+    const response = await fetch('/send_video_message', {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    })
+    const payload = await response.json().catch(() => null)
+    if (!payload?.success) {
+      throw new Error(payload?.error || 'Failed to send video')
+    }
+
+    if (payload.id) {
+      idBridgeRef.current.tempToServer.set(tempId, payload.id)
+      idBridgeRef.current.serverToTemp.set(payload.id, tempId)
+    }
+
+    setMessages((prev: ChatMessage[]) =>
+      prev.map((message: ChatMessage) => {
+        if ((message.clientKey || message.id) !== tempId) return message
+        return {
+          ...message,
+          id: payload.id || message.id,
+          video_path: payload.video_path || message.video_path,
+          isOptimistic: false,
+          time: payload.time || message.time,
+        }
+      })
+    )
+
+    finalizeOptimisticEntry(recentOptimisticRef, tempId)
+  } catch (error) {
+    console.error('Video upload failed', error)
+    setMessages((prev: ChatMessage[]) => prev.filter((message: ChatMessage) => (message.clientKey || message.id) !== tempId))
+    recentOptimisticRef.current.delete(tempId)
+    notifyError('Failed to send video. Please try again.')
+  } finally {
+    try {
+      URL.revokeObjectURL(previewUrl)
+    } catch {
+      // ignore
+    }
+    cleanup?.()
+    setSending(false)
+  }
+}
