@@ -125,9 +125,7 @@ export default function PostDetail(){
   const [pullPx, setPullPx] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   const viewRecordedRef = useRef(false)
-  const headerOffsetVar = 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))'
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
-  const conversationMinHeight = `calc(100vh - ${headerOffsetVar})`
   const defaultComposerPadding = 200
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const composerRef = useRef<HTMLDivElement | null>(null)
@@ -137,6 +135,8 @@ export default function PostDetail(){
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const viewportBaseRef = useRef<number | null>(null)
   const [viewportLift, setViewportLift] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
@@ -195,6 +195,8 @@ export default function PostDetail(){
 
     const updateOffset = () => {
       const currentHeight = viewport.height
+      // Track viewport height for dynamic sizing
+      setViewportHeight(prev => (Math.abs((prev ?? currentHeight) - currentHeight) < 1 ? prev : currentHeight))
       if (
         viewportBaseRef.current === null ||
         currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
@@ -255,6 +257,29 @@ export default function PostDetail(){
       showSub?.remove()
       hideSub?.remove()
     }
+  }, [])
+
+  // Scroll content to bottom when keyboard opens to show latest replies
+  useEffect(() => {
+    let lastHeight = window.innerHeight
+    
+    const handleResize = () => {
+      const newHeight = window.innerHeight
+      // Keyboard state changed
+      if (newHeight !== lastHeight) {
+        const keyboardOpened = newHeight < lastHeight
+        lastHeight = newHeight
+        // Scroll to bottom when keyboard opens
+        if (contentRef.current && keyboardOpened) {
+          setTimeout(() => {
+            contentRef.current?.scrollTo({ top: contentRef.current.scrollHeight, behavior: 'smooth' })
+          }, 100)
+        }
+      }
+    }
+    
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [])
   
   useEffect(() => {
@@ -666,11 +691,21 @@ export default function PostDetail(){
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
-  const contentPaddingBottom = `calc(${effectiveComposerHeight}px + ${keyboardLift}px + ${safeBottom} + 2rem)`
+  // Dynamic content height based on viewport
+  const contentHeight = viewportHeight
+    ? `${viewportHeight}px`
+    : '100dvh'
+  // Padding to ensure content doesn't hide behind composer
+  const contentPaddingBottom = showKeyboard
+    ? `${effectiveComposerHeight + keyboardLift + 16}px`
+    : `calc(${safeBottom} + ${effectiveComposerHeight + 32}px)`
   const contentPaddingTop = `calc(${pullPx}px)`
 
   return (
-    <div className="glass-page min-h-screen overflow-hidden text-white">
+    <div
+      className="glass-page flex flex-col overflow-hidden text-white"
+      style={{ height: contentHeight }}
+    >
       {(refreshHint || refreshing) ? (
         <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
@@ -678,12 +713,17 @@ export default function PostDetail(){
           </div>
         </div>
       ) : null}
-      <div className="app-content px-0">
-        <div
-          className="mx-auto flex max-w-2xl flex-1 flex-col overflow-visible"
-          style={{ minHeight: conversationMinHeight }}
-        >
-          <div className="w-full px-3" style={{ paddingBottom: contentPaddingBottom, paddingTop: contentPaddingTop }}>
+      {/* Scrollable content area - shrinks when keyboard appears */}
+      <div
+        ref={contentRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden"
+        style={{
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 48px)',
+          WebkitOverflowScrolling: 'touch' as any,
+          overscrollBehaviorY: 'auto' as any,
+        }}
+      >
+        <div className="mx-auto max-w-2xl px-3" style={{ paddingBottom: contentPaddingBottom, paddingTop: contentPaddingTop }}>
         <div className="mb-2">
           <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
             <i className="fa-solid fa-arrow-left mr-1" /> Back
@@ -770,7 +810,6 @@ export default function PostDetail(){
         </div>
       </div>
     </div>
-  </div>
       {/* Image preview modal */}
           {previewSrc ? (
         <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewSrc(null)}>
