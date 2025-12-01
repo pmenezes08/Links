@@ -303,9 +303,11 @@ export default function ChatThread(){
         viewportBaseRef.current = currentHeight
       }
       const baseHeight = viewportBaseRef.current ?? currentHeight
-      const nextOffset = Math.max(0, baseHeight - currentHeight - viewport.offsetTop)
-      setViewportLift(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
-      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 1) return
+      // Only use height difference, ignore offsetTop to prevent scroll-induced shifts
+      const nextOffset = Math.max(0, baseHeight - currentHeight)
+      // Only update if change is significant (> 5px) to prevent micro-adjustments
+      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 5) return
+      setViewportLift(prev => (Math.abs(prev - nextOffset) < 5 ? prev : nextOffset))
       keyboardOffsetRef.current = nextOffset
       setKeyboardOffset(nextOffset)
       if (nextOffset > 0) {
@@ -318,14 +320,13 @@ export default function ChatThread(){
       rafId = requestAnimationFrame(updateOffset)
     }
     
+    // Only listen to resize, not scroll - scroll causes periodic shifts on iOS
     viewport.addEventListener('resize', handleChange)
-    viewport.addEventListener('scroll', handleChange)
     handleChange()
     
     return () => {
       if (rafId) cancelAnimationFrame(rafId)
       viewport.removeEventListener('resize', handleChange)
-      viewport.removeEventListener('scroll', handleChange)
     }
   }, [scrollToBottom])
 
