@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useGifPlayback } from '../hooks/useGifPlayback'
 
 interface MessageImageProps {
   src: string
@@ -10,6 +11,10 @@ interface MessageImageProps {
 export default function MessageImage({ src, alt, onClick, className = '' }: MessageImageProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const normalizedSrc = useMemo(() => src?.split('?')[0]?.toLowerCase() || '', [src])
+  const isGif = normalizedSrc.endsWith('.gif')
+  const { isFrozen, stillSrc, replay, canReplay } = useGifPlayback(isGif ? src : null)
+  const displaySrc = isGif && isFrozen && stillSrc ? stillSrc : src
 
   const handleLoad = () => {
     setLoading(false)
@@ -22,7 +27,7 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
 
   return (
     <div 
-      className={`relative rounded-2xl overflow-hidden bg-black/30 ring-1 ring-white/5 ${className}`}
+      className={`relative rounded-3xl overflow-hidden bg-black/25 shadow-[0_15px_45px_rgba(0,0,0,0.55)] ${className}`}
       style={{ minHeight: '120px' }}
       onClick={onClick}
     >
@@ -70,7 +75,7 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
 
       {/* Actual image */}
       <img
-        src={src}
+        src={displaySrc}
         alt={alt}
         className={`w-full h-full object-contain transition-all duration-500 ${
           loading ? 'opacity-0 scale-105' : 'opacity-100 scale-100'
@@ -92,6 +97,25 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
             <div className="h-full bg-[#4db6ac] rounded-full animate-pulse"></div>
           </div>
         </div>
+      )}
+
+      {isGif && isFrozen && (
+        <div className="absolute top-2 left-2 px-2 py-1 rounded-full bg-black/65 text-[10px] tracking-[0.2em] text-white/80 uppercase">
+          GIF paused
+        </div>
+      )}
+
+      {isGif && isFrozen && canReplay && (
+        <button
+          type="button"
+          className="absolute bottom-2 right-2 px-3 py-1.5 rounded-full bg-white/90 text-xs font-semibold text-black hover:bg-white transition"
+          onClick={(event) => {
+            event.stopPropagation()
+            replay()
+          }}
+        >
+          Replay
+        </button>
       )}
     </div>
   )
