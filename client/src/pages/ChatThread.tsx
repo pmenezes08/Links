@@ -169,6 +169,9 @@ export default function ChatThread(){
   // Layout helpers
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const defaultComposerPadding = 64
+  const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48 // ignore tiny viewport jitters
+  const NATIVE_KEYBOARD_MIN_HEIGHT = 60 // ignore tiny keyboard deltas on iOS app
+  const KEYBOARD_OFFSET_EPSILON = 6
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
@@ -288,6 +291,8 @@ export default function ChatThread(){
   }, [])
   
   useEffect(() => {
+    if (!isMobile) return
+    if (Capacitor.getPlatform() !== 'web') return
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
     if (!viewport) return
@@ -306,12 +311,13 @@ export default function ChatThread(){
       const baseHeight = viewportBaseRef.current ?? currentHeight
       // Only use height difference, ignore offsetTop to prevent scroll-induced shifts
       const nextOffset = Math.max(0, baseHeight - currentHeight)
+      const normalizedOffset = nextOffset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : nextOffset
       // Only update if change is significant (> 5px) to prevent micro-adjustments
-      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 5) return
-      setViewportLift(prev => (Math.abs(prev - nextOffset) < 5 ? prev : nextOffset))
-      keyboardOffsetRef.current = nextOffset
-      setKeyboardOffset(nextOffset)
-      if (nextOffset > 0) {
+      if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 5) return
+      setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 5 ? prev : normalizedOffset))
+      keyboardOffsetRef.current = normalizedOffset
+      setKeyboardOffset(normalizedOffset)
+      if (normalizedOffset > 0) {
         requestAnimationFrame(scrollToBottom)
       }
     }
@@ -329,40 +335,42 @@ export default function ChatThread(){
       if (rafId) cancelAnimationFrame(rafId)
       viewport.removeEventListener('resize', handleChange)
     }
-  }, [scrollToBottom])
+  }, [isMobile, scrollToBottom])
 
   useEffect(() => {
     if (Capacitor.getPlatform() === 'web') return
     let showSub: PluginListenerHandle | undefined
     let hideSub: PluginListenerHandle | undefined
-
+  
+    const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
+  
     const handleShow = (info: KeyboardInfo) => {
-      const height = info?.keyboardHeight ?? 0
-      if (Math.abs(keyboardOffsetRef.current - height) < 2) return
+      const height = normalizeHeight(info?.keyboardHeight ?? 0)
+      if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
       keyboardOffsetRef.current = height
       setKeyboardOffset(height)
       requestAnimationFrame(scrollToBottom)
     }
-
+  
     const handleHide = () => {
-      if (keyboardOffsetRef.current === 0) return
+      if (Math.abs(keyboardOffsetRef.current) < KEYBOARD_OFFSET_EPSILON) return
       keyboardOffsetRef.current = 0
       setKeyboardOffset(0)
       requestAnimationFrame(scrollToBottom)
     }
-
+  
     Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
       showSub = handle
     })
     Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
       hideSub = handle
     })
-
+  
     return () => {
       showSub?.remove()
       hideSub?.remove()
     }
-  }, [scrollToBottom])
+  }, [scrollToBottom, KEYBOARD_OFFSET_EPSILON])
 
   useEffect(() => {
     if (liftSource < 0) return
