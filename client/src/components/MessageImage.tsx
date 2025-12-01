@@ -27,7 +27,7 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
 
   return (
     <div 
-      className={`relative rounded-3xl overflow-hidden bg-black/25 shadow-[0_15px_45px_rgba(0,0,0,0.55)] ${className}`}
+      className={`relative rounded-xl overflow-hidden ${className}`}
       style={{ minHeight: '120px' }}
       onClick={onClick}
     >
