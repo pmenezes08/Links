@@ -16,6 +16,8 @@ export default function EditCommunity(){
   const [selectedParentId, setSelectedParentId] = useState<string>('none')
   const [notifyOnNewMember, setNotifyOnNewMember] = useState(false)
   const [maxMembers, setMaxMembers] = useState<string>('')
+  const [currentBackgroundPath, setCurrentBackgroundPath] = useState<string | null>(null)
+  const [removeBackground, setRemoveBackground] = useState(false)
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => {
@@ -43,6 +45,7 @@ export default function EditCommunity(){
           if (pid){ setIsChild(true); setSelectedParentId(String(pid)) }
           setNotifyOnNewMember(!!jc.community.notify_on_new_member)
           if (jc.community.max_members){ setMaxMembers(String(jc.community.max_members)) }
+          if (jc.community.background_path){ setCurrentBackgroundPath(jc.community.background_path) }
         }
         // Load available parents for dropdown
         try{
@@ -71,6 +74,7 @@ export default function EditCommunity(){
     fd.append('notify_on_new_member', notifyOnNewMember ? 'true' : 'false')
     if (maxMembers.trim()) fd.append('max_members', maxMembers.trim())
     if (imageFile) fd.append('background_file', imageFile)
+    if (removeBackground) fd.append('remove_background', 'true')
     const r = await fetch('/update_community', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     if (j?.success){
@@ -197,7 +201,95 @@ export default function EditCommunity(){
           </div>
           <div>
             <label className="block text-sm text-[#9fb0b5] mb-1">Community image</label>
-            <input type="file" accept="image/*" onChange={e=> setImageFile(e.target.files?.[0]||null)} className="block w-full text-sm" />
+            
+            {/* Current image preview */}
+            {currentBackgroundPath && !removeBackground && !imageFile && (
+              <div style={{ position: 'relative' }} className="mb-3 rounded-lg border border-white/10 overflow-hidden">
+                <img 
+                  src={`/uploads/${currentBackgroundPath}`} 
+                  alt="Current community image" 
+                  className="w-full max-h-48 object-cover"
+                />
+                <button
+                  type="button"
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: 'rgba(255,255,255,0.8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10,
+                  }}
+                  onClick={() => setRemoveBackground(true)}
+                  title="Remove image"
+                >
+                  <i className="fa-solid fa-xmark text-sm" />
+                </button>
+              </div>
+            )}
+            
+            {/* New image preview */}
+            {imageFile && (
+              <div style={{ position: 'relative' }} className="mb-3 rounded-lg border border-white/10 overflow-hidden">
+                <img 
+                  src={URL.createObjectURL(imageFile)} 
+                  alt="New community image" 
+                  className="w-full max-h-48 object-cover"
+                />
+                <button
+                  type="button"
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: 'rgba(255,255,255,0.8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10,
+                  }}
+                  onClick={() => setImageFile(null)}
+                  title="Remove new image"
+                >
+                  <i className="fa-solid fa-xmark text-sm" />
+                </button>
+              </div>
+            )}
+            
+            {removeBackground && !imageFile && (
+              <div className="mb-3 p-3 rounded-lg border border-red-500/30 bg-red-500/10 flex items-center justify-between">
+                <span className="text-sm text-red-400">Image will be removed</span>
+                <button
+                  type="button"
+                  className="text-xs text-[#9fb0b5] hover:text-white"
+                  onClick={() => setRemoveBackground(false)}
+                >
+                  Undo
+                </button>
+              </div>
+            )}
+            
+            <input 
+              type="file" 
+              accept="image/*" 
+              onChange={e => {
+                setImageFile(e.target.files?.[0] || null)
+                if (e.target.files?.[0]) setRemoveBackground(false)
+              }} 
+              className="block w-full text-sm" 
+            />
           </div>
           <div className="flex justify-end gap-2">
             <button type="button" className="px-3 py-2 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> navigate(-1)}>Cancel</button>

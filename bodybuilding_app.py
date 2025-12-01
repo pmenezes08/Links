@@ -17177,8 +17177,10 @@ def update_community():
             if not (admin_ok or is_app_admin):
                 return jsonify({'success': False, 'error': 'Only community admins or owner can edit the community'}), 403
             
-            # Handle background file upload (restrict to owner or app admin)
+            # Handle background file upload or removal (restrict to owner or app admin)
             background_path = None
+            remove_background = request.form.get('remove_background', '').lower() in ('true', '1', 'yes')
+            
             if (is_owner or is_app_admin) and ('background_file' in request.files):
                 file = request.files['background_file']
                 if file and file.filename:
@@ -17197,7 +17199,28 @@ def update_community():
                     background_path = f"community_backgrounds/{unique_filename}"
             
             # Update the community details
-            if background_path:
+            if remove_background and (is_owner or is_app_admin):
+                # Remove the background image
+                c.execute(
+                    f"""
+                    UPDATE communities 
+                    SET name = {ph}, description = {ph}, type = {ph}, background_path = NULL, template = {ph},
+                        background_color = {ph}, card_color = {ph}, accent_color = {ph}, text_color = {ph},
+                        parent_community_id = {ph}, notify_on_new_member = {ph}, max_members = {ph},
+                        allow_nsfw_imagine = {ph}
+                    WHERE id = {ph}
+                    """,
+                    (
+                        name, description, community_type, template,
+                        background_color, card_color, accent_color, text_color,
+                        (parent_community_id if parent_community_id and parent_community_id != 'none' else None),
+                        notify_on_new_member,
+                        (max_members if (isinstance(max_members, int) and max_members > 0) else None),
+                        allow_nsfw_imagine,
+                        community_id,
+                    ),
+                )
+            elif background_path:
                 c.execute(
                     f"""
                     UPDATE communities 
