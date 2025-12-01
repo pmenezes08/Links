@@ -235,6 +235,21 @@ def add_cache_headers(response):
         else:
             response.headers['Cache-Control'] = 'public, max-age=3600'  # 1 hour
     
+    # Cache uploaded media files (videos, images) - iOS WKWebView respects these headers
+    if request.path.startswith('/uploads/'):
+        # Videos get long cache time (30 days) - they don't change after upload
+        if any(request.path.endswith(ext) for ext in ['.mp4', '.webm', '.mov', '.m4v', '.avi']):
+            response.headers['Cache-Control'] = 'public, max-age=2592000, immutable'  # 30 days
+            response.headers['Expires'] = (datetime.now() + timedelta(days=30)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        # Images in uploads also get long cache time
+        elif any(request.path.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+            response.headers['Cache-Control'] = 'public, max-age=2592000, immutable'  # 30 days
+            response.headers['Expires'] = (datetime.now() + timedelta(days=30)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        # Audio files
+        elif any(request.path.endswith(ext) for ext in ['.mp3', '.m4a', '.wav', '.ogg', '.webm']):
+            response.headers['Cache-Control'] = 'public, max-age=2592000, immutable'  # 30 days
+            response.headers['Expires'] = (datetime.now() + timedelta(days=30)).strftime('%a, %d %b %Y %H:%M:%S GMT')
+    
     # Add security headers while we're at it
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
