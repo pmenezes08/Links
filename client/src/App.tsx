@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
+import { App as CapacitorApp } from '@capacitor/app'
 import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
+import { extractInviteToken, joinCommunityWithInvite } from './utils/internalLinkHandler'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
 import MobileLogin from './pages/MobileLogin'
@@ -149,6 +151,72 @@ function AppRoutes(){
       applyKeyboardOffset(0)
     }
   }, [applyKeyboardOffset])
+
+  // State for deep link join modal
+  const [deepLinkJoin, setDeepLinkJoin] = useState<{ name: string; id: number } | null>(null)
+
+  // Handle deep links (Universal Links) when app is opened from external sources
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+
+    let listenerHandle: PluginListenerHandle | undefined
+
+    const handleDeepLink = async (url: string) => {
+      console.log('🔗 Deep link received:', url)
+      
+      // Check if this is an invite link
+      const inviteToken = extractInviteToken(url)
+      if (inviteToken) {
+        console.log('🔗 Invite token found:', inviteToken)
+        try {
+          const result = await joinCommunityWithInvite(inviteToken)
+          console.log('🔗 Join result:', result)
+          
+          if (result.success && result.communityId) {
+            // Successfully joined - show modal and navigate
+            if (result.communityName) {
+              setDeepLinkJoin({ name: result.communityName, id: result.communityId })
+              // Auto-dismiss and navigate after 2.5 seconds
+              setTimeout(() => {
+                setDeepLinkJoin(null)
+                navigate(`/community_feed_react/${result.communityId}`)
+              }, 2500)
+            } else {
+              navigate(`/community_feed_react/${result.communityId}`)
+            }
+          } else if (result.alreadyMember && result.communityId) {
+            // Already a member - just navigate
+            navigate(`/community_feed_react/${result.communityId}`)
+          } else {
+            console.error('🔗 Failed to join:', result.error)
+          }
+        } catch (err) {
+          console.error('🔗 Error processing invite:', err)
+        }
+      }
+    }
+
+    // Listen for app URL open events (Universal Links)
+    CapacitorApp.addListener('appUrlOpen', (event: { url: string }) => {
+      console.log('🔗 appUrlOpen event:', event.url)
+      handleDeepLink(event.url)
+    }).then((handle: PluginListenerHandle) => {
+      listenerHandle = handle
+    })
+
+    // Also check if app was launched with a URL
+    CapacitorApp.getLaunchUrl().then((result) => {
+      if (result?.url) {
+        console.log('🔗 App launched with URL:', result.url)
+        handleDeepLink(result.url)
+      }
+    }).catch(() => {})
+
+    return () => {
+      listenerHandle?.remove()
+    }
+  }, [navigate])
+
   const resetScrollPosition = useCallback(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
 
@@ -468,6 +536,24 @@ function AppRoutes(){
               setIsVerified(v)
             }catch{}
           }} />
+        )}
+
+        {/* Deep Link Join Success Modal */}
+        {deepLinkJoin && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="mx-4 w-full max-w-sm rounded-2xl border border-[#4db6ac]/30 bg-[#0a0a0a] p-6 shadow-2xl animate-fade-in">
+              <div className="flex flex-col items-center text-center">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#4db6ac]/20">
+                  <i className="fa-solid fa-check text-3xl text-[#4db6ac]" />
+                </div>
+                <h3 className="mb-2 text-xl font-semibold text-white">Welcome!</h3>
+                <p className="mb-4 text-sm text-white/70">
+                  You've joined <span className="font-medium text-[#4db6ac]">{deepLinkJoin.name}</span>
+                </p>
+                <p className="text-xs text-white/50">Taking you to the community...</p>
+              </div>
+            </div>
+          </div>
         )}
       </HeaderContext.Provider>
     </UserProfileContext.Provider>
