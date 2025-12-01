@@ -896,23 +896,23 @@ export default function PostDetail(){
           )}
 
           {/* Main input row */}
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-1.5">
             {/* Attachment buttons */}
             <button 
               type="button" 
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
               onClick={() => fileInputRef.current?.click()}
               aria-label="Add image"
             >
-              <i className="fa-solid fa-image text-white text-base" style={{ color: file ? '#7fe7df' : undefined }} />
+              <i className="fa-solid fa-image text-sm" style={{ color: file ? '#7fe7df' : '#fff' }} />
             </button>
             <button 
               type="button" 
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
               onClick={() => setGifPickerOpen(true)}
               aria-label="Add GIF"
             >
-              <i className="fa-solid fa-images text-white text-base" style={{ color: replyGif ? '#7fe7df' : undefined }} />
+              <i className="fa-solid fa-images text-sm" style={{ color: replyGif ? '#7fe7df' : '#fff' }} />
             </button>
 
             {/* Hidden file input */}
@@ -930,14 +930,14 @@ export default function PostDetail(){
             />
 
             {/* Message input container with turquoise border */}
-            <div className="flex-1 flex items-center rounded-lg border border-[#4db6ac] bg-white/8 overflow-hidden">
+            <div className="flex-1 flex items-center rounded-lg border border-[#4db6ac] bg-white/8 overflow-hidden min-w-0">
               <MentionTextarea
                 value={content}
                 onChange={setContent}
                 communityId={(post as any)?.community_id}
                 postId={post?.id}
                 placeholder="Write a reply..."
-                className="flex-1 bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
+                className="flex-1 bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
                 rows={1}
                 autoExpand
                 perfDegraded={!!uploadFile}
@@ -948,11 +948,11 @@ export default function PostDetail(){
             {!recording && !content.trim() && (
               <button
                 type="button"
-                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
                 onClick={() => startRec()}
                 aria-label="Record audio"
               >
-                <i className="fa-solid fa-microphone text-white text-base" />
+                <i className="fa-solid fa-microphone text-sm text-white" />
               </button>
             )}
 
@@ -960,23 +960,23 @@ export default function PostDetail(){
             {recording && (
               <button
                 type="button"
-                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-[#4db6ac] text-white transition-all"
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-[#4db6ac] text-white transition-all"
                 onClick={() => stopRec()}
                 aria-label="Stop recording"
               >
-                <i className="fa-solid fa-stop text-base" />
+                <i className="fa-solid fa-stop text-sm" />
               </button>
             )}
 
             {/* Send button - when has content or attachment */}
             {!recording && (content.trim() || file || replyPreview || replyGif) && (
               <button
-                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-[#4db6ac] text-white hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-[#4db6ac] text-white hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 onClick={() => submitReply()}
                 aria-label="Send reply"
                 disabled={submittingReply}
               >
-                {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-base" /> : <i className="fa-solid fa-paper-plane text-base" />}
+                {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
               </button>
             )}
           </div>
@@ -1057,7 +1057,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
     }
   }, [showComposer, clearInlinePreview])
   return (
-    <div className={`relative py-2 ${depth === 0 ? 'border-b border-white/10' : ''}`}>
+    <div data-reply-node className={`relative py-2 ${depth === 0 ? 'border-b border-white/10' : ''}`}>
       <div className="relative flex items-start gap-2 px-3">
         <div className="relative w-10 flex-shrink-0 self-stretch" style={{ zIndex: 1 }}>
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} linkToProfile />
@@ -1154,124 +1154,109 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
             <Reaction icon="fa-regular fa-thumbs-down" count={reply.reactions?.['thumbs-down']||0} active={reply.user_reaction==='thumbs-down'} onClick={()=> onToggle(reply.id, 'thumbs-down')} />
             <div className="ml-auto flex items-center gap-1">
-              <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={()=> setShowComposer(v=>!v)}>Reply</button>
+              <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={(e)=> {
+                setShowComposer(v => !v)
+                // Scroll to show the composer under the reply
+                setTimeout(() => {
+                  const target = e.currentTarget.closest('[data-reply-node]')
+                  target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                }, 100)
+              }}>Reply</button>
             </div>
           </div>
           {showComposer ? (
-            <div className="mt-2 space-y-2">
-              <div className="flex items-start gap-2">
-                <MentionTextarea
-                  value={text}
-                  onChange={setText}
-                  communityId={communityId}
-                  postId={postId}
-                  placeholder={`Reply to @${reply.username}`}
-                  className="flex-1 px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac] min-h-[36px]"
-                  rows={2}
-                />
-                <button type="button" className="w-10 h-10 rounded-full hover:bg:white/10 grid place-items-center" aria-label="Add image" onClick={()=> inlineFileRef.current?.click()}>
-                  <i className="fa-regular fa-image text-xl" style={{ color: img ? '#7fe7df' : '#4db6ac' }} />
-                </button>
-                <input
-                  ref={inlineFileRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={(e)=> {
-                    const next = (e.target as HTMLInputElement).files?.[0] || null
-                    setImg(next)
-                    setInlineGif(null)
-                    setGifFile(null)
-                  }}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  className="w-10 h-10 rounded-full grid place-items-center text-[#4db6ac] hover:bg-white/10"
-                  aria-label="Add GIF"
-                  onClick={()=> { setShowGifPicker(true) }}
-                >
-                  <i className="fa-solid fa-images text-lg" style={{ color: inlineGif ? '#7fe7df' : '#4db6ac' }} />
-                </button>
-                {/* Inline mic button using shared hook via parent handlers: pass audio as file */}
-                {/* We'll allow only image OR audio at a time in inline composer */}
-                <button
-                  type="button"
-                  className={`w-10 h-10 rounded-full grid place-items-center text-[#4db6ac] hover:bg-white/10 ${rec ? 'brightness-125' : ''}`}
-                  aria-label={rec ? "Stop recording" : "Record audio"}
-                  onClick={()=> rec ? stopInlineRec() : startInlineRec()}
-                >
-                  <i className={`fa-solid ${rec ? 'fa-stop' : 'fa-microphone'} text-xl`} />
-                </button>
-                <button className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" onClick={()=> {
-                  if (!text && !img && !inlinePreview && !gifFile) return
-                  const attachment = inlinePreview
-                    ? new File([inlinePreview.blob], inlinePreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm', { type: inlinePreview.blob.type })
-                    : (img || gifFile || undefined)
-                  onInlineReply(reply.id, text, attachment as any)
-                  setText('')
-                  setImg(null)
-                  setInlineGif(null)
-                  setGifFile(null)
-                  if (inlineFileRef.current) inlineFileRef.current.value=''
-                  clearInlinePreview()
-                  setShowComposer(false)
-                }} aria-label="Send reply" disabled={!text && !img && !inlinePreview && !gifFile || !!inlineSendingFlag}>
-                  {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
-                </button>
-              </div>
-              {/* Recording visualizer - appears below the reply box */}
+            <div className="mt-2 space-y-2 rounded-xl bg-[#0a0a0c] p-2">
+              {/* Attachment previews */}
+              {(img || inlineGif || inlinePreview) && (
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  {img && (
+                    <div className="flex items-center gap-1">
+                      <div className="w-10 h-10 rounded overflow-hidden border border-white/10">
+                        <img src={URL.createObjectURL(img)} alt="preview" className="w-full h-full object-cover" />
+                      </div>
+                      <button onClick={() => { setImg(null); setInlineGif(null); setGifFile(null); if (inlineFileRef.current) inlineFileRef.current.value = '' }} className="text-red-400 hover:text-red-300 text-xs"><i className="fa-solid fa-times" /></button>
+                    </div>
+                  )}
+                  {inlineGif && (
+                    <div className="flex items-center gap-1">
+                      <div className="w-10 h-10 rounded overflow-hidden border border-white/10">
+                        <img src={inlineGif.previewUrl} alt="GIF" className="w-full h-full object-cover" loading="lazy" />
+                      </div>
+                      <button onClick={() => { setInlineGif(null); setGifFile(null) }} className="text-red-400 hover:text-red-300 text-xs"><i className="fa-solid fa-times" /></button>
+                    </div>
+                  )}
+                  {inlinePreview && (
+                    <div className="flex items-center gap-1 flex-1 min-w-0">
+                      <audio controls className="flex-1 h-7" playsInline src={inlinePreview.url} />
+                      <button onClick={() => clearInlinePreview()} className="text-[#9fb0b5] hover:text-white text-xs"><i className="fa-regular fa-trash-can" /></button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Recording indicator */}
               {rec && (
-                <div className="flex items-center gap-2 px-2">
-                  <div className="text-xs text-[#9fb0b5] whitespace-nowrap">{Math.min(60, Math.round((recMs||0)/1000))}s</div>
-                  <div className="h-2 flex-1 bg-white/5 rounded overflow-hidden">
-                    <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recMs||0)/600) )}%` }} />
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
+                  <div className="flex-1 h-1.5 bg-white/10 rounded overflow-hidden">
+                    <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, recLevel*100))}%` }} />
                   </div>
-                  <div className="h-6 w-20 bg-white/5 rounded flex items-center">
-                    <div className="h-2 bg-[#7fe7df] rounded transition-all" style={{ width: `${Math.max(6, Math.min(96, recLevel*100))}%`, marginLeft: '2%' }} />
-                  </div>
+                  <span className="text-[10px] text-white/70">{Math.min(60, Math.round((recMs||0)/1000))}s</span>
                 </div>
               )}
-              {/* Audio preview - appears below the reply box, not inline with buttons */}
-              {inlinePreview && (
-                <div className="flex items-center gap-2 px-2">
-                  <audio controls className="flex-1 max-w-full" playsInline webkit-playsinline="true" src={inlinePreview.url} />
+              {/* Input row */}
+              <div className="flex items-end gap-1.5">
+                <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => inlineFileRef.current?.click()}>
+                  <i className="fa-solid fa-image text-xs" style={{ color: img ? '#7fe7df' : '#fff' }} />
+                </button>
+                <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => setShowGifPicker(true)}>
+                  <i className="fa-solid fa-images text-xs" style={{ color: inlineGif ? '#7fe7df' : '#fff' }} />
+                </button>
+                <input ref={inlineFileRef} type="file" accept="image/*" onChange={(e) => { const next = (e.target as HTMLInputElement).files?.[0] || null; setImg(next); setInlineGif(null); setGifFile(null) }} className="hidden" />
+                <div className="flex-1 flex items-center rounded-lg border border-[#4db6ac] bg-white/5 overflow-hidden min-w-0">
+                  <MentionTextarea
+                    value={text}
+                    onChange={setText}
+                    communityId={communityId}
+                    postId={postId}
+                    placeholder={`Reply to @${reply.username}`}
+                    className="flex-1 bg-transparent px-2 py-1.5 text-[14px] text-white placeholder-white/50 outline-none resize-none max-h-20 min-h-[32px]"
+                    rows={1}
+                    autoExpand
+                  />
+                </div>
+                {!rec && !text.trim() && !img && !inlinePreview && !gifFile && (
+                  <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => startInlineRec()}>
+                    <i className="fa-solid fa-microphone text-xs text-white" />
+                  </button>
+                )}
+                {rec && (
+                  <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac]" onClick={() => stopInlineRec()}>
+                    <i className="fa-solid fa-stop text-xs text-white" />
+                  </button>
+                )}
+                {!rec && (text.trim() || img || inlinePreview || gifFile) && (
                   <button 
-                    onClick={() => { clearInlinePreview() }}
-                    className="text-[#9fb0b5] hover:text-white flex-shrink-0"
-                    aria-label="Remove audio"
+                    className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] disabled:opacity-50"
+                    disabled={inlineSendingFlag}
+                    onClick={() => {
+                      if (!text && !img && !inlinePreview && !gifFile) return
+                      const attachment = inlinePreview
+                        ? new File([inlinePreview.blob], inlinePreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm', { type: inlinePreview.blob.type })
+                        : (img || gifFile || undefined)
+                      onInlineReply(reply.id, text, attachment as any)
+                      setText('')
+                      setImg(null)
+                      setInlineGif(null)
+                      setGifFile(null)
+                      if (inlineFileRef.current) inlineFileRef.current.value = ''
+                      clearInlinePreview()
+                      setShowComposer(false)
+                    }}
                   >
-                    <i className="fa-regular fa-trash-can" />
+                    {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin text-xs text-white" /> : <i className="fa-solid fa-paper-plane text-xs text-white" />}
                   </button>
-                </div>
-              )}
-              {img && (
-                <div className="text-xs text-[#7fe7df] flex items-center gap-1 px-3">
-                  <i className="fa-solid fa-image" />
-                  <span className="max-w-[160px] truncate">{img.name}</span>
-                  <button 
-                    onClick={() => { setImg(null); setInlineGif(null); setGifFile(null); if (inlineFileRef.current) inlineFileRef.current.value = '' }}
-                    className="ml-1 text-red-400 hover:text-red-300"
-                    aria-label="Remove file"
-                  >
-                    <i className="fa-solid fa-times" />
-                  </button>
-                </div>
-              )}
-              {inlineGif && (
-                <div className="text-xs text-[#7fe7df] flex items-center gap-2 px-3">
-                  <div className="w-12 h-12 rounded border border-white/10 overflow-hidden">
-                    <img src={inlineGif.previewUrl} alt="Selected GIF" className="w-full h-full object-cover" loading="lazy" />
-                  </div>
-                  <span>GIF</span>
-                  <button
-                    onClick={() => { setInlineGif(null); setGifFile(null) }}
-                    className="ml-1 text-red-400 hover:text-red-300"
-                    aria-label="Remove GIF"
-                  >
-                    <i className="fa-solid fa-times" />
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
               <GifPicker
                 isOpen={showGifPicker}
                 onClose={()=> setShowGifPicker(false)}
