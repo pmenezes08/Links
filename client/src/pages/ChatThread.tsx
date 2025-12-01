@@ -1612,7 +1612,7 @@ export default function ChatThread(){
       {/* ====== MESSAGES LIST - SCROLLABLE ====== */}
       <div
         ref={listRef}
-        className="flex-1 space-y-2.5 overflow-y-auto overflow-x-hidden text-white px-1 sm:px-2"
+        className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-1 sm:px-2"
         style={{
           WebkitOverflowScrolling: 'touch',
           overscrollBehaviorY: 'auto',
