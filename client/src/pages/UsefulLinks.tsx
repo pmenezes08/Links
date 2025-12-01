@@ -195,23 +195,6 @@ export default function UsefulLinks(){
         </div>
       )}
 
-      {/* Bottom nav mirrors polls/community */}
-      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">
-        <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <i className="fa-solid fa-house" />
-          </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
-            <i className="fa-solid fa-users" />
-          </button>
-          <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
-            <i className="fa-solid fa-plus" />
-          </button>
-          <button className="p-2 rounded-full hover:bg:white/5" aria-label="More" onClick={()=> navigate(`/community_feed_react/${community_id||''}`)}>
-            <i className="fa-solid fa-ellipsis" />
-          </button>
-        </div>
-      </div>
     </div>
   )
 }

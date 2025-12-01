@@ -10,7 +10,6 @@ export default function CommunityResources(){
   const [posts, setPosts] = useState<Array<{ id:number; username:string; title:string; content:string; category?:string; attachment_url?:string; created_at:string; profile_picture?:string|null; upvotes?:number; user_upvoted?:boolean }>>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const titleRef = useRef<HTMLInputElement|null>(null)
   const contentRef = useRef<HTMLTextAreaElement|null>(null)
@@ -18,26 +17,6 @@ export default function CommunityResources(){
   const attachRef = useRef<HTMLInputElement|null>(null)
 
   useEffect(() => { setTitle('Forum') }, [setTitle])
-
-  useEffect(() => {
-    let mounted = true
-    async function check(){
-      try{
-        const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials:'include' })
-        const j = await r.json()
-        if (!mounted) return
-        if (j?.success){
-          const key = `ann_last_seen_${community_id}`
-          const lastSeenStr = localStorage.getItem(key)
-          const lastSeen = lastSeenStr ? Date.parse(lastSeenStr) : 0
-          const hasNew = (j.announcements || []).some((a:any) => Date.parse(a.created_at) > lastSeen)
-          setHasUnseenAnnouncements(hasNew)
-        }
-      }catch{}
-    }
-    check()
-    return () => { mounted = false }
-  }, [community_id])
 
   function resolveAvatar(url?:string|null){
     if (!url) return null
@@ -65,21 +44,6 @@ export default function CommunityResources(){
     const j = await r.json().catch(()=>null)
     if (j?.success){ setShowForm(false); if (titleRef.current) titleRef.current.value=''; if (contentRef.current) contentRef.current.value=''; if (attachRef.current) attachRef.current.value=''; load() }
     else alert(j?.message || 'Failed to create')
-  }
-
-  async function fetchAnnouncements(){
-    try{
-      const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials:'include' })
-      const j = await r.json()
-      if (j?.success){
-        try{
-          const key = `ann_last_seen_${community_id}`
-          localStorage.setItem(key, new Date().toISOString())
-          setHasUnseenAnnouncements(false)
-        }catch{}
-        alert('No UI here: announcements viewed.')
-      }
-    }catch{}
   }
 
   return (
@@ -161,29 +125,6 @@ export default function CommunityResources(){
         </div>
       </div>
 
-      {/* Bottom nav mirrors polls/community with announcements */}
-      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">
-        <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <i className="fa-solid fa-house" />
-          </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
-            <i className="fa-solid fa-users" />
-          </button>
-          <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
-            <i className="fa-solid fa-plus" />
-          </button>
-          <button className="relative p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
-            <span className="relative inline-block">
-              <i className="fa-solid fa-bullhorn" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
-              {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
-            </span>
-          </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> navigate(`/community_feed_react/${community_id}`)}>
-            <i className="fa-solid fa-ellipsis" />
-          </button>
-        </div>
-      </div>
     </div>
   )
 }

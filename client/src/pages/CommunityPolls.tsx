@@ -23,8 +23,6 @@ export default function CommunityPolls(){
   const [editingPollId, setEditingPollId] = useState<number|null>(null)
   const formRef = useRef<HTMLFormElement|null>(null)
   const scrollRef = useRef<HTMLDivElement|null>(null)
-  const [moreOpen, setMoreOpen] = useState(false)
-  const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [viewingVoters, setViewingVoters] = useState<number|null>(null)
   const [votersData, setVotersData] = useState<any>(null)
   const [loadingVoters, setLoadingVoters] = useState(false)
@@ -87,41 +85,6 @@ export default function CommunityPolls(){
       }
     }
   }, [searchParams, polls])
-
-  useEffect(() => {
-    let mounted = true
-    async function check(){
-      try{
-        const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials:'include' })
-        const j = await r.json()
-        if (!mounted) return
-        if (j?.success){
-          const key = `ann_last_seen_${community_id}`
-          const lastSeenStr = localStorage.getItem(key)
-          const lastSeen = lastSeenStr ? Date.parse(lastSeenStr) : 0
-          const hasNew = (j.announcements || []).some((a:any) => Date.parse(a.created_at) > lastSeen)
-          setHasUnseenAnnouncements(hasNew)
-        }
-      }catch{}
-    }
-    check()
-    return () => { mounted = false }
-  }, [community_id])
-
-  async function fetchAnnouncements(){
-    try{
-      const r = await fetch(`/get_community_announcements?community_id=${community_id}`, { credentials:'include' })
-      const j = await r.json()
-      if (j?.success){
-        try{
-          const key = `ann_last_seen_${community_id}`
-          localStorage.setItem(key, new Date().toISOString())
-          setHasUnseenAnnouncements(false)
-        }catch{}
-        alert('No UI here: announcements viewed.')
-      }
-    }catch{}
-  }
 
   async function createPoll(){
     if (editingPollId) {
@@ -450,42 +413,6 @@ export default function CommunityPolls(){
         </div>
       )}
 
-      {/* Bottom navigation bar - floating (same as community) */}
-      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">
-        <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <i className="fa-solid fa-house" />
-          </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
-            <i className="fa-solid fa-users" />
-          </button>
-          <button className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center" aria-label="New Post" onClick={()=> navigate(`/compose?community_id=${community_id}`)}>
-            <i className="fa-solid fa-plus" />
-          </button>
-          <button className="relative p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
-            <span className="relative inline-block">
-              <i className="fa-solid fa-bullhorn" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
-              {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
-            </span>
-          </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> setMoreOpen(true)}>
-            <i className="fa-solid fa-ellipsis" />
-          </button>
-        </div>
-      </div>
-
-      {moreOpen && (
-        <div className="fixed inset-0 z-[95] bg-black/30 flex items:end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
-          <div className="w-[75%] max-w-sm mr-2 mb-2 bg:black/80 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0">
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/polls_react`) }}>Polls</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>Calendar</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Forum</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/community/${community_id}/resources` }}>Useful Links</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/issues` }}>Report Issue</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg:white/5" onClick={()=> { setMoreOpen(false); window.location.href = `/anonymous_feedback` }}>Anonymous feedback</button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
