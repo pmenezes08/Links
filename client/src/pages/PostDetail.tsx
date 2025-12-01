@@ -135,7 +135,6 @@ export default function PostDetail(){
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const viewportBaseRef = useRef<number | null>(null)
   const [viewportLift, setViewportLift] = useState(0)
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
 
   useLayoutEffect(() => {
@@ -195,8 +194,6 @@ export default function PostDetail(){
 
     const updateOffset = () => {
       const currentHeight = viewport.height
-      // Track viewport height for dynamic sizing
-      setViewportHeight(prev => (Math.abs((prev ?? currentHeight) - currentHeight) < 1 ? prev : currentHeight))
       if (
         viewportBaseRef.current === null ||
         currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
@@ -691,20 +688,21 @@ export default function PostDetail(){
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
-  // Dynamic content height based on viewport
-  const contentHeight = viewportHeight
-    ? `${viewportHeight}px`
-    : '100dvh'
   // Padding to ensure content doesn't hide behind composer
   const contentPaddingBottom = showKeyboard
     ? `${effectiveComposerHeight + keyboardLift + 16}px`
     : `calc(${safeBottom} + ${effectiveComposerHeight + 32}px)`
-  const contentPaddingTop = `calc(${pullPx}px)`
 
   return (
     <div
       className="glass-page flex flex-col overflow-hidden text-white"
-      style={{ height: contentHeight }}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+      }}
     >
       {(refreshHint || refreshing) ? (
         <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
@@ -716,14 +714,14 @@ export default function PostDetail(){
       {/* Scrollable content area - shrinks when keyboard appears */}
       <div
         ref={contentRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden"
+        className="flex-1 overflow-y-auto overflow-x-hidden min-h-0"
         style={{
-          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 48px)',
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + 48px + ${pullPx}px)`,
           WebkitOverflowScrolling: 'touch' as any,
           overscrollBehaviorY: 'auto' as any,
         }}
       >
-        <div className="mx-auto max-w-2xl px-3" style={{ paddingBottom: contentPaddingBottom, paddingTop: contentPaddingTop }}>
+        <div className="mx-auto max-w-2xl px-3" style={{ paddingBottom: contentPaddingBottom }}>
         <div className="mb-2">
           <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
             <i className="fa-solid fa-arrow-left mr-1" /> Back
