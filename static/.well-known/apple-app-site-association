@@ -1,23 +1,42 @@
 {
   "applinks": {
-    "apps": [],
     "details": [
       {
-        "appID": "TEAM_ID.co.cpoint.app",
-        "paths": [
-          "/login*",
-          "/community_feed_react/*",
-          "/post/*",
-          "/communities_react",
-          "/messages_react",
-          "/notifications_react"
+        "appIDs": [
+          "SP6N8UL583.co.cpoint.app"
+        ],
+        "components": [
+          {
+            "/": "/login*",
+            "comment": "Login page with invite tokens"
+          },
+          {
+            "/": "/community_feed_react/*",
+            "comment": "Community feeds"
+          },
+          {
+            "/": "/post/*",
+            "comment": "Individual posts"
+          },
+          {
+            "/": "/communities_react",
+            "comment": "Communities list"
+          },
+          {
+            "/": "/messages_react",
+            "comment": "Messages"
+          },
+          {
+            "/": "/notifications_react",
+            "comment": "Notifications"
+          }
         ]
       }
     ]
   },
   "webcredentials": {
     "apps": [
-      "TEAM_ID.co.cpoint.app"
+      "SP6N8UL583.co.cpoint.app"
     ]
   }
 }
