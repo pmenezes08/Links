@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
+import { useHeader } from '../contexts/HeaderContext'
 
 type PhotoItem = {
   id: string
@@ -14,9 +15,12 @@ type PhotoItem = {
 export default function CommunityPhotos(){
   const { community_id } = useParams()
   const navigate = useNavigate()
+  const { setTitle } = useHeader()
   const [items, setItems] = useState<PhotoItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => { setTitle('Photos') }, [setTitle])
 
   useEffect(() => {
     let mounted = true
@@ -104,16 +108,26 @@ export default function CommunityPhotos(){
   if (error) return <div className="p-4 text-red-400">{error}</div>
 
   return (
-    <div className="h-screen overflow-hidden bg-black text-white">
-      <div className="fixed left-0 right-0 top-14 h-10 bg-black/70 backdrop-blur z-40">
+    <div className="min-h-screen bg-black text-white">
+      <div
+        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
+        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
+      >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="text-sm font-medium">Photos</div>
+          <div className="flex-1 font-medium">Photos</div>
         </div>
       </div>
-      <div className="max-w-2xl mx-auto px-3 pt-28 pb-24 h-full overflow-y-auto">
+      <div
+        className="app-subnav-offset max-w-2xl mx-auto pb-20 px-3 overflow-y-auto no-scrollbar"
+        style={{
+          WebkitOverflowScrolling: 'touch' as any,
+          minHeight: 'calc(100vh - var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px))))',
+          '--app-subnav-height': '40px',
+        } as CSSProperties}
+      >
         {items.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-[#9fb0b5] mb-4">
