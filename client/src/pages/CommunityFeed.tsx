@@ -867,10 +867,7 @@ export default function CommunityFeed() {
                   Be the first to share something with this community!
                 </p>
                 <button
-                  onClick={() => {
-                    const createBtn = document.getElementById('create-post-button')
-                    if (createBtn) createBtn.click()
-                  }}
+                  onClick={() => navigate(`/compose?community_id=${community_id}`)}
                   className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:brightness-110"
                 >
                   <i className="fa-solid fa-plus mr-2" />
