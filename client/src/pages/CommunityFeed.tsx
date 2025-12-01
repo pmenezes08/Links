@@ -1082,7 +1082,7 @@ export default function CommunityFeed() {
         className="fixed bottom-0 left-0 right-0 z-[100] px-3 sm:px-6"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
       >
-        <div className="liquid-glass-surface border-t border-white/10 rounded-t-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)]">
+        <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
           <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
             <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
             <i className="fa-solid fa-house text-lg" />
