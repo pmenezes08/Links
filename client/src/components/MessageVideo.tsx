@@ -56,12 +56,13 @@ export default function MessageVideo({ src, className = '' }: MessageVideoProps)
   }
 
   return (
-    <div className={`relative rounded-xl overflow-hidden bg-black ${className}`}>
-      {/* Play button overlay */}
+    <div className={`relative rounded-xl overflow-hidden bg-black ${className}`} style={{ minHeight: '120px' }}>
+      {/* Play button overlay - positioned over video */}
       {showOverlay && (
         <div 
-          className="absolute inset-0 z-10 cursor-pointer flex items-center justify-center bg-black/30"
+          className="absolute top-0 left-0 right-0 bottom-0 z-10 cursor-pointer bg-black/30"
           onClick={handlePlayClick}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
           {/* Loading indicator */}
           {isLoading ? (
