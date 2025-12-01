@@ -826,25 +826,36 @@ export default function PostDetail(){
         className="fixed left-0 right-0 z-[100] border-t border-white/10 bg-black/85 backdrop-blur pointer-events-auto px-3"
         style={{
           bottom: showKeyboard ? `${keyboardLift}px` : 0,
-          paddingBottom: showKeyboard ? '8px' : `calc(${safeBottom} + 12px)`,
+          paddingBottom: showKeyboard ? '12px' : `calc(${safeBottom} + 20px)`,
           transition: 'bottom 140ms ease-out',
         }}
       >
         <div
           ref={composerCardRef}
-          className="px-3 py-2 flex flex-col gap-1.5 max-w-2xl mx-auto"
+          className="py-3 flex flex-col gap-2 max-w-2xl mx-auto"
         >
-          <MentionTextarea
-            value={content}
-            onChange={setContent}
-            communityId={(post as any)?.community_id}
-            postId={post?.id}
-            placeholder="Write a reply?"
-            className="w-full resize-none max-h-36 min-h-[36px] px-3 py-2 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-            rows={1}
-            autoExpand
-            perfDegraded={!!uploadFile}
-          />
+          {/* Text input with send button inside */}
+          <div className="relative flex items-end gap-2">
+            <MentionTextarea
+              value={content}
+              onChange={setContent}
+              communityId={(post as any)?.community_id}
+              postId={post?.id}
+              placeholder="Write a reply..."
+              className="flex-1 resize-none max-h-36 min-h-[40px] pl-3 pr-12 py-2.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+              rows={1}
+              autoExpand
+              perfDegraded={!!uploadFile}
+            />
+            <button
+              className="absolute right-2 bottom-1.5 w-8 h-8 rounded-full bg-[#4db6ac] text-white grid place-items-center hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={()=> submitReply()}
+              aria-label="Send reply"
+              disabled={(!content && !file && !replyPreview && !replyGif) || submittingReply}
+            >
+              {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-arrow-up text-sm" />}
+            </button>
+          </div>
           <div className="flex items-center justify-end gap-2 flex-wrap">
             {file && (
               <div className="flex items-center gap-2 mr-auto">
@@ -951,14 +962,6 @@ export default function PostDetail(){
                 </div>
               </div>
             )}
-            <button
-              className="px-2.5 py-1.5 rounded-full bg-[#4db6ac] text-white border border-[#4db6ac] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={()=> submitReply()}
-              aria-label="Send reply"
-              disabled={(!content && !file && !replyPreview && !replyGif) || submittingReply}
-            >
-              {submittingReply ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
-            </button>
           </div>
         </div>
       </div>
