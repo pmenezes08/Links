@@ -1,4 +1,4 @@
-import { parseGIF, decompressFrames } from 'gifuct-js'
+import { parseGIF, decompressFrames, type GifFrame } from 'gifuct-js'
 
 type GifInfo = {
   stillDataUrl: string
@@ -21,7 +21,7 @@ async function buildGifInfo(src: string): Promise<GifInfo> {
     throw new Error('GIF contained no frames')
   }
 
-  const totalDelayHundredths = frames.reduce((sum, frame) => {
+  const totalDelayHundredths = frames.reduce((sum: number, frame: GifFrame) => {
     const delay = typeof frame.delay === 'number' ? frame.delay : 0
     return sum + delay
   }, 0)
