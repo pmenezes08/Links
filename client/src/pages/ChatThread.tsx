@@ -17,6 +17,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import MessageImage from '../components/MessageImage'
+import MessageVideo from '../components/MessageVideo'
 import ZoomableImage from '../components/ZoomableImage'
 import { encryptionService } from '../services/simpleEncryption'
 import GifPicker from '../components/GifPicker'
@@ -1691,12 +1692,9 @@ export default function ChatThread(){
                       
                       {m.video_path ? (
                         <div className="mb-1.5" onClick={e => e.stopPropagation()}>
-                          <video
-                            className="w-full max-h-64 rounded-xl"
-                            controls
-                            playsInline
-                            preload="metadata"
+                          <MessageVideo
                             src={m.video_path.startsWith('blob:') ? m.video_path : `/uploads/${m.video_path}`}
+                            className="max-h-64"
                           />
                         </div>
                       ) : null}
