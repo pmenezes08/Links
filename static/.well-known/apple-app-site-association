@@ -1,0 +1,23 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAM_ID.co.cpoint.app",
+        "paths": [
+          "/login*",
+          "/community_feed_react/*",
+          "/post/*",
+          "/communities_react",
+          "/messages_react",
+          "/notifications_react"
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "TEAM_ID.co.cpoint.app"
+    ]
+  }
+}

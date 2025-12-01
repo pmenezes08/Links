@@ -20078,6 +20078,23 @@ def react_members_page(community_id):
     except Exception as e:
         logger.error(f"Error serving React community members page: {str(e)}")
         abort(500)
+@app.route('/.well-known/apple-app-site-association')
+def apple_app_site_association():
+    """Serve Apple App Site Association file for Universal Links"""
+    try:
+        response = send_from_directory('static/.well-known', 'apple-app-site-association')
+        response.headers['Content-Type'] = 'application/json'
+        response.headers['Cache-Control'] = 'public, max-age=3600'
+        return response
+    except Exception as e:
+        logger.error(f"Error serving AASA file: {str(e)}")
+        return jsonify({
+            "applinks": {
+                "apps": [],
+                "details": []
+            }
+        }), 200
+
 @app.route('/static/uploads/<path:filename>')
 def static_uploaded_file(filename):
     """Alternative route for static uploads with caching"""
