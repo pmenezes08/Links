@@ -1459,21 +1459,35 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             
             {/* Current/New Media Preview */}
             {!removeMedia && (editMediaPreview || post.image_path || post.video_path) && (
-              <div className="relative rounded-lg border border-white/10 overflow-hidden">
+              <div style={{ position: 'relative' }} className="rounded-lg border border-white/10 overflow-hidden">
                 {editMediaPreview ? (
                   // New media preview
                   editMediaFile?.type.startsWith('video/') ? (
-                    <video src={editMediaPreview} className="w-full max-h-48 object-contain bg-black" controls />
+                    <video src={editMediaPreview} className="w-full max-h-48 object-contain bg-black block" controls />
                   ) : (
-                    <img src={editMediaPreview} alt="New media" className="w-full max-h-48 object-contain bg-black" />
+                    <img src={editMediaPreview} alt="New media" className="w-full max-h-48 object-contain bg-black block" />
                   )
                 ) : post.image_path ? (
-                  <img src={normalizeMediaPath(post.image_path)} alt="Current" className="w-full max-h-48 object-contain bg-black" />
+                  <img src={normalizeMediaPath(post.image_path)} alt="Current" className="w-full max-h-48 object-contain bg-black block" />
                 ) : post.video_path ? (
-                  <video src={normalizeMediaPath(post.video_path)} className="w-full max-h-48 object-contain bg-black" controls />
+                  <video src={normalizeMediaPath(post.video_path)} className="w-full max-h-48 object-contain bg-black block" controls />
                 ) : null}
                 <button
-                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/70 border border-white/20 text-white/80 hover:text-white hover:bg-black/90 flex items-center justify-center"
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(0,0,0,0.7)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: 'rgba(255,255,255,0.8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10,
+                  }}
                   onClick={() => {
                     if (editMediaPreview) {
                       clearEditMedia()
