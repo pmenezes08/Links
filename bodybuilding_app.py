@@ -18068,6 +18068,47 @@ def join_with_invite():
         logger.error(f"Error joining with invite: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+
+@app.route('/api/invite_info', methods=['POST'])
+@login_required
+def get_invite_info():
+    """Get information about an invitation token (without joining)"""
+    data = request.get_json() or {}
+    invite_token = data.get('invite_token', '').strip()
+    
+    if not invite_token:
+        return jsonify({'success': False, 'error': 'Invitation token required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get invitation info
+            c.execute("""
+                SELECT ci.community_id, c.name as community_name, ci.used
+                FROM community_invitations ci
+                JOIN communities c ON ci.community_id = c.id
+                WHERE ci.token = ?
+            """, (invite_token,))
+            
+            invitation = c.fetchone()
+            if not invitation:
+                return jsonify({'success': False, 'error': 'Invalid invitation'}), 404
+            
+            community_id = invitation['community_id'] if hasattr(invitation, 'keys') else invitation[0]
+            community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[1]
+            
+            return jsonify({
+                'success': True,
+                'community_id': community_id,
+                'community_name': community_name
+            })
+            
+    except Exception as e:
+        logger.error(f"Error getting invite info: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
 @app.route('/api/community/invite', methods=['POST'])
 @login_required
 def invite_to_community():

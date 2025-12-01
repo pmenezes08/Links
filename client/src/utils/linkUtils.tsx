@@ -1,5 +1,7 @@
 // Utility functions for detecting and handling links in post content
-import React from 'react'
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { isInternalLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from './internalLinkHandler'
 
 export type DetectedLink = {
   url: string
@@ -72,9 +74,84 @@ export function replaceLinkInText(text: string, oldUrl: string, newDisplayText: 
 }
 
 /**
- * Renders text with clickable links (converts markdown links to HTML)
+ * Smart link component that handles internal c-point.co links within the app
  */
-export function renderTextWithLinks(text: string): React.ReactNode {
+function SmartLink({ 
+  href, 
+  displayText, 
+  onJoinCommunity 
+}: { 
+  href: string
+  displayText: string
+  onJoinCommunity?: (communityName: string, communityId: number) => void
+}) {
+  const navigate = useNavigate()
+  const [processing, setProcessing] = useState(false)
+
+  const handleClick = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    // Check if this is an internal c-point.co link
+    if (!isInternalLink(href)) {
+      // External link - open normally
+      window.open(href, '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    // Check for invite token
+    const inviteToken = extractInviteToken(href)
+    if (inviteToken) {
+      setProcessing(true)
+      try {
+        const result = await joinCommunityWithInvite(inviteToken)
+        
+        if (result.success && result.communityId) {
+          // Successfully joined - show success and navigate
+          if (onJoinCommunity && result.communityName) {
+            onJoinCommunity(result.communityName, result.communityId)
+          }
+          navigate(`/community_feed_react/${result.communityId}`)
+        } else if (result.alreadyMember && result.communityId) {
+          // Already a member - just navigate
+          navigate(`/community_feed_react/${result.communityId}`)
+        } else {
+          // Show error as alert for now
+          alert(result.error || 'Failed to join community')
+        }
+      } finally {
+        setProcessing(false)
+      }
+      return
+    }
+
+    // Other internal link - navigate within the app
+    const internalPath = extractInternalPath(href)
+    if (internalPath) {
+      navigate(internalPath)
+    }
+  }
+
+  return (
+    <a
+      href={href}
+      onClick={handleClick}
+      className={`text-[#4db6ac] hover:underline ${processing ? 'opacity-50 cursor-wait' : ''}`}
+    >
+      {displayText}
+      {processing && <span className="ml-1 inline-block animate-spin">⏳</span>}
+    </a>
+  )
+}
+
+/**
+ * Renders text with clickable links (converts markdown links to HTML)
+ * Internal c-point.co links are handled within the app
+ */
+export function renderTextWithLinks(
+  text: string,
+  onJoinCommunity?: (communityName: string, communityId: number) => void
+): React.ReactNode {
   if (!text) return null
   
   const parts: React.ReactNode[] = []
@@ -96,16 +173,12 @@ export function renderTextWithLinks(text: string): React.ReactNode {
     const fullUrl = url.startsWith('http') ? url : `https://${url}`
     
     parts.push(
-      <a
+      <SmartLink
         key={match.index}
         href={fullUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-[#4db6ac] hover:underline"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {displayText}
-      </a>
+        displayText={displayText}
+        onJoinCommunity={onJoinCommunity}
+      />
     )
     
     lastIndex = match.index + match[0].length

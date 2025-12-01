@@ -26,6 +26,7 @@ import { gifSelectionToFile } from '../utils/gif'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import { sendImageMessage, sendVideoMessage } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
+import { isInternalLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
 
 // Cache settings for chat messages
 const CHAT_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes (matches server Redis TTL)
@@ -470,9 +471,53 @@ export default function ChatThread(){
     } finally { setEditingSaving(false) }
   }
 
-  // Convert URLs in plain text into clickable links
+  // State for join community success modal
+  const [joinedCommunity, setJoinedCommunity] = useState<{ name: string; id: number } | null>(null)
+
+  // Handle clicking on an internal link (c-point.co)
+  const handleInternalLinkClick = useCallback(async (href: string) => {
+    // Check for invite token
+    const inviteToken = extractInviteToken(href)
+    if (inviteToken) {
+      try {
+        const result = await joinCommunityWithInvite(inviteToken)
+        
+        if (result.success && result.communityId) {
+          // Successfully joined - show success modal and navigate
+          if (result.communityName) {
+            setJoinedCommunity({ name: result.communityName, id: result.communityId })
+            // Auto-dismiss and navigate after 2 seconds
+            setTimeout(() => {
+              setJoinedCommunity(null)
+              navigate(`/community_feed_react/${result.communityId}`)
+            }, 2000)
+          } else {
+            navigate(`/community_feed_react/${result.communityId}`)
+          }
+        } else if (result.alreadyMember && result.communityId) {
+          // Already a member - just navigate
+          navigate(`/community_feed_react/${result.communityId}`)
+        } else {
+          // Show error
+          alert(result.error || 'Failed to join community')
+        }
+      } catch (err) {
+        console.error('Error handling invite link:', err)
+        alert('Failed to process invite link')
+      }
+      return
+    }
+
+    // Other internal link - navigate within the app
+    const internalPath = extractInternalPath(href)
+    if (internalPath) {
+      navigate(internalPath)
+    }
+  }, [navigate])
+
+  // Convert URLs in plain text into clickable links (handles internal c-point.co links)
   function linkifyText(text: string) {
-    const nodes: any[] = []
+    const nodes: React.ReactNode[] = []
     const regex = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(\/[^\s]*)?)/gi
     let lastIndex = 0
     let match: RegExpExecArray | null
@@ -481,9 +526,26 @@ export default function ChatThread(){
       const end = start + match[0].length
       if (start > lastIndex) nodes.push(text.slice(lastIndex, start))
       const raw = match[0]
-      const href = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`
+      const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+      
+      // Check if this is an internal c-point.co link
+      const isInternal = isInternalLink(href)
+      
       nodes.push(
-        <a key={`${start}-${end}`} href={href} target="_blank" rel="noopener noreferrer" className="underline text-[#4db6ac] hover:text-[#45a99c]">
+        <a 
+          key={`${start}-${end}`} 
+          href={href} 
+          target={isInternal ? undefined : "_blank"} 
+          rel={isInternal ? undefined : "noopener noreferrer"} 
+          className="underline text-[#4db6ac] hover:text-[#45a99c]"
+          onClick={(e) => {
+            if (isInternal) {
+              e.preventDefault()
+              e.stopPropagation()
+              handleInternalLinkClick(href)
+            }
+          }}
+        >
           {raw}
         </a>
       )
@@ -2390,6 +2452,24 @@ export default function ChatThread(){
           await handleGifSelection(gif)
         }}
       />
+
+      {/* Community Join Success Modal */}
+      {joinedCommunity && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-sm rounded-2xl border border-[#4db6ac]/30 bg-[#0a0a0a] p-6 shadow-2xl">
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#4db6ac]/20">
+                <i className="fa-solid fa-check text-3xl text-[#4db6ac]" />
+              </div>
+              <h3 className="mb-2 text-xl font-semibold text-white">Welcome!</h3>
+              <p className="mb-4 text-sm text-white/70">
+                You've been added to <span className="font-medium text-[#4db6ac]">{joinedCommunity.name}</span>
+              </p>
+              <p className="text-xs text-white/50">Redirecting to community...</p>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
