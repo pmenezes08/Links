@@ -26,7 +26,7 @@ export default function MessageVideo({ src, className = '' }: MessageVideoProps)
       <video
         ref={videoRef}
         className="w-full block"
-        controls
+        controls={!showOverlay}
         playsInline
         preload={isNative ? "auto" : "metadata"}
         src={src}
