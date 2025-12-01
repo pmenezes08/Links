@@ -8,6 +8,7 @@ import sqlite3
 import random
 import re
 import logging
+import uuid
 import requests
 import urllib.request
 import urllib.error
