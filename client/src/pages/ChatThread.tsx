@@ -235,7 +235,8 @@ export default function ChatThread(){
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
-  const showKeyboard = liftSource > 2
+  // Use higher threshold to prevent toggling from small viewport fluctuations
+  const showKeyboard = liftSource > 50
   const composerGapPx = 4  // Tighter gap between messages and composer
   // Padding to ensure messages don't hide behind the composer
   const listPaddingBottom = showKeyboard
