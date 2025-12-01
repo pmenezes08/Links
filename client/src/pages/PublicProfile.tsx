@@ -251,36 +251,36 @@ export default function PublicProfile() {
                 <span><span className="text-white font-semibold">{followingCount}</span> following</span>
               </div>
             </div>
-              {isSelf ? (
-                <button
-                  className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
-                  onClick={() => navigate('/profile')}
-                >
-                  <i className="fa-solid fa-pen-to-square mr-2" />
-                  Edit profile
-                </button>
-              ) : (
-                currentUsername && (
-                  <div className="flex flex-col w-full gap-2 sm:flex-row sm:w-auto sm:items-center sm:gap-3">
-                    <button
-                      className={followButtonClasses}
-                      disabled={followLoading}
-                      onClick={handleFollowToggle}
-                    >
-                      {followButtonLabel}
-                    </button>
-                    <button
-                      className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
-                      onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)}
-                    >
-                      <i className="fa-regular fa-paper-plane mr-2" />
-                      Send message
-                    </button>
-                  </div>
-                )
+              {!isSelf && currentUsername && (
+                <div className="flex flex-col w-full gap-2 sm:flex-row sm:w-auto sm:items-center sm:gap-3">
+                  <button
+                    className={followButtonClasses}
+                    disabled={followLoading}
+                    onClick={handleFollowToggle}
+                  >
+                    {followButtonLabel}
+                  </button>
+                  <button
+                    className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/10 text-sm"
+                    onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)}
+                  >
+                    <i className="fa-regular fa-paper-plane mr-2" />
+                    Send message
+                  </button>
+                </div>
               )}
             </div>
           </section>
+
+        {isSelf && (
+          <button
+            className="glass-section w-full flex items-center justify-center gap-2 py-3 text-sm font-medium hover:bg-white/10 transition"
+            onClick={() => navigate('/profile')}
+          >
+            <i className="fa-solid fa-pen-to-square" />
+            Edit Profile
+          </button>
+        )}
 
         {(bioText || formattedDob || location) ? (
           <section className="glass-section space-y-3">
