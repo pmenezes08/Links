@@ -1,6 +1,8 @@
-const SW_VERSION = '2.3.0'
+const SW_VERSION = '2.4.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
+const MEDIA_CACHE = `cp-media-${SW_VERSION}`
+const MAX_MEDIA_CACHE_SIZE = 50 // Max number of videos/large media to cache
 
 const STATIC_ASSETS = [
   '/',
@@ -34,7 +36,7 @@ self.addEventListener('activate', (event) => {
       const cacheNames = await caches.keys()
       await Promise.all(
         cacheNames
-          .filter((cacheName) => cacheName !== APP_SHELL_CACHE && cacheName !== RUNTIME_CACHE)
+          .filter((cacheName) => cacheName !== APP_SHELL_CACHE && cacheName !== RUNTIME_CACHE && cacheName !== MEDIA_CACHE)
           .map((cacheName) => caches.delete(cacheName))
       )
       await self.clients.claim()
@@ -109,6 +111,37 @@ async function networkFirst(request, cacheName){
   }
 }
 
+// Cache-first for large media (videos) with size limit
+async function cacheFirstMedia(request){
+  const cache = await caches.open(MEDIA_CACHE)
+  const cached = await cache.match(request)
+  if (cached) {
+    console.log('[SW] Video served from cache:', request.url)
+    return cached
+  }
+  
+  const response = await fetch(request)
+  if (response?.status === 200){
+    // Clone before caching
+    const responseToCache = response.clone()
+    
+    // Limit cache size - remove oldest entries if needed
+    cache.keys().then(async (keys) => {
+      if (keys.length >= MAX_MEDIA_CACHE_SIZE) {
+        // Delete oldest 10 entries
+        const toDelete = keys.slice(0, 10)
+        for (const key of toDelete) {
+          await cache.delete(key)
+        }
+      }
+    })
+    
+    cache.put(request, responseToCache)
+    console.log('[SW] Video cached:', request.url)
+  }
+  return response
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
   if (request.method !== 'GET') return
@@ -153,6 +186,18 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin === self.location.origin && request.destination === 'image'){
     event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
+    return
+  }
+
+  // Cache videos from /uploads/ - cache-first since videos don't change
+  if (url.origin === self.location.origin && url.pathname.startsWith('/uploads/') && request.destination === 'video'){
+    event.respondWith(cacheFirstMedia(request))
+    return
+  }
+
+  // Also catch video files by extension (fallback)
+  if (url.origin === self.location.origin && /\.(mp4|webm|mov|m4v)$/i.test(url.pathname)){
+    event.respondWith(cacheFirstMedia(request))
     return
   }
 
