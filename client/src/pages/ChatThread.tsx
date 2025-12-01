@@ -1692,7 +1692,7 @@ export default function ChatThread(){
                       {m.video_path ? (
                         <div className="mb-1.5" onClick={e => e.stopPropagation()}>
                           <video
-                            className="w-full max-h-64 rounded-2xl border border-white/10 bg-black"
+                            className="w-full max-h-64 rounded-2xl bg-black/30 ring-1 ring-white/5"
                             controls
                             playsInline
                             preload="metadata"
