@@ -667,7 +667,7 @@ export default function PostDetail(){
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const showKeyboard = liftSource > 2
   const contentPaddingBottom = `calc(${effectiveComposerHeight}px + ${keyboardLift}px + ${safeBottom} + 2rem)`
-  const contentPaddingTop = `calc(3.5rem + ${pullPx}px)`
+  const contentPaddingTop = `calc(${pullPx}px)`
 
   return (
     <div className="glass-page min-h-screen overflow-hidden text-white">
@@ -803,8 +803,9 @@ export default function PostDetail(){
             communityId={(post as any)?.community_id}
             postId={post?.id}
             placeholder="Write a reply?"
-            className="w-full resize-none max-h-36 min-h-[30px] px-3 py-1.5 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-            rows={3}
+            className="w-full resize-none max-h-36 min-h-[36px] px-3 py-2 rounded-2xl bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+            rows={1}
+            autoExpand
             perfDegraded={!!uploadFile}
           />
           <div className="flex items-center justify-end gap-2 flex-wrap">

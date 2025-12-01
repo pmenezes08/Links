@@ -12,6 +12,7 @@ export default function MentionTextarea({
   className,
   rows = 3,
   perfDegraded = false,
+  autoExpand = false,
 }: {
   value: string
   onChange: (v:string)=>void
@@ -22,6 +23,7 @@ export default function MentionTextarea({
   className?: string
   rows?: number
   perfDegraded?: boolean
+  autoExpand?: boolean
 }){
   // Default to enabled when env flag is unset; only disable if explicitly set to 'false'
   const envVal = (import.meta as any).env?.VITE_MENTIONS_ENABLED
@@ -86,6 +88,17 @@ export default function MentionTextarea({
       setAnchor({ left: offsetLeft + 16, top: offsetTop - 8 })
     }catch{}
   }, [open])
+
+  // Auto-expand textarea height based on content
+  useEffect(() => {
+    if (!autoExpand) return
+    const ta = taRef.current
+    if (!ta) return
+    // Reset height to auto to get proper scrollHeight
+    ta.style.height = 'auto'
+    // Set height to scrollHeight, respecting max-height from className
+    ta.style.height = `${ta.scrollHeight}px`
+  }, [value, autoExpand])
 
   function insert(username: string){
     const ta = taRef.current
