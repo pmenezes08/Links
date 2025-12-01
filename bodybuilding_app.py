@@ -17263,6 +17263,12 @@ def update_community():
             
             conn.commit()
             
+            # Invalidate community feed cache so changes appear immediately
+            try:
+                invalidate_community_cache(community_id)
+            except Exception as cache_err:
+                logger.warning(f"Failed to invalidate cache after community update for {community_id}: {cache_err}")
+            
             return jsonify({'success': True, 'message': 'Community updated successfully'})
             
     except Exception as e:
