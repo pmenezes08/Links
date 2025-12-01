@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, memo } from 'react'
+import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
+import { Keyboard } from '@capacitor/keyboard'
+import type { KeyboardInfo } from '@capacitor/keyboard'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -130,6 +134,10 @@ export default function PostDetail(){
   const composerCardRef = useRef<HTMLDivElement | null>(null)
   const keyboardOffsetRef = useRef(0)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [safeBottomPx, setSafeBottomPx] = useState(0)
+  const viewportBaseRef = useRef<number | null>(null)
+  const [viewportLift, setViewportLift] = useState(0)
+
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
     const node = composerCardRef.current
@@ -147,6 +155,37 @@ export default function PostDetail(){
 
     return () => observer.disconnect()
   }, [])
+
+  // Measure safe-area-inset-bottom
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    const probe = document.createElement('div')
+    probe.style.position = 'fixed'
+    probe.style.bottom = '0'
+    probe.style.left = '0'
+    probe.style.width = '0'
+    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
+    probe.style.pointerEvents = 'none'
+    probe.style.opacity = '0'
+    probe.style.zIndex = '-1'
+    document.body.appendChild(probe)
+
+    const updateSafeBottom = () => {
+      const rect = probe.getBoundingClientRect()
+      const next = rect.height || 0
+      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
+    }
+
+    updateSafeBottom()
+    window.addEventListener('resize', updateSafeBottom)
+
+    return () => {
+      window.removeEventListener('resize', updateSafeBottom)
+      probe.remove()
+    }
+  }, [])
+
+  // Visual viewport tracking for web
   useEffect(() => {
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
@@ -155,7 +194,16 @@ export default function PostDetail(){
     let rafId: number | null = null
 
     const updateOffset = () => {
-      const nextOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+      const currentHeight = viewport.height
+      if (
+        viewportBaseRef.current === null ||
+        currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
+      ) {
+        viewportBaseRef.current = currentHeight
+      }
+      const baseHeight = viewportBaseRef.current ?? currentHeight
+      const nextOffset = Math.max(0, baseHeight - currentHeight - viewport.offsetTop)
+      setViewportLift(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
       if (Math.abs(keyboardOffsetRef.current - nextOffset) < 1) return
       keyboardOffsetRef.current = nextOffset
       setKeyboardOffset(nextOffset)
@@ -174,6 +222,38 @@ export default function PostDetail(){
       if (rafId) cancelAnimationFrame(rafId)
       viewport.removeEventListener('resize', handleChange)
       viewport.removeEventListener('scroll', handleChange)
+    }
+  }, [])
+
+  // Native keyboard events for Capacitor
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+    let showSub: PluginListenerHandle | undefined
+    let hideSub: PluginListenerHandle | undefined
+
+    const handleShow = (info: KeyboardInfo) => {
+      const height = info?.keyboardHeight ?? 0
+      if (Math.abs(keyboardOffsetRef.current - height) < 2) return
+      keyboardOffsetRef.current = height
+      setKeyboardOffset(height)
+    }
+
+    const handleHide = () => {
+      if (keyboardOffsetRef.current === 0) return
+      keyboardOffsetRef.current = 0
+      setKeyboardOffset(0)
+    }
+
+    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
+      showSub = handle
+    })
+    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
+      hideSub = handle
+    })
+
+    return () => {
+      showSub?.remove()
+      hideSub?.remove()
     }
   }, [])
   
@@ -583,7 +663,10 @@ export default function PostDetail(){
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
 
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
-  const contentPaddingBottom = `calc(${effectiveComposerHeight}px + ${keyboardOffset}px + ${safeBottom} + 2rem)`
+  const liftSource = Math.max(keyboardOffset, viewportLift)
+  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
+  const showKeyboard = liftSource > 2
+  const contentPaddingBottom = `calc(${effectiveComposerHeight}px + ${keyboardLift}px + ${safeBottom} + 2rem)`
   const contentPaddingTop = `calc(3.5rem + ${pullPx}px)`
 
   return (
@@ -703,11 +786,11 @@ export default function PostDetail(){
       {/* Fixed-bottom reply composer */}
       <div
         ref={composerRef}
-        className="fixed left-0 right-0 bottom-0 z-[100] border-t border-white/10 bg-black/85 backdrop-blur pointer-events-auto px-3"
+        className="fixed left-0 right-0 z-[100] border-t border-white/10 bg-black/85 backdrop-blur pointer-events-auto px-3"
         style={{
-          paddingBottom: `calc(${safeBottom} + 12px)`,
-          transform: keyboardOffset ? `translateY(-${keyboardOffset}px)` : undefined,
-          transition: 'transform 140ms ease-out',
+          bottom: showKeyboard ? `${keyboardLift}px` : 0,
+          paddingBottom: showKeyboard ? '8px' : `calc(${safeBottom} + 12px)`,
+          transition: 'bottom 140ms ease-out',
         }}
       >
         <div
