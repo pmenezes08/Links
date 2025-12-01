@@ -169,6 +169,7 @@ export default function ChatThread(){
   // Layout helpers
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const defaultComposerPadding = 64
+  const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48 // ignore tiny viewport jitters
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
@@ -288,6 +289,8 @@ export default function ChatThread(){
   }, [])
   
   useEffect(() => {
+    if (!isMobile) return
+    if (Capacitor.getPlatform() !== 'web') return
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
     if (!viewport) return
@@ -306,12 +309,13 @@ export default function ChatThread(){
       const baseHeight = viewportBaseRef.current ?? currentHeight
       // Only use height difference, ignore offsetTop to prevent scroll-induced shifts
       const nextOffset = Math.max(0, baseHeight - currentHeight)
+      const normalizedOffset = nextOffset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : nextOffset
       // Only update if change is significant (> 5px) to prevent micro-adjustments
-      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 5) return
-      setViewportLift(prev => (Math.abs(prev - nextOffset) < 5 ? prev : nextOffset))
-      keyboardOffsetRef.current = nextOffset
-      setKeyboardOffset(nextOffset)
-      if (nextOffset > 0) {
+      if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 5) return
+      setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 5 ? prev : normalizedOffset))
+      keyboardOffsetRef.current = normalizedOffset
+      setKeyboardOffset(normalizedOffset)
+      if (normalizedOffset > 0) {
         requestAnimationFrame(scrollToBottom)
       }
     }
@@ -329,7 +333,7 @@ export default function ChatThread(){
       if (rafId) cancelAnimationFrame(rafId)
       viewport.removeEventListener('resize', handleChange)
     }
-  }, [scrollToBottom])
+  }, [isMobile, scrollToBottom])
 
   useEffect(() => {
     if (Capacitor.getPlatform() === 'web') return
