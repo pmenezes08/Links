@@ -823,114 +823,104 @@ export default function PostDetail(){
       {/* Fixed-bottom reply composer */}
       <div
         ref={composerRef}
-        className="fixed left-0 right-0 z-[100] border-t border-white/10 bg-black/85 backdrop-blur pointer-events-auto px-3"
+        className="fixed left-0 right-0 z-[100]"
         style={{
           bottom: showKeyboard ? `${keyboardLift}px` : 0,
-          paddingBottom: showKeyboard ? '12px' : `calc(${safeBottom} + 20px)`,
-          transition: 'bottom 140ms ease-out',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
+        {/* Composer card */}
         <div
           ref={composerCardRef}
-          className="py-3 flex flex-col gap-2 max-w-2xl mx-auto"
+          className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2.5 py-3"
+          style={{ background: '#0a0a0c' }}
         >
-          {/* Text input with send button inside */}
-          <div className="relative flex items-end gap-2">
-            <MentionTextarea
-              value={content}
-              onChange={setContent}
-              communityId={(post as any)?.community_id}
-              postId={post?.id}
-              placeholder="Write a reply..."
-              className="flex-1 resize-none max-h-36 min-h-[40px] pl-3 pr-12 py-2.5 rounded-full bg-black border border-[#4db6ac] text-[16px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
-              rows={1}
-              autoExpand
-              perfDegraded={!!uploadFile}
-            />
-            <button
-              className="absolute right-2 bottom-1.5 w-8 h-8 rounded-full bg-[#4db6ac] text-white grid place-items-center hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={()=> submitReply()}
-              aria-label="Send reply"
-              disabled={(!content && !file && !replyPreview && !replyGif) || submittingReply}
-            >
-              {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-arrow-up text-sm" />}
-            </button>
-          </div>
-          <div className="flex items-center justify-end gap-2 flex-wrap">
-            {file && (
-              <div className="flex items-center gap-2 mr-auto">
-                <div className="w-16 h-16 rounded-md overflow-hidden border border-white/10">
-                  {filePreviewUrl ? (
-                    <img src={filePreviewUrl} alt="preview" className="w-full h-full object-cover" decoding="async" width={64} height={64} draggable={false} />
-                  ) : null}
-                </div>
-                <div className="text-xs text-[#7fe7df] flex items-center gap-1">
-                  <i className="fa-solid fa-image" />
-                  <span className="max-w-[160px] truncate">{file.name}</span>
+          {/* Attachment previews - show above input row when files attached */}
+          {(file || replyGif || replyPreview) && (
+            <div className="mb-2 flex items-center gap-2 flex-wrap">
+              {file && (
+                <div className="flex items-center gap-2">
+                  <div className="w-12 h-12 rounded-md overflow-hidden border border-white/10">
+                    {filePreviewUrl ? (
+                      <img src={filePreviewUrl} alt="preview" className="w-full h-full object-cover" />
+                    ) : null}
+                  </div>
                   <button 
                     onClick={() => { setFile(null); setUploadFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
-                    className="ml-1 text-red-400 hover:text-red-300"
+                    className="text-red-400 hover:text-red-300"
                     aria-label="Remove file"
                   >
                     <i className="fa-solid fa-times" />
                   </button>
                 </div>
-              </div>
-            )}
-            {replyGif && (
-              <div className="flex items-center gap-2 mr-auto">
-                <div className="w-16 h-16 rounded-md overflow-hidden border border-white/10">
-                  <img src={replyGif.previewUrl} alt="Selected GIF" className="w-full h-full object-cover" loading="lazy" />
-                </div>
-                <div className="text-xs text-[#7fe7df] flex items-center gap-1">
-                  <i className="fa-solid fa-images" />
-                  <span>GIF</span>
+              )}
+              {replyGif && (
+                <div className="flex items-center gap-2">
+                  <div className="w-12 h-12 rounded-md overflow-hidden border border-white/10">
+                    <img src={replyGif.previewUrl} alt="Selected GIF" className="w-full h-full object-cover" loading="lazy" />
+                  </div>
                   <button
                     onClick={() => { setReplyGif(null) }}
-                    className="ml-1 text-red-400 hover:text-red-300"
+                    className="text-red-400 hover:text-red-300"
                     aria-label="Remove GIF"
                   >
                     <i className="fa-solid fa-times" />
                   </button>
                 </div>
+              )}
+              {replyPreview && (
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <audio controls className="flex-1 h-8" playsInline webkit-playsinline="true" src={replyPreview.url} />
+                  <button 
+                    onClick={() => { clearReplyPreview(); }}
+                    className="text-[#9fb0b5] hover:text-white"
+                    aria-label="Remove audio"
+                  >
+                    <i className="fa-regular fa-trash-can" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Recording indicator */}
+          {recording && (
+            <div className="mb-2 flex items-center gap-3 px-1">
+              <span className="inline-block w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
+              <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
+                <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, level*100))}%` }} />
               </div>
-            )}
-            {replyPreview && (
-              <div className="flex items-center gap-2 mr-auto flex-1 min-w-0">
-                <audio controls className="w-full" playsInline webkit-playsinline="true" src={replyPreview.url} />
-                <button 
-                  onClick={() => { clearReplyPreview(); }}
-                  className="ml-1 text-[#9fb0b5] hover:text-white"
-                  aria-label="Remove audio"
-                >
-                  <i className="fa-regular fa-trash-can" />
-                </button>
-              </div>
-            )}
-            <button type="button" className="w-10 h-10 rounded-full hover:bg-white/10 grid place-items-center" aria-label="Add image" onClick={()=> fileInputRef.current?.click()}>
-              <i className="fa-regular fa-image text-xl" style={{ color: file ? '#7fe7df' : '#4db6ac' }} />
+              <div className="text-xs text-white/70">{Math.min(60, Math.round((recordMs||0)/1000))}s</div>
+            </div>
+          )}
+
+          {/* Main input row */}
+          <div className="flex items-end gap-2">
+            {/* Attachment buttons */}
+            <button 
+              type="button" 
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Add image"
+            >
+              <i className="fa-solid fa-image text-white text-base" style={{ color: file ? '#7fe7df' : undefined }} />
             </button>
-            <button
-              type="button"
-              className="w-10 h-10 rounded-full grid place-items-center text-[#4db6ac] hover:bg-white/10"
+            <button 
+              type="button" 
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+              onClick={() => setGifPickerOpen(true)}
               aria-label="Add GIF"
-              onClick={()=> { setGifPickerOpen(true) }}
             >
-              <i className="fa-solid fa-images text-lg" style={{ color: replyGif ? '#7fe7df' : '#4db6ac' }} />
+              <i className="fa-solid fa-images text-white text-base" style={{ color: replyGif ? '#7fe7df' : undefined }} />
             </button>
-            <button
-              type="button"
-              className={`w-10 h-10 rounded-full grid place-items-center text-[#4db6ac] hover:bg-white/10 ${recording ? 'brightness-125' : ''}`}
-              aria-label={recording ? "Stop recording" : "Record audio"}
-              onClick={()=> recording ? stopRec() : startRec()}
-            >
-              <i className={`fa-solid ${recording ? 'fa-stop' : 'fa-microphone'} text-xl`} />
-            </button>
+
+            {/* Hidden file input */}
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              onChange={(e)=> {
+              onChange={(e) => {
                 const next = (e.target as HTMLInputElement).files?.[0] || null
                 setFile(next)
                 setUploadFile(null)
@@ -938,32 +928,67 @@ export default function PostDetail(){
               }}
               className="hidden"
             />
-              {/(https?:\/\/[^\s]+|www\.[^\s]+)/.test(content) ? (
-                <button className="px-2.5 py-1.5 rounded-full border border-white/10 text-xs text-[#9fb0b5] hover:border-[#2a3f41] break-words" onClick={()=> {
-                  const m = content.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)
-                  if (!m) return
-                  const urlText = m[0]
-                  // eslint-disable-next-line no-alert
-                  const label = window.prompt('Link text', urlText) || urlText
-                  const href = urlText
-                  const replacement = `[${label}](${href})`
-                  setContent(content.replace(urlText, replacement))
-                }}>Link name</button>
-              ) : null}
-            {/* Recording visualizer and timer */}
+
+            {/* Message input container with turquoise border */}
+            <div className="flex-1 flex items-center rounded-lg border border-[#4db6ac] bg-white/8 overflow-hidden">
+              <MentionTextarea
+                value={content}
+                onChange={setContent}
+                communityId={(post as any)?.community_id}
+                postId={post?.id}
+                placeholder="Write a reply..."
+                className="flex-1 bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
+                rows={1}
+                autoExpand
+                perfDegraded={!!uploadFile}
+              />
+            </div>
+
+            {/* Mic button - when not recording and no text */}
+            {!recording && !content.trim() && (
+              <button
+                type="button"
+                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+                onClick={() => startRec()}
+                aria-label="Record audio"
+              >
+                <i className="fa-solid fa-microphone text-white text-base" />
+              </button>
+            )}
+
+            {/* Stop recording button */}
             {recording && (
-              <div className="flex items-center gap-2 mr-auto flex-1 min-w-0">
-                <div className="text-xs text-[#9fb0b5] whitespace-nowrap">{Math.min(60, Math.round((recordMs||0)/1000))}s</div>
-                <div className="h-2 w-full bg-white/5 rounded overflow-hidden">
-                  <div className="h-full bg-[#4db6ac] transition-all" style={{ width: `${Math.min(100, ((recordMs||0)/600) )}%` }} />
-                </div>
-                <div className="h-6 w-20 bg-white/5 rounded hidden xs:flex items-center">
-                  <div className="h-2 bg-[#7fe7df] rounded transition-all" style={{ width: `${Math.max(6, Math.min(96, level*100))}%`, marginLeft: '2%' }} />
-                </div>
-              </div>
+              <button
+                type="button"
+                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-[#4db6ac] text-white transition-all"
+                onClick={() => stopRec()}
+                aria-label="Stop recording"
+              >
+                <i className="fa-solid fa-stop text-base" />
+              </button>
+            )}
+
+            {/* Send button - when has content or attachment */}
+            {!recording && (content.trim() || file || replyPreview || replyGif) && (
+              <button
+                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-[#4db6ac] text-white hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                onClick={() => submitReply()}
+                aria-label="Send reply"
+                disabled={submittingReply}
+              >
+                {submittingReply ? <i className="fa-solid fa-spinner fa-spin text-base" /> : <i className="fa-solid fa-paper-plane text-base" />}
+              </button>
             )}
           </div>
         </div>
+        {/* Safe area spacer */}
+        <div 
+          style={{
+            height: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
+            background: '#000',
+            flexShrink: 0,
+          }}
+        />
       </div>
       <GifPicker
         isOpen={gifPickerOpen}
