@@ -588,7 +588,7 @@ export default function Followers() {
       </div>
 
       <div
-        className="app-subnav-offset max-w-3xl mx-auto px-1 sm:px-3 pb-2 overflow-y-auto overscroll-auto"
+        className="app-subnav-offset max-w-3xl mx-auto px-1 sm:px-3 pb-2 overflow-y-auto overscroll-auto glass-card glass-card--plain"
         style={{ WebkitOverflowScrolling: 'touch' as any }}
       >
         {activeSection === 'manage' ? (
