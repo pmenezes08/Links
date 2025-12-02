@@ -759,8 +759,12 @@ export default function CommunityFeed() {
           <div className="flex items-center gap-2">
             <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
               onClick={()=> {
-                // Go to the community management page (same page shown when clicking community card on dashboard)
-                navigate(`/communities?parent_id=${community_id}`)
+                // Navigate to the root parent's management page
+                // If this is a sub-community, go to parent's page
+                // If this is already a root community, go to its own management page
+                const parentId = data?.community?.parent_community_id
+                const targetId = parentId || community_id
+                navigate(`/communities?parent_id=${targetId}`)
               }}
             >
               <i className="fa-solid fa-arrow-left mr-1" /> Back to Community
