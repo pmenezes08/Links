@@ -25,7 +25,7 @@ export const Hero = () => {
             Enter the network where ideas connect people
           </h1>
           <p className="text-xl md:text-2xl text-primary-foreground/90 mb-8 max-w-2xl mx-auto">
-            Join C-Point, the platform that brings innovators, thinkers, and doers together through meaningful connections.
+            C-Point brings together your communities, interests, and conversations in one place. Share ideas, spark discussions, and grow together.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button 
