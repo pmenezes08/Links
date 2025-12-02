@@ -1,7 +1,11 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
+import { MessageCircle } from "lucide-react";
+import { ContactForm } from "./ContactForm";
 
 export const CTA = () => {
+  const [isFormOpen, setIsFormOpen] = useState(false);
+
   return (
     <section className="py-20 bg-gradient-primary relative overflow-hidden">
       <div className="absolute inset-0 opacity-10">
@@ -17,14 +21,19 @@ export const CTA = () => {
           <p className="text-xl text-primary-foreground/90 mb-8">
             Be part of a network where your ideas matter and connections lead to opportunities.
           </p>
-          <Button variant="secondary" size="lg" className="text-lg shadow-soft" asChild>
-            <a href="https://app.c-point.co/signup">
-              Get Started Today
-              <ArrowRight className="ml-2" />
-            </a>
+          <Button 
+            variant="secondary" 
+            size="lg" 
+            className="text-lg shadow-soft"
+            onClick={() => setIsFormOpen(true)}
+          >
+            <MessageCircle className="mr-2" />
+            Contact Us
           </Button>
         </div>
       </div>
+
+      <ContactForm open={isFormOpen} onOpenChange={setIsFormOpen} />
     </section>
   );
 };
