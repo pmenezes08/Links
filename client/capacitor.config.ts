@@ -7,7 +7,7 @@ const config: CapacitorConfig = {
   appName: 'C.Point',
   webDir: 'dist',
   server: {
-    url: 'https://www.c-point.co',
+    url: 'https://app.c-point.co',
     cleartext: false,
   },
   backgroundColor: appBackground,
@@ -46,8 +46,8 @@ export default config;
  *    - Open the iOS project (client/ios/App/App.xcworkspace)
  *    - Select App target > Signing & Capabilities
  *    - Click "+ Capability" and add "Associated Domains"
- *    - Add: applinks:www.c-point.co
- *    - Add: applinks:c-point.co (if using both www and non-www)
+ *    - Add: applinks:app.c-point.co
+ *    - Add: applinks:www.c-point.co (for landing page links)
  * 
  * 4. Rebuild and deploy the iOS app
  * 
