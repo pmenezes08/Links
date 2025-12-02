@@ -18,6 +18,10 @@ interface ContactFormProps {
   onOpenChange: (open: boolean) => void;
 }
 
+// Using Formsubmit.co - free email forwarding service
+// Replace this with your email address
+const CONTACT_EMAIL = "hello@c-point.co";
+
 export const ContactForm = ({ open, onOpenChange }: ContactFormProps) => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -53,9 +57,24 @@ export const ContactForm = ({ open, onOpenChange }: ContactFormProps) => {
     }
 
     try {
-      // TODO: This will need Lovable Cloud to send emails
-      // For now, we'll show a success message
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Send via Formsubmit.co (free email forwarding)
+      const response = await fetch(`https://formsubmit.co/ajax/${CONTACT_EMAIL}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          message,
+          _subject: `C-Point Contact Form: Message from ${name}`,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send message");
+      }
 
       toast({
         title: "Message Sent!",
