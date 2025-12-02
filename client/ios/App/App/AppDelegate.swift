@@ -8,7 +8,7 @@ import UserNotifications
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
-    private let serverURL = "https://www.c-point.co"
+    private let serverURL = "https://app.c-point.co"
     
     override init() {
         super.init()
@@ -219,7 +219,7 @@ extension AppDelegate: MessagingDelegate {
     private func sendFCMTokenToServer(token: String) {
         NSLog("📤 Sending FCM token directly to server...")
         
-        guard let url = URL(string: "https://www.c-point.co/api/push/register_fcm") else {
+        guard let url = URL(string: "\(serverURL)/api/push/register_fcm") else {
             NSLog("❌ Invalid server URL")
             return
         }
