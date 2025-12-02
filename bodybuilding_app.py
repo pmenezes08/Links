@@ -8921,9 +8921,18 @@ def get_messages():
                 
                 # Add encryption fields if available
                 if with_encryption:
-                    msg_dict['is_encrypted'] = msg.get('is_encrypted') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else 0
-                    msg_dict['encrypted_body'] = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[10] if len(msg) > 10 else None
-                    msg_dict['encrypted_body_for_sender'] = msg.get('encrypted_body_for_sender') if hasattr(msg, 'get') else msg[11] if len(msg) > 11 else None
+                    is_encrypted_val = msg.get('is_encrypted') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else 0
+                    encrypted_body_val = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[10] if len(msg) > 10 else None
+                    encrypted_body_for_sender_val = msg.get('encrypted_body_for_sender') if hasattr(msg, 'get') else msg[11] if len(msg) > 11 else None
+                    
+                    msg_dict['is_encrypted'] = is_encrypted_val
+                    msg_dict['encrypted_body'] = encrypted_body_val
+                    msg_dict['encrypted_body_for_sender'] = encrypted_body_for_sender_val
+                    
+                    # Signal Protocol: if encrypted but no traditional encrypted_body, it's Signal Protocol
+                    # The ciphertexts are stored separately in message_ciphertexts table
+                    if is_encrypted_val and not encrypted_body_val:
+                        msg_dict['signal_protocol'] = True
                 
                 messages.append(msg_dict)
             

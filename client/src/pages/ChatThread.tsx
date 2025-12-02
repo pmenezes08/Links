@@ -20,6 +20,7 @@ import MessageImage from '../components/MessageImage'
 import MessageVideo from '../components/MessageVideo'
 import ZoomableImage from '../components/ZoomableImage'
 import { encryptionService } from '../services/simpleEncryption'
+import { signalService } from '../services/signalProtocol'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -581,7 +582,12 @@ export default function ChatThread(){
       }
     }
     
-    // TRUE E2E ENCRYPTION:
+    // Check if this is a Signal Protocol message
+    if (message.signal_protocol && signalService.isInitialized()) {
+      return await decryptSignalMessage(message)
+    }
+    
+    // Legacy/fallback: simple encryption
     // - Sent messages: decrypt encrypted_body_for_sender (encrypted with YOUR public key)
     // - Received messages: decrypt encrypted_body (encrypted with YOUR public key)
     
@@ -633,6 +639,71 @@ export default function ChatThread(){
       return {
         ...message,
         text: '[🔒 Encrypted - decryption failed]',
+        decryption_error: true,
+      }
+    }
+  }
+  
+  // Decrypt a Signal Protocol message
+  async function decryptSignalMessage(message: any): Promise<any> {
+    const deviceId = signalService.getDeviceId()
+    if (!deviceId) {
+      return {
+        ...message,
+        text: '[🔒 Signal: Device not initialized]',
+        decryption_error: true,
+      }
+    }
+    
+    try {
+      // Fetch the ciphertext for this device
+      const response = await fetch(
+        `/api/signal/get-ciphertext/${message.id}?deviceId=${deviceId}`,
+        { credentials: 'include' }
+      )
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          // No ciphertext for this device - might be from before device was registered
+          return {
+            ...message,
+            text: '[🔒 Signal: Message not available for this device]',
+            decryption_error: true,
+          }
+        }
+        throw new Error(`Failed to fetch ciphertext: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      if (!data.success || !data.ciphertext) {
+        throw new Error('Invalid ciphertext response')
+      }
+      
+      // Decrypt using Signal Protocol
+      const result = await signalService.decryptMessage(
+        data.senderUsername,
+        data.senderDeviceId,
+        data.ciphertext,
+        data.messageType
+      )
+      
+      // Cache the decrypted text
+      decryptionCache.current.set(message.id, { text: result.plaintext, error: false })
+      
+      return {
+        ...message,
+        text: result.plaintext,
+        decryption_error: false,
+      }
+    } catch (error) {
+      console.error('🔐 ❌ Signal decryption failed for message:', message.id, error)
+      
+      // Cache the failure
+      decryptionCache.current.set(message.id, { text: '[🔒 Signal: Decryption failed]', error: true })
+      
+      return {
+        ...message,
+        text: '[🔒 Signal: Decryption failed]',
         decryption_error: true,
       }
     }
@@ -1054,21 +1125,75 @@ export default function ChatThread(){
         formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
       }
       
-      // Try to encrypt message TWICE (for recipient AND sender)
+      // Try to encrypt message using Signal Protocol (multi-device)
       let isEncrypted = false
       let encryptedBodyForRecipient = ''
       let encryptedBodyForSender = ''
+      let signalCiphertexts: Array<{
+        targetUsername: string
+        targetDeviceId: number
+        senderDeviceId: number
+        ciphertext: string
+        messageType: number
+      }> = []
+      let useSignalProtocol = false
       
-      if (username) {
+      if (username && signalService.isInitialized()) {
         try {
-          // Encrypt for recipient with 3 second timeout
+          // Use Signal Protocol for multi-device encryption
+          console.log('🔐 Encrypting with Signal Protocol for:', username)
+          
+          const encryptPromise = signalService.encryptMessage(username, formattedMessage)
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Signal encryption timeout')), 5000)
+          )
+          
+          const result = await Promise.race([encryptPromise, timeoutPromise])
+          
+          if (result.deviceCiphertexts.length > 0) {
+            signalCiphertexts = result.deviceCiphertexts
+            isEncrypted = true
+            useSignalProtocol = true
+            console.log(`🔐 Signal: Encrypted for ${signalCiphertexts.length} devices`)
+            
+            if (result.failedDevices.length > 0) {
+              console.warn('🔐 Signal: Some devices failed:', result.failedDevices)
+            }
+          } else if (result.failedDevices.length > 0) {
+            console.warn('🔐 Signal: All devices failed, falling back to simple encryption')
+            throw new Error('All devices failed')
+          }
+        } catch (signalError) {
+          console.warn('🔐 Signal encryption failed, trying simple encryption:', signalError)
+          
+          // Fallback to simple encryption
+          try {
+            const encryptForRecipientPromise = encryptionService.encryptMessage(username, formattedMessage)
+            const timeoutPromise1 = new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('Encryption timeout (recipient)')), 3000)
+            )
+            encryptedBodyForRecipient = await Promise.race([encryptForRecipientPromise, timeoutPromise1])
+            
+            const encryptForSenderPromise = encryptionService.encryptMessageForSender(formattedMessage)
+            const timeoutPromise2 = new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('Encryption timeout (sender)')), 3000)
+            )
+            encryptedBodyForSender = await Promise.race([encryptForSenderPromise, timeoutPromise2])
+            
+            isEncrypted = true
+          } catch (simpleError) {
+            console.warn('🔐 ⚠️ All encryption failed, sending unencrypted:', simpleError)
+          }
+        }
+      } else if (username) {
+        // Signal not initialized, use simple encryption
+        try {
           const encryptForRecipientPromise = encryptionService.encryptMessage(username, formattedMessage)
           const timeoutPromise1 = new Promise<never>((_, reject) => 
             setTimeout(() => reject(new Error('Encryption timeout (recipient)')), 3000)
           )
           encryptedBodyForRecipient = await Promise.race([encryptForRecipientPromise, timeoutPromise1])
           
-          // Encrypt for sender (yourself) with 3 second timeout
           const encryptForSenderPromise = encryptionService.encryptMessageForSender(formattedMessage)
           const timeoutPromise2 = new Promise<never>((_, reject) => 
             setTimeout(() => reject(new Error('Encryption timeout (sender)')), 3000)
@@ -1079,7 +1204,6 @@ export default function ChatThread(){
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error'
           console.warn('🔐 ⚠️ Encryption failed, sending unencrypted:', errorMsg)
-          // Continue with unencrypted - this is perfectly fine!
         }
       }
       
@@ -1129,8 +1253,17 @@ export default function ChatThread(){
       if (isEncrypted) {
         fd.append('message', '') // NO plaintext stored!
         fd.append('is_encrypted', '1')
-        fd.append('encrypted_body', encryptedBodyForRecipient) // Encrypted for recipient
-        fd.append('encrypted_body_for_sender', encryptedBodyForSender) // Encrypted for sender
+        
+        if (useSignalProtocol) {
+          // Signal Protocol: mark as signal encrypted, ciphertexts stored separately
+          fd.append('signal_protocol', '1')
+          fd.append('encrypted_body', '') // Placeholder - actual ciphertexts stored separately
+          fd.append('encrypted_body_for_sender', '')
+        } else {
+          // Simple encryption: store in traditional fields
+          fd.append('encrypted_body', encryptedBodyForRecipient)
+          fd.append('encrypted_body_for_sender', encryptedBodyForSender)
+        }
       } else {
         fd.append('message', formattedMessage)
       }
@@ -1142,7 +1275,7 @@ export default function ChatThread(){
         body: fd 
       })
         .then(r => r.json())
-        .then(j => {
+        .then(async j => {
           if (j?.success) {
             // Stop typing indicator
             fetch('/api/typing', { 
@@ -1154,6 +1287,25 @@ export default function ChatThread(){
             
             // CRITICAL: Update optimistic message immediately with server confirmation
             if (j.message_id) {
+              // Store Signal Protocol ciphertexts if applicable
+              if (useSignalProtocol && signalCiphertexts.length > 0) {
+                try {
+                  await fetch('/api/signal/store-ciphertexts', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      messageId: j.message_id,
+                      senderDeviceId: signalService.getDeviceId(),
+                      ciphertexts: signalCiphertexts
+                    })
+                  })
+                  console.log('🔐 Signal: Stored ciphertexts for message', j.message_id)
+                } catch (cipherError) {
+                  console.error('🔐 Signal: Failed to store ciphertexts:', cipherError)
+                }
+              }
+              
               // Set up bridge mapping
               idBridgeRef.current.tempToServer.set(tempId, j.message_id)
               idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
