@@ -1,4 +1,4 @@
-import { Users, Lightbulb, Network, MessageSquare } from "lucide-react";
+import { Users, Lock, Lightbulb, Network, MessageSquare } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const features = [
@@ -6,6 +6,11 @@ const features = [
     icon: Users,
     title: "Meaningful Connections",
     description: "Connect with like-minded people and expand your network through shared interests and ideas.",
+  },
+  {
+    icon: Lock,
+    title: "Exclusivity",
+    description: "Build private networks tailored to your needs. Create nested communities within communities for focused, invite-only conversations.",
   },
   {
     icon: Lightbulb,
@@ -37,7 +42,7 @@ export const Features = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           {features.map((feature, index) => (
             <Card 
               key={index} 
