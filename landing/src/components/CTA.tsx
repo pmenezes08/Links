@@ -17,9 +17,11 @@ export const CTA = () => {
           <p className="text-xl text-primary-foreground/90 mb-8">
             Be part of a network where your ideas matter and connections lead to opportunities.
           </p>
-          <Button variant="secondary" size="lg" className="text-lg shadow-soft">
-            Get Started Today
-            <ArrowRight className="ml-2" />
+          <Button variant="secondary" size="lg" className="text-lg shadow-soft" asChild>
+            <a href="https://app.c-point.co/signup">
+              Get Started Today
+              <ArrowRight className="ml-2" />
+            </a>
           </Button>
         </div>
       </div>

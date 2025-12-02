@@ -25,13 +25,17 @@ export const Hero = () => {
             Join C-Point, the platform that brings innovators, thinkers, and doers together through meaningful connections.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button variant="hero" size="lg" className="text-lg">
-              <Apple className="mr-2" size={24} />
-              App Store
+            <Button variant="hero" size="lg" className="text-lg" asChild>
+              <a href="https://app.c-point.co">
+                <Apple className="mr-2" size={24} />
+                Download App
+              </a>
             </Button>
-            <Button variant="secondary" size="lg" className="text-lg">
-              <Play className="mr-2" size={24} />
-              Play Store
+            <Button variant="secondary" size="lg" className="text-lg" asChild>
+              <a href="https://app.c-point.co/signup">
+                Open Web App
+                <Play className="mr-2" size={24} />
+              </a>
             </Button>
           </div>
         </div>
