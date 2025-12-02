@@ -8,6 +8,11 @@ import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
+import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
+
+const HOME_TIMELINE_CACHE_KEY = 'home-timeline'
+const HOME_TIMELINE_CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
+const HOME_TIMELINE_CACHE_VERSION = 'home-timeline-v1'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string }
@@ -54,14 +59,28 @@ export default function HomeTimeline(){
 
   useEffect(() => {
     let mounted = true
-    async function load(){
+    
+    // CACHE-FIRST: Show cached data immediately, fetch fresh in background
+    const cachedData = readDeviceCache<any>(HOME_TIMELINE_CACHE_KEY, HOME_TIMELINE_CACHE_VERSION)
+    if (cachedData?.success) {
+      setData(cachedData)
+      setLoading(false)
+    } else {
       setLoading(true)
+    }
+    
+    async function load(){
       try{
         const r = await fetch('/api/home_timeline', { credentials:'include' })
         const j = await r.json()
         if (!mounted) return
-        if (j?.success){ setData(j) } else { setError(j?.error || 'Error') }
-      }catch{ if (mounted) setError('Error loading') } finally { if (mounted) setLoading(false) }
+        if (j?.success){ 
+          setData(j)
+          writeDeviceCache(HOME_TIMELINE_CACHE_KEY, j, HOME_TIMELINE_CACHE_TTL_MS, HOME_TIMELINE_CACHE_VERSION)
+        } else if (!data) { 
+          setError(j?.error || 'Error') 
+        }
+      }catch{ if (mounted && !data) setError('Error loading') } finally { if (mounted) setLoading(false) }
     }
     load()
     return () => { mounted = false }

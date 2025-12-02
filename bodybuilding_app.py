@@ -19941,114 +19941,140 @@ def api_home_timeline():
                 if now - dt <= forty_eight:
                     posts.append(r)
 
-            # Enrich posts with author picture, reactions, user reaction, poll, replies_count, and community_name
+            # OPTIMIZED: Batch queries to avoid N+1 problem
+            post_ids = [p['id'] for p in posts]
+            
+            if post_ids:
+                placeholders = ','.join([get_sql_placeholder()] * len(post_ids))
+                
+                # BATCH 1: Get all author profile pictures
+                author_usernames = list(set(p['username'] for p in posts))
+                profile_pics = {}
+                if author_usernames:
+                    author_ph = ','.join([get_sql_placeholder()] * len(author_usernames))
+                    c.execute(f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({author_ph})", tuple(author_usernames))
+                    for row in c.fetchall():
+                        profile_pics[row['username']] = row['profile_picture']
+                
+                # BATCH 2: Get all reactions
+                post_reactions: Dict[int, Dict[str, int]] = {pid: {} for pid in post_ids}
+                try:
+                    c.execute(f"SELECT post_id, reaction_type, COUNT(*) as count FROM reactions WHERE post_id IN ({placeholders}) GROUP BY post_id, reaction_type", tuple(post_ids))
+                    for row in c.fetchall():
+                        pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                        rtype = row['reaction_type'] if hasattr(row, 'keys') else row[1]
+                        cnt = row['count'] if hasattr(row, 'keys') else row[2]
+                        if pid in post_reactions:
+                            post_reactions[pid][rtype] = cnt
+                except Exception:
+                    pass
+                
+                # BATCH 3: Get user's reactions
+                user_reactions: Dict[int, str] = {}
+                try:
+                    params = list(post_ids) + [username]
+                    c.execute(f"SELECT post_id, reaction_type FROM reactions WHERE post_id IN ({placeholders}) AND username = {get_sql_placeholder()}", tuple(params))
+                    for row in c.fetchall():
+                        pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                        rtype = row['reaction_type'] if hasattr(row, 'keys') else row[1]
+                        user_reactions[pid] = rtype
+                except Exception:
+                    pass
+                
+                # BATCH 4: Get all polls
+                polls_by_post: Dict[int, dict] = {}
+                try:
+                    c.execute(f"SELECT * FROM polls WHERE post_id IN ({placeholders}) AND is_active = 1", tuple(post_ids))
+                    for row in c.fetchall():
+                        poll = dict(row)
+                        polls_by_post[poll['post_id']] = poll
+                except Exception:
+                    pass
+                
+                # BATCH 5: Get poll options and votes
+                if polls_by_post:
+                    poll_ids = [p['id'] for p in polls_by_post.values()]
+                    poll_ph = ','.join([get_sql_placeholder()] * len(poll_ids))
+                    options_by_poll: Dict[int, list] = {pid: [] for pid in poll_ids}
+                    
+                    # Get options with vote counts
+                    try:
+                        c.execute(f"SELECT * FROM poll_options WHERE poll_id IN ({poll_ph}) ORDER BY id", tuple(poll_ids))
+                        for row in c.fetchall():
+                            opt = dict(row)
+                            opt['text'] = opt.get('option_text', '')
+                            opt['votes'] = opt.get('votes', 0)
+                            options_by_poll[opt['poll_id']].append(opt)
+                    except Exception:
+                        pass
+                    
+                    # Get user votes
+                    user_poll_votes: Dict[int, int] = {}
+                    try:
+                        params = list(poll_ids) + [username]
+                        c.execute(f"SELECT poll_id, option_id FROM poll_votes WHERE poll_id IN ({poll_ph}) AND username = {get_sql_placeholder()}", tuple(params))
+                        for row in c.fetchall():
+                            poll_id = row['poll_id'] if hasattr(row, 'keys') else row[0]
+                            opt_id = row['option_id'] if hasattr(row, 'keys') else row[1]
+                            user_poll_votes[poll_id] = opt_id
+                    except Exception:
+                        pass
+                    
+                    # Assemble polls
+                    for post_id, poll in polls_by_post.items():
+                        poll['options'] = options_by_poll.get(poll['id'], [])
+                        poll['user_vote'] = user_poll_votes.get(poll['id'])
+                        poll['total_votes'] = sum(int(opt.get('votes', 0) or 0) for opt in poll['options'])
+                
+                # BATCH 6: Get reply counts
+                reply_counts: Dict[int, int] = {}
+                try:
+                    c.execute(f"SELECT post_id, COUNT(*) as cnt FROM replies WHERE post_id IN ({placeholders}) GROUP BY post_id", tuple(post_ids))
+                    for row in c.fetchall():
+                        pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                        cnt = row['cnt'] if hasattr(row, 'keys') else row[1]
+                        reply_counts[pid] = cnt
+                except Exception:
+                    pass
+            
+            # Helper to normalize paths
+            def normalize_path(p):
+                if not p:
+                    return None
+                p_str = str(p).strip()
+                if p_str.startswith('http://') or p_str.startswith('https://'):
+                    return p_str
+                if p_str.startswith('/uploads') or p_str.startswith('/static'):
+                    return p_str
+                if p_str.startswith('uploads/') or p_str.startswith('static/'):
+                    return '/' + p_str
+                return f"/uploads/{p_str}"
+            
+            # Enrich posts with batched data (no more N+1 queries!)
             for post in posts:
                 post_id = post['id']
                 comm_id = post.get('community_id')
                 post['community_name'] = id_to_name.get(comm_id)
-                # Normalize image paths for client consumption
-                try:
-                    p = post.get('image_path')
-                    if p:
-                        p_str = str(p).strip()
-                        if p_str.startswith('http://') or p_str.startswith('https://'):
-                            pass
-                        elif p_str.startswith('/uploads') or p_str.startswith('/static'):
-                            post['image_path'] = p_str
-                        elif p_str.startswith('uploads/'):
-                            post['image_path'] = '/' + p_str
-                        else:
-                            post['image_path'] = f"/uploads/{p_str}"
-                except Exception:
-                    pass
-
-                # Normalize video paths to absolute URLs the client can consume
-                try:
-                    vp = post.get('video_path')
-                    if vp:
-                        vp_str = str(vp).strip()
-                        if vp_str.startswith('http://') or vp_str.startswith('https://'):
-                            post['video_path'] = vp_str
-                        elif vp_str.startswith('/uploads') or vp_str.startswith('/static'):
-                            post['video_path'] = vp_str
-                        elif vp_str.startswith('uploads/') or vp_str.startswith('static/'):
-                            post['video_path'] = '/' + vp_str
-                        else:
-                            post['video_path'] = f"/uploads/{vp_str}"
-                except Exception:
-                    pass
+                post['image_path'] = normalize_path(post.get('image_path'))
+                post['video_path'] = normalize_path(post.get('video_path'))
                 
                 # Convert timestamp to DD-MM-YYYY format for display
                 try:
                     if post.get('timestamp'):
-                        # Parse MySQL format and convert to DD-MM-YYYY for display
                         dt = datetime.strptime(str(post['timestamp'])[:19], '%Y-%m-%d %H:%M:%S')
                         post['display_timestamp'] = dt.strftime('%d-%m-%Y %H:%M:%S')
                     else:
                         post['display_timestamp'] = post.get('timestamp', '')
                 except Exception:
                     post['display_timestamp'] = post.get('timestamp', '')
-
-                # Profile picture
-                try:
-                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
-                    pp = c.fetchone()
-                    _pp = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
-                    if _pp:
-                        _pp_str = str(_pp).strip()
-                        if _pp_str.startswith('http://') or _pp_str.startswith('https://'):
-                            post['profile_picture'] = _pp_str
-                        elif _pp_str.startswith('/uploads') or _pp_str.startswith('/static'):
-                            post['profile_picture'] = _pp_str
-                        elif _pp_str.startswith('uploads/'):
-                            post['profile_picture'] = '/' + _pp_str
-                        else:
-                            post['profile_picture'] = f"/uploads/{_pp_str}"
-                    else:
-                        post['profile_picture'] = None
-                except Exception:
-                    post['profile_picture'] = None
-
-                # Reactions
-                c.execute("""
-                    SELECT reaction_type, COUNT(*) as count
-                    FROM reactions WHERE post_id = ? GROUP BY reaction_type
-                """, (post_id,))
-                post['reactions'] = {r['reaction_type']: r['count'] for r in c.fetchall()}
-                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
-                ur = c.fetchone()
-                post['user_reaction'] = ur['reaction_type'] if ur else None
-
-                # Poll (if active)
-                c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post_id,))
-                poll_raw = c.fetchone()
-                if poll_raw:
-                    poll = dict(poll_raw)
-                    c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
-                    options = [dict(o) for o in c.fetchall()]
-                    
-                    # Calculate vote counts for each option
-                    for opt in options:
-                        c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ?", (poll['id'], opt['id']))
-                        vote_count = c.fetchone()
-                        opt['votes'] = vote_count['count'] if vote_count else 0
-                        # Rename option_text to text for frontend compatibility
-                        opt['text'] = opt.get('option_text', '')
-                    
-                    poll['options'] = options
-                    # Current user's vote
-                    c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
-                    uv = c.fetchone()
-                    poll['user_vote'] = uv['option_id'] if uv else None
-                    poll['total_votes'] = sum(opt.get('votes', 0) for opt in options)
-                    post['poll'] = poll
-                else:
-                    post['poll'] = None
-
-                # Replies count
-                c.execute("SELECT COUNT(*) as cnt FROM replies WHERE post_id = ?", (post_id,))
-                rc = c.fetchone()
-                post['replies_count'] = (rc['cnt'] if isinstance(rc, dict) else rc[0]) if rc is not None else 0
+                
+                # Use batched data
+                pp = profile_pics.get(post['username'])
+                post['profile_picture'] = normalize_path(pp) if pp else None
+                post['reactions'] = post_reactions.get(post_id, {})
+                post['user_reaction'] = user_reactions.get(post_id)
+                post['poll'] = polls_by_post.get(post_id)
+                post['replies_count'] = reply_counts.get(post_id, 0)
 
             return jsonify({
                 'success': True,
