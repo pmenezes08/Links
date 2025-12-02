@@ -68,6 +68,27 @@ def register_signal_endpoints(app, get_db_connection, logger):
                 c = conn.cursor()
                 now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+                # First, clean up old devices to prevent proliferation
+                # Keep only the 2 most recent devices before adding new one
+                c.execute("""
+                    SELECT device_id FROM user_devices
+                    WHERE username = ?
+                    ORDER BY created_at DESC
+                """, (username,))
+                existing_devices = c.fetchall()
+                
+                # If user has 3+ devices, delete the oldest ones (keep 2)
+                if len(existing_devices) >= 3:
+                    devices_to_keep = 2
+                    for i, device_row in enumerate(existing_devices):
+                        if i >= devices_to_keep:
+                            old_device_id = device_row[0] if isinstance(device_row, tuple) else device_row['device_id']
+                            c.execute("DELETE FROM device_prekeys WHERE username = ? AND device_id = ?", 
+                                      (username, old_device_id))
+                            c.execute("DELETE FROM user_devices WHERE username = ? AND device_id = ?", 
+                                      (username, old_device_id))
+                    logger.info(f"Signal: Auto-cleaned {len(existing_devices) - devices_to_keep} old devices for {username}")
+
                 # Get next device ID for this user
                 c.execute(
                     "SELECT COALESCE(MAX(device_id), 0) + 1 FROM user_devices WHERE username = ?",
@@ -604,6 +625,72 @@ def register_signal_endpoints(app, get_db_connection, logger):
         """Get all devices for the current user"""
         username = session.get('username')
         return get_user_devices(username)
+
+    @app.route('/api/signal/cleanup-old-devices', methods=['POST'])
+    @login_required
+    def cleanup_old_devices():
+        """
+        Remove old devices for the current user, keeping only the most recent ones.
+        Useful for cleaning up device proliferation on iOS.
+        
+        Request body (optional):
+        {
+            "keepCount": 2  // Number of most recent devices to keep (default: 2)
+        }
+        """
+        try:
+            username = session.get('username')
+            data = request.get_json() or {}
+            keep_count = data.get('keepCount', 2)
+            
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                
+                # Get all devices ordered by creation date (newest first)
+                c.execute("""
+                    SELECT device_id, device_name, created_at
+                    FROM user_devices
+                    WHERE username = ?
+                    ORDER BY created_at DESC
+                """, (username,))
+                
+                devices = c.fetchall()
+                total_devices = len(devices)
+                
+                if total_devices <= keep_count:
+                    return jsonify({
+                        'success': True,
+                        'message': f'No cleanup needed. You have {total_devices} device(s).',
+                        'devicesRemoved': 0
+                    })
+                
+                # Get IDs of devices to delete (older ones)
+                devices_to_delete = []
+                for i, device in enumerate(devices):
+                    if i >= keep_count:
+                        device_id = device['device_id'] if isinstance(device, dict) else device[0]
+                        devices_to_delete.append(device_id)
+                
+                # Delete old devices and their prekeys
+                for device_id in devices_to_delete:
+                    c.execute("DELETE FROM device_prekeys WHERE username = ? AND device_id = ?", 
+                              (username, device_id))
+                    c.execute("DELETE FROM user_devices WHERE username = ? AND device_id = ?", 
+                              (username, device_id))
+                
+                conn.commit()
+                
+                logger.info(f"Signal: Cleaned up {len(devices_to_delete)} old devices for {username}")
+                return jsonify({
+                    'success': True,
+                    'message': f'Removed {len(devices_to_delete)} old device(s). Kept {keep_count} most recent.',
+                    'devicesRemoved': len(devices_to_delete),
+                    'devicesKept': keep_count
+                })
+                
+        except Exception as e:
+            logger.error(f"Signal: Error cleaning up devices: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/signal/debug-status', methods=['GET'])
     @login_required
