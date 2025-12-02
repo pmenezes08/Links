@@ -254,12 +254,24 @@ export default function CommunityFeed() {
 
   useEffect(() => {
     let isMounted = true
-    setLoading(true)
-    // Add cache-busting timestamp to prevent browser HTTP caching
-    const cacheBuster = Date.now()
-    fetch(`/api/community_feed/${community_id}?_t=${cacheBuster}`, { 
-      credentials: 'include',
-      cache: 'no-store'  // Prevent browser from caching this request
+    
+    // CACHE-FIRST STRATEGY: Show cached data immediately, then fetch fresh in background
+    if (deviceFeedCacheKey) {
+      const cachedData = readDeviceCache<any>(deviceFeedCacheKey, COMMUNITY_FEED_CACHE_VERSION)
+      if (cachedData?.success) {
+        // Show cached data immediately - no loading spinner!
+        setData(cachedData)
+        setLoading(false)
+      } else {
+        setLoading(true)
+      }
+    } else {
+      setLoading(true)
+    }
+    
+    // Fetch fresh data in background
+    fetch(`/api/community_feed/${community_id}`, { 
+      credentials: 'include'
     })
       .then(r => r.json().catch(() => ({ success: false, error: 'Invalid response' })))
       .then(json => { 
@@ -270,13 +282,16 @@ export default function CommunityFeed() {
             writeDeviceCache(deviceFeedCacheKey, json, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_FEED_CACHE_VERSION)
           }
         }
-        else {
+        else if (!data) {
+          // Only set error if we don't have cached data to show
           setError(json?.error || 'Error loading feed')
         }
       })
-      .catch(() => { if (isMounted){
-        setError('Error loading feed')
-      }})
+      .catch(() => { 
+        if (isMounted && !data){
+          setError('Error loading feed')
+        }
+      })
       .finally(() => isMounted && setLoading(false))
     return () => { isMounted = false }
   }, [community_id, refreshKey, deviceFeedCacheKey])

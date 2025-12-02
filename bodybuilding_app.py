@@ -18886,7 +18886,7 @@ def api_community_feed(community_id):
             except Exception:
                 pass
 
-            # Posts
+            # Posts - OPTIMIZED with batch queries to avoid N+1 problem
             # Limit initial posts returned to reduce payload; clients can paginate if needed
             # Exclude posts with pending videos (talking avatar still generating)
             c.execute(
@@ -18895,20 +18895,33 @@ def api_community_feed(community_id):
                 WHERE community_id = ? 
                 AND (video_path IS NULL OR video_path != 'pending')
                 ORDER BY id DESC
-                LIMIT 200
+                LIMIT 100
                 """,
                 (community_id,)
             )
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]
             post_ids = [post['id'] for post in posts]
-            view_counts: Dict[int, int] = {}
-            user_viewed: Set[int] = set()
-            if post_ids:
+            
+            if not post_ids:
+                # No posts - return early with empty list
+                posts = []
+            else:
                 placeholders = ','.join([get_sql_placeholder()] * len(post_ids))
+                
+                # BATCH 1: Get all author usernames and fetch profile pictures in one query
+                author_usernames = list(set(p['username'] for p in posts))
+                if author_usernames:
+                    author_placeholders = ','.join([get_sql_placeholder()] * len(author_usernames))
+                    c.execute(f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({author_placeholders})", tuple(author_usernames))
+                    profile_pics = {row['username']: row['profile_picture'] for row in c.fetchall()}
+                else:
+                    profile_pics = {}
+                
+                # BATCH 2: Get all view counts in one query
+                view_counts: Dict[int, int] = {}
                 try:
-                    params = list(post_ids)
-                    params.append('admin')
+                    params = list(post_ids) + ['admin']
                     c.execute(
                         f"SELECT post_id, COUNT(*) as cnt FROM post_views WHERE post_id IN ({placeholders}) AND LOWER(username) <> LOWER({get_sql_placeholder()}) GROUP BY post_id",
                         tuple(params),
@@ -18919,156 +18932,210 @@ def api_community_feed(community_id):
                         view_counts[int(pid)] = int(cnt or 0)
                 except Exception as e:
                     logger.warning(f"Failed to fetch post view counts: {e}")
+                
+                # BATCH 3: Get user viewed posts in one query
+                user_viewed: Set[int] = set()
                 try:
-                    placeholders_user = ','.join([get_sql_placeholder()] * len(post_ids))
-                    params = list(post_ids)
-                    params.append(username)
-                    c.execute(f"SELECT post_id FROM post_views WHERE post_id IN ({placeholders_user}) AND username = {get_sql_placeholder()}", tuple(params))
+                    params = list(post_ids) + [username]
+                    c.execute(f"SELECT post_id FROM post_views WHERE post_id IN ({placeholders}) AND username = {get_sql_placeholder()}", tuple(params))
                     for row in c.fetchall() or []:
                         pid = row['post_id'] if hasattr(row, 'keys') else row[0]
                         user_viewed.add(int(pid))
                 except Exception as e:
                     logger.warning(f"Failed to fetch user viewed posts: {e}")
-
-            # Enrich posts
-            for post in posts:
-                post_id = post['id']
-                # Provide a precise display_timestamp (YYYY-MM-DD HH:MM:SS) for frontend smart formatting
+                
+                # BATCH 4: Get all reactions for all posts in one query
+                post_reactions: Dict[int, Dict[str, int]] = {pid: {} for pid in post_ids}
                 try:
-                    raw_ts = (post.get('timestamp') or post.get('created_at') or '').strip()
-                    if raw_ts and not raw_ts.startswith('0000-00-00'):
-                        from datetime import datetime as _dt
-                        dt = None
-                        try:
-                            dt = _dt.strptime(raw_ts[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                        except Exception:
-                            for fmt in ('%d-%m-%Y %H:%M:%S','%d-%m-%Y %H:%M','%Y-%m-%d %H:%M','%m.%d.%y %H:%M','%Y-%m-%d','%Y-%m-%dT%H:%M:%S'):
-                                try:
-                                    dt = _dt.strptime(raw_ts.replace('T',' '), fmt)
-                                    break
-                                except Exception:
-                                    continue
-                        post['display_timestamp'] = dt.strftime('%Y-%m-%d %H:%M:%S') if dt else raw_ts[:19].replace('T',' ')
-                    else:
+                    c.execute(f"SELECT post_id, reaction_type, COUNT(*) as count FROM reactions WHERE post_id IN ({placeholders}) GROUP BY post_id, reaction_type", tuple(post_ids))
+                    for row in c.fetchall():
+                        pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                        rtype = row['reaction_type'] if hasattr(row, 'keys') else row[1]
+                        cnt = row['count'] if hasattr(row, 'keys') else row[2]
+                        if pid in post_reactions:
+                            post_reactions[pid][rtype] = cnt
+                except Exception as e:
+                    logger.warning(f"Failed to batch fetch reactions: {e}")
+                
+                # BATCH 5: Get user's reactions for all posts in one query
+                user_reactions: Dict[int, str] = {}
+                try:
+                    params = list(post_ids) + [username]
+                    c.execute(f"SELECT post_id, reaction_type FROM reactions WHERE post_id IN ({placeholders}) AND username = {get_sql_placeholder()}", tuple(params))
+                    for row in c.fetchall():
+                        pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                        rtype = row['reaction_type'] if hasattr(row, 'keys') else row[1]
+                        user_reactions[pid] = rtype
+                except Exception as e:
+                    logger.warning(f"Failed to batch fetch user reactions: {e}")
+                
+                # BATCH 6: Get user starred posts in one query
+                user_starred: Set[int] = set()
+                try:
+                    params = list(post_ids) + [username]
+                    c.execute(f"SELECT post_id FROM key_posts WHERE post_id IN ({placeholders}) AND username = {get_sql_placeholder()}", tuple(params))
+                    for row in c.fetchall():
+                        pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                        user_starred.add(pid)
+                except Exception:
+                    pass
+                
+                # BATCH 7: Get community starred posts in one query
+                community_starred: Set[int] = set()
+                try:
+                    params = list(post_ids) + [community_id]
+                    c.execute(f"SELECT post_id FROM community_key_posts WHERE post_id IN ({placeholders}) AND community_id = {get_sql_placeholder()}", tuple(params))
+                    for row in c.fetchall():
+                        pid = row['post_id'] if hasattr(row, 'keys') else row[0]
+                        community_starred.add(pid)
+                except Exception:
+                    pass
+                
+                # BATCH 8: Get all active polls for all posts in one query
+                polls_by_post: Dict[int, dict] = {}
+                try:
+                    c.execute(f"SELECT * FROM polls WHERE post_id IN ({placeholders}) AND is_active = 1", tuple(post_ids))
+                    for row in c.fetchall():
+                        poll = dict(row)
+                        polls_by_post[poll['post_id']] = poll
+                except Exception:
+                    pass
+                
+                # BATCH 9: Get all poll options for all polls
+                if polls_by_post:
+                    poll_ids = [p['id'] for p in polls_by_post.values()]
+                    poll_placeholders = ','.join([get_sql_placeholder()] * len(poll_ids))
+                    options_by_poll: Dict[int, list] = {pid: [] for pid in poll_ids}
+                    try:
+                        c.execute(f"SELECT * FROM poll_options WHERE poll_id IN ({poll_placeholders}) ORDER BY id", tuple(poll_ids))
+                        for row in c.fetchall():
+                            opt = dict(row)
+                            if 'text' not in opt:
+                                opt['text'] = opt.get('option_text', '')
+                            if 'votes' not in opt:
+                                opt['votes'] = 0
+                            options_by_poll[opt['poll_id']].append(opt)
+                    except Exception:
+                        pass
+                    
+                    # BATCH 10: Get user votes for all polls
+                    user_poll_votes: Dict[int, Set[int]] = {pid: set() for pid in poll_ids}
+                    try:
+                        params = list(poll_ids) + [username]
+                        c.execute(f"SELECT poll_id, option_id FROM poll_votes WHERE poll_id IN ({poll_placeholders}) AND username = {get_sql_placeholder()}", tuple(params))
+                        for row in c.fetchall():
+                            poll_id = row['poll_id'] if hasattr(row, 'keys') else row[0]
+                            opt_id = row['option_id'] if hasattr(row, 'keys') else row[1]
+                            if poll_id in user_poll_votes:
+                                user_poll_votes[poll_id].add(opt_id)
+                    except Exception:
+                        pass
+                    
+                    # Assemble polls with options
+                    for post_id, poll in polls_by_post.items():
+                        poll['options'] = options_by_poll.get(poll['id'], [])
+                        voted_ids = user_poll_votes.get(poll['id'], set())
+                        for opt in poll['options']:
+                            opt['user_voted'] = opt['id'] in voted_ids
+                        poll['user_vote'] = next(iter(voted_ids)) if voted_ids else None
+                        poll['total_votes'] = sum(int(opt.get('votes', 0) or 0) for opt in poll['options'])
+                
+                # BATCH 11: Get all replies for all posts in one query
+                replies_by_post: Dict[int, list] = {pid: [] for pid in post_ids}
+                all_reply_ids: list = []
+                reply_authors: Set[str] = set()
+                try:
+                    c.execute(f"SELECT * FROM replies WHERE post_id IN ({placeholders}) ORDER BY timestamp DESC", tuple(post_ids))
+                    for row in c.fetchall():
+                        reply = dict(row)
+                        replies_by_post[reply['post_id']].append(reply)
+                        all_reply_ids.append(reply['id'])
+                        reply_authors.add(reply['username'])
+                except Exception:
+                    pass
+                
+                # BATCH 12: Get profile pictures for reply authors
+                reply_profile_pics: Dict[str, str] = {}
+                if reply_authors:
+                    reply_author_list = list(reply_authors)
+                    reply_author_placeholders = ','.join([get_sql_placeholder()] * len(reply_author_list))
+                    try:
+                        c.execute(f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({reply_author_placeholders})", tuple(reply_author_list))
+                        for row in c.fetchall():
+                            reply_profile_pics[row['username']] = row['profile_picture']
+                    except Exception:
+                        pass
+                
+                # BATCH 13: Get all reply reactions
+                reply_reactions: Dict[int, Dict[str, int]] = {rid: {} for rid in all_reply_ids}
+                if all_reply_ids:
+                    reply_placeholders = ','.join([get_sql_placeholder()] * len(all_reply_ids))
+                    try:
+                        c.execute(f"SELECT reply_id, reaction_type, COUNT(*) as count FROM reply_reactions WHERE reply_id IN ({reply_placeholders}) GROUP BY reply_id, reaction_type", tuple(all_reply_ids))
+                        for row in c.fetchall():
+                            rid = row['reply_id'] if hasattr(row, 'keys') else row[0]
+                            rtype = row['reaction_type'] if hasattr(row, 'keys') else row[1]
+                            cnt = row['count'] if hasattr(row, 'keys') else row[2]
+                            if rid in reply_reactions:
+                                reply_reactions[rid][rtype] = cnt
+                    except Exception:
+                        pass
+                
+                # BATCH 14: Get user's reply reactions
+                user_reply_reactions: Dict[int, str] = {}
+                if all_reply_ids:
+                    try:
+                        params = list(all_reply_ids) + [username]
+                        c.execute(f"SELECT reply_id, reaction_type FROM reply_reactions WHERE reply_id IN ({reply_placeholders}) AND username = {get_sql_placeholder()}", tuple(params))
+                        for row in c.fetchall():
+                            rid = row['reply_id'] if hasattr(row, 'keys') else row[0]
+                            rtype = row['reaction_type'] if hasattr(row, 'keys') else row[1]
+                            user_reply_reactions[rid] = rtype
+                    except Exception:
+                        pass
+                
+                # Now enrich posts with all the batched data (no more individual queries!)
+                for post in posts:
+                    post_id = post['id']
+                    
+                    # Timestamp formatting
+                    try:
+                        raw_ts = (post.get('timestamp') or post.get('created_at') or '').strip()
+                        if raw_ts and not raw_ts.startswith('0000-00-00'):
+                            from datetime import datetime as _dt
+                            dt = None
+                            try:
+                                dt = _dt.strptime(raw_ts[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                            except Exception:
+                                for fmt in ('%d-%m-%Y %H:%M:%S','%d-%m-%Y %H:%M','%Y-%m-%d %H:%M','%m.%d.%y %H:%M','%Y-%m-%d','%Y-%m-%dT%H:%M:%S'):
+                                    try:
+                                        dt = _dt.strptime(raw_ts.replace('T',' '), fmt)
+                                        break
+                                    except Exception:
+                                        continue
+                            post['display_timestamp'] = dt.strftime('%Y-%m-%d %H:%M:%S') if dt else raw_ts[:19].replace('T',' ')
+                        else:
+                            post['display_timestamp'] = ''
+                    except Exception:
                         post['display_timestamp'] = ''
-                except Exception:
-                    post['display_timestamp'] = ''
-                # Add profile picture for post author
-                try:
-                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (post['username'],))
-                    pp = c.fetchone()
-                    post['profile_picture'] = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
-                except Exception:
-                    post['profile_picture'] = None
-                # Reaction counts for post
-                c.execute(
-                    """
-                    SELECT reaction_type, COUNT(*) as count
-                    FROM reactions
-                    WHERE post_id = ?
-                    GROUP BY reaction_type
-                    """,
-                    (post_id,)
-                )
-                post['reactions'] = {r['reaction_type']: r['count'] for r in c.fetchall()}
-
-                # Current user's reaction
-                c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (post_id, username))
-                r = c.fetchone()
-                post['user_reaction'] = r['reaction_type'] if r else None
-
-                # Is starred by current user
-                try:
-                    c.execute("SELECT 1 FROM key_posts WHERE post_id = ? AND username = ?", (post_id, username))
-                    post['is_starred'] = True if c.fetchone() else False
-                except Exception:
-                    post['is_starred'] = False
-
-                # Is highlighted by community (owner/admin set)
-                try:
-                    c.execute("SELECT 1 FROM community_key_posts WHERE post_id = ? AND community_id = ?", (post_id, community_id))
-                    post['is_community_starred'] = True if c.fetchone() else False
-                except Exception:
-                    post['is_community_starred'] = False
-
-                post['view_count'] = int(view_counts.get(post_id, 0))
-                post['has_viewed'] = post_id in user_viewed
-
-                # Active poll on this post (if any)
-                c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (post_id,))
-                poll_raw = c.fetchone()
-                if poll_raw:
-                    poll = dict(poll_raw)
-                    # Fetch options once; rely on denormalized votes column to avoid per-option COUNT queries
-                    c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
-                    options = [dict(o) for o in c.fetchall()]
-                    # Compute which options the current user voted on (for multi-select highlight)
-                    try:
-                        c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
-                        user_vote_rows = c.fetchall()
-                        user_voted_ids = set([r['option_id'] if hasattr(r, 'keys') else r[0] for r in user_vote_rows])
-                    except Exception:
-                        user_voted_ids = set()
-                    # Normalize option fields
-                    for opt in options:
-                        # Frontend expects 'text'
-                        if 'text' not in opt:
-                            opt['text'] = opt.get('option_text', '')
-                        # Add per-option user_voted for styling
-                        try:
-                            oid = opt['id'] if hasattr(opt, 'keys') else opt[0]
-                            opt['user_voted'] = (oid in user_voted_ids)
-                        except Exception:
-                            opt['user_voted'] = False
-                        # Ensure 'votes' exists (fallback to 0)
-                        if 'votes' not in opt:
-                            opt['votes'] = 0
-                    poll['options'] = options
-                    # For single-vote polls, set a convenience user_vote (first if any)
-                    try:
-                        poll['user_vote'] = next(iter(user_voted_ids)) if user_voted_ids else None
-                    except Exception:
-                        poll['user_vote'] = None
-                    # Total votes from options without additional queries
-                    poll['total_votes'] = sum(int(opt.get('votes', 0) or 0) for opt in options)
-                    post['poll'] = poll
-                else:
-                    post['poll'] = None
-
-                # Replies
-                c.execute("SELECT * FROM replies WHERE post_id = ? ORDER BY timestamp DESC", (post_id,))
-                replies = [dict(row) for row in c.fetchall()]
-                # Attach profile pictures for replies
-                for reply in replies:
-                    try:
-                        c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (reply['username'],))
-                        pr = c.fetchone()
-                        reply['profile_picture'] = pr['profile_picture'] if pr and 'profile_picture' in pr.keys() else None
-                    except Exception:
-                        reply['profile_picture'] = None
-                for reply in replies:
-                    # Add profile picture for reply author
-                    try:
-                        c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (reply['username'],))
-                        pr = c.fetchone()
-                        reply['profile_picture'] = pr['profile_picture'] if pr and 'profile_picture' in pr.keys() else None
-                    except Exception:
-                        reply['profile_picture'] = None
-                    reply_id = reply['id']
-                    c.execute(
-                        """
-                        SELECT reaction_type, COUNT(*) as count
-                        FROM reply_reactions
-                        WHERE reply_id = ?
-                        GROUP BY reaction_type
-                        """,
-                        (reply_id,)
-                    )
-                    reply['reactions'] = {rr['reaction_type']: rr['count'] for rr in c.fetchall()}
-                    c.execute("SELECT reaction_type FROM reply_reactions WHERE reply_id = ? AND username = ?", (reply_id, username))
-                    urr = c.fetchone()
-                    reply['user_reaction'] = urr['reaction_type'] if urr else None
-                post['replies'] = replies
+                    
+                    # Use batched data instead of individual queries
+                    post['profile_picture'] = profile_pics.get(post['username'])
+                    post['reactions'] = post_reactions.get(post_id, {})
+                    post['user_reaction'] = user_reactions.get(post_id)
+                    post['is_starred'] = post_id in user_starred
+                    post['is_community_starred'] = post_id in community_starred
+                    post['view_count'] = view_counts.get(post_id, 0)
+                    post['has_viewed'] = post_id in user_viewed
+                    post['poll'] = polls_by_post.get(post_id)
+                    
+                    # Enrich replies with batched data
+                    post_replies = replies_by_post.get(post_id, [])
+                    for reply in post_replies:
+                        reply['profile_picture'] = reply_profile_pics.get(reply['username'])
+                        reply['reactions'] = reply_reactions.get(reply['id'], {})
+                        reply['user_reaction'] = user_reply_reactions.get(reply['id'])
+                    post['replies'] = post_replies
 
             response_payload = {
                 'success': True,
