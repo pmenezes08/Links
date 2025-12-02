@@ -40,6 +40,7 @@ from urllib.parse import urlencode, urljoin, quote_plus
 from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
+from signal_endpoints import register_signal_endpoints
 from backend import init_app
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.community import (
@@ -26089,6 +26090,11 @@ try:
     register_encryption_endpoints(app, get_db_connection, logger)
 except Exception as e:
     logger.error(f"Failed to register encryption endpoints: {e}")
+
+try:
+    register_signal_endpoints(app, get_db_connection, logger)
+except Exception as e:
+    logger.error(f"Failed to register signal endpoints: {e}")
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
