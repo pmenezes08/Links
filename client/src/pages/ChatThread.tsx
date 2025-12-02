@@ -647,6 +647,34 @@ export default function ChatThread(){
   // Decrypt a Signal Protocol message
   async function decryptSignalMessage(message: any): Promise<any> {
     const deviceId = signalService.getDeviceId()
+    
+    // For SENT messages: We already have the plaintext from when we sent it
+    // The server doesn't store ciphertext for the sender's current device
+    // So we use local storage to remember what we sent
+    if (message.sent) {
+      // Check if we have the text cached from sending
+      const cached = decryptionCache.current.get(message.id)
+      if (cached && !cached.error) {
+        return {
+          ...message,
+          text: cached.text,
+          decryption_error: false,
+        }
+      }
+      
+      // For sent messages, if no cache, show indicator
+      // (This happens when viewing sent messages from a different device)
+      // We could try to fetch ciphertext if this is a different device than sender
+      // For now, show a placeholder
+      return {
+        ...message,
+        text: '[🔒 Encrypted message you sent]',
+        decryption_error: false, // Not an error, just can't display on this device
+        is_encrypted: true,
+      }
+    }
+    
+    // For RECEIVED messages: Fetch and decrypt ciphertext
     if (!deviceId) {
       return {
         ...message,
@@ -665,9 +693,10 @@ export default function ChatThread(){
       if (!response.ok) {
         if (response.status === 404) {
           // No ciphertext for this device - might be from before device was registered
+          // Check if this message was sent before our device was registered
           return {
             ...message,
-            text: '[🔒 Signal: Message not available for this device]',
+            text: '[🔒 Message sent before this device was added]',
             decryption_error: true,
           }
         }
@@ -1301,6 +1330,10 @@ export default function ChatThread(){
                     })
                   })
                   console.log('🔐 Signal: Stored ciphertexts for message', j.message_id)
+                  
+                  // IMPORTANT: Cache the plaintext for this message
+                  // So when we reload/poll, we can show sent messages correctly
+                  decryptionCache.current.set(j.message_id, { text: messageText, error: false })
                 } catch (cipherError) {
                   console.error('🔐 Signal: Failed to store ciphertexts:', cipherError)
                 }

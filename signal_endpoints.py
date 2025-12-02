@@ -605,4 +605,158 @@ def register_signal_endpoints(app, get_db_connection, logger):
         username = session.get('username')
         return get_user_devices(username)
 
+    @app.route('/api/signal/debug-status', methods=['GET'])
+    @login_required
+    def debug_signal_status():
+        """
+        Debug endpoint to check Signal Protocol status for current user and optionally another user.
+        Usage: /api/signal/debug-status?other_user=Maria
+        """
+        try:
+            username = session.get('username')
+            other_user = request.args.get('other_user')
+
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                
+                # Get current user's devices
+                c.execute("""
+                    SELECT device_id, device_name, registration_id, created_at, last_seen_at
+                    FROM user_devices
+                    WHERE username = ?
+                """, (username,))
+                my_devices = c.fetchall()
+                
+                my_device_list = []
+                for row in my_devices:
+                    if isinstance(row, dict):
+                        my_device_list.append({
+                            'deviceId': row['device_id'],
+                            'deviceName': row['device_name'],
+                            'registrationId': row['registration_id'],
+                            'createdAt': row['created_at'],
+                            'lastSeenAt': row.get('last_seen_at'),
+                        })
+                    else:
+                        my_device_list.append({
+                            'deviceId': row[0],
+                            'deviceName': row[1],
+                            'registrationId': row[2],
+                            'createdAt': row[3],
+                            'lastSeenAt': row[4] if len(row) > 4 else None,
+                        })
+                
+                # Get prekey count for each of my devices
+                for device in my_device_list:
+                    c.execute("""
+                        SELECT COUNT(*) FROM device_prekeys
+                        WHERE username = ? AND device_id = ?
+                    """, (username, device['deviceId']))
+                    result = c.fetchone()
+                    device['prekeyCount'] = result[0] if isinstance(result, tuple) else result.get('COUNT(*)', 0)
+                
+                result = {
+                    'success': True,
+                    'currentUser': username,
+                    'myDevices': my_device_list,
+                    'myDeviceCount': len(my_device_list),
+                }
+                
+                # If checking another user
+                if other_user:
+                    c.execute("""
+                        SELECT device_id, device_name, registration_id, created_at, last_seen_at
+                        FROM user_devices
+                        WHERE username = ?
+                    """, (other_user,))
+                    other_devices = c.fetchall()
+                    
+                    other_device_list = []
+                    for row in other_devices:
+                        if isinstance(row, dict):
+                            other_device_list.append({
+                                'deviceId': row['device_id'],
+                                'deviceName': row['device_name'],
+                                'createdAt': row['created_at'],
+                            })
+                        else:
+                            other_device_list.append({
+                                'deviceId': row[0],
+                                'deviceName': row[1],
+                                'createdAt': row[3],
+                            })
+                    
+                    result['otherUser'] = other_user
+                    result['otherDevices'] = other_device_list
+                    result['otherDeviceCount'] = len(other_device_list)
+                    result['canSendEncrypted'] = len(other_device_list) > 0
+                
+                return jsonify(result)
+
+        except Exception as e:
+            logger.error(f"Signal debug error: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    @app.route('/api/signal/debug-message/<int:message_id>', methods=['GET'])
+    @login_required
+    def debug_message_ciphertexts(message_id):
+        """
+        Debug endpoint to check ciphertexts for a specific message.
+        Shows which devices have ciphertexts stored.
+        """
+        try:
+            username = session.get('username')
+
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                
+                c.execute("""
+                    SELECT target_username, target_device_id, sender_username, sender_device_id, message_type, created_at
+                    FROM message_ciphertexts
+                    WHERE message_id = ?
+                """, (message_id,))
+                rows = c.fetchall()
+                
+                ciphertexts = []
+                for row in rows:
+                    if isinstance(row, dict):
+                        ciphertexts.append({
+                            'targetUsername': row['target_username'],
+                            'targetDeviceId': row['target_device_id'],
+                            'senderUsername': row['sender_username'],
+                            'senderDeviceId': row['sender_device_id'],
+                            'messageType': row['message_type'],
+                            'createdAt': row['created_at'],
+                        })
+                    else:
+                        ciphertexts.append({
+                            'targetUsername': row[0],
+                            'targetDeviceId': row[1],
+                            'senderUsername': row[2],
+                            'senderDeviceId': row[3],
+                            'messageType': row[4],
+                            'createdAt': row[5],
+                        })
+                
+                # Check if current user's current device has a ciphertext
+                device_id = request.args.get('deviceId', type=int)
+                has_ciphertext_for_me = any(
+                    ct['targetUsername'] == username and ct['targetDeviceId'] == device_id
+                    for ct in ciphertexts
+                )
+                
+                return jsonify({
+                    'success': True,
+                    'messageId': message_id,
+                    'ciphertextCount': len(ciphertexts),
+                    'ciphertexts': ciphertexts,
+                    'currentUser': username,
+                    'currentDeviceId': device_id,
+                    'hasCiphertextForCurrentDevice': has_ciphertext_for_me,
+                })
+
+        except Exception as e:
+            logger.error(f"Signal debug message error: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     logger.info("✅ Signal Protocol endpoints registered")
