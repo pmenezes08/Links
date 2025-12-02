@@ -345,12 +345,20 @@ function AppRoutes(){
         if (username && encryptionUserRef.current !== username) {
           try {
             console.log('🔐 Initializing encryption for:', username)
-            await encryptionService.init(username)
-            const existingTimestamp = localStorage.getItem('encryption_keys_generated_at')
-            if (!existingTimestamp) {
-              localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
+            const initResult = await encryptionService.init(username)
+            
+            if (initResult.success) {
+              const existingTimestamp = localStorage.getItem('encryption_keys_generated_at')
+              if (!existingTimestamp || initResult.isFirstDevice) {
+                localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
+              }
+              console.log('🔐 ✅ Encryption ready globally!')
+            } else if (initResult.needsBackupRestore) {
+              // Keys exist on another device - user needs to sync
+              console.log('🔐 ⚠️ Encryption needs sync from another device')
+              // Store flag for UI to show sync prompt
+              localStorage.setItem('encryption_needs_sync', 'true')
             }
-            console.log('🔐 ✅ Encryption ready globally!')
           } catch (encError) {
             console.error('🔐 ❌ Encryption init failed:', encError)
           } finally {

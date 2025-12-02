@@ -1,14 +1,22 @@
 import { useState, useEffect } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { encryptionService } from '../services/simpleEncryption'
-import { keychainStorage } from '../services/keychainStorage'
 
 export default function EncryptionSettings() {
   const { setTitle } = useHeader()
-  const [keyStatus, setKeyStatus] = useState<'checking' | 'ready' | 'none'>('checking')
+  const [keyStatus, setKeyStatus] = useState<'checking' | 'ready' | 'none' | 'needs_sync'>('checking')
   const [lastGenerated, setLastGenerated] = useState<string | null>(null)
-  const [resetting, setResetting] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('Keys Reset Successfully!')
+  
+  // Multi-device sync states
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [modalMode, setModalMode] = useState<'backup' | 'restore' | 'regenerate'>('backup')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [hasServerBackup, setHasServerBackup] = useState(false)
 
   useEffect(() => {
     setTitle('Encryption Settings')
@@ -17,13 +25,32 @@ export default function EncryptionSettings() {
 
   async function checkKeyStatus() {
     try {
-      // Check if encryption database exists
+      // Check local keys first
       const dbs = await indexedDB.databases()
       const encryptionDb = dbs.find(db => db.name === 'chat-encryption')
+      const hasLocalKeys = !!encryptionDb
       
-      if (encryptionDb) {
+      // Check server status
+      try {
+        const response = await fetch('/api/encryption/has-keys', {
+          credentials: 'include'
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setHasServerBackup(data.hasBackup || false)
+          
+          if (!hasLocalKeys && data.hasKeys) {
+            // Keys on server but not locally - need to sync
+            setKeyStatus('needs_sync')
+            return
+          }
+        }
+      } catch (e) {
+        console.warn('Could not check server key status')
+      }
+      
+      if (hasLocalKeys) {
         setKeyStatus('ready')
-        // Try to get timestamp from localStorage
         const timestamp = localStorage.getItem('encryption_keys_generated_at')
         if (timestamp) {
           const date = new Date(parseInt(timestamp))
@@ -40,77 +67,172 @@ export default function EncryptionSettings() {
     }
   }
 
+  async function handleCreateBackup() {
+    setModalMode('backup')
+    setPassword('')
+    setConfirmPassword('')
+    setPasswordError('')
+    setShowPasswordModal(true)
+  }
+
+  async function handleRestoreFromBackup() {
+    setModalMode('restore')
+    setPassword('')
+    setPasswordError('')
+    setShowPasswordModal(true)
+  }
+
+  async function handlePasswordSubmit() {
+    setPasswordError('')
+    
+    if (modalMode === 'backup' || modalMode === 'regenerate') {
+      if (password.length < 6) {
+        setPasswordError('Password must be at least 6 characters')
+        return
+      }
+      if (password !== confirmPassword) {
+        setPasswordError('Passwords do not match')
+        return
+      }
+    }
+    
+    setIsProcessing(true)
+    
+    try {
+      if (modalMode === 'backup') {
+        // Create backup with password
+        const success = await encryptionService.createServerBackup(password)
+        if (success) {
+          setHasServerBackup(true)
+          setShowPasswordModal(false)
+          setSuccessMessage('Backup Created Successfully!')
+          setShowSuccess(true)
+          setTimeout(() => setShowSuccess(false), 5000)
+        } else {
+          setPasswordError('Failed to create backup')
+        }
+      } else if (modalMode === 'restore') {
+        // Restore from backup
+        const success = await encryptionService.restoreFromBackup(password)
+        if (success) {
+          setKeyStatus('ready')
+          localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
+          setLastGenerated(new Date().toLocaleString())
+          setShowPasswordModal(false)
+          setSuccessMessage('Keys Synced Successfully!')
+          setShowSuccess(true)
+          setTimeout(() => setShowSuccess(false), 5000)
+        } else {
+          setPasswordError('Wrong password or backup corrupted')
+        }
+      } else if (modalMode === 'regenerate') {
+        // Regenerate keys
+        const success = await encryptionService.regenerateKeys(password)
+        if (success) {
+          setKeyStatus('ready')
+          localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
+          setLastGenerated(new Date().toLocaleString())
+          setHasServerBackup(true)
+          setShowPasswordModal(false)
+          setSuccessMessage('Keys Regenerated Successfully!')
+          setShowSuccess(true)
+          setTimeout(() => setShowSuccess(false), 5000)
+        } else {
+          setPasswordError('Failed to regenerate keys')
+        }
+      }
+    } catch (error) {
+      console.error('Password operation failed:', error)
+      setPasswordError('Operation failed. Please try again.')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
   async function resetEncryptionKeys() {
     if (!confirm('Reset your encryption keys?\n\nThis will:\n- Delete your current encryption keys\n- Generate fresh new keys\n- Allow you to send/receive encrypted messages again\n\nNote: Old encrypted messages may become unreadable.')) {
       return
     }
 
-    setResetting(true)
-
-    try {
-      console.log('🔐 Starting encryption key reset...')
-      
-      // 1. Close the database connection first
-      encryptionService.closeDatabase()
-      console.log('🔐 Database connection closed')
-      
-      // 2. Delete the IndexedDB database
-      await new Promise<void>((resolve) => {
-        const request = indexedDB.deleteDatabase('chat-encryption')
-        request.onsuccess = () => {
-          console.log('🔐 ✅ Old encryption database deleted')
-          resolve()
-        }
-        request.onerror = () => {
-          console.log('🔐 ⚠️ Database deletion error (may not exist)')
-          resolve()
-        }
-        request.onblocked = () => {
-          console.log('🔐 ⚠️ Database deletion blocked')
-          resolve()
-        }
-      })
-      
-      // 3. Clear keys from Keychain storage
-      const username = localStorage.getItem('username') || ''
-      if (username) {
-        try {
-          await keychainStorage.removeKeys(username)
-          console.log('🔐 ✅ Keychain keys cleared')
-        } catch (e) {
-          console.log('🔐 ⚠️ Keychain clear error:', e)
-        }
-      }
-      
-      // 4. Update timestamp
-      localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
-      
-      // 5. Re-initialize encryption (this will generate new keys)
-      if (username) {
-        console.log('🔐 Generating new encryption keys...')
-        await encryptionService.init(username)
-        console.log('🔐 ✅ New encryption keys generated!')
-      }
-      
-      // 6. Update UI state
-      setKeyStatus('ready')
-      const date = new Date()
-      setLastGenerated(date.toLocaleString())
-      setResetting(false)
-      setShowSuccess(true)
-      
-      // Auto-hide success message after 5 seconds
-      setTimeout(() => setShowSuccess(false), 5000)
-      
-    } catch (error) {
-      console.error('🔐 ❌ Error resetting keys:', error)
-      alert('Failed to reset encryption keys. Please try again.')
-      setResetting(false)
-    }
+    // Use new regenerate flow with password
+    setModalMode('regenerate')
+    setPassword('')
+    setConfirmPassword('')
+    setPasswordError('')
+    setShowPasswordModal(true)
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-[#1a2f2a] to-gray-900 text-white pb-20">
+      {/* Password Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-white/20 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 className="text-xl font-bold text-white mb-2">
+              {modalMode === 'backup' && '🔐 Create Backup'}
+              {modalMode === 'restore' && '🔄 Sync from Backup'}
+              {modalMode === 'regenerate' && '🔑 Regenerate Keys'}
+            </h3>
+            <p className="text-sm text-white/60 mb-4">
+              {modalMode === 'backup' && 'Create a password to encrypt your key backup. You\'ll need this to sync on other devices.'}
+              {modalMode === 'restore' && 'Enter your backup password to sync your encryption keys.'}
+              {modalMode === 'regenerate' && 'Create a password for your new key backup.'}
+            </p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-white/70 mb-1">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter password"
+                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 focus:border-[#4db6ac] focus:outline-none"
+                />
+              </div>
+              
+              {(modalMode === 'backup' || modalMode === 'regenerate') && (
+                <div>
+                  <label className="block text-sm text-white/70 mb-1">Confirm Password</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm password"
+                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/30 focus:border-[#4db6ac] focus:outline-none"
+                  />
+                </div>
+              )}
+              
+              {passwordError && (
+                <p className="text-red-400 text-sm">{passwordError}</p>
+              )}
+              
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowPasswordModal(false)}
+                  className="flex-1 px-4 py-3 rounded-xl bg-white/10 text-white font-medium"
+                  disabled={isProcessing}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handlePasswordSubmit}
+                  disabled={isProcessing}
+                  className="flex-1 px-4 py-3 rounded-xl bg-[#4db6ac] text-white font-medium disabled:opacity-50"
+                >
+                  {isProcessing ? (
+                    <i className="fa-solid fa-spinner fa-spin" />
+                  ) : (
+                    modalMode === 'restore' ? 'Sync' : 'Create'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Success Popup */}
       {showSuccess && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -119,9 +241,9 @@ export default function EncryptionSettings() {
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
                 <i className="fa-solid fa-check text-3xl text-green-400" />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">Keys Reset Successfully!</h3>
+              <h3 className="text-xl font-bold text-white mb-2">{successMessage}</h3>
               <p className="text-sm text-white/60 mb-4">
-                Your encryption keys have been regenerated. You can now send and receive encrypted messages.
+                Your encryption keys are ready. You can now send and receive encrypted messages.
               </p>
               <button
                 onClick={() => setShowSuccess(false)}
@@ -179,6 +301,32 @@ export default function EncryptionSettings() {
             </div>
           )}
 
+          {keyStatus === 'needs_sync' && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-yellow-400">
+                <i className="fa-solid fa-rotate text-xl" />
+                <span className="font-medium">Sync Required</span>
+              </div>
+              
+              <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
+                <p className="text-sm text-yellow-300 mb-3">
+                  <i className="fa-solid fa-mobile-alt mr-2" />
+                  Encryption keys found from another device
+                </p>
+                <p className="text-xs text-yellow-300/80 mb-4">
+                  Sync your keys to read encrypted messages on this device
+                </p>
+                <button
+                  onClick={handleRestoreFromBackup}
+                  className="w-full px-4 py-3 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-black font-medium transition-all"
+                >
+                  <i className="fa-solid fa-key mr-2" />
+                  Sync Encryption Keys
+                </button>
+              </div>
+            </div>
+          )}
+
           {keyStatus === 'none' && (
             <div className="space-y-3">
               <div className="flex items-center gap-3 text-yellow-400">
@@ -194,6 +342,49 @@ export default function EncryptionSettings() {
             </div>
           )}
         </div>
+
+        {/* Multi-Device Sync */}
+        {keyStatus === 'ready' && (
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-6">
+            <h2 className="text-lg font-semibold mb-2">
+              <i className="fa-solid fa-mobile-alt mr-2" />
+              Multi-Device Sync
+            </h2>
+            <p className="text-sm text-white/60 mb-4">
+              Sync your encryption keys across all your devices (iOS app, web, etc.)
+            </p>
+
+            {hasServerBackup ? (
+              <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-xl mb-4">
+                <div className="flex items-center gap-2 text-green-400 mb-1">
+                  <i className="fa-solid fa-cloud-check" />
+                  <span className="font-medium text-sm">Backup Active</span>
+                </div>
+                <p className="text-xs text-green-300/60">
+                  Your keys are backed up. New devices can sync using your backup password.
+                </p>
+              </div>
+            ) : (
+              <div className="p-4 bg-orange-500/10 border border-orange-500/20 rounded-xl mb-4">
+                <div className="flex items-center gap-2 text-orange-400 mb-1">
+                  <i className="fa-solid fa-triangle-exclamation" />
+                  <span className="font-medium text-sm">No Backup</span>
+                </div>
+                <p className="text-xs text-orange-300/60">
+                  Create a backup to sync encryption on other devices.
+                </p>
+              </div>
+            )}
+
+            <button
+              onClick={handleCreateBackup}
+              className="w-full px-4 py-3 rounded-xl bg-[#4db6ac] hover:bg-[#3da99e] text-white font-medium transition-all"
+            >
+              <i className="fa-solid fa-cloud-arrow-up mr-2" />
+              {hasServerBackup ? 'Update Backup' : 'Create Backup'}
+            </button>
+          </div>
+        )}
 
         {/* Reset Keys */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
@@ -215,24 +406,10 @@ export default function EncryptionSettings() {
 
           <button
             onClick={resetEncryptionKeys}
-            disabled={resetting}
-            className={`w-full px-6 py-3 rounded-xl font-medium transition-all ${
-              resetting
-                ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
-                : 'bg-red-600 hover:bg-red-700 text-white active:scale-95'
-            }`}
+            className="w-full px-6 py-3 rounded-xl font-medium transition-all bg-red-600 hover:bg-red-700 text-white active:scale-95"
           >
-            {resetting ? (
-              <>
-                <i className="fa-solid fa-spinner fa-spin mr-2" />
-                Resetting Keys...
-              </>
-            ) : (
-              <>
-                <i className="fa-solid fa-rotate-right mr-2" />
-                Reset Encryption Keys
-              </>
-            )}
+            <i className="fa-solid fa-rotate-right mr-2" />
+            Reset Encryption Keys
           </button>
         </div>
 

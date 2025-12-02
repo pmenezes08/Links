@@ -62,6 +62,10 @@ export default function ChatThread(){
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string; sender?:string }|null>(null)
   const [sending, setSending] = useState(false)
+  // Check if encryption keys need to be synced from another device
+  const [encryptionNeedsSync] = useState(() => 
+    localStorage.getItem('encryption_needs_sync') === 'true'
+  )
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
   const storageKey = useMemo(() => `chat_meta_${username || ''}`, [username])
@@ -1564,17 +1568,46 @@ export default function ChatThread(){
         overflow: 'hidden',
       }}
     >
+      {/* Encryption Sync Banner */}
+      {encryptionNeedsSync && (
+        <div 
+          className="flex-shrink-0 bg-yellow-500/90 text-black px-4 py-2"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            width: '100vw',
+            zIndex: 1002,
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm">
+              <i className="fa-solid fa-rotate" />
+              <span className="font-medium">Encryption keys need sync</span>
+            </div>
+            <Link 
+              to="/settings/encryption"
+              className="px-3 py-1 text-xs font-semibold bg-black/20 rounded-full hover:bg-black/30"
+            >
+              Sync Now
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Header - fixed at top with safe area, full viewport width */}
       <div 
         className="flex-shrink-0 border-b border-[#262f30]"
         style={{
           position: 'fixed',
-          top: 0,
+          top: encryptionNeedsSync ? 'calc(env(safe-area-inset-top, 0px) + 40px)' : 0,
           left: 0,
           right: 0,
           width: '100vw',
           zIndex: 1001,
-          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingTop: encryptionNeedsSync ? '0px' : 'env(safe-area-inset-top, 0px)',
           paddingLeft: 'env(safe-area-inset-left, 0px)',
           paddingRight: 'env(safe-area-inset-right, 0px)',
           background: '#000',
