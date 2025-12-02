@@ -755,21 +755,21 @@ export default function CommunityFeed() {
         }}
       >
         <div className="space-y-3">
-          {/* Back to communities (parent) + Search */}
+          {/* Back button + Search */}
           <div className="flex items-center gap-2">
             <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
               onClick={()=> {
-                // For sub-communities, go to parent's management page
                 const parentId = data?.community?.parent_community_id
                 if (parentId) {
-                  window.location.href = `/communities?parent_id=${parentId}`
+                  // Sub-community: go back to parent community's feed
+                  navigate(`/community_feed_react/${parentId}`)
                 } else {
-                  // For parent communities, go to their management page
-                  window.location.href = `/communities?parent_id=${community_id}`
+                  // Top-level community: go to dashboard
+                  navigate('/premium_dashboard')
                 }
               }}
             >
-              <i className="fa-solid fa-arrow-left mr-1" /> Back to Communities
+              <i className="fa-solid fa-arrow-left mr-1" /> {data?.community?.parent_community_id ? `Back to ${data?.parent_community?.name || 'Parent'}` : 'Back to Dashboard'}
             </button>
             <button className="ml-auto p-2 rounded-full border border-white/10 hover:bg-white/10" aria-label="Search"
               onClick={()=> { setShowSearch(true); setTimeout(()=>{ try{ (document.getElementById('hashtag-input') as HTMLInputElement)?.focus() }catch{} }, 50) }}>
