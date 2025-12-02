@@ -26,7 +26,7 @@ import { gifSelectionToFile } from '../utils/gif'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import { sendImageMessage, sendVideoMessage } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
-import { isInternalLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
+import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
 
 // Cache settings for chat messages
 const CHAT_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes (matches server Redis TTL)
@@ -528,22 +528,25 @@ export default function ChatThread(){
       const raw = match[0]
       const href = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
       
-      // Check if this is an internal c-point.co link
+      // Check if this is an internal app.c-point.co link
       const isInternal = isInternalLink(href)
+      // Landing page links (www.c-point.co) should open externally
+      const isLanding = isLandingPageLink(href)
       
       nodes.push(
         <a 
           key={`${start}-${end}`} 
           href={href} 
-          target={isInternal ? undefined : "_blank"} 
-          rel={isInternal ? undefined : "noopener noreferrer"} 
+          target={(isInternal && !isLanding) ? undefined : "_blank"} 
+          rel={(isInternal && !isLanding) ? undefined : "noopener noreferrer"} 
           className="underline text-[#4db6ac] hover:text-[#45a99c]"
           onClick={(e) => {
-            if (isInternal) {
+            if (isInternal && !isLanding) {
               e.preventDefault()
               e.stopPropagation()
               handleInternalLinkClick(href)
             }
+            // Landing page links open normally in browser
           }}
         >
           {raw}

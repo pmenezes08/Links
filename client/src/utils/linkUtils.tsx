@@ -1,7 +1,7 @@
 // Utility functions for detecting and handling links in post content
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { isInternalLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from './internalLinkHandler'
+import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from './internalLinkHandler'
 
 export type DetectedLink = {
   url: string
@@ -92,7 +92,13 @@ function SmartLink({
     e.preventDefault()
     e.stopPropagation()
 
-    // Check if this is an internal c-point.co link
+    // Landing page links (www.c-point.co) should open in browser
+    if (isLandingPageLink(href)) {
+      window.open(href, '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    // Check if this is an internal app.c-point.co link
     if (!isInternalLink(href)) {
       // External link - open normally
       window.open(href, '_blank', 'noopener,noreferrer')

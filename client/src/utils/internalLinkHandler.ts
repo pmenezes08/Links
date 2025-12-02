@@ -1,14 +1,21 @@
 /**
  * Internal Link Handler
- * Intercepts links to c-point.co domains and handles them within the app
+ * Intercepts links to app.c-point.co and handles them within the app
  * instead of opening in Safari/browser.
+ * 
+ * www.c-point.co links open in browser (landing page)
+ * app.c-point.co links are handled internally
  */
 
-// Domains that should be handled internally
+// Domains that should be handled internally (app subdomain only)
 const INTERNAL_DOMAINS = [
+  'app.c-point.co',
+]
+
+// Domains that should open in external browser (landing page)
+const EXTERNAL_DOMAINS = [
   'c-point.co',
   'www.c-point.co',
-  'app.c-point.co',
 ]
 
 export interface InviteResult {
@@ -20,13 +27,28 @@ export interface InviteResult {
 }
 
 /**
- * Check if a URL should be handled internally
+ * Check if a URL should be handled internally (app.c-point.co only)
  */
 export function isInternalLink(url: string): boolean {
   try {
     const parsed = new URL(url)
     return INTERNAL_DOMAINS.some(domain => 
-      parsed.hostname === domain || parsed.hostname.endsWith('.' + domain)
+      parsed.hostname === domain
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Check if a URL is a landing page link (www.c-point.co)
+ * These should open in external browser
+ */
+export function isLandingPageLink(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return EXTERNAL_DOMAINS.some(domain => 
+      parsed.hostname === domain
     )
   } catch {
     return false
