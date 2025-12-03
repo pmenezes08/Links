@@ -564,7 +564,39 @@ export default function ChatThread(){
   }
 
   // Track messages that have been processed (don't decrypt multiple times)
-  const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(new Map())
+  // Persist to localStorage so decrypted messages survive page refresh
+  const DECRYPTION_CACHE_KEY = `decryption_cache_${username || 'unknown'}`
+  
+  const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(
+    (() => {
+      try {
+        const stored = localStorage.getItem(DECRYPTION_CACHE_KEY)
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          return new Map(Object.entries(parsed))
+        }
+      } catch (e) {
+        console.warn('Failed to load decryption cache:', e)
+      }
+      return new Map()
+    })()
+  )
+  
+  // Save cache to localStorage
+  const saveDecryptionCache = useCallback(() => {
+    try {
+      const obj: Record<string, { text: string; error: boolean }> = {}
+      decryptionCache.current.forEach((value, key) => {
+        // Only cache successful decryptions, not errors
+        if (!value.error) {
+          obj[String(key)] = value
+        }
+      })
+      localStorage.setItem(DECRYPTION_CACHE_KEY, JSON.stringify(obj))
+    } catch (e) {
+      console.warn('Failed to save decryption cache:', e)
+    }
+  }, [DECRYPTION_CACHE_KEY])
 
   // Decrypt message if it's encrypted
   async function decryptMessageIfNeeded(message: any): Promise<any> {
@@ -622,8 +654,9 @@ export default function ChatThread(){
     try {
       const decryptedText = await encryptionService.decryptMessage(encryptedData)
       
-      // Cache the decrypted text
+      // Cache the decrypted text and persist to localStorage
       decryptionCache.current.set(message.id, { text: decryptedText, error: false })
+      saveDecryptionCache()
       
       return {
         ...message,
@@ -633,7 +666,7 @@ export default function ChatThread(){
     } catch (error) {
       console.error('🔐 ❌ Failed to decrypt message:', message.id, error)
       
-      // Cache the failure
+      // Cache the failure (don't persist errors to localStorage)
       decryptionCache.current.set(message.id, { text: '[🔒 Encrypted - decryption failed]', error: true })
       
       return {
@@ -716,8 +749,9 @@ export default function ChatThread(){
       
       console.log('🔐 ✅ Decryption succeeded for message:', message.id)
       
-      // Cache the decrypted text
+      // Cache the decrypted text and persist to localStorage
       decryptionCache.current.set(message.id, { text: result.plaintext, error: false })
+      saveDecryptionCache()
       
       return {
         ...message,
@@ -728,7 +762,7 @@ export default function ChatThread(){
       const errorMsg = error instanceof Error ? error.message : String(error)
       console.error('🔐 ❌ Signal decryption failed for message:', message.id, 'Error:', errorMsg, error)
       
-      // Cache the failure with more details
+      // Cache the failure (don't persist errors to localStorage)
       const displayError = `[🔒 Decryption failed: ${errorMsg.slice(0, 50)}]`
       decryptionCache.current.set(message.id, { text: displayError, error: true })
       
@@ -1336,6 +1370,7 @@ export default function ChatThread(){
                   // IMPORTANT: Cache the plaintext for this message
                   // So when we reload/poll, we can show sent messages correctly
                   decryptionCache.current.set(j.message_id, { text: messageText, error: false })
+                  saveDecryptionCache()
                 } catch (cipherError) {
                   console.error('🔐 Signal: Failed to store ciphertexts:', cipherError)
                 }
