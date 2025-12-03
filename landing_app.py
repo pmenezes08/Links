@@ -19,10 +19,16 @@ def index():
         return redirect(f'{APP_DOMAIN}/?{request.query_string.decode()}')
     return send_from_directory(app.static_folder, 'index.html')
 
-# Serve static assets
+# Serve static assets with correct MIME types
 @app.route('/assets/<path:filename>')
 def assets(filename):
-    return send_from_directory(os.path.join(app.static_folder, 'assets'), filename)
+    response = send_from_directory(os.path.join(app.static_folder, 'assets'), filename)
+    # Ensure JavaScript files have correct MIME type for ES modules
+    if filename.endswith('.js'):
+        response.headers['Content-Type'] = 'application/javascript'
+    elif filename.endswith('.css'):
+        response.headers['Content-Type'] = 'text/css'
+    return response
 
 # Serve .well-known files for Apple Universal Links
 @app.route('/.well-known/<path:filename>')
