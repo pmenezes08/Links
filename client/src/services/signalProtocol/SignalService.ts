@@ -322,20 +322,31 @@ class SignalService {
     // Also encrypt for sender's OTHER devices (so they can read their own sent messages)
     if (recipientUsername !== this.currentUsername) {
       const myDevices = await this.getUserDevices(this.currentUsername)
+      console.log(`🔐 Encrypting for own ${myDevices.length} device(s), current device: ${this.currentDeviceId}`)
       
       for (const device of myDevices) {
-        if (device.deviceId === this.currentDeviceId) continue // Skip current device
+        if (device.deviceId === this.currentDeviceId) {
+          console.log(`🔐 Skipping current device ${device.deviceId}`)
+          continue
+        }
         
         try {
+          console.log(`🔐 Encrypting for own device ${device.deviceId} (${device.deviceName})...`)
           const ciphertext = await this.encryptForDevice(
             this.currentUsername,
             device.deviceId,
             plaintext
           )
           deviceCiphertexts.push(ciphertext)
+          console.log(`🔐 ✅ Encrypted for own device ${device.deviceId}`)
         } catch (error) {
-          console.error(`🔐 Failed to encrypt for own device ${device.deviceId}:`, error)
-          // Don't add to failedDevices - sender's other devices failing is not critical
+          const errorMsg = error instanceof Error ? error.message : String(error)
+          console.error(`🔐 ❌ Failed to encrypt for own device ${device.deviceId}:`, errorMsg, error)
+          // Track this failure
+          failedDevices.push({
+            deviceId: device.deviceId,
+            error: `Own device: ${errorMsg}`,
+          })
         }
       }
     }
@@ -412,11 +423,20 @@ class SignalService {
    * Build a session with a remote device using X3DH
    */
   private async buildSession(username: string, deviceId: number): Promise<void> {
+    console.log(`🔐 Building session with ${username}:${deviceId}...`)
+    
     const bundle = await this.getPreKeyBundle(username, deviceId)
     
     if (!bundle) {
+      console.error(`🔐 ❌ No prekey bundle for ${username}:${deviceId}`)
       throw new Error(`No prekey bundle available for ${username}:${deviceId}`)
     }
+
+    console.log(`🔐 Got prekey bundle for ${username}:${deviceId}:`, {
+      registrationId: bundle.registrationId,
+      hasPreKey: !!bundle.preKey,
+      signedPreKeyId: bundle.signedPreKey.keyId,
+    })
 
     const address = new SignalProtocolAddress(username, deviceId)
     const sessionBuilder = new SessionBuilder(signalStore, address)
