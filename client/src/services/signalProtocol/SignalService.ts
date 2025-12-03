@@ -368,21 +368,31 @@ class SignalService {
     const plaintextBuffer = new TextEncoder().encode(plaintext)
     const ciphertext = await sessionCipher.encrypt(plaintextBuffer.buffer)
 
-    // Convert ciphertext body to ArrayBuffer
-    let ciphertextBuffer: ArrayBuffer
+    // The ciphertext.body from libsignal is already a base64 string
+    // We just need to use it directly
+    let ciphertextBase64: string
     if (typeof ciphertext.body === 'string') {
-      ciphertextBuffer = new TextEncoder().encode(ciphertext.body).buffer
+      // Already base64 encoded by libsignal
+      ciphertextBase64 = ciphertext.body
     } else if (ciphertext.body) {
-      ciphertextBuffer = ciphertext.body
+      // ArrayBuffer - convert to base64
+      ciphertextBase64 = signalStore.arrayBufferToBase64(ciphertext.body)
     } else {
       throw new Error('Encryption produced empty ciphertext')
     }
+
+    console.log('🔐 Encrypted message:', {
+      targetUsername: username,
+      targetDeviceId: deviceId,
+      messageType: ciphertext.type,
+      ciphertextLength: ciphertextBase64.length,
+    })
 
     return {
       targetUsername: username,
       targetDeviceId: deviceId,
       senderDeviceId: this.currentDeviceId!,
-      ciphertext: signalStore.arrayBufferToBase64(ciphertextBuffer),
+      ciphertext: ciphertextBase64,
       messageType: ciphertext.type,
     }
   }
