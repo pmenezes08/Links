@@ -1,21 +1,11 @@
-import { Users, Lock, Lightbulb, Network, MessageSquare, Shield } from "lucide-react";
+import { Users, Lock, Lightbulb, Shield } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const features = [
   {
     icon: Users,
     title: "Meaningful Connections",
-    description: "Connect with like-minded people and expand your network through shared interests and ideas.",
-  },
-  {
-    icon: Shield,
-    title: "Privacy First",
-    description: "Your conversations stay yours. Gold-standard end-to-end encryption ensures every message is protected—only you and your recipients can read them.",
-  },
-  {
-    icon: Lock,
-    title: "Exclusivity",
-    description: "Build private networks tailored to your needs. Create nested communities within communities for focused, invite-only conversations.",
+    description: "Connect with like-minded people who share your interests and ideas. Build relationships that matter and grow your network with purpose.",
   },
   {
     icon: Lightbulb,
@@ -23,14 +13,14 @@ const features = [
     description: "Transform your thoughts into conversations. Share insights and get valuable feedback from peers.",
   },
   {
-    icon: Network,
-    title: "Build Connections",
-    description: "Foster relationships that matter. Network with purpose and grow your circle of connections.",
+    icon: Lock,
+    title: "Exclusivity",
+    description: "Build private networks tailored to your needs. Create nested communities within communities for focused, invite-only conversations.",
   },
   {
-    icon: MessageSquare,
-    title: "Engage & Collaborate",
-    description: "Join discussions, collaborate on projects, and make meaningful contributions through your connections.",
+    icon: Shield,
+    title: "Privacy First",
+    description: "Your conversations stay yours. Gold-standard end-to-end encryption ensures every message is protected—only you and your recipients can read them.",
   },
 ];
 
@@ -47,7 +37,7 @@ export const Features = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {features.map((feature, index) => (
             <Card 
               key={index} 
