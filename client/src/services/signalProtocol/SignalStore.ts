@@ -61,7 +61,16 @@ export class SignalStore implements StorageType {
    */
   async init(username: string): Promise<void> {
     this.currentUsername = username
-    console.log('🔐 SignalStore initialized for:', username, '(using localStorage)')
+    
+    // Debug: Count existing signal keys for this user
+    const prefix = `${PREFIX}_${username}_`
+    let count = 0
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith(prefix)) count++
+    }
+    
+    console.log('🔐 SignalStore initialized for:', username, `(found ${count} existing keys in localStorage)`)
   }
 
   /**
@@ -149,7 +158,9 @@ export class SignalStore implements StorageType {
    */
   async getLocalRegistration(): Promise<DeviceRegistration | null> {
     if (!this.currentUsername) return null
-    return this.get<DeviceRegistration>(KEYS.REGISTRATION, 'data')
+    const reg = this.get<DeviceRegistration>(KEYS.REGISTRATION, 'data')
+    console.log('🔐 getLocalRegistration:', reg ? `deviceId=${reg.deviceId}` : 'null')
+    return reg
   }
 
   /**
@@ -158,6 +169,7 @@ export class SignalStore implements StorageType {
   async storeLocalRegistration(registration: DeviceRegistration): Promise<void> {
     if (!this.currentUsername) throw new Error('User not initialized')
     this.put(KEYS.REGISTRATION, 'data', registration)
+    console.log('🔐 storeLocalRegistration: deviceId=', registration.deviceId)
   }
 
   // ============ Identity Keys (Remote) ============
