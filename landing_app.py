@@ -15,6 +15,25 @@ app = Flask(__name__, static_folder=DIST_DIR)
 
 APP_DOMAIN = 'https://app.c-point.co'
 
+# Debug endpoint to check paths
+@app.route('/debug-paths')
+def debug_paths():
+    import json
+    assets_dir = os.path.join(DIST_DIR, 'assets')
+    assets_exist = os.path.isdir(assets_dir)
+    assets_files = os.listdir(assets_dir) if assets_exist else []
+    dist_files = os.listdir(DIST_DIR) if os.path.isdir(DIST_DIR) else []
+    return json.dumps({
+        'BASE_DIR': BASE_DIR,
+        'DIST_DIR': DIST_DIR,
+        'DIST_DIR_exists': os.path.isdir(DIST_DIR),
+        'dist_files': dist_files,
+        'assets_dir': assets_dir,
+        'assets_exist': assets_exist,
+        'assets_files': assets_files,
+        'cwd': os.getcwd(),
+    }, indent=2), 200, {'Content-Type': 'application/json'}
+
 # Serve the landing page
 @app.route('/')
 def index():
