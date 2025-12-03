@@ -432,28 +432,48 @@ class SignalService {
       throw new Error('Signal Protocol not initialized')
     }
 
+    console.log('🔐 Decrypting message:', {
+      from: `${senderUsername}.${senderDeviceId}`,
+      messageType,
+      ciphertextLength: ciphertextBase64.length,
+    })
+
     const address = new SignalProtocolAddress(senderUsername, senderDeviceId)
     const sessionCipher = new SessionCipher(signalStore, address)
 
     const ciphertextBuffer = signalStore.base64ToArrayBuffer(ciphertextBase64)
+    console.log('🔐 Ciphertext buffer size:', ciphertextBuffer.byteLength)
 
     let plaintextBuffer: ArrayBuffer
 
-    if (messageType === 3) {
-      // PreKey message (first message in session)
-      plaintextBuffer = await sessionCipher.decryptPreKeyWhisperMessage(
-        ciphertextBuffer,
-        'binary'
-      )
-    } else {
-      // Regular message
-      plaintextBuffer = await sessionCipher.decryptWhisperMessage(
-        ciphertextBuffer,
-        'binary'
-      )
+    try {
+      if (messageType === 3) {
+        // PreKey message (first message in session)
+        console.log('🔐 Decrypting as PreKey message (type 3)')
+        plaintextBuffer = await sessionCipher.decryptPreKeyWhisperMessage(
+          ciphertextBuffer,
+          'binary'
+        )
+      } else {
+        // Regular message
+        console.log('🔐 Decrypting as regular message (type', messageType, ')')
+        plaintextBuffer = await sessionCipher.decryptWhisperMessage(
+          ciphertextBuffer,
+          'binary'
+        )
+      }
+    } catch (decryptError) {
+      console.error('🔐 ❌ Decrypt error details:', {
+        error: decryptError,
+        errorMessage: decryptError instanceof Error ? decryptError.message : String(decryptError),
+        senderAddress: `${senderUsername}.${senderDeviceId}`,
+        messageType,
+      })
+      throw decryptError
     }
 
     const plaintext = new TextDecoder().decode(plaintextBuffer)
+    console.log('🔐 ✅ Decrypted plaintext length:', plaintext.length)
 
     return {
       plaintext,

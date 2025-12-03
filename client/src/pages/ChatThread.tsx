@@ -704,6 +704,14 @@ export default function ChatThread(){
       }
       
       const data = await response.json()
+      console.log('🔐 Got ciphertext data:', {
+        messageId: message.id,
+        senderUsername: data.senderUsername,
+        senderDeviceId: data.senderDeviceId,
+        messageType: data.messageType,
+        ciphertextLength: data.ciphertext?.length,
+      })
+      
       if (!data.success || !data.ciphertext) {
         throw new Error('Invalid ciphertext response')
       }
@@ -716,6 +724,8 @@ export default function ChatThread(){
         data.messageType
       )
       
+      console.log('🔐 ✅ Decryption succeeded for message:', message.id)
+      
       // Cache the decrypted text
       decryptionCache.current.set(message.id, { text: result.plaintext, error: false })
       
@@ -725,14 +735,16 @@ export default function ChatThread(){
         decryption_error: false,
       }
     } catch (error) {
-      console.error('🔐 ❌ Signal decryption failed for message:', message.id, error)
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      console.error('🔐 ❌ Signal decryption failed for message:', message.id, 'Error:', errorMsg, error)
       
-      // Cache the failure
-      decryptionCache.current.set(message.id, { text: '[🔒 Signal: Decryption failed]', error: true })
+      // Cache the failure with more details
+      const displayError = `[🔒 Decryption failed: ${errorMsg.slice(0, 50)}]`
+      decryptionCache.current.set(message.id, { text: displayError, error: true })
       
       return {
         ...message,
-        text: '[🔒 Signal: Decryption failed]',
+        text: displayError,
         decryption_error: true,
       }
     }
