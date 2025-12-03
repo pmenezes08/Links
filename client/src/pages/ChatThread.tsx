@@ -564,23 +564,24 @@ export default function ChatThread(){
   }
 
   // Track messages that have been processed (don't decrypt multiple times)
-  // Persist to localStorage so decrypted messages survive page refresh
-  const DECRYPTION_CACHE_KEY = `decryption_cache_${username || 'unknown'}`
+  // Use a GLOBAL cache keyed by message ID that persists in localStorage
+  const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(new Map())
   
-  const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(
-    (() => {
-      try {
-        const stored = localStorage.getItem(DECRYPTION_CACHE_KEY)
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          return new Map(Object.entries(parsed))
-        }
-      } catch (e) {
-        console.warn('Failed to load decryption cache:', e)
+  // Load cache from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('signal_decrypted_messages')
+      if (stored) {
+        const parsed = JSON.parse(stored) as Record<string, { text: string; error: boolean }>
+        Object.entries(parsed).forEach(([key, value]) => {
+          decryptionCache.current.set(key, value)
+        })
+        console.log('🔐 Loaded', Object.keys(parsed).length, 'cached decrypted messages')
       }
-      return new Map()
-    })()
-  )
+    } catch (e) {
+      console.warn('Failed to load decryption cache:', e)
+    }
+  }, [])
   
   // Save cache to localStorage
   const saveDecryptionCache = useCallback(() => {
@@ -592,11 +593,12 @@ export default function ChatThread(){
           obj[String(key)] = value
         }
       })
-      localStorage.setItem(DECRYPTION_CACHE_KEY, JSON.stringify(obj))
+      localStorage.setItem('signal_decrypted_messages', JSON.stringify(obj))
+      console.log('🔐 Saved', Object.keys(obj).length, 'decrypted messages to cache')
     } catch (e) {
       console.warn('Failed to save decryption cache:', e)
     }
-  }, [DECRYPTION_CACHE_KEY])
+  }, [])
 
   // Decrypt message if it's encrypted
   async function decryptMessageIfNeeded(message: any): Promise<any> {
