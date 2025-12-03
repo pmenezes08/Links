@@ -648,11 +648,8 @@ export default function ChatThread(){
   async function decryptSignalMessage(message: any): Promise<any> {
     const deviceId = signalService.getDeviceId()
     
-    // For SENT messages: We already have the plaintext from when we sent it
-    // The server doesn't store ciphertext for the sender's current device
-    // So we use local storage to remember what we sent
+    // For SENT messages: Check cache first (from when we sent it on THIS device)
     if (message.sent) {
-      // Check if we have the text cached from sending
       const cached = decryptionCache.current.get(message.id)
       if (cached && !cached.error) {
         return {
@@ -662,16 +659,9 @@ export default function ChatThread(){
         }
       }
       
-      // For sent messages, if no cache, show indicator
-      // (This happens when viewing sent messages from a different device)
-      // We could try to fetch ciphertext if this is a different device than sender
-      // For now, show a placeholder
-      return {
-        ...message,
-        text: '[🔒 Encrypted message you sent]',
-        decryption_error: false, // Not an error, just can't display on this device
-        is_encrypted: true,
-      }
+      // Not in cache - we're viewing from a DIFFERENT device than we sent from
+      // Try to fetch and decrypt the ciphertext (we encrypted for our other devices)
+      // Fall through to the normal decryption logic below
     }
     
     // For RECEIVED messages: Fetch and decrypt ciphertext
