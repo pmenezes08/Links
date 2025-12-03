@@ -10,7 +10,7 @@ const features = [
   {
     icon: Shield,
     title: "Privacy First",
-    description: "Your conversations stay yours. Military-grade end-to-end encryption protects every message—only you and your recipients can read them.",
+    description: "Your conversations stay yours. Gold-standard end-to-end encryption ensures every message is protected—only you and your recipients can read them.",
   },
   {
     icon: Lock,
