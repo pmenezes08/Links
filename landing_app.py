@@ -7,7 +7,11 @@ All webapp routes are redirected to app.c-point.co
 from flask import Flask, send_from_directory, redirect, request
 import os
 
-app = Flask(__name__, static_folder='landing/dist')
+# Get the directory where this script is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DIST_DIR = os.path.join(BASE_DIR, 'landing', 'dist')
+
+app = Flask(__name__, static_folder=DIST_DIR)
 
 APP_DOMAIN = 'https://app.c-point.co'
 
@@ -17,12 +21,13 @@ def index():
     # Check if there's an invite parameter - redirect to app
     if request.args.get('invite'):
         return redirect(f'{APP_DOMAIN}/?{request.query_string.decode()}')
-    return send_from_directory(app.static_folder, 'index.html')
+    return send_from_directory(DIST_DIR, 'index.html')
 
 # Serve static assets with correct MIME types
 @app.route('/assets/<path:filename>')
 def assets(filename):
-    response = send_from_directory(os.path.join(app.static_folder, 'assets'), filename)
+    assets_dir = os.path.join(DIST_DIR, 'assets')
+    response = send_from_directory(assets_dir, filename)
     # Ensure JavaScript files have correct MIME type for ES modules
     if filename.endswith('.js'):
         response.headers['Content-Type'] = 'application/javascript'
@@ -33,7 +38,7 @@ def assets(filename):
 # Serve .well-known files for Apple Universal Links
 @app.route('/.well-known/<path:filename>')
 def well_known(filename):
-    well_known_dir = os.path.join(os.path.dirname(__file__), 'static', '.well-known')
+    well_known_dir = os.path.join(BASE_DIR, 'static', '.well-known')
     return send_from_directory(well_known_dir, filename)
 
 # Redirect ALL webapp routes to app.c-point.co
@@ -80,9 +85,9 @@ def redirect_api(subpath):
 @app.route('/<path:filename>')
 def static_files(filename):
     # Check if file exists in landing/dist
-    filepath = os.path.join(app.static_folder, filename)
+    filepath = os.path.join(DIST_DIR, filename)
     if os.path.isfile(filepath):
-        return send_from_directory(app.static_folder, filename)
+        return send_from_directory(DIST_DIR, filename)
     # If not found, redirect to app (might be an app route)
     query = f'?{request.query_string.decode()}' if request.query_string else ''
     return redirect(f'{APP_DOMAIN}/{filename}{query}')
