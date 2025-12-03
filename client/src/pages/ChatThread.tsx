@@ -574,7 +574,9 @@ export default function ChatThread(){
       if (stored) {
         const parsed = JSON.parse(stored) as Record<string, { text: string; error: boolean }>
         Object.entries(parsed).forEach(([key, value]) => {
+          // Store with BOTH string and number keys for compatibility
           decryptionCache.current.set(key, value)
+          decryptionCache.current.set(Number(key), value)
         })
         console.log('🔐 Loaded', Object.keys(parsed).length, 'cached decrypted messages')
       }
@@ -607,8 +609,12 @@ export default function ChatThread(){
     }
     
     // Check cache first - don't decrypt the same message multiple times!
-    const cached = decryptionCache.current.get(message.id)
+    // Try both number and string keys for compatibility
+    const cached = decryptionCache.current.get(message.id) || 
+                   decryptionCache.current.get(String(message.id)) ||
+                   decryptionCache.current.get(Number(message.id))
     if (cached) {
+      console.log('🔐 Using cached decryption for message:', message.id)
       return {
         ...message,
         text: cached.text,
