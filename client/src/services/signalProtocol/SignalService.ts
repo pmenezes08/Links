@@ -554,7 +554,7 @@ class SignalService {
       credentials: 'include',
     })
 
-    await signalStore.clearAll()
+    await signalStore.clearAllData()
     
     this.initialized = false
     this.currentDeviceId = null

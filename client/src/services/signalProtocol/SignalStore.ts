@@ -2,7 +2,7 @@
  * Signal Protocol Store
  * 
  * Implements the StorageType interface required by libsignal.
- * Stores all cryptographic state in IndexedDB for persistence.
+ * Uses localStorage for persistence (more reliable than IndexedDB on iOS).
  */
 
 import type { 
@@ -19,11 +19,9 @@ import type {
   DeviceRegistration 
 } from './types'
 
-const DB_NAME = 'signal-protocol-store'
-const DB_VERSION = 1
-
-// Store names
-const STORES = {
+// Storage key prefixes
+const PREFIX = 'signal'
+const KEYS = {
   IDENTITY_KEY: 'identityKey',
   REGISTRATION: 'registration',
   PREKEYS: 'preKeys',
@@ -33,129 +31,78 @@ const STORES = {
 } as const
 
 export class SignalStore implements StorageType {
-  private db: IDBDatabase | null = null
   private currentUsername: string | null = null
+
+  /**
+   * Get storage key with prefix
+   */
+  private getKey(store: string, id?: string | number): string {
+    const base = `${PREFIX}_${this.currentUsername}_${store}`
+    return id !== undefined ? `${base}_${id}` : base
+  }
+
+  /**
+   * Get all keys for a store
+   */
+  private getAllKeysForStore(store: string): string[] {
+    const prefix = this.getKey(store) + '_'
+    const keys: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith(prefix)) {
+        keys.push(key)
+      }
+    }
+    return keys
+  }
 
   /**
    * Initialize the store for a specific user
    */
   async init(username: string): Promise<void> {
     this.currentUsername = username
-    await this.openDatabase()
-    console.log('🔐 SignalStore initialized for:', username)
+    console.log('🔐 SignalStore initialized for:', username, '(using localStorage)')
   }
 
   /**
-   * Open IndexedDB
+   * Get item from storage
    */
-  private async openDatabase(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION)
-
-      request.onerror = () => reject(request.error)
-      
-      request.onsuccess = () => {
-        this.db = request.result
-        resolve()
-      }
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result
-
-        // Identity key pair (one per user/device)
-        if (!db.objectStoreNames.contains(STORES.IDENTITY_KEY)) {
-          db.createObjectStore(STORES.IDENTITY_KEY, { keyPath: 'username' })
-        }
-
-        // Device registration info
-        if (!db.objectStoreNames.contains(STORES.REGISTRATION)) {
-          db.createObjectStore(STORES.REGISTRATION, { keyPath: 'username' })
-        }
-
-        // PreKeys
-        if (!db.objectStoreNames.contains(STORES.PREKEYS)) {
-          db.createObjectStore(STORES.PREKEYS, { keyPath: 'keyId' })
-        }
-
-        // Signed PreKeys
-        if (!db.objectStoreNames.contains(STORES.SIGNED_PREKEYS)) {
-          db.createObjectStore(STORES.SIGNED_PREKEYS, { keyPath: 'keyId' })
-        }
-
-        // Sessions with other users/devices
-        if (!db.objectStoreNames.contains(STORES.SESSIONS)) {
-          db.createObjectStore(STORES.SESSIONS, { keyPath: 'address' })
-        }
-
-        // Known identity keys of other users
-        if (!db.objectStoreNames.contains(STORES.IDENTITIES)) {
-          db.createObjectStore(STORES.IDENTITIES, { keyPath: 'address' })
-        }
-      }
-    })
-  }
-
-  /**
-   * Close database connection
-   */
-  close(): void {
-    if (this.db) {
-      this.db.close()
-      this.db = null
+  private get<T>(store: string, id: string | number): T | null {
+    try {
+      const key = this.getKey(store, id)
+      const data = localStorage.getItem(key)
+      return data ? JSON.parse(data) : null
+    } catch (e) {
+      console.error('SignalStore get error:', e)
+      return null
     }
   }
 
   /**
-   * Helper: Get item from store
+   * Put item in storage
    */
-  private async get<T>(storeName: string, key: string | number): Promise<T | undefined> {
-    if (!this.db) throw new Error('Database not initialized')
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([storeName], 'readonly')
-      const store = transaction.objectStore(storeName)
-      const request = store.get(key)
-
-      request.onsuccess = () => resolve(request.result as T | undefined)
-      request.onerror = () => reject(request.error)
-    })
+  private put<T>(store: string, id: string | number, value: T): void {
+    try {
+      const key = this.getKey(store, id)
+      localStorage.setItem(key, JSON.stringify(value))
+    } catch (e) {
+      console.error('SignalStore put error:', e)
+    }
   }
 
   /**
-   * Helper: Put item in store
+   * Delete item from storage
    */
-  private async put<T>(storeName: string, value: T): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized')
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([storeName], 'readwrite')
-      const store = transaction.objectStore(storeName)
-      const request = store.put(value)
-
-      request.onsuccess = () => resolve()
-      request.onerror = () => reject(request.error)
-    })
+  private remove(store: string, id: string | number): void {
+    try {
+      const key = this.getKey(store, id)
+      localStorage.removeItem(key)
+    } catch (e) {
+      console.error('SignalStore remove error:', e)
+    }
   }
 
-  /**
-   * Helper: Delete item from store
-   */
-  private async delete(storeName: string, key: string | number): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized')
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([storeName], 'readwrite')
-      const store = transaction.objectStore(storeName)
-      const request = store.delete(key)
-
-      request.onsuccess = () => resolve()
-      request.onerror = () => reject(request.error)
-    })
-  }
-
-  // ============================================
-  // StorageType Interface Implementation
-  // ============================================
+  // ============ Identity Key Pair ============
 
   /**
    * Get our identity key pair
@@ -163,11 +110,10 @@ export class SignalStore implements StorageType {
   async getIdentityKeyPair(): Promise<KeyPairType | undefined> {
     if (!this.currentUsername) return undefined
 
-    const stored = await this.get<{ username: string; publicKey: string; privateKey: string }>(
-      STORES.IDENTITY_KEY,
-      this.currentUsername
+    const stored = this.get<{ publicKey: string; privateKey: string }>(
+      KEYS.IDENTITY_KEY, 
+      'pair'
     )
-
     if (!stored) return undefined
 
     return {
@@ -182,8 +128,7 @@ export class SignalStore implements StorageType {
   async storeIdentityKeyPair(keyPair: KeyPairType): Promise<void> {
     if (!this.currentUsername) throw new Error('User not initialized')
 
-    await this.put(STORES.IDENTITY_KEY, {
-      username: this.currentUsername,
+    this.put(KEYS.IDENTITY_KEY, 'pair', {
       publicKey: this.arrayBufferToBase64(keyPair.pubKey),
       privateKey: this.arrayBufferToBase64(keyPair.privKey),
     })
@@ -195,46 +140,38 @@ export class SignalStore implements StorageType {
   async getLocalRegistrationId(): Promise<number | undefined> {
     if (!this.currentUsername) return undefined
 
-    const reg = await this.get<DeviceRegistration>(STORES.REGISTRATION, this.currentUsername)
+    const reg = this.get<DeviceRegistration>(KEYS.REGISTRATION, 'data')
     return reg?.registrationId
   }
 
   /**
-   * Store local registration
+   * Get local device registration
+   */
+  async getLocalRegistration(): Promise<DeviceRegistration | null> {
+    if (!this.currentUsername) return null
+    return this.get<DeviceRegistration>(KEYS.REGISTRATION, 'data')
+  }
+
+  /**
+   * Store local device registration
    */
   async storeLocalRegistration(registration: DeviceRegistration): Promise<void> {
     if (!this.currentUsername) throw new Error('User not initialized')
-
-    await this.put(STORES.REGISTRATION, {
-      username: this.currentUsername,
-      ...registration,
-    })
+    this.put(KEYS.REGISTRATION, 'data', registration)
   }
 
-  /**
-   * Get local registration data
-   */
-  async getLocalRegistration(): Promise<DeviceRegistration | undefined> {
-    if (!this.currentUsername) return undefined
-    return this.get<DeviceRegistration>(STORES.REGISTRATION, this.currentUsername)
-  }
+  // ============ Identity Keys (Remote) ============
 
   /**
-   * Check if an identity key is trusted
+   * Check if we trust an identity key
    */
   async isTrustedIdentity(
     identifier: string,
     identityKey: ArrayBuffer,
     _direction: Direction
   ): Promise<boolean> {
-    // For simplicity, we trust on first use (TOFU)
-    // In a production app, you might want to verify key changes
-    const stored = await this.get<StoredIdentity>(STORES.IDENTITIES, identifier)
-    
-    if (!stored) {
-      // First time seeing this identity - trust it
-      return true
-    }
+    const stored = this.get<StoredIdentity>(KEYS.IDENTITIES, identifier)
+    if (!stored) return true // Trust on first use
 
     // Check if key matches what we have stored
     const storedKeyBuffer = this.base64ToArrayBuffer(stored.publicKey)
@@ -249,12 +186,12 @@ export class SignalStore implements StorageType {
     publicKey: ArrayBuffer,
     _nonblockingApproval?: boolean
   ): Promise<boolean> {
-    const existing = await this.get<StoredIdentity>(STORES.IDENTITIES, encodedAddress)
+    const existing = this.get<StoredIdentity>(KEYS.IDENTITIES, encodedAddress)
     const publicKeyBase64 = this.arrayBufferToBase64(publicKey)
 
     const isNewKey = !existing || existing.publicKey !== publicKeyBase64
 
-    await this.put<StoredIdentity>(STORES.IDENTITIES, {
+    this.put<StoredIdentity>(KEYS.IDENTITIES, encodedAddress, {
       address: encodedAddress,
       publicKey: publicKeyBase64,
       trusted: true,
@@ -264,12 +201,10 @@ export class SignalStore implements StorageType {
     return isNewKey
   }
 
-  /**
-   * Load a prekey by ID
-   */
-  async loadPreKey(keyId: string | number): Promise<KeyPairType | undefined> {
-    const stored = await this.get<StoredPreKey>(STORES.PREKEYS, Number(keyId))
-    
+  // ============ PreKeys ============
+
+  async loadPreKey(keyId: number | string): Promise<KeyPairType | undefined> {
+    const stored = this.get<StoredPreKey>(KEYS.PREKEYS, keyId)
     if (!stored) return undefined
 
     return {
@@ -278,30 +213,22 @@ export class SignalStore implements StorageType {
     }
   }
 
-  /**
-   * Store a prekey
-   */
   async storePreKey(keyId: number | string, keyPair: KeyPairType): Promise<void> {
-    await this.put<StoredPreKey>(STORES.PREKEYS, {
+    this.put<StoredPreKey>(KEYS.PREKEYS, keyId, {
       keyId: Number(keyId),
       publicKey: this.arrayBufferToBase64(keyPair.pubKey),
       privateKey: this.arrayBufferToBase64(keyPair.privKey),
     })
   }
 
-  /**
-   * Remove a prekey (after it's been used)
-   */
   async removePreKey(keyId: number | string): Promise<void> {
-    await this.delete(STORES.PREKEYS, Number(keyId))
+    this.remove(KEYS.PREKEYS, keyId)
   }
 
-  /**
-   * Load a signed prekey
-   */
+  // ============ Signed PreKeys ============
+
   async loadSignedPreKey(keyId: number | string): Promise<KeyPairType | undefined> {
-    const stored = await this.get<StoredSignedPreKey>(STORES.SIGNED_PREKEYS, Number(keyId))
-    
+    const stored = this.get<StoredSignedPreKey>(KEYS.SIGNED_PREKEYS, keyId)
     if (!stored) return undefined
 
     return {
@@ -310,11 +237,8 @@ export class SignalStore implements StorageType {
     }
   }
 
-  /**
-   * Store a signed prekey
-   */
   async storeSignedPreKey(keyId: number | string, keyPair: KeyPairType): Promise<void> {
-    await this.put<StoredSignedPreKey>(STORES.SIGNED_PREKEYS, {
+    this.put<StoredSignedPreKey>(KEYS.SIGNED_PREKEYS, keyId, {
       keyId: Number(keyId),
       publicKey: this.arrayBufferToBase64(keyPair.pubKey),
       privateKey: this.arrayBufferToBase64(keyPair.privKey),
@@ -323,15 +247,12 @@ export class SignalStore implements StorageType {
     })
   }
 
-  /**
-   * Store a signed prekey with signature
-   */
   async storeSignedPreKeyWithSignature(
     keyId: number,
     keyPair: KeyPairType,
     signature: ArrayBuffer
   ): Promise<void> {
-    await this.put<StoredSignedPreKey>(STORES.SIGNED_PREKEYS, {
+    this.put<StoredSignedPreKey>(KEYS.SIGNED_PREKEYS, keyId, {
       keyId,
       publicKey: this.arrayBufferToBase64(keyPair.pubKey),
       privateKey: this.arrayBufferToBase64(keyPair.privKey),
@@ -340,77 +261,50 @@ export class SignalStore implements StorageType {
     })
   }
 
-  /**
-   * Remove a signed prekey
-   */
   async removeSignedPreKey(keyId: number | string): Promise<void> {
-    await this.delete(STORES.SIGNED_PREKEYS, Number(keyId))
+    this.remove(KEYS.SIGNED_PREKEYS, keyId)
   }
 
-  /**
-   * Load a session with a remote address
-   */
+  // ============ Sessions ============
+
   async loadSession(encodedAddress: string): Promise<SessionRecordType | undefined> {
-    const stored = await this.get<StoredSession>(STORES.SESSIONS, encodedAddress)
-    return stored?.record
+    const stored = this.get<StoredSession>(KEYS.SESSIONS, encodedAddress)
+    if (!stored) return undefined
+
+    return stored.record as SessionRecordType
   }
 
-  /**
-   * Store a session
-   */
   async storeSession(encodedAddress: string, record: SessionRecordType): Promise<void> {
-    await this.put<StoredSession>(STORES.SESSIONS, {
+    this.put<StoredSession>(KEYS.SESSIONS, encodedAddress, {
       address: encodedAddress,
-      record,
+      record: record as any,
       updatedAt: Date.now(),
     })
   }
 
-  /**
-   * Check if we have a session with a remote address
-   */
   async hasSession(encodedAddress: string): Promise<boolean> {
-    const session = await this.loadSession(encodedAddress)
-    return session !== undefined
+    const stored = this.get<StoredSession>(KEYS.SESSIONS, encodedAddress)
+    return !!stored
   }
 
-  /**
-   * Delete a session
-   */
-  async deleteSession(encodedAddress: string): Promise<void> {
-    await this.delete(STORES.SESSIONS, encodedAddress)
+  async removeSession(encodedAddress: string): Promise<void> {
+    this.remove(KEYS.SESSIONS, encodedAddress)
   }
 
-  /**
-   * Delete all sessions for a user (all their devices)
-   */
-  async deleteAllSessionsForUser(username: string): Promise<void> {
-    if (!this.db) throw new Error('Database not initialized')
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORES.SESSIONS], 'readwrite')
-      const store = transaction.objectStore(STORES.SESSIONS)
-      const request = store.openCursor()
-      
-      request.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest).result
-        if (cursor) {
-          const session = cursor.value as StoredSession
-          if (session.address.startsWith(username + '.')) {
-            cursor.delete()
-          }
-          cursor.continue()
-        }
+  async removeAllSessions(identifier: string): Promise<void> {
+    // Remove all sessions that start with this identifier
+    const keys = this.getAllKeysForStore(KEYS.SESSIONS)
+    for (const key of keys) {
+      // Extract the address part after the prefix
+      const parts = key.split('_')
+      const address = parts[parts.length - 1]
+      if (address.startsWith(identifier + '.')) {
+        localStorage.removeItem(key)
       }
-
-      transaction.oncomplete = () => resolve()
-      transaction.onerror = () => reject(transaction.error)
-    })
+    }
   }
 
-  // ============================================
-  // Utility Methods
-  // ============================================
+  // ============ Utilities ============
 
   /**
    * Convert ArrayBuffer to Base64
@@ -441,35 +335,36 @@ export class SignalStore implements StorageType {
    */
   private arrayBuffersEqual(a: ArrayBuffer, b: ArrayBuffer): boolean {
     if (a.byteLength !== b.byteLength) return false
-    const aView = new Uint8Array(a)
-    const bView = new Uint8Array(b)
-    for (let i = 0; i < aView.length; i++) {
-      if (aView[i] !== bView[i]) return false
+    const viewA = new Uint8Array(a)
+    const viewB = new Uint8Array(b)
+    for (let i = 0; i < viewA.length; i++) {
+      if (viewA[i] !== viewB[i]) return false
     }
     return true
   }
 
   /**
-   * Clear all data for current user
+   * Clear all signal data for current user (for debugging/reset)
    */
-  async clearAll(): Promise<void> {
-    if (!this.db || !this.currentUsername) return
-
-    const storeNames = Object.values(STORES)
+  async clearAllData(): Promise<void> {
+    if (!this.currentUsername) return
     
-    for (const storeName of storeNames) {
-      await new Promise<void>((resolve, reject) => {
-        const transaction = this.db!.transaction([storeName], 'readwrite')
-        const store = transaction.objectStore(storeName)
-        const request = store.clear()
-        request.onsuccess = () => resolve()
-        request.onerror = () => reject(request.error)
-      })
+    const prefix = `${PREFIX}_${this.currentUsername}_`
+    const keysToRemove: string[] = []
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith(prefix)) {
+        keysToRemove.push(key)
+      }
     }
-
-    console.log('🔐 SignalStore cleared for:', this.currentUsername)
+    
+    for (const key of keysToRemove) {
+      localStorage.removeItem(key)
+    }
+    
+    console.log(`🔐 Cleared ${keysToRemove.length} signal data items for ${this.currentUsername}`)
   }
 }
 
-// Singleton instance
 export const signalStore = new SignalStore()
