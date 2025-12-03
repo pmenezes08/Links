@@ -846,4 +846,61 @@ def register_signal_endpoints(app, get_db_connection, logger):
             logger.error(f"Signal debug message error: {str(e)}")
             return jsonify({'success': False, 'error': str(e)}), 500
 
+    @app.route('/api/signal/force-init', methods=['POST'])
+    @login_required
+    def force_init_signal():
+        """
+        Debug endpoint to manually trigger Signal Protocol initialization check.
+        Returns whether the user has devices and what the initialization status is.
+        """
+        try:
+            username = session.get('username')
+            
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                
+                # Check if user has any devices
+                c.execute("""
+                    SELECT device_id, device_name, created_at, registration_id
+                    FROM user_devices
+                    WHERE username = ?
+                    ORDER BY created_at DESC
+                """, (username,))
+                
+                devices = c.fetchall()
+                
+                device_list = []
+                for row in devices:
+                    if isinstance(row, dict):
+                        device_list.append({
+                            'deviceId': row['device_id'],
+                            'deviceName': row['device_name'],
+                            'createdAt': row['created_at'],
+                        })
+                    else:
+                        device_list.append({
+                            'deviceId': row[0],
+                            'deviceName': row[1],
+                            'createdAt': row[2],
+                        })
+                
+                return jsonify({
+                    'success': True,
+                    'username': username,
+                    'hasDevices': len(devices) > 0,
+                    'deviceCount': len(devices),
+                    'devices': device_list,
+                    'message': 'User has devices registered' if devices else 'No devices registered. Client-side Signal init may have failed - check browser console for errors.',
+                    'troubleshooting': [
+                        'Check browser console for "🔐 Initializing Signal Protocol" message',
+                        'Look for any errors after that message',
+                        'Make sure IndexedDB is working (not in private/incognito mode)',
+                        'Try: localStorage.getItem("signal_device_id") in console',
+                    ]
+                })
+                
+        except Exception as e:
+            logger.error(f"Signal force-init check error: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+
     logger.info("✅ Signal Protocol endpoints registered")
