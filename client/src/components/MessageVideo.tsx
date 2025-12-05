@@ -9,6 +9,7 @@ interface MessageVideoProps {
 export default function MessageVideo({ src, className = '' }: MessageVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [showOverlay, setShowOverlay] = useState(true)
+  const [isLoading, setIsLoading] = useState(true)
   const isNative = Capacitor.isNativePlatform()
 
   const handlePlayClick = () => {
@@ -21,49 +22,31 @@ export default function MessageVideo({ src, className = '' }: MessageVideoProps)
   }
 
   return (
-    <div className={`relative rounded-xl overflow-hidden bg-black ${className}`}>
-      {/* Video element first - this determines the container size */}
+    <div className={`relative inline-block rounded-lg overflow-hidden ${className}`}>
+      {/* Video element */}
       <video
         ref={videoRef}
-        className="w-full block"
+        className="max-w-full max-h-64 rounded-lg"
         controls={!showOverlay}
         playsInline
         preload={isNative ? "auto" : "metadata"}
         src={src}
+        onLoadedData={() => setIsLoading(false)}
       />
       
-      {/* Play button overlay - only show when video dimensions are known */}
+      {/* Minimal play button overlay */}
       {showOverlay && (
         <div 
           onClick={handlePlayClick}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 10,
-            cursor: 'pointer',
-            backgroundColor: 'rgba(0,0,0,0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          className="absolute inset-0 flex items-center justify-center cursor-pointer bg-black/20"
         >
-          <div 
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: '50%',
-              backgroundColor: 'rgba(255,255,255,0.9)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            }}
-          >
-            <i className="fa-solid fa-play text-black text-xl" style={{ marginLeft: 4 }} />
-          </div>
+          {isLoading ? (
+            <div className="w-5 h-5 border-2 border-white/30 border-t-white/80 rounded-full animate-spin" />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+              <i className="fa-solid fa-play text-black text-sm ml-0.5" />
+            </div>
+          )}
         </div>
       )}
     </div>

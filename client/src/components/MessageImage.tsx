@@ -27,77 +27,40 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
 
   return (
     <div 
-      className={`relative rounded-xl overflow-hidden ${className}`}
-      style={{ minHeight: '120px' }}
+      className={`relative rounded-lg overflow-hidden inline-block ${className}`}
       onClick={onClick}
     >
-      {/* Loading skeleton */}
+      {/* Loading skeleton - minimal */}
       {loading && !error && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            {/* Animated loading bars */}
-            <div className="flex gap-1">
-              <div className="w-1 h-8 bg-white/20 rounded animate-pulse" style={{ animationDelay: '0ms' }}></div>
-              <div className="w-1 h-6 bg-white/20 rounded animate-pulse" style={{ animationDelay: '150ms' }}></div>
-              <div className="w-1 h-10 bg-white/20 rounded animate-pulse" style={{ animationDelay: '300ms' }}></div>
-              <div className="w-1 h-4 bg-white/20 rounded animate-pulse" style={{ animationDelay: '450ms' }}></div>
-              <div className="w-1 h-7 bg-white/20 rounded animate-pulse" style={{ animationDelay: '600ms' }}></div>
-            </div>
-            <div className="text-xs text-white/50">Loading photo...</div>
-          </div>
+        <div className="absolute inset-0 flex items-center justify-center bg-white/5 min-h-[80px] min-w-[80px]">
+          <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
         </div>
       )}
 
       {/* Error state */}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/5">
-          <div className="flex flex-col items-center gap-2 text-white/40">
-            <i className="fa-solid fa-image text-2xl"></i>
-            <div className="text-xs">Photo unavailable</div>
-            <button 
-              className="text-xs text-[#4db6ac] hover:text-[#45a99c] transition-colors"
-              onClick={(e) => {
-                e.stopPropagation()
-                setError(false)
-                setLoading(true)
-                // Force reload by adding timestamp
-                const img = new Image()
-                img.onload = handleLoad
-                img.onerror = handleError
-                img.src = src + '?t=' + Date.now()
-              }}
-            >
-              Retry
-            </button>
+        <div className="flex items-center justify-center bg-white/5 min-h-[80px] min-w-[80px] p-4">
+          <div className="flex flex-col items-center gap-1 text-white/40">
+            <i className="fa-solid fa-image text-lg"></i>
+            <div className="text-[10px]">Unavailable</div>
           </div>
         </div>
       )}
 
-      {/* Actual image */}
+      {/* Actual image - auto size based on content */}
       <img
         src={displaySrc}
         alt={alt}
-        className={`w-full h-full object-contain transition-all duration-500 ${
-          loading ? 'opacity-0 scale-105' : 'opacity-100 scale-100'
+        className={`max-w-full max-h-64 rounded-lg transition-opacity duration-300 ${
+          loading ? 'opacity-0' : 'opacity-100'
         }`}
         onLoad={handleLoad}
         onError={handleError}
         loading="lazy"
         style={{ 
           display: error ? 'none' : 'block',
-          transition: 'opacity 0.5s ease-in-out, transform 0.5s ease-in-out',
-          imageOrientation: 'from-image' as any,
         }}
       />
-
-      {/* Loading progress indicator */}
-      {loading && !error && (
-        <div className="absolute bottom-2 left-2 right-2">
-          <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-[#4db6ac] rounded-full animate-pulse"></div>
-          </div>
-        </div>
-      )}
 
       {isGif && isFrozen && (
         <div className="absolute top-2 left-2 px-2 py-1 rounded-full bg-black/65 text-[10px] tracking-[0.2em] text-white/80 uppercase">
