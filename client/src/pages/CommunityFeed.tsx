@@ -1237,17 +1237,27 @@ export default function CommunityFeed() {
       )}
       {activeStoryPointer && currentStory && (
         <div className="fixed inset-0 z-[120] bg-black/95">
-          {/* Close button - absolutely positioned at top right */}
-          <button
-            className="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 flex items-center justify-center z-[130]"
-            onClick={closeStoryViewer}
-            aria-label="Close story"
-          >
-            <i className="fa-solid fa-xmark text-lg" />
-          </button>
+          {/* Top bar with back and close buttons */}
+          <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-[130]">
+            <button
+              className="flex items-center gap-2 px-3 py-2 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20"
+              onClick={closeStoryViewer}
+              aria-label="Back to feed"
+            >
+              <i className="fa-solid fa-arrow-left" />
+              <span className="text-sm">Back</span>
+            </button>
+            <button
+              className="w-11 h-11 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 flex items-center justify-center"
+              onClick={closeStoryViewer}
+              aria-label="Close story"
+            >
+              <i className="fa-solid fa-xmark text-lg" />
+            </button>
+          </div>
           
           {/* Centered content container */}
-          <div className="absolute inset-0 flex items-center justify-center p-4 pt-16 pb-4">
+          <div className="absolute inset-0 flex items-center justify-center p-4 pt-20 pb-4">
             <div className="w-full max-w-md">
               {/* Progress bar */}
               <div className="flex gap-1 mb-3">
@@ -1280,17 +1290,37 @@ export default function CommunityFeed() {
               </div>
               
               {/* Video/Image content - centered */}
-              <div className="relative rounded-2xl border border-white/10 overflow-hidden bg-black/40">
+              <div className="relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center">
                 {currentStory.media_type === 'video' ? (
-                  <video
-                    key={currentStory.id}
-                    src={resolveStoryMediaSrc(currentStory)}
-                    className="w-full max-h-[50vh] object-contain"
-                    autoPlay
-                    playsInline
-                    muted
-                    controls
-                  />
+                  <>
+                    <video
+                      key={currentStory.id}
+                      src={resolveStoryMediaSrc(currentStory)}
+                      className="w-full max-h-[50vh] object-contain"
+                      autoPlay
+                      playsInline
+                      muted
+                      controls
+                      preload="auto"
+                      poster=""
+                      onLoadStart={(e) => {
+                        const container = e.currentTarget.parentElement;
+                        const loader = container?.querySelector('.video-loader');
+                        if (loader) (loader as HTMLElement).style.display = 'flex';
+                      }}
+                      onCanPlay={(e) => {
+                        const container = e.currentTarget.parentElement;
+                        const loader = container?.querySelector('.video-loader');
+                        if (loader) (loader as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                    <div className="video-loader absolute inset-0 flex items-center justify-center bg-black/60">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="w-8 h-8 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
+                        <span className="text-xs text-white/60">Loading video...</span>
+                      </div>
+                    </div>
+                  </>
                 ) : (
                   <img
                     src={resolveStoryMediaSrc(currentStory)}
