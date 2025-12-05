@@ -42,6 +42,21 @@ function normalizeTimestamp(raw?: string): string | undefined {
   return `${trimmed.replace(' ', 'T')}Z`
 }
 
+// Helper to normalize media paths - handles CDN URLs, blob URLs, and local paths
+function normalizeMediaPath(path?: string | null): string {
+  if (!path) return ''
+  // Already a full URL (CDN or blob)
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
+    return path
+  }
+  // Already has /uploads/ prefix
+  if (path.startsWith('/uploads/') || path.startsWith('/static/')) {
+    return path
+  }
+  // Add /uploads/ prefix for relative paths
+  return `/uploads/${path}`
+}
+
 function parseMessageTime(raw?: string): Date | null {
   const normalized = normalizeTimestamp(raw)
   if (!normalized) return null
@@ -2326,18 +2341,18 @@ export default function ChatThread(){
                       {m.audio_path && !m.image_path ? (
                         <AudioMessage
                           message={m}
-                          audioPath={m.audio_path.startsWith('blob:') ? m.audio_path : `/uploads/${m.audio_path}`}
+                          audioPath={normalizeMediaPath(m.audio_path)}
                         />
                       ) : null}
                       {/* Image display with loader */}
                       {m.image_path ? (
                         <div className="mb-1.5">
                           <MessageImage
-                            src={`/uploads/${m.image_path}`}
+                            src={normalizeMediaPath(m.image_path)}
                             alt="Shared photo"
                             className="max-w-full max-h-64 cursor-pointer"
                             onClick={() => {
-                              setPreviewImage(`/uploads/${m.image_path}`)
+                              setPreviewImage(normalizeMediaPath(m.image_path))
                             }}
                           />
                         </div>
@@ -2346,7 +2361,7 @@ export default function ChatThread(){
                       {m.video_path ? (
                         <div className="mb-1.5" onClick={e => e.stopPropagation()}>
                           <MessageVideo
-                            src={m.video_path.startsWith('blob:') ? m.video_path : `/uploads/${m.video_path}`}
+                            src={normalizeMediaPath(m.video_path)}
                             className="max-h-64"
                           />
                         </div>
