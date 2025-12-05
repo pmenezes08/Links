@@ -33,6 +33,9 @@ import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalP
 const CHAT_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes (matches server Redis TTL)
 const CHAT_CACHE_VERSION = 'chat-v1'
 
+// Avoid hammering decrypt retries more than once every few seconds
+const DECRYPTION_RETRY_DELAY_MS = 4000
+
 type Message = ChatMessage
 
 export default function ChatThread(){
@@ -461,6 +464,7 @@ export default function ChatThread(){
     }) : m))
     // Clear decryption cache for this message so it doesn't use stale cached decryption
     decryptionCache.current.delete(editingId)
+    clearDecryptionFailure(editingId)
     try{
       const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
       const j = await res.json().catch(()=>null)
@@ -566,6 +570,7 @@ export default function ChatThread(){
   // Track messages that have been processed (don't decrypt multiple times)
   // Use a GLOBAL cache keyed by message ID that persists in localStorage
   const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(new Map())
+  const decryptionFailures = useRef<Map<number | string, { lastAttempt: number; errorText: string }>>(new Map())
   
   // Load cache from localStorage on mount
   useEffect(() => {
@@ -602,11 +607,24 @@ export default function ChatThread(){
     }
   }, [])
 
+  const recordDecryptionFailure = useCallback((messageId: number | string, errorText: string) => {
+    decryptionFailures.current.set(String(messageId), {
+      lastAttempt: Date.now(),
+      errorText,
+    })
+  }, [])
+
+  const clearDecryptionFailure = useCallback((messageId: number | string) => {
+    decryptionFailures.current.delete(String(messageId))
+  }, [])
+
   // Decrypt message if it's encrypted
   async function decryptMessageIfNeeded(message: any): Promise<any> {
     if (!message.is_encrypted) {
       return message
     }
+    
+    const cacheKeyString = String(message.id)
     
     // Check cache first - don't decrypt the same message multiple times!
     // Try both number and string keys for compatibility
@@ -615,6 +633,7 @@ export default function ChatThread(){
                    decryptionCache.current.get(Number(message.id))
     if (cached) {
       console.log('🔐 Using cached decryption for message:', message.id)
+      clearDecryptionFailure(cacheKeyString)
       return {
         ...message,
         text: cached.text,
@@ -622,9 +641,35 @@ export default function ChatThread(){
       }
     }
     
+    const failureInfo = decryptionFailures.current.get(cacheKeyString)
+    if (failureInfo) {
+      const timeSinceFailure = Date.now() - failureInfo.lastAttempt
+      if (timeSinceFailure < DECRYPTION_RETRY_DELAY_MS) {
+        return {
+          ...message,
+          text: failureInfo.errorText,
+          decryption_error: true,
+        }
+      } else {
+        // Allow retry after delay by removing stale entry
+        decryptionFailures.current.delete(cacheKeyString)
+      }
+    }
+    
     // Check if this is a Signal Protocol message
-    if (message.signal_protocol && signalService.isInitialized()) {
-      return await decryptSignalMessage(message)
+    if (message.signal_protocol) {
+      if (!signalService.isInitialized()) {
+        const pendingText = '[🔒 Setting up secure session…]'
+        recordDecryptionFailure(cacheKeyString, pendingText)
+        return {
+          ...message,
+          text: pendingText,
+          decryption_error: true,
+        }
+      }
+      const decryptedSignal = await decryptSignalMessage(message)
+      clearDecryptionFailure(cacheKeyString)
+      return decryptedSignal
     }
     
     // Legacy/fallback: simple encryption
@@ -665,6 +710,7 @@ export default function ChatThread(){
       // Cache the decrypted text and persist to localStorage
       decryptionCache.current.set(message.id, { text: decryptedText, error: false })
       saveDecryptionCache()
+      clearDecryptionFailure(cacheKeyString)
       
       return {
         ...message,
@@ -673,13 +719,11 @@ export default function ChatThread(){
       }
     } catch (error) {
       console.error('🔐 ❌ Failed to decrypt message:', message.id, error)
-      
-      // Cache the failure (don't persist errors to localStorage)
-      decryptionCache.current.set(message.id, { text: '[🔒 Encrypted - decryption failed]', error: true })
-      
+      const failureText = '[🔒 Encrypted - decryption failed]'
+      recordDecryptionFailure(cacheKeyString, failureText)
       return {
         ...message,
-        text: '[🔒 Encrypted - decryption failed]',
+        text: failureText,
         decryption_error: true,
       }
     }
@@ -693,6 +737,7 @@ export default function ChatThread(){
     if (message.sent) {
       const cached = decryptionCache.current.get(message.id)
       if (cached && !cached.error) {
+        clearDecryptionFailure(String(message.id))
         return {
           ...message,
           text: cached.text,
@@ -760,6 +805,7 @@ export default function ChatThread(){
       // Cache the decrypted text and persist to localStorage
       decryptionCache.current.set(message.id, { text: result.plaintext, error: false })
       saveDecryptionCache()
+      clearDecryptionFailure(String(message.id))
       
       return {
         ...message,
@@ -770,9 +816,8 @@ export default function ChatThread(){
       const errorMsg = error instanceof Error ? error.message : String(error)
       console.error('🔐 ❌ Signal decryption failed for message:', message.id, 'Error:', errorMsg, error)
       
-      // Cache the failure (don't persist errors to localStorage)
       const displayError = `[🔒 Decryption failed: ${errorMsg.slice(0, 50)}]`
-      decryptionCache.current.set(message.id, { text: displayError, error: true })
+      recordDecryptionFailure(String(message.id), displayError)
       
       return {
         ...message,
