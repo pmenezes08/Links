@@ -35,12 +35,17 @@ function normalizeTimestamp(raw?: string): string | undefined {
   if (!raw) return undefined
   const trimmed = raw.trim()
   if (!trimmed) return undefined
-  const hasOffset = /[zZ]|([+-]\d{2}:\d{2})$/.test(trimmed)
-  if (trimmed.includes('T')) {
-    return hasOffset ? trimmed : `${trimmed}Z`
-  }
-  const isoLike = trimmed.replace(' ', 'T')
-  return hasOffset ? isoLike : `${isoLike}Z`
+
+  // Always treat server timestamps as UTC wall-clock times.
+  // Some responses include inconsistent offsets (e.g., same clock time with +00:00 vs +08:00),
+  // which causes flickering when interpreted literally. Strip any suffix and re-append Z.
+  const withoutOffset = trimmed.replace(/([+-]\d{2}:\d{2}|Z)$/i, '')
+
+  const base = withoutOffset.includes('T')
+    ? withoutOffset
+    : withoutOffset.replace(' ', 'T')
+
+  return `${base}Z`
 }
 
 function parseMessageTime(raw?: string): Date | null {
