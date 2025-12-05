@@ -24,7 +24,6 @@ type Post = { id: number; username: string; content: string; image_path?: string
 type CommunityStory = {
   id: number
   community_id: number
-  user_id: number
   username: string
   display_name?: string | null
   profile_picture?: string | null
@@ -34,6 +33,7 @@ type CommunityStory = {
   expires_at: string
   duration_seconds?: number | null
   has_viewed?: boolean
+  view_count?: number | null
 }
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
@@ -61,6 +61,11 @@ export default function CommunityFeed() {
   const routerLocation = useLocation()
   const deviceFeedCacheKey = useMemo(() => (community_id ? `community-feed:${community_id}` : null), [community_id])
   const [data, setData] = useState<any>(null)
+  const resolvedCommunityId = useMemo(() => {
+    if (community_id) return community_id
+    const maybeId = data?.community?.id
+    return maybeId ? String(maybeId) : null
+  }, [community_id, data?.community?.id])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
@@ -81,7 +86,11 @@ export default function CommunityFeed() {
   const [previewImageSrc, setPreviewImageSrc] = useState<string|null>(null)
   const [stories, setStories] = useState<CommunityStory[]>([])
   const [storiesLoading, setStoriesLoading] = useState(false)
+  const [storyUploading, setStoryUploading] = useState(false)
+  const [activeStoryIndex, setActiveStoryIndex] = useState<number | null>(null)
   const storiesCacheKey = useMemo(() => COMMUNITY_STORIES_CACHE_KEY(community_id ?? undefined), [community_id])
+  const storyFileInputRef = useRef<HTMLInputElement|null>(null)
+  const viewedStoriesRef = useRef<Set<number>>(new Set())
   // Voters modal state
   const [viewingVotersPollId, setViewingVotersPollId] = useState<number|null>(null)
   const [votersLoading, setVotersLoading] = useState(false)
@@ -118,6 +127,44 @@ export default function CommunityFeed() {
       return ''
     }
   }
+
+  const updateStoriesState = useCallback((updater: (prev: CommunityStory[]) => CommunityStory[]) => {
+    setStories((prev) => {
+      const next = updater(prev)
+      if (storiesCacheKey) {
+        try {
+          writeDeviceCache(storiesCacheKey, { stories: next }, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_STORIES_CACHE_VERSION)
+        } catch {}
+      }
+      return next
+    })
+  }, [storiesCacheKey])
+
+  const hydrateStoriesFromCache = useCallback(() => {
+    if (!storiesCacheKey) return
+    try {
+      const cached = readDeviceCache<{ stories?: CommunityStory[] }>(storiesCacheKey, COMMUNITY_STORIES_CACHE_VERSION)
+      if (Array.isArray(cached?.stories) && cached.stories.length) {
+        setStories(cached.stories)
+      }
+    } catch {}
+  }, [storiesCacheKey])
+
+  const fetchStories = useCallback(async () => {
+    if (!resolvedCommunityId) return
+    setStoriesLoading(true)
+    try {
+      const res = await fetch(`/api/community_stories?community_id=${resolvedCommunityId}`, { credentials: 'include' })
+      const json = await res.json().catch(() => null)
+      if (json?.success && Array.isArray(json.stories)) {
+        updateStoriesState(() => json.stories as CommunityStory[])
+      }
+    } catch {
+      // ignore fetch errors to avoid spamming alerts
+    } finally {
+      setStoriesLoading(false)
+    }
+  }, [resolvedCommunityId, updateStoriesState])
   
   const markPostViewed = useCallback(async (postId: number, alreadyViewed?: boolean) => {
     if (!postId) return
@@ -157,6 +204,122 @@ export default function CommunityFeed() {
       recordedViewsRef.current.delete(postId)
     }
   }, [])
+
+  const getVideoDuration = useCallback((file: File) => {
+    return new Promise<number | null>((resolve) => {
+      try {
+        const url = URL.createObjectURL(file)
+        const video = document.createElement('video')
+        video.preload = 'metadata'
+        video.onloadedmetadata = () => {
+          try { URL.revokeObjectURL(url) } catch {}
+          resolve(Number.isFinite(video.duration) ? video.duration : null)
+        }
+        video.onerror = () => {
+          try { URL.revokeObjectURL(url) } catch {}
+          resolve(null)
+        }
+        video.src = url
+      } catch {
+        resolve(null)
+      }
+    })
+  }, [])
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const uploadStory = useCallback(async (file: File) => {
+    const targetCommunityId = resolvedCommunityId
+    if (!targetCommunityId) {
+      alert('Community not found')
+      return
+    }
+    if (storyUploading) return
+    setStoryUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('community_id', String(targetCommunityId))
+      fd.append('video', file)
+      const duration = await getVideoDuration(file)
+      if (duration && Number.isFinite(duration)) {
+        fd.append('duration_seconds', String(Math.round(duration)))
+      }
+      const res = await fetch('/api/community_stories', { method: 'POST', credentials: 'include', body: fd })
+      const json = await res.json().catch(() => null)
+      if (json?.success && json.story) {
+        updateStoriesState((prev) => {
+          const trimmed = prev.filter((story) => story.id !== json.story.id)
+          return [json.story as CommunityStory, ...trimmed]
+        })
+        viewedStoriesRef.current.add(json.story.id)
+        setActiveStoryIndex(0)
+      } else {
+        alert(json?.error || 'Failed to upload story')
+      }
+    } catch {
+      alert('Failed to upload story')
+    } finally {
+      setStoryUploading(false)
+    }
+  }, [getVideoDuration, resolvedCommunityId, storyUploading, updateStoriesState])
+
+  const openStoryPicker = useCallback(() => {
+    storyFileInputRef.current?.click()
+  }, [])
+
+  const markStoryViewed = useCallback(async (storyId: number) => {
+    if (!storyId) return
+    const alreadyMarked = viewedStoriesRef.current.has(storyId)
+    if (!alreadyMarked) {
+      viewedStoriesRef.current.add(storyId)
+      updateStoriesState((prev) =>
+        prev.map((story) =>
+          story.id === storyId
+            ? { ...story, has_viewed: true, view_count: (story.view_count || 0) + (story.has_viewed ? 0 : 1) }
+            : story
+        )
+      )
+    }
+    try {
+      const res = await fetch(`/api/community_stories/${storyId}/view`, { method: 'POST', credentials: 'include' })
+      const json = await res.json().catch(() => null)
+      if (json?.success && typeof json.view_count === 'number') {
+        updateStoriesState((prev) =>
+          prev.map((story) =>
+            story.id === storyId ? { ...story, has_viewed: true, view_count: json.view_count } : story
+          )
+        )
+      } else if (!json?.success) {
+        viewedStoriesRef.current.delete(storyId)
+      }
+    } catch {
+      viewedStoriesRef.current.delete(storyId)
+    }
+  }, [updateStoriesState])
+
+  const handleStorySelect = useCallback((idx: number) => {
+    if (idx < 0 || idx >= stories.length) return
+    setActiveStoryIndex(idx)
+  }, [stories.length])
+
+  const closeStoryViewer = useCallback(() => setActiveStoryIndex(null), [])
+
+  const goToNextStory = useCallback(() => {
+    setActiveStoryIndex((prev) => {
+      if (prev == null) return prev
+      const next = prev + 1
+      return next < stories.length ? next : null
+    })
+  }, [stories.length])
+
+  const goToPrevStory = useCallback(() => {
+    setActiveStoryIndex((prev) => {
+      if (prev == null) return prev
+      const next = prev - 1
+      return next >= 0 ? next : prev
+    })
+  }, [])
+
+  const viewingStory = activeStoryIndex != null ? stories[activeStoryIndex] : null
   
   // Check if we should highlight from onboarding
   const [highlightStep, setHighlightStep] = useState<'reaction' | 'post' | null>(null)
@@ -322,6 +485,40 @@ export default function CommunityFeed() {
     if (!data?.success) return
     writeDeviceCache(deviceFeedCacheKey, data, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_FEED_CACHE_VERSION)
   }, [data, deviceFeedCacheKey])
+
+  useEffect(() => {
+    hydrateStoriesFromCache()
+  }, [hydrateStoriesFromCache])
+
+  useEffect(() => {
+    fetchStories()
+  }, [fetchStories])
+
+  useEffect(() => {
+    if (!resolvedCommunityId) return
+    const intervalId = window.setInterval(() => {
+      fetchStories()
+    }, STORIES_REFRESH_INTERVAL_MS)
+    return () => window.clearInterval(intervalId)
+  }, [resolvedCommunityId, fetchStories])
+
+  useEffect(() => {
+    if (activeStoryIndex == null) return
+    if (!stories.length) {
+      setActiveStoryIndex(null)
+      return
+    }
+    if (activeStoryIndex > stories.length - 1) {
+      setActiveStoryIndex(stories.length ? stories.length - 1 : null)
+    }
+  }, [activeStoryIndex, stories.length])
+
+  useEffect(() => {
+    if (activeStoryIndex == null) return
+    const story = stories[activeStoryIndex]
+    if (!story) return
+    markStoryViewed(story.id)
+  }, [activeStoryIndex, stories, markStoryViewed])
 
   // Ads removed
 
@@ -841,6 +1038,17 @@ export default function CommunityFeed() {
             </div>
           ) : null}
 
+          {(stories.length > 0 || data?.username) && (
+            <StoriesCarousel
+              stories={stories}
+              loading={storiesLoading}
+              uploading={storyUploading}
+              currentUser={data?.username}
+              onSelect={handleStorySelect}
+              onAddStory={data?.username ? openStoryPicker : undefined}
+            />
+          )}
+
             {/* Feed items */}
             {postsOnly.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 px-4">
@@ -1053,6 +1261,54 @@ export default function CommunityFeed() {
               >
                 Skip for now
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewingStory && (
+        <div className="fixed inset-0 z-[130] bg-black/90 backdrop-blur-lg flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-3">
+              <Avatar username={viewingStory.username} url={viewingStory.profile_picture || undefined} size={40} />
+              <div>
+                <div className="font-semibold text-sm">{viewingStory.display_name || viewingStory.username}</div>
+                <div className="text-xs text-white/60">{formatSmartTime(viewingStory.created_at)}</div>
+              </div>
+            </div>
+            <button className="w-9 h-9 rounded-full border border-white/20 text-white/80 hover:bg-white/10" onClick={closeStoryViewer} aria-label="Close story viewer">
+              <i className="fa-solid fa-xmark" />
+            </button>
+          </div>
+          <div className="flex-1 flex flex-col items-center justify-center px-4 pb-6">
+            <video
+              key={viewingStory.id}
+              src={normalizeMediaPath(viewingStory.video_path)}
+              className="w-full max-w-md max-h-[70vh] rounded-2xl border border-white/10 bg-black object-contain shadow-2xl"
+              controls
+              autoPlay
+              playsInline
+              onEnded={goToNextStory}
+            />
+            <div className="mt-4 w-full max-w-md flex items-center justify-between text-sm text-white/70">
+              <span>{typeof viewingStory.view_count === 'number' && viewingStory.view_count >= 0 ? `${viewingStory.view_count} view${viewingStory.view_count === 1 ? '' : 's'}` : ''}</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-full border border-white/20 text-white/80 hover:bg-white/10 disabled:opacity-40"
+                  onClick={goToPrevStory}
+                  disabled={activeStoryIndex === 0}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-full bg-[#4db6ac] text-black font-semibold hover:brightness-110"
+                  onClick={goToNextStory}
+                >
+                  {activeStoryIndex !== null && activeStoryIndex >= stories.length - 1 ? 'Close' : 'Next'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2065,6 +2321,19 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           </div>
         </div>
       )}
+
+      <input
+        type="file"
+        ref={storyFileInputRef}
+        accept="video/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (!file) return
+          void uploadStory(file)
+          event.target.value = ''
+        }}
+      />
     </div>
   )
 }
