@@ -24,6 +24,7 @@ try:
     from backend.services.r2_storage import (
         R2_ENABLED,
         R2_PUBLIC_URL,
+        upload_to_r2,
         upload_file_to_r2,
         get_r2_public_url,
         is_r2_url,
@@ -31,6 +32,7 @@ try:
 except ImportError:
     R2_ENABLED = False
     R2_PUBLIC_URL = None
+    upload_to_r2 = None
     upload_file_to_r2 = None
     get_r2_public_url = None
     is_r2_url = None
@@ -123,7 +125,7 @@ def _uploads_root() -> str:
 
 def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions: Optional[Iterable[str]] = None):
     """
-    Persist an uploaded file - tries R2 CDN first, falls back to local storage.
+    Persist an uploaded file - saves locally, optimizes, then uploads to R2 CDN.
     
     Returns a path/URL string:
     - If R2 succeeds: returns the CDN URL (https://...)
@@ -147,18 +149,7 @@ def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions
         r2_key = unique_filename
         return_path = f"uploads/{unique_filename}"
 
-    # Try R2 upload first (for CDN delivery)
-    r2_url = None
-    if R2_ENABLED and upload_file_to_r2:
-        try:
-            success, r2_url = upload_file_to_r2(file, r2_key)
-            if success and r2_url:
-                logger.info(f"File uploaded to R2 CDN: {r2_url}")
-        except Exception as e:
-            logger.warning(f"R2 upload failed, falling back to local: {e}")
-            r2_url = None
-
-    # Always save locally as backup (and for R2 fallback)
+    # Step 1: Save locally FIRST
     upload_root = _uploads_root()
     if subfolder:
         upload_path = os.path.join(upload_root, subfolder)
@@ -168,16 +159,28 @@ def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions
         os.makedirs(upload_root, exist_ok=True)
         filepath = os.path.join(upload_root, unique_filename)
 
-    file.seek(0)  # Reset file pointer after R2 upload
     file.save(filepath)
     
-    # Optimize images
+    # Step 2: Optimize images (includes EXIF rotation fix for iOS)
     try:
         file_ext = (os.path.splitext(filename)[1] or "").lower().lstrip(".")
         if file_ext in {"png", "jpg", "jpeg", "gif", "webp"}:
             optimize_image(filepath, max_width=1280, quality=80)
     except Exception:
         pass
+
+    # Step 3: Upload OPTIMIZED file to R2 (after EXIF fix)
+    r2_url = None
+    if R2_ENABLED and upload_to_r2:
+        try:
+            with open(filepath, 'rb') as f:
+                file_data = f.read()
+            success, r2_url = upload_to_r2(file_data, r2_key)
+            if success and r2_url:
+                logger.info(f"Optimized file uploaded to R2 CDN: {r2_url}")
+        except Exception as e:
+            logger.warning(f"R2 upload failed, using local path: {e}")
+            r2_url = None
 
     # Return R2 URL if available, otherwise local path
     return r2_url if r2_url else return_path
