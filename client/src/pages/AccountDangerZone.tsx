@@ -49,7 +49,7 @@ export default function AccountDangerZone() {
         setFeedback({ type: 'error', text: json?.error || 'Failed to delete account' })
         setLoading(false)
       }
-    } catch (err) {
+    } catch {
       setFeedback({ type: 'error', text: 'Network error. Please try again.' })
       setLoading(false)
     }

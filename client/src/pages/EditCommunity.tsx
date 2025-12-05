@@ -101,7 +101,7 @@ export default function EditCommunity(){
       } else {
         alert(j?.error || 'Failed to delete community')
       }
-    } catch (error) {
+    } catch {
       alert('Failed to delete community')
     }
   }

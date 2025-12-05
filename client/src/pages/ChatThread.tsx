@@ -20,6 +20,7 @@ import MessageImage from '../components/MessageImage'
 import MessageVideo from '../components/MessageVideo'
 import ZoomableImage from '../components/ZoomableImage'
 import { encryptionService } from '../services/simpleEncryption'
+import { signalService, signalStore } from '../services/signalProtocol'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -28,9 +29,131 @@ import { sendImageMessage, sendVideoMessage } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
 import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
 
+type MessageMeta = { reaction?: string; replySnippet?: string }
+
+function normalizeTimestamp(raw?: string): string | undefined {
+  if (!raw) return undefined
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
+  const hasOffset = /([+-]\d{2}:\d{2}|Z)$/i.test(trimmed)
+  if (trimmed.includes('T')) {
+    return hasOffset ? trimmed : `${trimmed}Z`
+  }
+  return `${trimmed.replace(' ', 'T')}Z`
+}
+
+function parseMessageTime(raw?: string): Date | null {
+  const normalized = normalizeTimestamp(raw)
+  if (!normalized) return null
+  const parsed = new Date(normalized)
+  return isNaN(parsed.getTime()) ? null : parsed
+}
+
+function ensureNormalizedTime(raw?: string): string {
+  const parsed = parseMessageTime(raw)
+  if (parsed) return parsed.toISOString()
+  if (raw) {
+    const normalized = normalizeTimestamp(raw)
+    if (normalized) {
+      const reparsed = new Date(normalized)
+      if (!isNaN(reparsed.getTime())) return reparsed.toISOString()
+    }
+  }
+  return new Date().toISOString()
+}
+
+function getMessageTimestamp(raw?: string): number | null {
+  const parsed = parseMessageTime(raw)
+  return parsed ? parsed.getTime() : null
+}
+
+function buildMetaKeys(time: string | undefined, messageText: string, sent: boolean) {
+  const suffix = `|${messageText}|${sent ? 'me' : 'other'}`
+  const normalized = parseMessageTime(time)?.toISOString()
+  return {
+    normalizedKey: normalized ? `${normalized}${suffix}` : null,
+    legacyKey: time ? `${time}${suffix}` : null,
+  }
+}
+
+function readMessageMeta(store: Record<string, MessageMeta>, time: string | undefined, messageText: string, sent: boolean): MessageMeta {
+  const { normalizedKey, legacyKey } = buildMetaKeys(time, messageText, sent)
+  return (normalizedKey && store[normalizedKey]) || (legacyKey && store[legacyKey]) || {}
+}
+
+function writeMessageMeta(store: Record<string, MessageMeta>, time: string | undefined, messageText: string, sent: boolean, updates: MessageMeta) {
+  const { normalizedKey, legacyKey } = buildMetaKeys(time, messageText, sent)
+  if (normalizedKey) {
+    store[normalizedKey] = { ...(store[normalizedKey] || {}), ...updates }
+  }
+  if (legacyKey && legacyKey !== normalizedKey) {
+    store[legacyKey] = { ...(store[legacyKey] || {}), ...updates }
+  }
+}
+
+function safeLocalStorageGet(key: string): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+const safeLocalStorageGet = (key: string): string | null => {
+  if (typeof window === 'undefined') return null
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function formatDateLabel(dateStr: string): string {
+  const messageDate = parseMessageTime(dateStr)
+  if (!messageDate) return ''
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+
+  const msgDateOnly = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate())
+  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
+
+  if (msgDateOnly.getTime() === todayOnly.getTime()) {
+    return 'Today'
+  } else if (msgDateOnly.getTime() === yesterdayOnly.getTime()) {
+    return 'Yesterday'
+  } else {
+    const daysDiff = Math.floor((todayOnly.getTime() - msgDateOnly.getTime()) / (1000 * 60 * 60 * 24))
+    if (daysDiff <= 6) {
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+      return days[messageDate.getDay()]
+    } else {
+      return messageDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    }
+  }
+}
+
+function getDateKey(dateStr: string): string {
+  const parsed = parseMessageTime(dateStr)
+  return parsed ? parsed.toDateString() : dateStr
+}
+
+function formatMessageTime(dateStr: string): string {
+  const parsed = parseMessageTime(dateStr)
+  if (!parsed) return ''
+  return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 // Cache settings for chat messages
 const CHAT_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes (matches server Redis TTL)
 const CHAT_CACHE_VERSION = 'chat-v1'
+
+// Avoid hammering decrypt retries more than once every few seconds
+const DECRYPTION_RETRY_DELAY_MS = 4000
+const SIGNAL_PENDING_TEXT = '[🔒 Setting up secure session…]'
+const MAX_SIGNAL_RETRIES = 2
 
 type Message = ChatMessage
 
@@ -62,6 +185,10 @@ export default function ChatThread(){
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string; sender?:string }|null>(null)
   const [sending, setSending] = useState(false)
+  // Check if encryption keys need to be synced from another device
+  const [encryptionNeedsSync] = useState(() => 
+    localStorage.getItem('encryption_needs_sync') === 'true'
+  )
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
   const storageKey = useMemo(() => `chat_meta_${username || ''}`, [username])
@@ -98,6 +225,75 @@ export default function ChatThread(){
   const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
+  const initialUsername =
+    typeof window !== 'undefined' ? safeLocalStorageGet('current_username') : null
+  const currentUserRef = useRef<string | null>(initialUsername)
+  const userFetchPromiseRef = useRef<Promise<string | null> | null>(null)
+  const signalInitPromiseRef = useRef<Promise<boolean> | null>(null)
+  const fetchCurrentUsername = useCallback(async (): Promise<string | null> => {
+    if (currentUserRef.current) return currentUserRef.current
+    const cached = safeLocalStorageGet('current_username')
+    if (cached) {
+      currentUserRef.current = cached
+      return cached
+    }
+    if (!userFetchPromiseRef.current) {
+      userFetchPromiseRef.current = fetch('/api/profile_me', { credentials: 'include' })
+        .then(async (res) => {
+          if (!res.ok) return null
+          const data = await res.json().catch(() => null)
+          return data?.profile?.username || data?.username || null
+        })
+        .then((name) => {
+          if (name && typeof window !== 'undefined') {
+            localStorage.setItem('current_username', name)
+          }
+          currentUserRef.current = name
+          userFetchPromiseRef.current = null
+          return name
+        })
+        .catch((err) => {
+          console.error('Failed to fetch current username', err)
+          userFetchPromiseRef.current = null
+          return null
+        })
+    }
+    return userFetchPromiseRef.current
+  }, [])
+
+  const ensureSignalInitialized = useCallback(async (): Promise<boolean> => {
+    if (signalService.isInitialized() && signalService.getDeviceId()) {
+      return true
+    }
+    if (signalInitPromiseRef.current) {
+      return signalInitPromiseRef.current
+    }
+    signalInitPromiseRef.current = (async () => {
+      const existingUser = signalService.getUsername()
+      const username = existingUser || (await fetchCurrentUsername())
+      if (!username) {
+        console.warn('🔐 Unable to initialize Signal: missing username')
+        return false
+      }
+      try {
+        const { deviceId } = await signalService.init(username)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('signal_device_id', String(deviceId))
+          localStorage.setItem('current_username', username)
+        }
+        currentUserRef.current = username
+        setSignalReadyTick((t) => t + 1)
+        return true
+      } catch (err) {
+        console.error('🔐 ensureSignalInitialized failed:', err)
+        return false
+      } finally {
+        signalInitPromiseRef.current = null
+      }
+    })()
+    const result = await signalInitPromiseRef.current
+    return result
+  }, [fetchCurrentUsername])
 
   // Auto-scroll logic - declared early so it can be used in useEffects
   const lastCountRef = useRef(0)
@@ -127,6 +323,20 @@ export default function ChatThread(){
     setTimeout(doScroll, 100)
     setTimeout(doScroll, 200)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const attempt = async () => {
+      const ready = await ensureSignalInitialized()
+      if (!ready && !cancelled) {
+        setTimeout(attempt, 2000)
+      }
+    }
+    attempt()
+    return () => {
+      cancelled = true
+    }
+  }, [ensureSignalInitialized])
   
 
   useEffect(() => {
@@ -194,6 +404,19 @@ export default function ChatThread(){
       observer.disconnect()
     }
   }, [])
+
+  useEffect(() => {
+    if (!signalReadyTick) return
+    retryFailedDecrypts()
+  }, [signalReadyTick, retryFailedDecrypts])
+
+  useEffect(() => {
+    if (!messages.some(shouldRetryDecryption)) return
+    const timer = setTimeout(() => {
+      retryFailedDecrypts()
+    }, DECRYPTION_RETRY_DELAY_MS + 200)
+    return () => clearTimeout(timer)
+  }, [messages, retryFailedDecrypts, shouldRetryDecryption])
   
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
@@ -398,46 +621,6 @@ export default function ChatThread(){
     return () => window.removeEventListener('resize', handleResize)
   }, [scrollToBottom])
   
-  // Date formatting functions
-  function formatDateLabel(dateStr: string): string {
-    const messageDate = new Date(dateStr)
-    const today = new Date()
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-    
-    const msgDateOnly = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate())
-    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-    const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
-    
-    if (msgDateOnly.getTime() === todayOnly.getTime()) {
-      return 'Today'
-    } else if (msgDateOnly.getTime() === yesterdayOnly.getTime()) {
-      return 'Yesterday'
-    } else {
-      const daysDiff = Math.floor((todayOnly.getTime() - msgDateOnly.getTime()) / (1000 * 60 * 60 * 24))
-      if (daysDiff <= 6) {
-        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-        return days[messageDate.getDay()]
-      } else {
-        return messageDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      }
-    }
-  }
-
-  function getDateKey(dateStr: string): string {
-    return new Date(dateStr).toDateString()
-  }
-
-  function parseMessageTime(s: string | undefined): Date | null {
-    if (!s) return null
-    try {
-      // Normalize "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SS"
-      const norm = s.includes('T') ? s : s.replace(' ', 'T')
-      const d = new Date(norm)
-      return isNaN(d.getTime()) ? null : d
-    } catch { return null }
-  }
-
   async function commitEdit(){
     if (!editingId) return
     const newBody = editText.trim()
@@ -456,6 +639,7 @@ export default function ChatThread(){
     }) : m))
     // Clear decryption cache for this message so it doesn't use stale cached decryption
     decryptionCache.current.delete(editingId)
+    clearDecryptionFailure(editingId)
     try{
       const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
       const j = await res.json().catch(()=>null)
@@ -559,17 +743,251 @@ export default function ChatThread(){
   }
 
   // Track messages that have been processed (don't decrypt multiple times)
+  // Use a GLOBAL cache keyed by message ID that persists in localStorage
   const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(new Map())
+  const decryptionFailures = useRef<Map<number | string, { lastAttempt: number; errorText: string; permanent?: boolean }>>(new Map())
+  const messagesRef = useRef<Message[]>([])
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+  const [signalReadyTick, setSignalReadyTick] = useState(0)
+  
+  // Load cache from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('signal_decrypted_messages')
+      if (stored) {
+        const parsed = JSON.parse(stored) as Record<string, { text: string; error: boolean }>
+        Object.entries(parsed).forEach(([key, value]) => {
+          // Store with BOTH string and number keys for compatibility
+          decryptionCache.current.set(key, value)
+          decryptionCache.current.set(Number(key), value)
+        })
+        console.log('🔐 Loaded', Object.keys(parsed).length, 'cached decrypted messages')
+      }
+    } catch (e) {
+      console.warn('Failed to load decryption cache:', e)
+    }
+  }, [])
+  
+  // Save cache to localStorage
+  const saveDecryptionCache = useCallback(() => {
+    try {
+      const obj: Record<string, { text: string; error: boolean }> = {}
+      decryptionCache.current.forEach((value, key) => {
+        // Only cache successful decryptions, not errors
+        if (!value.error) {
+          obj[String(key)] = value
+        }
+      })
+      localStorage.setItem('signal_decrypted_messages', JSON.stringify(obj))
+      console.log('🔐 Saved', Object.keys(obj).length, 'decrypted messages to cache')
+    } catch (e) {
+      console.warn('Failed to save decryption cache:', e)
+    }
+  }, [])
+
+  const recordDecryptionFailure = useCallback((messageId: number | string, errorText: string, permanent = false) => {
+    decryptionFailures.current.set(String(messageId), {
+      lastAttempt: Date.now(),
+      errorText,
+      permanent,
+    })
+  }, [])
+
+  const clearDecryptionFailure = useCallback((messageId: number | string) => {
+    decryptionFailures.current.delete(String(messageId))
+  }, [])
+
+  const shouldRetryDecryption = useCallback((message: Message) => {
+    if (!message) return false
+    const failure = decryptionFailures.current.get(String(message.id))
+    if (failure?.permanent) return false
+    return Boolean(message.decryption_error) || message.text === SIGNAL_PENDING_TEXT
+  }, [])
+
+  const retryFailedDecrypts = useCallback(async () => {
+    const candidates = messagesRef.current.filter(shouldRetryDecryption)
+    if (!candidates.length) return
+
+    const unique = new Map<number | string, Message>()
+    candidates.forEach(msg => unique.set(msg.id, msg))
+
+    unique.forEach((_, id) => decryptionFailures.current.delete(String(id)))
+
+    const refreshed = await Promise.all(
+      Array.from(unique.values()).map(async (msg) => {
+        try {
+          const updated = await decryptMessageIfNeeded(msg)
+          return { id: msg.id, updated }
+        } catch (err) {
+          console.error('🔐 Retry decrypt failed for', msg.id, err)
+          return null
+        }
+      })
+    )
+
+    const updateMap = new Map<number | string, Message>()
+    refreshed.forEach(entry => {
+      if (entry?.updated) {
+        updateMap.set(entry.id, entry.updated)
+      }
+    })
+    if (!updateMap.size) return
+
+    setMessages(prev =>
+      prev.map(m => (updateMap.has(m.id) ? updateMap.get(m.id)! : m))
+    )
+  }, [decryptMessageIfNeeded, shouldRetryDecryption])
+
+  const decryptSignalMessage = useCallback(
+    async (message: any, attempt = 0): Promise<any> => {
+      const ready = await ensureSignalInitialized()
+      if (!ready) {
+        const pending = '[🔒 Signal: Device not initialized]'
+        recordDecryptionFailure(String(message.id), pending)
+        return {
+          ...message,
+          text: pending,
+          decryption_error: true,
+        }
+      }
+
+      const deviceId = signalService.getDeviceId()
+      if (!deviceId) {
+        const pending = '[🔒 Signal: Device not initialized]'
+        recordDecryptionFailure(String(message.id), pending)
+        return {
+          ...message,
+          text: pending,
+          decryption_error: true,
+        }
+      }
+
+      if (message.sent) {
+        const cached = decryptionCache.current.get(message.id)
+        if (cached && !cached.error) {
+          clearDecryptionFailure(String(message.id))
+          return {
+            ...message,
+            text: cached.text,
+            decryption_error: false,
+          }
+        }
+      }
+
+      let senderUsernameFromResponse: string | null = null
+      let senderDeviceIdFromResponse: number | null = null
+
+      try {
+        const response = await fetch(
+          `/api/signal/get-ciphertext/${message.id}?deviceId=${deviceId}`,
+          { credentials: 'include' }
+        )
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            const permanentText = '[🔒 Message sent before this device was added]'
+            recordDecryptionFailure(String(message.id), permanentText, true)
+            return {
+              ...message,
+              text: permanentText,
+              decryption_error: true,
+            }
+          }
+          throw new Error(`Failed to fetch ciphertext: ${response.status}`)
+        }
+
+        const data = await response.json()
+        senderUsernameFromResponse = data.senderUsername
+        senderDeviceIdFromResponse = data.senderDeviceId
+
+        console.log('🔐 Got ciphertext data:', {
+          messageId: message.id,
+          senderUsername: data.senderUsername,
+          senderDeviceId: data.senderDeviceId,
+          messageType: data.messageType,
+          ciphertextLength: data.ciphertext?.length,
+        })
+
+        if (!data.success || !data.ciphertext) {
+          throw new Error('Invalid ciphertext response')
+        }
+
+        const result = await signalService.decryptMessage(
+          data.senderUsername,
+          data.senderDeviceId,
+          data.ciphertext,
+          data.messageType
+        )
+
+        console.log('🔐 ✅ Decryption succeeded for message:', message.id)
+
+        decryptionCache.current.set(message.id, { text: result.plaintext, error: false })
+        saveDecryptionCache()
+        clearDecryptionFailure(String(message.id))
+
+        return {
+          ...message,
+          text: result.plaintext,
+          decryption_error: false,
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error)
+        console.error('🔐 ❌ Signal decryption failed for message:', message.id, 'Error:', errorMsg, error)
+
+        const isCounterError =
+          /message key not found/i.test(errorMsg) ||
+          /counter was repeated/i.test(errorMsg) ||
+          /session has been reset/i.test(errorMsg)
+
+        if (
+          isCounterError &&
+          senderUsernameFromResponse &&
+          senderDeviceIdFromResponse &&
+          attempt < MAX_SIGNAL_RETRIES
+        ) {
+          const address = `${senderUsernameFromResponse}.${senderDeviceIdFromResponse}`
+          try {
+            await signalStore.removeSession(address)
+          } catch (sessionError) {
+            console.warn('🔐 Failed to clear Signal session for', address, sessionError)
+          }
+          const reinitialized = await ensureSignalInitialized()
+          if (reinitialized) {
+            return decryptSignalMessage(message, attempt + 1)
+          }
+        }
+
+        const displayError = `[🔒 Decryption failed: ${errorMsg.slice(0, 50)}]`
+        recordDecryptionFailure(String(message.id), displayError)
+
+        return {
+          ...message,
+          text: displayError,
+          decryption_error: true,
+        }
+      }
+    },
+    [clearDecryptionFailure, ensureSignalInitialized, recordDecryptionFailure, saveDecryptionCache]
+  )
 
   // Decrypt message if it's encrypted
-  async function decryptMessageIfNeeded(message: any): Promise<any> {
+  const decryptMessageIfNeeded = useCallback(async (message: any): Promise<any> => {
     if (!message.is_encrypted) {
       return message
     }
     
+    const cacheKeyString = String(message.id)
+    
     // Check cache first - don't decrypt the same message multiple times!
-    const cached = decryptionCache.current.get(message.id)
+    // Try both number and string keys for compatibility
+    const cached = decryptionCache.current.get(message.id) || 
+                   decryptionCache.current.get(String(message.id)) ||
+                   decryptionCache.current.get(Number(message.id))
     if (cached) {
+      console.log('🔐 Using cached decryption for message:', message.id)
+      clearDecryptionFailure(cacheKeyString)
       return {
         ...message,
         text: cached.text,
@@ -577,7 +995,36 @@ export default function ChatThread(){
       }
     }
     
-    // TRUE E2E ENCRYPTION:
+    const failureInfo = decryptionFailures.current.get(cacheKeyString)
+    if (failureInfo) {
+      if (failureInfo.permanent) {
+        return {
+          ...message,
+          text: failureInfo.errorText,
+          decryption_error: true,
+        }
+      }
+      const timeSinceFailure = Date.now() - failureInfo.lastAttempt
+      if (timeSinceFailure < DECRYPTION_RETRY_DELAY_MS) {
+        return {
+          ...message,
+          text: failureInfo.errorText,
+          decryption_error: true,
+        }
+      } else {
+        // Allow retry after delay by removing stale entry
+        decryptionFailures.current.delete(cacheKeyString)
+      }
+    }
+    
+    // Check if this is a Signal Protocol message
+    if (message.signal_protocol) {
+      const decryptedSignal = await decryptSignalMessage(message)
+      clearDecryptionFailure(cacheKeyString)
+      return decryptedSignal
+    }
+    
+    // Legacy/fallback: simple encryption
     // - Sent messages: decrypt encrypted_body_for_sender (encrypted with YOUR public key)
     // - Received messages: decrypt encrypted_body (encrypted with YOUR public key)
     
@@ -612,8 +1059,10 @@ export default function ChatThread(){
     try {
       const decryptedText = await encryptionService.decryptMessage(encryptedData)
       
-      // Cache the decrypted text
+      // Cache the decrypted text and persist to localStorage
       decryptionCache.current.set(message.id, { text: decryptedText, error: false })
+      saveDecryptionCache()
+      clearDecryptionFailure(cacheKeyString)
       
       return {
         ...message,
@@ -622,18 +1071,16 @@ export default function ChatThread(){
       }
     } catch (error) {
       console.error('🔐 ❌ Failed to decrypt message:', message.id, error)
-      
-      // Cache the failure
-      decryptionCache.current.set(message.id, { text: '[🔒 Encrypted - decryption failed]', error: true })
-      
+      const failureText = '[🔒 Encrypted - decryption failed]'
+      recordDecryptionFailure(cacheKeyString, failureText)
       return {
         ...message,
-        text: '[🔒 Encrypted - decryption failed]',
+        text: failureText,
         decryption_error: true,
       }
     }
-  }
-
+  }, [clearDecryptionFailure, decryptSignalMessage, recordDecryptionFailure, saveDecryptionCache])
+  
   // Encryption is initialized globally in App.tsx - no need for per-chat init
 
   // Helper to process raw messages (decrypt, parse replies, add metadata)
@@ -646,26 +1093,27 @@ export default function ChatThread(){
     return decryptedMessages.map((m: any) => {
       // Parse reply information from message text
       let messageText = m.text
-      let replySnippet = undefined
+      let replySnippet: string | undefined
       const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
       if (replyMatch) {
         replySnippet = replyMatch[2]
         messageText = replyMatch[3]
       }
-      
-      const k = `${m.time}|${messageText}|${m.sent ? 'me' : 'other'}`
-      const meta = metaRef.current[k] || {}
-      return { 
+
+      const normalizedTime = ensureNormalizedTime(m.time)
+      const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, Boolean(m.sent))
+      return {
         ...m,
         text: messageText,
+        time: normalizedTime,
         video_path: m.video_path,
-        reaction: meta.reaction, 
+        reaction: meta.reaction,
         replySnippet: replySnippet || meta.replySnippet,
         isOptimistic: false,
-        edited_at: m.edited_at || null
+        edited_at: m.edited_at || null,
       }
     })
-  }, [])
+  }, [decryptMessageIfNeeded])
 
   // Load cached profile immediately
   useEffect(() => {
@@ -861,11 +1309,10 @@ export default function ChatThread(){
                 messageText = replyMatch[3]
               }
               
-              const k = `${m.time}|${messageText}|${m.sent ? 'me' : 'other'}`
-              const meta = metaRef.current[k] || {}
-              
+              const normalizedTime = ensureNormalizedTime(m.time)
               // Determine 'sent' strictly from server sender match
               const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
+              const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, isSentByMe)
               
               // Check if we have a bridge mapping or matching optimistic message
               let stableKey = idBridgeRef.current.serverToTemp.get(m.id)
@@ -887,12 +1334,16 @@ export default function ChatThread(){
                     // If existing is optimistic (blob URL) and same text/time, it's likely our upload
                     if (existing.isOptimistic && existing.image_path.startsWith('blob:')) {
                       if (existing.text === messageText) {
-                        const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
-                        if (timeDiff < 10000) { // 10 second window for photo uploads
-                          stableKey = key
-                          idBridgeRef.current.serverToTemp.set(m.id, key)
-                          idBridgeRef.current.tempToServer.set(key, m.id)
-                          break
+                        const serverTs = getMessageTimestamp(m.time)
+                        const existingTs = getMessageTimestamp(existing.time)
+                        if (serverTs !== null && existingTs !== null) {
+                          const timeDiff = Math.abs(serverTs - existingTs)
+                          if (timeDiff < 10000) { // 10 second window for photo uploads
+                            stableKey = key
+                            idBridgeRef.current.serverToTemp.set(m.id, key)
+                            idBridgeRef.current.tempToServer.set(key, m.id)
+                            break
+                          }
                         }
                       }
                     }
@@ -909,12 +1360,16 @@ export default function ChatThread(){
                     }
                     if (existing.isOptimistic && existing.video_path.startsWith('blob:')) {
                       if (existing.text === messageText) {
-                        const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
-                        if (timeDiff < 10000) {
-                          stableKey = key
-                          idBridgeRef.current.serverToTemp.set(m.id, key)
-                          idBridgeRef.current.tempToServer.set(key, m.id)
-                          break
+                        const serverTs = getMessageTimestamp(m.time)
+                        const existingTs = getMessageTimestamp(existing.time)
+                        if (serverTs !== null && existingTs !== null) {
+                          const timeDiff = Math.abs(serverTs - existingTs)
+                          if (timeDiff < 10000) {
+                            stableKey = key
+                            idBridgeRef.current.serverToTemp.set(m.id, key)
+                            idBridgeRef.current.tempToServer.set(key, m.id)
+                            break
+                          }
                         }
                       }
                     }
@@ -924,13 +1379,17 @@ export default function ChatThread(){
                   // For text messages: match by content (only if optimistic)
                   if (!existing.isOptimistic) continue
                   if (existing.text !== messageText) continue
-                  const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
-                  if (timeDiff < 5000) {
-                    stableKey = key
-                    // Set up bridge for future
-                    idBridgeRef.current.serverToTemp.set(m.id, key)
-                    idBridgeRef.current.tempToServer.set(key, m.id)
-                    break
+                  const serverTs = getMessageTimestamp(m.time)
+                  const existingTs = getMessageTimestamp(existing.time)
+                  if (serverTs !== null && existingTs !== null) {
+                    const timeDiff = Math.abs(serverTs - existingTs)
+                    if (timeDiff < 5000) {
+                      stableKey = key
+                      // Set up bridge for future
+                      idBridgeRef.current.serverToTemp.set(m.id, key)
+                      idBridgeRef.current.tempToServer.set(key, m.id)
+                      break
+                    }
                   }
                 }
               }
@@ -951,7 +1410,7 @@ export default function ChatThread(){
                 audio_path: m.audio_path,
                 audio_duration_seconds: m.audio_duration_seconds,
                 sent: isSentByMe,
-                time: m.time,
+                time: existing?.time ?? normalizedTime,
                 reaction: existing?.reaction ?? meta.reaction,
                 replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
                 isOptimistic: false, // No longer optimistic
@@ -971,8 +1430,13 @@ export default function ChatThread(){
             const now = Date.now()
             for (const [key, msg] of messagesByKey.entries()) {
               if (msg.isOptimistic) {
-                const age = now - new Date(msg.time).getTime()
-                if (age > 30000) {
+                const ts = getMessageTimestamp(msg.time)
+                if (ts !== null) {
+                  const age = now - ts
+                  if (age > 30000) {
+                    messagesByKey.delete(key)
+                  }
+                } else {
                   messagesByKey.delete(key)
                 }
               }
@@ -983,7 +1447,11 @@ export default function ChatThread(){
             // Convert map to array and sort
             const allMessages = Array.from(messagesByKey.values())
             
-            return allMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+            return allMessages.sort((a, b) => {
+              const aTs = getMessageTimestamp(a.time) ?? 0
+              const bTs = getMessageTimestamp(b.time) ?? 0
+              return aTs - bTs
+            })
           })
         }
       }catch(e){
@@ -1017,7 +1485,7 @@ export default function ChatThread(){
     return () => { 
       if (pollTimer.current) clearInterval(pollTimer.current) 
     }
-  }, [username, otherUserId])
+  }, [username, otherUserId, decryptMessageIfNeeded])
 
   function adjustTextareaHeight(){
     const ta = textareaRef.current
@@ -1038,7 +1506,7 @@ export default function ChatThread(){
     try {
       // Pause polling for 2 seconds to avoid race condition with server confirmation
       skipNextPollsUntil.current = Date.now() + 2000
-      const now = new Date().toISOString().slice(0,19).replace('T',' ')
+      const now = new Date().toISOString()
       const tempId = `temp_${Date.now()}_${Math.random()}`
       const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
       
@@ -1050,21 +1518,75 @@ export default function ChatThread(){
         formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
       }
       
-      // Try to encrypt message TWICE (for recipient AND sender)
+      // Try to encrypt message using Signal Protocol (multi-device)
       let isEncrypted = false
       let encryptedBodyForRecipient = ''
       let encryptedBodyForSender = ''
+      let signalCiphertexts: Array<{
+        targetUsername: string
+        targetDeviceId: number
+        senderDeviceId: number
+        ciphertext: string
+        messageType: number
+      }> = []
+      let useSignalProtocol = false
       
-      if (username) {
+      if (username && signalService.isInitialized()) {
         try {
-          // Encrypt for recipient with 3 second timeout
+          // Use Signal Protocol for multi-device encryption
+          console.log('🔐 Encrypting with Signal Protocol for:', username)
+          
+          const encryptPromise = signalService.encryptMessage(username, formattedMessage)
+          const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Signal encryption timeout')), 5000)
+          )
+          
+          const result = await Promise.race([encryptPromise, timeoutPromise])
+          
+          if (result.deviceCiphertexts.length > 0) {
+            signalCiphertexts = result.deviceCiphertexts
+            isEncrypted = true
+            useSignalProtocol = true
+            console.log(`🔐 Signal: Encrypted for ${signalCiphertexts.length} devices`)
+            
+            if (result.failedDevices.length > 0) {
+              console.warn('🔐 Signal: Some devices failed:', result.failedDevices)
+            }
+          } else if (result.failedDevices.length > 0) {
+            console.warn('🔐 Signal: All devices failed, falling back to simple encryption')
+            throw new Error('All devices failed')
+          }
+        } catch (signalError) {
+          console.warn('🔐 Signal encryption failed, trying simple encryption:', signalError)
+          
+          // Fallback to simple encryption
+          try {
+            const encryptForRecipientPromise = encryptionService.encryptMessage(username, formattedMessage)
+            const timeoutPromise1 = new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('Encryption timeout (recipient)')), 3000)
+            )
+            encryptedBodyForRecipient = await Promise.race([encryptForRecipientPromise, timeoutPromise1])
+            
+            const encryptForSenderPromise = encryptionService.encryptMessageForSender(formattedMessage)
+            const timeoutPromise2 = new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('Encryption timeout (sender)')), 3000)
+            )
+            encryptedBodyForSender = await Promise.race([encryptForSenderPromise, timeoutPromise2])
+            
+            isEncrypted = true
+          } catch (simpleError) {
+            console.warn('🔐 ⚠️ All encryption failed, sending unencrypted:', simpleError)
+          }
+        }
+      } else if (username) {
+        // Signal not initialized, use simple encryption
+        try {
           const encryptForRecipientPromise = encryptionService.encryptMessage(username, formattedMessage)
           const timeoutPromise1 = new Promise<never>((_, reject) => 
             setTimeout(() => reject(new Error('Encryption timeout (recipient)')), 3000)
           )
           encryptedBodyForRecipient = await Promise.race([encryptForRecipientPromise, timeoutPromise1])
           
-          // Encrypt for sender (yourself) with 3 second timeout
           const encryptForSenderPromise = encryptionService.encryptMessageForSender(formattedMessage)
           const timeoutPromise2 = new Promise<never>((_, reject) => 
             setTimeout(() => reject(new Error('Encryption timeout (sender)')), 3000)
@@ -1075,7 +1597,6 @@ export default function ChatThread(){
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error'
           console.warn('🔐 ⚠️ Encryption failed, sending unencrypted:', errorMsg)
-          // Continue with unencrypted - this is perfectly fine!
         }
       }
       
@@ -1114,8 +1635,7 @@ export default function ChatThread(){
       
       // Store reply snippet in metadata if needed
       if (replySnippet){
-        const k = `${now}|${messageText}|me`
-        metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
+        writeMessageMeta(metaRef.current, now, messageText, true, { replySnippet })
         try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
       }
       
@@ -1125,8 +1645,17 @@ export default function ChatThread(){
       if (isEncrypted) {
         fd.append('message', '') // NO plaintext stored!
         fd.append('is_encrypted', '1')
-        fd.append('encrypted_body', encryptedBodyForRecipient) // Encrypted for recipient
-        fd.append('encrypted_body_for_sender', encryptedBodyForSender) // Encrypted for sender
+        
+        if (useSignalProtocol) {
+          // Signal Protocol: mark as signal encrypted, ciphertexts stored separately
+          fd.append('signal_protocol', '1')
+          fd.append('encrypted_body', '') // Placeholder - actual ciphertexts stored separately
+          fd.append('encrypted_body_for_sender', '')
+        } else {
+          // Simple encryption: store in traditional fields
+          fd.append('encrypted_body', encryptedBodyForRecipient)
+          fd.append('encrypted_body_for_sender', encryptedBodyForSender)
+        }
       } else {
         fd.append('message', formattedMessage)
       }
@@ -1138,7 +1667,7 @@ export default function ChatThread(){
         body: fd 
       })
         .then(r => r.json())
-        .then(j => {
+        .then(async j => {
           if (j?.success) {
             // Stop typing indicator
             fetch('/api/typing', { 
@@ -1150,6 +1679,30 @@ export default function ChatThread(){
             
             // CRITICAL: Update optimistic message immediately with server confirmation
             if (j.message_id) {
+              // Store Signal Protocol ciphertexts if applicable
+              if (useSignalProtocol && signalCiphertexts.length > 0) {
+                try {
+                  await fetch('/api/signal/store-ciphertexts', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      messageId: j.message_id,
+                      senderDeviceId: signalService.getDeviceId(),
+                      ciphertexts: signalCiphertexts
+                    })
+                  })
+                  console.log('🔐 Signal: Stored ciphertexts for message', j.message_id)
+                  
+                  // IMPORTANT: Cache the plaintext for this message
+                  // So when we reload/poll, we can show sent messages correctly
+                  decryptionCache.current.set(j.message_id, { text: messageText, error: false })
+                  saveDecryptionCache()
+                } catch (cipherError) {
+                  console.error('🔐 Signal: Failed to store ciphertexts:', cipherError)
+                }
+              }
+              
               // Set up bridge mapping
               idBridgeRef.current.tempToServer.set(tempId, j.message_id)
               idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
@@ -1163,7 +1716,7 @@ export default function ChatThread(){
                     ...m,
                     id: j.message_id, // Update to server ID
                     isOptimistic: false, // No longer optimistic
-                    time: j.time || m.time, // Use server time if available
+                    time: m.time ?? ensureNormalizedTime(j.time || m.time),
                     clientKey: tempId, // Keep stable key for React
                     // Keep encryption flags from optimistic message
                     is_encrypted: m.is_encrypted,
@@ -1306,7 +1859,7 @@ export default function ChatThread(){
             }
           }
         }
-      } catch (error) {
+      } catch {
         // Fall back to legacy method
       }
     }
@@ -1339,7 +1892,7 @@ export default function ChatThread(){
     setSending(true)
     try{
       const url = URL.createObjectURL(blob)
-      const now = new Date().toISOString().slice(0,19).replace('T',' ')
+      const now = new Date().toISOString()
       const optimistic: Message = { id: `temp_audio_${Date.now()}`, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true }
       setMessages(prev => [...prev, optimistic])
       setTimeout(scrollToBottom, 50)
@@ -1358,7 +1911,8 @@ export default function ChatThread(){
         // Revoke blob URL after successful upload to free memory
         setTimeout(() => URL.revokeObjectURL(url), 100)
       }
-    }catch(err){
+    }catch(error){
+      console.error('Failed to send audio', error)
       alert('Failed to send audio')
     }finally{
       setSending(false)
@@ -1392,7 +1946,7 @@ export default function ChatThread(){
     setSending(true)
     try{
       const url = URL.createObjectURL(blob)
-      const now = new Date().toISOString().slice(0,19).replace('T',' ')
+      const now = new Date().toISOString()
       const optimistic: Message = { id: `temp_audio_${Date.now()}`, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true }
       setMessages(prev => [...prev, optimistic])
       setTimeout(scrollToBottom, 50)
@@ -1422,8 +1976,10 @@ export default function ChatThread(){
         // Revoke blob URL after successful upload to free memory
         setTimeout(() => URL.revokeObjectURL(url), 100)
       }
-    }catch(err){
-      alert('Failed to send voice message: ' + (err as Error).message)
+    }catch(error){
+      console.error('Failed to send voice message', error)
+      const message = error instanceof Error ? error.message : String(error)
+      alert('Failed to send voice message: ' + message)
     } finally {
       setSending(false)
     }
@@ -1463,7 +2019,7 @@ export default function ChatThread(){
         // Permission not yet requested, show pre-permission modal
         setShowMicPermissionModal(true)
       }
-    } catch (error) {
+    } catch {
       // Fallback for browsers that don't support permissions API (like iOS Safari)
       // Just try to start recording - browser will show its own permission dialog
       startVoiceRecording()
@@ -1513,7 +2069,11 @@ export default function ChatThread(){
           }
           // Re-add the message in the correct position
           const newMessages = [...prev, messageData]
-          return newMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+          return newMessages.sort((a, b) => {
+            const aTs = getMessageTimestamp(a.time) ?? 0
+            const bTs = getMessageTimestamp(b.time) ?? 0
+            return aTs - bTs
+          })
         })
         
         // Show error
@@ -1541,7 +2101,11 @@ export default function ChatThread(){
           return prev
         }
         const newMessages = [...prev, messageData]
-        return newMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+        return newMessages.sort((a, b) => {
+          const aTs = getMessageTimestamp(a.time) ?? 0
+          const bTs = getMessageTimestamp(b.time) ?? 0
+          return aTs - bTs
+        })
       })
       
       alert('Network error. Could not delete message.')
@@ -1564,17 +2128,46 @@ export default function ChatThread(){
         overflow: 'hidden',
       }}
     >
+      {/* Encryption Sync Banner */}
+      {encryptionNeedsSync && (
+        <div 
+          className="flex-shrink-0 bg-yellow-500/90 text-black px-4 py-2"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            width: '100vw',
+            zIndex: 1002,
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm">
+              <i className="fa-solid fa-rotate" />
+              <span className="font-medium">Encryption keys need sync</span>
+            </div>
+            <Link 
+              to="/settings/encryption"
+              className="px-3 py-1 text-xs font-semibold bg-black/20 rounded-full hover:bg-black/30"
+            >
+              Sync Now
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Header - fixed at top with safe area, full viewport width */}
       <div 
         className="flex-shrink-0 border-b border-[#262f30]"
         style={{
           position: 'fixed',
-          top: 0,
+          top: encryptionNeedsSync ? 'calc(env(safe-area-inset-top, 0px) + 40px)' : 0,
           left: 0,
           right: 0,
           width: '100vw',
           zIndex: 1001,
-          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingTop: encryptionNeedsSync ? '0px' : 'env(safe-area-inset-top, 0px)',
           paddingLeft: 'env(safe-area-inset-left, 0px)',
           paddingRight: 'env(safe-area-inset-right, 0px)',
           background: '#000',
@@ -1688,8 +2281,7 @@ export default function ChatThread(){
                   onDelete={() => handleDeleteMessage(m.id, m)}
                   onReact={(emoji)=> {
                     setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
-                    const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
-                    metaRef.current[k] = { ...(metaRef.current[k]||{}), reaction: emoji }
+                    writeMessageMeta(metaRef.current, m.time, m.text, Boolean(m.sent), { reaction: emoji })
                     try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
                   }} 
                   onReply={() => {
@@ -1700,7 +2292,11 @@ export default function ChatThread(){
                     textareaRef.current?.focus()
                   }} 
                   onCopy={() => {
-                    try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
+                    try {
+                      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                        void navigator.clipboard.writeText(m.text)
+                      }
+                    } catch {}
                   }}
                   onEdit={m.sent ? () => {
                     const dt = parseMessageTime(m.time)
@@ -1826,12 +2422,12 @@ export default function ChatThread(){
                               <span className="text-[10px] text-white/50 ml-1">edited</span>
                             ) : null}
                             <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
-                              {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {formatMessageTime(m.time)}
                             </span>
                           </div>
                         ) : (
                           <span className={`text-[10px] ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
-                            {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatMessageTime(m.time)}
                           </span>
                         )
                       )}
@@ -2714,7 +3310,11 @@ function LongPressActionable({
   
   function handleStart(e?: any){
     if (disabled) return
-    try{ e && e.preventDefault && e.preventDefault() }catch{}
+    try {
+      if (e && typeof e.preventDefault === 'function') {
+        e.preventDefault()
+      }
+    } catch {}
     setIsPressed(true)
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {

@@ -17,6 +17,7 @@ import PushInit from './components/PushInit'
 // import NativePushInit from './components/NativePushInit' // Disabled - conflicts with PushInit
 import BrandAssetsInit from './components/BrandAssetsInit'
 import { encryptionService } from './services/simpleEncryption'
+import { signalService } from './services/signalProtocol'
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
 import CommunityCalendar from './pages/CommunityCalendar'
@@ -344,15 +345,35 @@ function AppRoutes(){
         const username = (profile as any)?.username
         if (username && encryptionUserRef.current !== username) {
           try {
-            console.log('🔐 Initializing encryption for:', username)
-            await encryptionService.init(username)
-            const existingTimestamp = localStorage.getItem('encryption_keys_generated_at')
-            if (!existingTimestamp) {
+            // Initialize Signal Protocol (multi-device E2E encryption)
+            console.log('🔐 Initializing Signal Protocol for:', username)
+            const { isNewDevice, deviceId } = await signalService.init(username)
+            
+            // Store device ID for use in chat
+            localStorage.setItem('signal_device_id', String(deviceId))
+            
+            if (isNewDevice) {
+              console.log('🔐 ✅ New device registered, deviceId:', deviceId)
               localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
+            } else {
+              console.log('🔐 ✅ Existing device loaded, deviceId:', deviceId)
             }
-            console.log('🔐 ✅ Encryption ready globally!')
+            
+            // Clear old sync flag (no longer needed with Signal Protocol)
+            localStorage.removeItem('encryption_needs_sync')
+            
+            console.log('🔐 ✅ Signal Protocol ready!')
           } catch (encError) {
-            console.error('🔐 ❌ Encryption init failed:', encError)
+            console.error('🔐 ❌ Signal Protocol init failed:', encError)
+            
+            // Fallback to simple encryption if Signal fails
+            try {
+              console.log('🔐 Falling back to simple encryption...')
+              await encryptionService.init(username)
+              console.log('🔐 ✅ Simple encryption fallback ready')
+            } catch (fallbackError) {
+              console.error('🔐 ❌ Fallback encryption also failed:', fallbackError)
+            }
           } finally {
             encryptionUserRef.current = username
           }
@@ -364,7 +385,7 @@ function AppRoutes(){
       setProfileData(null)
       setProfileError(json?.error || 'Failed to load profile')
       return null
-    } catch (error) {
+    } catch {
       setProfileData(null)
       setProfileError('Failed to load profile')
       return null

@@ -40,6 +40,7 @@ from urllib.parse import urlencode, urljoin, quote_plus
 from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
+from signal_endpoints import register_signal_endpoints
 from backend import init_app
 from backend.services.database import USE_MYSQL, get_db_connection, get_sql_placeholder
 from backend.services.community import (
@@ -4429,6 +4430,67 @@ def api_check_pending_login():
     except Exception as e:
         logger.error(f"Error in api_check_pending_login: {e}")
         return jsonify({'success': False, 'pending_username': None, 'error': str(e)})
+
+@app.route('/api/debug/login_test', methods=['POST'])
+def api_debug_login_test():
+    """
+    Debug endpoint to test login credentials without creating a session.
+    For diagnosing iOS login issues.
+    
+    POST body: {"username": "...", "password": "..."}
+    """
+    try:
+        data = request.get_json() or {}
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        
+        if not username or not password:
+            return jsonify({'success': False, 'error': 'Username and password required'})
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT password FROM users WHERE username=?", (username,))
+            row = c.fetchone()
+            
+            if not row:
+                return jsonify({
+                    'success': False, 
+                    'error': 'User not found',
+                    'debug': {
+                        'username_searched': username,
+                        'username_length': len(username),
+                        'username_repr': repr(username),
+                    }
+                })
+            
+            stored_password = row['password'] if hasattr(row, 'keys') else row[0]
+            
+            # Determine password type
+            password_type = 'unknown'
+            if stored_password is None:
+                password_type = 'null'
+                password_correct = False
+            elif stored_password.startswith('$') or stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
+                password_type = 'hashed'
+                password_correct = check_password_hash(stored_password, password)
+            else:
+                password_type = 'plain'
+                password_correct = stored_password == password
+            
+            return jsonify({
+                'success': True,
+                'password_correct': password_correct,
+                'debug': {
+                    'username': username,
+                    'password_type': password_type,
+                    'stored_password_preview': stored_password[:20] + '...' if stored_password and len(stored_password) > 20 else stored_password,
+                    'input_password_length': len(password),
+                    'user_agent': request.headers.get('User-Agent', 'unknown'),
+                }
+            })
+    except Exception as e:
+        logger.error(f"Debug login test error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 # React hashed assets are served by web server static mapping (/assets -> client/dist/assets)
 @app.route('/api/community_group_feed/<int:parent_id>')
 @login_required
@@ -8920,9 +8982,18 @@ def get_messages():
                 
                 # Add encryption fields if available
                 if with_encryption:
-                    msg_dict['is_encrypted'] = msg.get('is_encrypted') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else 0
-                    msg_dict['encrypted_body'] = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[10] if len(msg) > 10 else None
-                    msg_dict['encrypted_body_for_sender'] = msg.get('encrypted_body_for_sender') if hasattr(msg, 'get') else msg[11] if len(msg) > 11 else None
+                    is_encrypted_val = msg.get('is_encrypted') if hasattr(msg, 'get') else msg[9] if len(msg) > 9 else 0
+                    encrypted_body_val = msg.get('encrypted_body') if hasattr(msg, 'get') else msg[10] if len(msg) > 10 else None
+                    encrypted_body_for_sender_val = msg.get('encrypted_body_for_sender') if hasattr(msg, 'get') else msg[11] if len(msg) > 11 else None
+                    
+                    msg_dict['is_encrypted'] = is_encrypted_val
+                    msg_dict['encrypted_body'] = encrypted_body_val
+                    msg_dict['encrypted_body_for_sender'] = encrypted_body_for_sender_val
+                    
+                    # Signal Protocol: if encrypted but no traditional encrypted_body, it's Signal Protocol
+                    # The ciphertexts are stored separately in message_ciphertexts table
+                    if is_encrypted_val and not encrypted_body_val:
+                        msg_dict['signal_protocol'] = True
                 
                 messages.append(msg_dict)
             
@@ -26089,6 +26160,11 @@ try:
     register_encryption_endpoints(app, get_db_connection, logger)
 except Exception as e:
     logger.error(f"Failed to register encryption endpoints: {e}")
+
+try:
+    register_signal_endpoints(app, get_db_connection, logger)
+except Exception as e:
+    logger.error(f"Failed to register signal endpoints: {e}")
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)

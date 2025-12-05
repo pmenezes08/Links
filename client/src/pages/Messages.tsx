@@ -134,12 +134,15 @@ export default function Messages(){
             setCommunityError(membersRes?.error || 'Failed to load communities')
           }
       }catch{
-        if (cancelled) return
-          setCommunityTree([])
+        if (cancelled) {
+          return
+        }
+        setCommunityTree([])
         setCommunityError('Failed to load communities')
       }finally{
-        if (cancelled) return
-        setCommunitiesLoading(false)
+        if (!cancelled) {
+          setCommunitiesLoading(false)
+        }
       }
     }
 
@@ -430,7 +433,12 @@ export default function Messages(){
                                     setThreads(jj.threads)
                                   }
                                 }).catch(()=>{})
-                              try{ (window as any).__header_do_poll && (window as any).__header_do_poll() }catch{}
+                              try{
+                                const pollFn = (window as any).__header_do_poll
+                                if (typeof pollFn === 'function') {
+                                  pollFn()
+                                }
+                              }catch{}
                             }
                           }).catch(()=>{})
                       }}
@@ -445,7 +453,12 @@ export default function Messages(){
                   <button
                     onClick={() => {
                       setThreads(prev => prev.map(x => x.other_username===t.other_username ? { ...x, unread_count: 0 } : x))
-                      try{ (window as any).__header_do_poll && (window as any).__header_do_poll() }catch{}
+                      try{
+                        const pollFn = (window as any).__header_do_poll
+                        if (typeof pollFn === 'function') {
+                          pollFn()
+                        }
+                      }catch{}
                       navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}`)
                     }}
                     onTouchStart={(e) => {

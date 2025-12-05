@@ -1004,7 +1004,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                       <div className="font-medium text-sm flex-1">
                         {p.poll.question}
                         {p.poll.expires_at ? (
-                          <span className="ml-2 text-[11px] text-[#9fb0b5]">• closes {(() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(p.poll.expires_at) })()}</span>
+                          <span className="ml-2 text-[11px] text-[#9fb0b5]">• closes {(() => { try { const d = new Date(p.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(p.poll.expires_at) })()}</span>
                         ) : null}
                       </div>
                     </div>

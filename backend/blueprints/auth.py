@@ -516,12 +516,22 @@ def login_password():
     )
 
     logger = current_app.logger
+    
+    # Debug logging for iOS login issues
+    user_agent = request.headers.get("User-Agent", "")
+    is_ios = "iPhone" in user_agent or "iPad" in user_agent
+    logger.info(f"login_password: method={request.method}, is_ios={is_ios}, session_keys={list(session.keys())}, cookies={list(request.cookies.keys())}")
+    
     if "pending_username" not in session and "username" not in session:
+        logger.warning(f"login_password: No pending_username in session. Redirecting to login. is_ios={is_ios}")
         return redirect(url_for("auth.login"))
 
     username = session.get("pending_username") or session.get("username")
+    logger.info(f"login_password: username from session = '{username}', is_ios={is_ios}")
+    
     if request.method == "POST":
         password = request.form.get("password", "")
+        logger.info(f"login_password: POST for username='{username}', password_length={len(password)}, is_ios={is_ios}")
         if username == "admin" and password == "12345":
             return redirect("/premium_dashboard")
         try:
@@ -553,8 +563,10 @@ def login_password():
                     or stored_password.startswith("pbkdf2:")
                 ):
                     password_correct = check_password_hash(stored_password, password)
+                    logger.info(f"login_password: Hashed password check for '{username}', correct={password_correct}, hash_type={stored_password.split(':')[0] if ':' in stored_password else 'bcrypt'}")
                 else:
                     password_correct = stored_password == password
+                    logger.info(f"login_password: Plain password check for '{username}', correct={password_correct}")
 
                 if password_correct:
                     try:

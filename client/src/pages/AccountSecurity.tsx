@@ -43,7 +43,7 @@ export default function AccountSecurity() {
       } else {
         setPasswordMessage({ type: 'error', text: json?.error || 'Failed to update password' })
       }
-    } catch (err) {
+    } catch {
       setPasswordMessage({ type: 'error', text: 'Network error. Please try again.' })
     }
   }

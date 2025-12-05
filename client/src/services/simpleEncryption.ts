@@ -1,8 +1,13 @@
 /**
- * Simple E2E Encryption Service
+ * Simple E2E Encryption Service with Multi-Device Support
  * 
- * Uses Web Crypto API for RSA encryption
- * Simpler than Signal Protocol but still provides strong E2E encryption
+ * Uses Web Crypto API for RSA encryption.
+ * 
+ * MULTI-DEVICE ARCHITECTURE:
+ * - ONE key pair per USER (not per device)
+ * - First device generates keys and creates encrypted backup on server
+ * - Subsequent devices restore from backup instead of generating new keys
+ * - This ensures all devices can decrypt messages encrypted for this user
  * 
  * Keys are stored in iOS Keychain (via Capacitor Preferences) to persist
  * across app updates and reinstalls. IndexedDB is used as a secondary cache.
@@ -19,15 +24,38 @@ interface KeyPair {
   publicKeyExport: JsonWebKey
 }
 
+// Custom error for when backup restore is needed
+export class NeedBackupRestoreError extends Error {
+  constructor() {
+    super('Encryption keys exist on another device. Please enter your password to sync.')
+    this.name = 'NeedBackupRestoreError'
+  }
+}
+
+// Result type for init
+export interface InitResult {
+  success: boolean
+  needsBackupRestore?: boolean
+  isFirstDevice?: boolean
+  error?: string
+}
+
 class SimpleEncryptionService {
   private db: IDBDatabase | null = null
   private currentUser: string | null = null
   private keyPair: KeyPair | null = null
 
   /**
-   * Initialize encryption for a user
+   * Initialize encryption for a user with multi-device support.
+   * 
+   * Flow:
+   * 1. Check LOCAL storage (Keychain/IndexedDB) for keys
+   * 2. If found locally, use them (same device, already synced)
+   * 3. If NOT found locally, check SERVER for existing keys
+   * 4. If server has keys, need to restore from backup (another device exists)
+   * 5. If server has NO keys, generate new keys (first device)
    */
-  async init(username: string): Promise<void> {
+  async init(username: string): Promise<InitResult> {
     this.currentUser = username
     await this.openDatabase()
     
@@ -41,7 +69,7 @@ class SimpleEncryptionService {
       this.keyPair = keychainKeys
       // Also store in IndexedDB as cache for faster access
       await this.storeKeys(keychainKeys)
-      return
+      return { success: true, isFirstDevice: false }
     }
     
     // 2. If not in Keychain, try IndexedDB (migration from old version)
@@ -52,12 +80,300 @@ class SimpleEncryptionService {
       this.keyPair = existingKeys
       // Backup to Keychain for future app updates
       await this.backupKeysToKeychain(existingKeys)
-      return
+      return { success: true, isFirstDevice: false }
     }
     
-    // 3. No keys found anywhere - generate new ones
-    console.log('🔐 🔑 Generating new encryption keys')
-    await this.generateKeys()
+    // 3. No keys found locally - check if server has keys (another device)
+    console.log('🔐 No local keys found, checking server...')
+    const serverStatus = await this.checkServerKeyStatus()
+    
+    if (serverStatus.hasKeys) {
+      // Server has keys from another device
+      if (serverStatus.hasBackup) {
+        // Backup exists - need password to restore
+        console.log('🔐 ⚠️ Keys exist on server from another device. Need backup restore.')
+        return { success: false, needsBackupRestore: true }
+      } else {
+        // Keys exist but no backup - this is a problem
+        // For now, generate new keys (will overwrite with force)
+        console.log('🔐 ⚠️ Keys exist but no backup. Will generate new keys.')
+        await this.generateKeys(true) // force overwrite
+        return { success: true, isFirstDevice: true }
+      }
+    }
+    
+    // 4. No keys on server - this is the first device
+    console.log('🔐 🔑 First device - generating new encryption keys')
+    await this.generateKeys(false)
+    return { success: true, isFirstDevice: true }
+  }
+
+  /**
+   * Restore keys from server backup using password.
+   * Called when init() returns needsBackupRestore: true
+   */
+  async restoreFromBackup(password: string): Promise<boolean> {
+    if (!this.currentUser) throw new Error('User not initialized')
+    
+    console.log('🔐 Attempting to restore keys from backup...')
+    
+    try {
+      // Fetch encrypted backup from server
+      const response = await fetch('/api/encryption/restore', {
+        method: 'GET',
+        credentials: 'include',
+      })
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.error('🔐 No backup found on server')
+          return false
+        }
+        throw new Error(`Failed to fetch backup: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      if (!data.success || !data.encryptedBackup || !data.salt) {
+        throw new Error('Invalid backup data from server')
+      }
+      
+      // Decrypt the backup using password
+      const decryptedKeys = await this.decryptBackup(data.encryptedBackup, data.salt, password)
+      
+      if (!decryptedKeys) {
+        console.error('🔐 Failed to decrypt backup - wrong password?')
+        return false
+      }
+      
+      // Import the keys
+      const publicKey = await window.crypto.subtle.importKey(
+        'jwk',
+        decryptedKeys.publicKey,
+        { name: 'RSA-OAEP', hash: 'SHA-256' },
+        true,
+        ['encrypt']
+      )
+      
+      const privateKey = await window.crypto.subtle.importKey(
+        'jwk',
+        decryptedKeys.privateKey,
+        { name: 'RSA-OAEP', hash: 'SHA-256' },
+        true,
+        ['decrypt']
+      )
+      
+      this.keyPair = {
+        publicKey,
+        privateKey,
+        publicKeyExport: decryptedKeys.publicKey
+      }
+      
+      // Store in local storage
+      await this.storeKeys(this.keyPair)
+      await this.backupKeysToKeychain(this.keyPair)
+      
+      // Clear the sync needed flag since we've synced
+      localStorage.removeItem('encryption_needs_sync')
+      
+      console.log('🔐 ✅ Successfully restored keys from backup!')
+      return true
+      
+    } catch (error) {
+      console.error('🔐 ❌ Failed to restore from backup:', error)
+      return false
+    }
+  }
+
+  /**
+   * Create encrypted backup of keys on server.
+   * Called after generating new keys on first device.
+   */
+  async createServerBackup(password: string): Promise<boolean> {
+    if (!this.currentUser || !this.keyPair) {
+      throw new Error('Keys not initialized')
+    }
+    
+    console.log('🔐 Creating encrypted backup on server...')
+    
+    try {
+      // Export private key
+      const privateKeyJwk = await window.crypto.subtle.exportKey('jwk', this.keyPair.privateKey)
+      
+      // Create backup payload
+      const backupData = {
+        publicKey: this.keyPair.publicKeyExport,
+        privateKey: privateKeyJwk,
+        timestamp: Date.now()
+      }
+      
+      // Encrypt with password
+      const { encrypted, salt } = await this.encryptBackup(backupData, password)
+      
+      // Upload to server
+      const response = await fetch('/api/encryption/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          encryptedBackup: encrypted,
+          salt: salt
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to upload backup: ${response.status}`)
+      }
+      
+      console.log('🔐 ✅ Server backup created successfully')
+      return true
+      
+    } catch (error) {
+      console.error('🔐 ❌ Failed to create server backup:', error)
+      return false
+    }
+  }
+
+  /**
+   * Check if server has existing keys for this user
+   */
+  private async checkServerKeyStatus(): Promise<{ hasKeys: boolean; hasBackup: boolean }> {
+    try {
+      const response = await fetch('/api/encryption/has-keys', {
+        method: 'GET',
+        credentials: 'include',
+      })
+      
+      if (!response.ok) {
+        console.warn('🔐 Failed to check server key status')
+        return { hasKeys: false, hasBackup: false }
+      }
+      
+      const data = await response.json()
+      return {
+        hasKeys: data.hasKeys || false,
+        hasBackup: data.hasBackup || false
+      }
+    } catch (error) {
+      console.error('🔐 Error checking server key status:', error)
+      return { hasKeys: false, hasBackup: false }
+    }
+  }
+
+  /**
+   * Encrypt backup data with password using PBKDF2 + AES-GCM
+   */
+  private async encryptBackup(data: object, password: string): Promise<{ encrypted: string; salt: string }> {
+    // Generate random salt
+    const salt = window.crypto.getRandomValues(new Uint8Array(16))
+    
+    // Derive key from password
+    const keyMaterial = await window.crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(password),
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    )
+    
+    const aesKey = await window.crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt']
+    )
+    
+    // Generate IV
+    const iv = window.crypto.getRandomValues(new Uint8Array(12))
+    
+    // Encrypt
+    const encrypted = await window.crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: iv },
+      aesKey,
+      new TextEncoder().encode(JSON.stringify(data))
+    )
+    
+    // Combine IV + encrypted data
+    const combined = new Uint8Array(iv.length + encrypted.byteLength)
+    combined.set(iv)
+    combined.set(new Uint8Array(encrypted), iv.length)
+    
+    return {
+      encrypted: this.arrayBufferToBase64(combined.buffer),
+      salt: this.arrayBufferToBase64(salt.buffer)
+    }
+  }
+
+  /**
+   * Decrypt backup data with password
+   */
+  private async decryptBackup(encryptedBase64: string, saltBase64: string, password: string): Promise<{ publicKey: JsonWebKey; privateKey: JsonWebKey } | null> {
+    try {
+      const salt = new Uint8Array(this.base64ToArrayBuffer(saltBase64))
+      const combined = new Uint8Array(this.base64ToArrayBuffer(encryptedBase64))
+      
+      // Extract IV and encrypted data
+      const iv = combined.slice(0, 12)
+      const encrypted = combined.slice(12)
+      
+      // Derive key from password
+      const keyMaterial = await window.crypto.subtle.importKey(
+        'raw',
+        new TextEncoder().encode(password),
+        'PBKDF2',
+        false,
+        ['deriveKey']
+      )
+      
+      const aesKey = await window.crypto.subtle.deriveKey(
+        {
+          name: 'PBKDF2',
+          salt: salt,
+          iterations: 100000,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      )
+      
+      // Decrypt
+      const decrypted = await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        aesKey,
+        encrypted
+      )
+      
+      const data = JSON.parse(new TextDecoder().decode(decrypted))
+      return {
+        publicKey: data.publicKey,
+        privateKey: data.privateKey
+      }
+      
+    } catch (error) {
+      console.error('🔐 Decryption failed:', error)
+      return null
+    }
+  }
+
+  /**
+   * Check if keys are loaded
+   */
+  hasKeys(): boolean {
+    return this.keyPair !== null
+  }
+
+  /**
+   * Get current user's public key (for display)
+   */
+  getPublicKeyExport(): JsonWebKey | null {
+    return this.keyPair?.publicKeyExport || null
   }
 
   /**
@@ -97,8 +413,9 @@ class SimpleEncryptionService {
 
   /**
    * Generate RSA key pair
+   * @param force - If true, will overwrite existing keys on server
    */
-  private async generateKeys(): Promise<void> {
+  private async generateKeys(force: boolean = false): Promise<void> {
     if (!this.currentUser) throw new Error('User not initialized')
 
     // Generate RSA-OAEP key pair
@@ -127,7 +444,7 @@ class SimpleEncryptionService {
     await this.backupKeysToKeychain(this.keyPair)
 
     // Upload public key to server
-    await this.uploadPublicKey(publicKeyExport)
+    await this.uploadPublicKey(publicKeyExport, force)
   }
 
   /**
@@ -190,18 +507,30 @@ class SimpleEncryptionService {
 
   /**
    * Upload public key to server
+   * @param publicKey - The JWK public key to upload
+   * @param force - If true, will overwrite existing keys (used after explicit regeneration)
    */
-  private async uploadPublicKey(publicKey: JsonWebKey): Promise<void> {
+  private async uploadPublicKey(publicKey: JsonWebKey, force: boolean = false): Promise<void> {
     const response = await fetch('/api/encryption/upload-public-key', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ publicKey }),
+      body: JSON.stringify({ publicKey, force }),
     })
+
+    if (response.status === 409) {
+      // Keys already exist - this shouldn't happen if init() is used correctly
+      const data = await response.json()
+      console.warn('🔐 Server rejected key upload - keys already exist:', data)
+      throw new Error('Keys already exist on server. Use backup restore instead.')
+    }
 
     if (!response.ok) {
       throw new Error('Failed to upload public key')
     }
+    
+    const data = await response.json()
+    console.log('🔐 Public key uploaded successfully. First device:', data.isFirstDevice)
   }
 
   /**
@@ -466,6 +795,77 @@ class SimpleEncryptionService {
     } catch (error) {
       console.error('🔐 ❌ Failed to load keys from Keychain:', error)
       return null
+    }
+  }
+
+  /**
+   * Reset encryption: delete all keys locally and on server.
+   * Use with caution - this will make old encrypted messages unreadable!
+   */
+  async resetEncryption(): Promise<boolean> {
+    if (!this.currentUser) return false
+
+    console.log('🔐 ⚠️ Resetting encryption...')
+
+    try {
+      // Delete from server
+      const response = await fetch('/api/encryption/delete-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ confirm: true })
+      })
+
+      if (!response.ok && response.status !== 404) {
+        console.error('🔐 Failed to delete keys from server')
+      }
+
+      // Delete from local storage
+      await keychainStorage.removeKeys(this.currentUser)
+      
+      if (this.db) {
+        const transaction = this.db.transaction(['keys'], 'readwrite')
+        const store = transaction.objectStore('keys')
+        store.delete(this.currentUser)
+      }
+
+      // Clear in-memory keys
+      this.keyPair = null
+
+      console.log('🔐 ✅ Encryption reset complete')
+      return true
+
+    } catch (error) {
+      console.error('🔐 ❌ Failed to reset encryption:', error)
+      return false
+    }
+  }
+
+  /**
+   * Regenerate keys: create new keys and backup.
+   * Old encrypted messages will become unreadable!
+   */
+  async regenerateKeys(password: string): Promise<boolean> {
+    if (!this.currentUser) return false
+
+    console.log('🔐 ⚠️ Regenerating encryption keys...')
+
+    try {
+      // First reset
+      await this.resetEncryption()
+
+      // Generate new keys (force = true to overwrite on server)
+      await this.generateKeys(true)
+
+      // Create new backup
+      await this.createServerBackup(password)
+
+      console.log('🔐 ✅ Keys regenerated successfully')
+      return true
+
+    } catch (error) {
+      console.error('🔐 ❌ Failed to regenerate keys:', error)
+      return false
     }
   }
 }

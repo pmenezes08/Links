@@ -928,7 +928,7 @@ export default function CommunityFeed() {
                   <div className="text-sm text-[#9fb0b5]">No announcements.</div>
                 ) : _announcements.map((a:any)=> (
                   <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
-                    <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} - {(() => { try { const d = new Date(a.created_at); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} const s = String(a.created_at||'').split(' '); return s[0] || String(a.created_at||''); })()}</div>
+                    <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} - {(() => { try { const d = new Date(a.created_at); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } const s = String(a.created_at||'').split(' '); return s[0] || String(a.created_at||''); })()}</div>
                     <div className="whitespace-pre-wrap text-sm">{a.content}</div>
                     {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
                       <div className="mt-2 text-right">
@@ -1413,7 +1413,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       } else {
         alert(j?.error || 'Failed to update post')
       }
-    } catch (err) {
+    } catch {
       alert('Failed to update post')
     }
   }
@@ -1623,7 +1623,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               <div className="font-medium text-sm flex-1">
                 {post.poll.question}
                 {post.poll.expires_at ? (
-                  <span className="ml-2 text-[11px] text-[#9fb0b5]">Closes {(() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(post.poll.expires_at) })()}</span>
+                  <span className="ml-2 text-[11px] text-[#9fb0b5]">Closes {(() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(post.poll.expires_at) })()}</span>
                 ) : null}
               </div>
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
@@ -1652,7 +1652,13 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               <button 
                 className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
                 title="Voters"
-                onClick={(e)=> { e.preventDefault(); e.stopPropagation(); onOpenVoters && onOpenVoters(post.poll!.id) }}
+                onClick={(e)=> { 
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (onOpenVoters) {
+                    onOpenVoters(post.poll!.id)
+                  }
+                }}
               >
                 <i className="fa-solid fa-users" />
               </button>
@@ -1710,7 +1716,12 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             </div>
             <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
             <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
-            <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-white" title="View reactions" onClick={(e)=> { e.stopPropagation(); onOpenReactions && onOpenReactions() }}>
+            <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-white" title="View reactions" onClick={(e)=> { 
+              e.stopPropagation()
+              if (onOpenReactions) {
+                onOpenReactions()
+              }
+            }}>
               <i className="fa-solid fa-users" />
             </button>
             <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]"
@@ -1865,15 +1876,17 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                                 const resp = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
                                 const j = await resp.json().catch(()=>null)
                                 if (j?.success && j.reply){
-                                  onAddReply && onAddReply(post.id, j.reply as any)
+                                  if (onAddReply) {
+                                    onAddReply(post.id, j.reply as any)
+                                  }
                                   setChildReplyText('')
                                   setChildReplyGif(null)
                                   setActiveChildReplyFor(null)
                                 } else {
                                   alert(j?.error || 'Failed to reply')
                                 }
-                              }catch (err){
-                                console.error('Failed to send reply with GIF', err)
+                              }catch (_err){
+                                console.error('Failed to send reply with GIF', _err)
                                 alert('Failed to send reply. Please try again.')
                               }finally{
                                 setSendingChildReply(false)
@@ -1949,14 +1962,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
                       const j = await r.json().catch(()=>null)
                       if (j?.success && j.reply){
-                        onAddReply && onAddReply(post.id, j.reply as any)
+                        if (onAddReply) {
+                          onAddReply(post.id, j.reply as any)
+                        }
                         setReplyText('')
                         setReplyGif(null)
                       } else {
                         alert(j?.error || 'Failed to reply')
                       }
-                    }catch (err){
-                      console.error('Failed to send reply with GIF', err)
+                    }catch (_err){
+                      console.error('Failed to send reply with GIF', _err)
                       alert('Failed to send reply. Please try again.')
                     }finally{
                       setSendingReply(false)

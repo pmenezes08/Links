@@ -159,7 +159,7 @@ export default function Signup(){
           } else {
             setError(j?.error || 'Registration failed')
           }
-        } catch (jsonError) {
+        } catch {
           setShowVerify(true)
         }
       } else {
