@@ -19545,6 +19545,11 @@ def api_community_stories(community_id: int):
                 return str(value)
 
             def _public_url(raw_path):
+                if not raw_path:
+                    return None
+                # If already a full URL (CDN), return as-is
+                if str(raw_path).startswith(('http://', 'https://')):
+                    return raw_path
                 norm = normalize_upload_reference(raw_path)
                 return get_public_upload_url(norm) if norm else None
 

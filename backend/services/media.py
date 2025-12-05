@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Tuple
 from urllib.parse import urljoin
 
 from flask import current_app, request
@@ -18,6 +18,22 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     Image = None  # type: ignore
     PIL_AVAILABLE = False
+
+# Import R2 storage (lazy to avoid import errors if boto3 not installed)
+try:
+    from backend.services.r2_storage import (
+        R2_ENABLED,
+        R2_PUBLIC_URL,
+        upload_file_to_r2,
+        get_r2_public_url,
+        is_r2_url,
+    )
+except ImportError:
+    R2_ENABLED = False
+    R2_PUBLIC_URL = None
+    upload_file_to_r2 = None
+    get_r2_public_url = None
+    is_r2_url = None
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +114,13 @@ def _uploads_root() -> str:
 
 
 def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions: Optional[Iterable[str]] = None):
-    """Persist an uploaded file into the configured uploads directory."""
+    """
+    Persist an uploaded file - tries R2 CDN first, falls back to local storage.
+    
+    Returns a path/URL string:
+    - If R2 succeeds: returns the CDN URL (https://...)
+    - If R2 fails or disabled: returns local path (uploads/...)
+    """
     if not file or not file.filename:
         return None
     if not allowed_file(file.filename, allowed_extensions):
@@ -109,33 +131,62 @@ def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions
     name, ext = os.path.splitext(filename)
     unique_filename = f"{name}_{timestamp}{ext}"
 
+    # Determine the key/path
+    if subfolder:
+        r2_key = f"{subfolder}/{unique_filename}"
+        return_path = f"uploads/{subfolder}/{unique_filename}"
+    else:
+        r2_key = unique_filename
+        return_path = f"uploads/{unique_filename}"
+
+    # Try R2 upload first (for CDN delivery)
+    r2_url = None
+    if R2_ENABLED and upload_file_to_r2:
+        try:
+            success, r2_url = upload_file_to_r2(file, r2_key)
+            if success and r2_url:
+                logger.info(f"File uploaded to R2 CDN: {r2_url}")
+        except Exception as e:
+            logger.warning(f"R2 upload failed, falling back to local: {e}")
+            r2_url = None
+
+    # Always save locally as backup (and for R2 fallback)
     upload_root = _uploads_root()
     if subfolder:
         upload_path = os.path.join(upload_root, subfolder)
         os.makedirs(upload_path, exist_ok=True)
         filepath = os.path.join(upload_path, unique_filename)
-        return_path = f"uploads/{subfolder}/{unique_filename}"
     else:
         os.makedirs(upload_root, exist_ok=True)
         filepath = os.path.join(upload_root, unique_filename)
-        return_path = f"uploads/{unique_filename}"
 
+    file.seek(0)  # Reset file pointer after R2 upload
     file.save(filepath)
+    
+    # Optimize images
     try:
-        ext = (os.path.splitext(filename)[1] or "").lower().lstrip(".")
-        if ext in {"png", "jpg", "jpeg", "gif", "webp"}:
+        file_ext = (os.path.splitext(filename)[1] or "").lower().lstrip(".")
+        if file_ext in {"png", "jpg", "jpeg", "gif", "webp"}:
             optimize_image(filepath, max_width=1280, quality=80)
     except Exception:
         pass
-    return return_path
+
+    # Return R2 URL if available, otherwise local path
+    return r2_url if r2_url else return_path
 
 
 def normalize_upload_reference(path: Optional[str]) -> Optional[str]:
+    """Normalize a path to uploads/... format. Returns None for CDN URLs."""
     if not path:
         return None
     p = str(path).strip()
     if not p:
         return None
+    
+    # If it's a full URL (R2 CDN or other), don't normalize
+    if p.startswith('http://') or p.startswith('https://'):
+        return None
+    
     if p.startswith("static/uploads/"):
         p = p[len("static/") :]
     if p.startswith("/static/uploads/"):
@@ -168,6 +219,14 @@ def load_upload_bytes(path: Optional[str]) -> Optional[bytes]:
 
 
 def get_public_upload_url(path: Optional[str]) -> Optional[str]:
+    """Get the public URL for an uploaded file."""
+    if not path:
+        return None
+    
+    # If it's already a full URL (R2 CDN or other), return as-is
+    if path.startswith('http://') or path.startswith('https://'):
+        return path
+    
     rel = normalize_upload_reference(path)
     if not rel:
         return None
