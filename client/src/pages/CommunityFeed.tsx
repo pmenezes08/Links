@@ -693,6 +693,50 @@ export default function CommunityFeed() {
     return story.media_url || normalizeMediaPath(story.media_path || '')
   }, [])
 
+  const [deletingStory, setDeletingStory] = useState(false)
+
+  const handleDeleteStory = useCallback(async (storyId: number) => {
+    if (!storyId || deletingStory) return
+    
+    if (!confirm('Delete this story?')) return
+    
+    setDeletingStory(true)
+    try {
+      const res = await fetch(`/api/community_stories/${storyId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      const json = await res.json()
+      
+      if (json.success) {
+        // Remove story from local state
+        setStoryGroups(prev => {
+          const updated = prev.map(group => ({
+            ...group,
+            stories: group.stories.filter(s => s.id !== storyId)
+          })).filter(group => group.stories.length > 0)
+          return updated
+        })
+        
+        // Close viewer or move to next story
+        if (hasNextStory) {
+          goToNextStory()
+        } else if (hasPrevStory) {
+          goToPrevStory()
+        } else {
+          closeStoryViewer()
+        }
+      } else {
+        alert(json.error || 'Failed to delete story')
+      }
+    } catch (err) {
+      console.error('Failed to delete story:', err)
+      alert('Failed to delete story')
+    } finally {
+      setDeletingStory(false)
+    }
+  }, [deletingStory, hasNextStory, hasPrevStory, goToNextStory, goToPrevStory, closeStoryViewer])
+
   // Optimistic delete - removes post from UI immediately, syncs with server in background
   async function handleDeletePost(postId: number) {
     // Store the post in case we need to restore it
@@ -1284,9 +1328,22 @@ export default function CommunityFeed() {
                     {currentStory.created_at ? formatSmartTime(currentStory.created_at) : null}
                   </div>
                 </div>
-                <div className="text-xs text-[#cfd8dc] flex items-center gap-1">
-                  <i className="fa-regular fa-eye" />
-                  <span>{currentStory.view_count ?? 0}</span>
+                <div className="flex items-center gap-3">
+                  <div className="text-xs text-[#cfd8dc] flex items-center gap-1">
+                    <i className="fa-regular fa-eye" />
+                    <span>{currentStory.view_count ?? 0}</span>
+                  </div>
+                  {/* Delete button - only for story owner */}
+                  {(currentStory.username?.toLowerCase() === data?.username?.toLowerCase()) && (
+                    <button
+                      className="w-8 h-8 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 flex items-center justify-center disabled:opacity-50"
+                      onClick={() => handleDeleteStory(currentStory.id)}
+                      disabled={deletingStory}
+                      aria-label="Delete story"
+                    >
+                      <i className={`fa-solid ${deletingStory ? 'fa-spinner fa-spin' : 'fa-trash'} text-sm`} />
+                    </button>
+                  )}
                 </div>
               </div>
               

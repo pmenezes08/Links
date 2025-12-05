@@ -19821,6 +19821,59 @@ def api_mark_story_view():
         logger.error(f"Error recording view for story {story_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+
+@app.route('/api/community_stories/<int:story_id>', methods=['DELETE'])
+@login_required
+def delete_community_story(story_id: int):
+    """Delete a community story. Only the story owner or community admin can delete."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+            
+            # Get story info
+            c.execute(
+                f"""
+                SELECT cs.id, cs.username as story_owner, cs.community_id, c.creator_username
+                FROM community_stories cs
+                JOIN communities c ON c.id = cs.community_id
+                WHERE cs.id = {ph}
+                """,
+                (story_id,),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Story not found'}), 404
+            
+            story_owner = row["story_owner"] if hasattr(row, "keys") else row[1]
+            community_id = row["community_id"] if hasattr(row, "keys") else row[2]
+            community_creator = row["creator_username"] if hasattr(row, "keys") else row[3]
+            
+            # Check permission: must be story owner, community creator, or admin
+            is_story_owner = username.lower() == story_owner.lower()
+            is_community_creator = username.lower() == (community_creator or '').lower()
+            is_app_admin = username.lower() == 'admin'
+            
+            if not (is_story_owner or is_community_creator or is_app_admin):
+                return jsonify({'success': False, 'error': 'You can only delete your own stories'}), 403
+            
+            # Delete story views first (foreign key constraint)
+            c.execute(f"DELETE FROM community_story_views WHERE story_id = {ph}", (story_id,))
+            
+            # Delete the story
+            c.execute(f"DELETE FROM community_stories WHERE id = {ph}", (story_id,))
+            conn.commit()
+            
+            logger.info(f"Story {story_id} deleted by {username}")
+            return jsonify({'success': True, 'message': 'Story deleted'})
+            
+    except Exception as e:
+        logger.error(f"Error deleting story {story_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
 @app.route('/api/community_member_suggest')
 @login_required
 def api_community_member_suggest():
