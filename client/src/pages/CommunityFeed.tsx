@@ -14,16 +14,34 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import LazyVideo from '../components/LazyVideo'
+import StoriesCarousel from '../components/StoriesCarousel'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean }
+type CommunityStory = {
+  id: number
+  community_id: number
+  user_id: number
+  username: string
+  display_name?: string | null
+  profile_picture?: string | null
+  video_path: string
+  thumbnail_path?: string | null
+  created_at: string
+  expires_at: string
+  duration_seconds?: number | null
+  has_viewed?: boolean
+}
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 const COMMUNITY_FEED_CACHE_TTL_MS = 2 * 60 * 1000
 const COMMUNITY_FEED_CACHE_VERSION = 'community-feed-v3'
+const COMMUNITY_STORIES_CACHE_KEY = (id?: string) => id ? `community-stories:${id}` : null
+const COMMUNITY_STORIES_CACHE_VERSION = 'community-stories-v1'
+const STORIES_REFRESH_INTERVAL_MS = 60 * 1000
 
 function normalizeMediaPath(p?: string | null){
   if (!p) return ''
@@ -61,6 +79,9 @@ export default function CommunityFeed() {
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
   const [previewImageSrc, setPreviewImageSrc] = useState<string|null>(null)
+  const [stories, setStories] = useState<CommunityStory[]>([])
+  const [storiesLoading, setStoriesLoading] = useState(false)
+  const storiesCacheKey = useMemo(() => COMMUNITY_STORIES_CACHE_KEY(community_id ?? undefined), [community_id])
   // Voters modal state
   const [viewingVotersPollId, setViewingVotersPollId] = useState<number|null>(null)
   const [votersLoading, setVotersLoading] = useState(false)
