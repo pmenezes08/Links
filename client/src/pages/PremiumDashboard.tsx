@@ -884,7 +884,7 @@ export default function PremiumDashboard() {
                       setShowSuccessModal(true);
                     }
                       else alert(j?.error || 'Failed to join community')
-                  }catch(err){ 
+                  }catch{ 
                     alert('Failed to join community') 
                   }
                 }}>Join</button>

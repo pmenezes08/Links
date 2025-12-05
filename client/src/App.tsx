@@ -385,7 +385,7 @@ function AppRoutes(){
       setProfileData(null)
       setProfileError(json?.error || 'Failed to load profile')
       return null
-    } catch (error) {
+    } catch {
       setProfileData(null)
       setProfileError('Failed to load profile')
       return null

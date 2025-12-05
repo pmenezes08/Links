@@ -1585,7 +1585,7 @@ export default function ChatThread(){
             }
           }
         }
-      } catch (error) {
+      } catch {
         // Fall back to legacy method
       }
     }
@@ -1637,7 +1637,8 @@ export default function ChatThread(){
         // Revoke blob URL after successful upload to free memory
         setTimeout(() => URL.revokeObjectURL(url), 100)
       }
-    }catch(err){
+    }catch(error){
+      console.error('Failed to send audio', error)
       alert('Failed to send audio')
     }finally{
       setSending(false)
@@ -1701,8 +1702,10 @@ export default function ChatThread(){
         // Revoke blob URL after successful upload to free memory
         setTimeout(() => URL.revokeObjectURL(url), 100)
       }
-    }catch(err){
-      alert('Failed to send voice message: ' + (err as Error).message)
+    }catch(error){
+      console.error('Failed to send voice message', error)
+      const message = error instanceof Error ? error.message : String(error)
+      alert('Failed to send voice message: ' + message)
     } finally {
       setSending(false)
     }
@@ -1742,7 +1745,7 @@ export default function ChatThread(){
         // Permission not yet requested, show pre-permission modal
         setShowMicPermissionModal(true)
       }
-    } catch (error) {
+    } catch {
       // Fallback for browsers that don't support permissions API (like iOS Safari)
       // Just try to start recording - browser will show its own permission dialog
       startVoiceRecording()

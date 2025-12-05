@@ -928,7 +928,7 @@ export default function CommunityFeed() {
                   <div className="text-sm text-[#9fb0b5]">No announcements.</div>
                 ) : _announcements.map((a:any)=> (
                   <div key={a.id} className="rounded-xl border border-white/10 p-3 bg-white/[0.03]">
-                    <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} - {(() => { try { const d = new Date(a.created_at); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} const s = String(a.created_at||'').split(' '); return s[0] || String(a.created_at||''); })()}</div>
+                    <div className="text-xs text-[#9fb0b5] mb-1">{a.created_by} - {(() => { try { const d = new Date(a.created_at); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } const s = String(a.created_at||'').split(' '); return s[0] || String(a.created_at||''); })()}</div>
                     <div className="whitespace-pre-wrap text-sm">{a.content}</div>
                     {(data?.is_community_admin || data?.community?.creator_username === data?.username || data?.username === 'admin') && (
                       <div className="mt-2 text-right">
@@ -1413,7 +1413,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       } else {
         alert(j?.error || 'Failed to update post')
       }
-    } catch (err) {
+    } catch {
       alert('Failed to update post')
     }
   }
@@ -1623,7 +1623,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               <div className="font-medium text-sm flex-1">
                 {post.poll.question}
                 {post.poll.expires_at ? (
-                  <span className="ml-2 text-[11px] text-[#9fb0b5]">Closes {(() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch(e) {} return String(post.poll.expires_at) })()}</span>
+                  <span className="ml-2 text-[11px] text-[#9fb0b5]">Closes {(() => { try { const d = new Date(post.poll.expires_at as any); if (!isNaN(d.getTime())) return d.toLocaleDateString(); } catch { } return String(post.poll.expires_at) })()}</span>
                 ) : null}
               </div>
               {(post.username === currentUser || isAdmin || currentUser === 'admin') && (
@@ -1885,8 +1885,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                                 } else {
                                   alert(j?.error || 'Failed to reply')
                                 }
-                              }catch (err){
-                                console.error('Failed to send reply with GIF', err)
+                              }catch (_err){
+                                console.error('Failed to send reply with GIF', _err)
                                 alert('Failed to send reply. Please try again.')
                               }finally{
                                 setSendingChildReply(false)
@@ -1970,8 +1970,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       } else {
                         alert(j?.error || 'Failed to reply')
                       }
-                    }catch (err){
-                      console.error('Failed to send reply with GIF', err)
+                    }catch (_err){
+                      console.error('Failed to send reply with GIF', _err)
                       alert('Failed to send reply. Please try again.')
                     }finally{
                       setSendingReply(false)

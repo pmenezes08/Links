@@ -802,7 +802,7 @@ export default function AdminDashboard() {
                           } else {
                             alert('Failed to regenerate icons: ' + (j?.error || 'Unknown error'))
                           }
-                        }catch(e){ alert('Server error') }
+                        }catch{ alert('Server error') }
                       }}
                       className="px-3 py-1.5 bg-white/10 border border-white/20 rounded-lg text-sm hover:bg-white/15"
                     >

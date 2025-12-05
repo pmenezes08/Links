@@ -45,7 +45,7 @@ export default function EncryptionSettings() {
             return
           }
         }
-      } catch (e) {
+      } catch {
         console.warn('Could not check server key status')
       }
       
