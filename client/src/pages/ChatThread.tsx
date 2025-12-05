@@ -160,6 +160,19 @@ const CHAT_CACHE_VERSION = 'chat-v1'
 const DECRYPTION_RETRY_DELAY_MS = 4000
 const SIGNAL_PENDING_TEXT = '[🔒 Setting up secure session…]'
 const MAX_SIGNAL_RETRIES = 2
+const SIGNAL_DECRYPT_CACHE_BASE_KEY = 'signal_decrypted_messages'
+const SIGNAL_DECRYPT_CACHE_VERSION = 'signal-v2'
+const SIGNAL_DECRYPT_CACHE_LIMIT = 400
+
+function buildDecryptionCacheKey(username?: string | null, deviceId?: string | number | null) {
+  const normalizedUser = (username || 'anonymous').toLowerCase()
+  const normalizedDevice = deviceId ? String(deviceId) : 'nodevice'
+  return `${SIGNAL_DECRYPT_CACHE_BASE_KEY}:${normalizedUser}:${normalizedDevice}:${SIGNAL_DECRYPT_CACHE_VERSION}`
+}
+
+function normalizeCacheMessageId(id: number | string): string {
+  return String(id)
+}
 
 type Message = ChatMessage
 
@@ -240,14 +253,137 @@ export default function ChatThread(){
   const skipNextPollsUntil = useRef<number>(0)
   const initialUsername =
     typeof window !== 'undefined' ? safeLocalStorageGet('current_username') : null
+  const initialSignalDeviceId =
+    typeof window !== 'undefined' ? safeLocalStorageGet('signal_device_id') : null
   const currentUserRef = useRef<string | null>(initialUsername)
   const userFetchPromiseRef = useRef<Promise<string | null> | null>(null)
   const signalInitPromiseRef = useRef<Promise<boolean> | null>(null)
+  const decryptionCacheStorageKeyRef = useRef(
+    buildDecryptionCacheKey(initialUsername, initialSignalDeviceId)
+  )
+  const pendingDecryptionCacheSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadDecryptionCache = useCallback((storageKey: string) => {
+    if (typeof window === 'undefined') return
+    try {
+      let raw = localStorage.getItem(storageKey)
+      if (!raw && storageKey !== SIGNAL_DECRYPT_CACHE_BASE_KEY) {
+        raw = localStorage.getItem(SIGNAL_DECRYPT_CACHE_BASE_KEY)
+        if (raw) {
+          console.log('🔐 Migrating legacy Signal cache into', storageKey)
+          localStorage.removeItem(SIGNAL_DECRYPT_CACHE_BASE_KEY)
+        }
+      }
+      decryptionCache.current.clear()
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      const entries =
+        parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.entries
+          ? parsed.entries
+          : parsed
+      if (!entries || typeof entries !== 'object') return
+      Object.entries(entries as Record<string, { text: string; error: boolean }>).forEach(
+        ([key, value]) => {
+          if (value && typeof value.text === 'string') {
+            decryptionCache.current.set(String(key), value)
+          }
+        }
+      )
+      console.log(
+        '🔐 Loaded',
+        decryptionCache.current.size,
+        'cached decrypted messages from',
+        storageKey
+      )
+    } catch (e) {
+      console.warn('Failed to load decryption cache:', e)
+      decryptionCache.current.clear()
+    }
+  }, [])
+
+  useEffect(() => {
+    loadDecryptionCache(decryptionCacheStorageKeyRef.current)
+    return () => {
+      if (pendingDecryptionCacheSaveRef.current) {
+        clearTimeout(pendingDecryptionCacheSaveRef.current)
+        pendingDecryptionCacheSaveRef.current = null
+        persistDecryptionCache()
+      }
+    }
+  }, [loadDecryptionCache, persistDecryptionCache])
+
+  const persistDecryptionCache = useCallback(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const payload = {
+        version: SIGNAL_DECRYPT_CACHE_VERSION,
+        savedAt: Date.now(),
+        entries: Object.fromEntries(
+          Array.from(decryptionCache.current.entries()).filter(([, value]) => !value.error)
+        ),
+      }
+      localStorage.setItem(decryptionCacheStorageKeyRef.current, JSON.stringify(payload))
+    } catch (e) {
+      console.warn('Failed to save decryption cache:', e)
+    }
+  }, [])
+
+  const scheduleDecryptionCacheSave = useCallback(() => {
+    if (typeof window === 'undefined') return
+    if (pendingDecryptionCacheSaveRef.current) return
+    pendingDecryptionCacheSaveRef.current = window.setTimeout(() => {
+      pendingDecryptionCacheSaveRef.current = null
+      persistDecryptionCache()
+    }, 600)
+  }, [persistDecryptionCache])
+
+  const cacheDecryptedMessage = useCallback(
+    (messageId: number | string, value: { text: string; error: boolean }) => {
+      const cacheKey = normalizeCacheMessageId(messageId)
+      const cache = decryptionCache.current
+      if (cache.has(cacheKey)) {
+        cache.delete(cacheKey)
+      }
+      cache.set(cacheKey, value)
+      while (cache.size > SIGNAL_DECRYPT_CACHE_LIMIT) {
+        const oldestKey = cache.keys().next().value
+        cache.delete(oldestKey)
+      }
+      scheduleDecryptionCacheSave()
+    },
+    [scheduleDecryptionCacheSave]
+  )
+
+  const refreshDecryptionCacheStorageKey = useCallback(
+    (username?: string | null, deviceId?: number | string | null) => {
+      const nextKey = buildDecryptionCacheKey(username, deviceId)
+      if (nextKey === decryptionCacheStorageKeyRef.current) return
+      decryptionCacheStorageKeyRef.current = nextKey
+      loadDecryptionCache(nextKey)
+      if (typeof window !== 'undefined' && nextKey !== SIGNAL_DECRYPT_CACHE_BASE_KEY) {
+        try {
+          localStorage.removeItem(SIGNAL_DECRYPT_CACHE_BASE_KEY)
+        } catch {
+          // ignore
+        }
+      }
+    },
+    [loadDecryptionCache]
+  )
+
+  useEffect(() => {
+    const usernameForCache = currentUserRef.current || initialUsername
+    const deviceIdForCache =
+      signalService.getDeviceId() ||
+      (typeof window !== 'undefined' ? safeLocalStorageGet('signal_device_id') : null)
+    refreshDecryptionCacheStorageKey(usernameForCache, deviceIdForCache)
+  }, [initialUsername, refreshDecryptionCacheStorageKey, signalReadyTick])
+
   const fetchCurrentUsername = useCallback(async (): Promise<string | null> => {
     if (currentUserRef.current) return currentUserRef.current
     const cached = safeLocalStorageGet('current_username')
     if (cached) {
       currentUserRef.current = cached
+      refreshDecryptionCacheStorageKey(cached, signalService.getDeviceId() || initialSignalDeviceId)
       return cached
     }
     if (!userFetchPromiseRef.current) {
@@ -262,6 +398,10 @@ export default function ChatThread(){
             localStorage.setItem('current_username', name)
           }
           currentUserRef.current = name
+          refreshDecryptionCacheStorageKey(
+            name,
+            signalService.getDeviceId() || safeLocalStorageGet('signal_device_id')
+          )
           userFetchPromiseRef.current = null
           return name
         })
@@ -272,10 +412,14 @@ export default function ChatThread(){
         })
     }
     return userFetchPromiseRef.current
-  }, [])
+  }, [initialSignalDeviceId, refreshDecryptionCacheStorageKey])
 
   const ensureSignalInitialized = useCallback(async (): Promise<boolean> => {
     if (signalService.isInitialized() && signalService.getDeviceId()) {
+      refreshDecryptionCacheStorageKey(
+        signalService.getUsername() || currentUserRef.current,
+        signalService.getDeviceId()
+      )
       return true
     }
     if (signalInitPromiseRef.current) {
@@ -295,6 +439,7 @@ export default function ChatThread(){
           localStorage.setItem('current_username', username)
         }
         currentUserRef.current = username
+        refreshDecryptionCacheStorageKey(username, deviceId)
         setSignalReadyTick((t) => t + 1)
         return true
       } catch (err) {
@@ -306,7 +451,7 @@ export default function ChatThread(){
     })()
     const result = await signalInitPromiseRef.current
     return result
-  }, [fetchCurrentUsername])
+  }, [fetchCurrentUsername, refreshDecryptionCacheStorageKey])
 
   // Auto-scroll logic - declared early so it can be used in useEffects
   const lastCountRef = useRef(0)
@@ -758,48 +903,13 @@ export default function ChatThread(){
 
   // Track messages that have been processed (don't decrypt multiple times)
   // Use a GLOBAL cache keyed by message ID that persists in localStorage
-  const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(new Map())
+  const decryptionCache = useRef<Map<string, { text: string; error: boolean }>>(new Map())
   const decryptionFailures = useRef<Map<number | string, { lastAttempt: number; errorText: string; permanent?: boolean }>>(new Map())
   const pendingCiphertextRequests = useRef<Map<string, Promise<any>>>(new Map())
   const messagesRef = useRef<Message[]>([])
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
-  
-  // Load cache from localStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('signal_decrypted_messages')
-      if (stored) {
-        const parsed = JSON.parse(stored) as Record<string, { text: string; error: boolean }>
-        Object.entries(parsed).forEach(([key, value]) => {
-          // Store with BOTH string and number keys for compatibility
-          decryptionCache.current.set(key, value)
-          decryptionCache.current.set(Number(key), value)
-        })
-        console.log('🔐 Loaded', Object.keys(parsed).length, 'cached decrypted messages')
-      }
-    } catch (e) {
-      console.warn('Failed to load decryption cache:', e)
-    }
-  }, [])
-  
-  // Save cache to localStorage
-  const saveDecryptionCache = useCallback(() => {
-    try {
-      const obj: Record<string, { text: string; error: boolean }> = {}
-      decryptionCache.current.forEach((value, key) => {
-        // Only cache successful decryptions, not errors
-        if (!value.error) {
-          obj[String(key)] = value
-        }
-      })
-      localStorage.setItem('signal_decrypted_messages', JSON.stringify(obj))
-      console.log('🔐 Saved', Object.keys(obj).length, 'decrypted messages to cache')
-    } catch (e) {
-      console.warn('Failed to save decryption cache:', e)
-    }
-  }, [])
 
   const recordDecryptionFailure = useCallback((messageId: number | string, errorText: string, permanent = false) => {
     decryptionFailures.current.set(String(messageId), {
@@ -875,15 +985,14 @@ export default function ChatThread(){
         }
       }
 
-      if (message.sent) {
-        const cached = decryptionCache.current.get(message.id)
-        if (cached && !cached.error) {
-          clearDecryptionFailure(String(message.id))
-          return {
-            ...message,
-            text: cached.text,
-            decryption_error: false,
-          }
+      const cacheKeyString = normalizeCacheMessageId(message.id)
+      const cached = decryptionCache.current.get(cacheKeyString)
+      if (cached && !cached.error) {
+        clearDecryptionFailure(cacheKeyString)
+        return {
+          ...message,
+          text: cached.text,
+          decryption_error: false,
         }
       }
 
@@ -932,9 +1041,8 @@ export default function ChatThread(){
 
         console.log('🔐 ✅ Decryption succeeded for message:', message.id)
 
-        decryptionCache.current.set(message.id, { text: result.plaintext, error: false })
-        saveDecryptionCache()
-        clearDecryptionFailure(String(message.id))
+        cacheDecryptedMessage(message.id, { text: result.plaintext, error: false })
+        clearDecryptionFailure(cacheKeyString)
 
         return {
           ...message,
@@ -983,7 +1091,7 @@ export default function ChatThread(){
         }
       }
     },
-    [clearDecryptionFailure, ensureSignalInitialized, fetchCiphertextPayload, recordDecryptionFailure, saveDecryptionCache]
+    [cacheDecryptedMessage, clearDecryptionFailure, ensureSignalInitialized, fetchCiphertextPayload, recordDecryptionFailure]
   )
 
   // Decrypt message if it's encrypted
@@ -992,13 +1100,10 @@ export default function ChatThread(){
       return message
     }
     
-    const cacheKeyString = String(message.id)
+    const cacheKeyString = normalizeCacheMessageId(message.id)
     
     // Check cache first - don't decrypt the same message multiple times!
-    // Try both number and string keys for compatibility
-    const cached = decryptionCache.current.get(message.id) || 
-                   decryptionCache.current.get(String(message.id)) ||
-                   decryptionCache.current.get(Number(message.id))
+    const cached = decryptionCache.current.get(cacheKeyString)
     if (cached) {
       console.log('🔐 Using cached decryption for message:', message.id)
       clearDecryptionFailure(cacheKeyString)
@@ -1074,8 +1179,7 @@ export default function ChatThread(){
       const decryptedText = await encryptionService.decryptMessage(encryptedData)
       
       // Cache the decrypted text and persist to localStorage
-      decryptionCache.current.set(message.id, { text: decryptedText, error: false })
-      saveDecryptionCache()
+      cacheDecryptedMessage(message.id, { text: decryptedText, error: false })
       clearDecryptionFailure(cacheKeyString)
       
       return {
@@ -1093,7 +1197,7 @@ export default function ChatThread(){
         decryption_error: true,
       }
     }
-  }, [clearDecryptionFailure, decryptSignalMessage, recordDecryptionFailure, saveDecryptionCache])
+  }, [cacheDecryptedMessage, clearDecryptionFailure, decryptSignalMessage, recordDecryptionFailure])
   
   const retryFailedDecrypts = useCallback(async () => {
     const candidates = messagesRef.current.filter(shouldRetryDecryption)
@@ -1767,8 +1871,7 @@ export default function ChatThread(){
                   
                   // IMPORTANT: Cache the plaintext for this message
                   // So when we reload/poll, we can show sent messages correctly
-                  decryptionCache.current.set(j.message_id, { text: messageText, error: false })
-                  saveDecryptionCache()
+                  cacheDecryptedMessage(j.message_id, { text: messageText, error: false })
                 } catch (cipherError) {
                   console.error('🔐 Signal: Failed to store ciphertexts:', cipherError)
                 }
