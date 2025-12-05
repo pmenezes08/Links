@@ -31,6 +31,15 @@ class SignalService {
   private initialized = false
   private currentUsername: string | null = null
   private currentDeviceId: number | null = null
+  private normalizePeer(username?: string | null): string {
+    return (username || '').trim().toLowerCase()
+  }
+  private buildAddress(username: string, deviceId: number): SignalProtocolAddress {
+    return new SignalProtocolAddress(this.normalizePeer(username), deviceId)
+  }
+  private buildAddressKey(username: string, deviceId: number): string {
+    return `${this.normalizePeer(username)}.${deviceId}`
+  }
 
   /**
    * Initialize the Signal Protocol for a user.
@@ -362,8 +371,8 @@ class SignalService {
     deviceId: number,
     plaintext: string
   ): Promise<DeviceCiphertext> {
-    const address = new SignalProtocolAddress(username, deviceId)
-    const addressString = `${username}.${deviceId}`
+    const address = this.buildAddress(username, deviceId)
+    const addressString = this.buildAddressKey(username, deviceId)
 
     // Check if we have a session
     const hasSession = await signalStore.hasSession(addressString)
@@ -438,7 +447,7 @@ class SignalService {
       signedPreKeyId: bundle.signedPreKey.keyId,
     })
 
-    const address = new SignalProtocolAddress(username, deviceId)
+    const address = this.buildAddress(username, deviceId)
     const sessionBuilder = new SessionBuilder(signalStore, address)
 
     // Convert bundle to format expected by libsignal
@@ -479,7 +488,7 @@ class SignalService {
       ciphertextLength: ciphertextBase64.length,
     })
 
-    const address = new SignalProtocolAddress(senderUsername, senderDeviceId)
+    const address = this.buildAddress(senderUsername, senderDeviceId)
     const sessionCipher = new SessionCipher(signalStore, address)
 
     const ciphertextBuffer = signalStore.base64ToArrayBuffer(ciphertextBase64)
@@ -623,6 +632,16 @@ class SignalService {
     await signalStore.storeLocalRegistration(registration)
 
     console.log(`🔐 Signal: Added ${newPreKeys.length} new prekeys`)
+  }
+
+  getNormalizedAddressKey(username: string, deviceId: number): string {
+    return this.buildAddressKey(username, deviceId)
+  }
+
+  async clearSessionForDevice(username?: string | null, deviceId?: number | null): Promise<void> {
+    if (!username || deviceId === null || deviceId === undefined) return
+    const addressKey = this.buildAddressKey(username, deviceId)
+    await signalStore.removeSession(addressKey)
   }
 }
 

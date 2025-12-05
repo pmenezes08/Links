@@ -20,7 +20,7 @@ import MessageImage from '../components/MessageImage'
 import MessageVideo from '../components/MessageVideo'
 import ZoomableImage from '../components/ZoomableImage'
 import { encryptionService } from '../services/simpleEncryption'
-import { signalService, signalStore } from '../services/signalProtocol'
+import { signalService } from '../services/signalProtocol'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -932,7 +932,9 @@ export default function ChatThread(){
           /session has been reset/i.test(errorMsg) ||
           /bad mac/i.test(errorMsg) ||
           /invalid mac/i.test(errorMsg) ||
-          /mac check failed/i.test(errorMsg)
+          /mac check failed/i.test(errorMsg) ||
+          /no record for device/i.test(errorMsg) ||
+          /no session for device/i.test(errorMsg)
 
         if (
           shouldResetSession &&
@@ -940,11 +942,11 @@ export default function ChatThread(){
           senderDeviceIdFromResponse &&
           attempt < MAX_SIGNAL_RETRIES
         ) {
-          const address = `${senderUsernameFromResponse}.${senderDeviceIdFromResponse}`
+          const addressLabel = `${senderUsernameFromResponse}.${senderDeviceIdFromResponse}`
           try {
-            await signalStore.removeSession(address)
+            await signalService.clearSessionForDevice(senderUsernameFromResponse, senderDeviceIdFromResponse)
           } catch (sessionError) {
-            console.warn('🔐 Failed to clear Signal session for', address, sessionError)
+            console.warn('🔐 Failed to clear Signal session for', addressLabel, sessionError)
           }
           const reinitialized = await ensureSignalInitialized()
           if (reinitialized) {
