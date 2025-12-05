@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { optimizeAvatar } from '../utils/imageOptimizer'
 
 type AvatarProps = {
   username: string
@@ -67,11 +68,19 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
     const p = (url || '').trim()
     if (!p) return null
     
-    if (p.startsWith('http')) return p
-    if (p.startsWith('/uploads') || p.startsWith('uploads/')) return p.startsWith('/') ? p : `/${p}`
-    if (p.startsWith('/static') || p.startsWith('static/')) return p.startsWith('/') ? p : `/${p}`
-    // Fallback: assume legacy stored filename in uploads
-    return `/uploads/${p}`
+    let baseUrl: string
+    if (p.startsWith('http')) {
+      baseUrl = p
+    } else if (p.startsWith('/uploads') || p.startsWith('uploads/')) {
+      baseUrl = p.startsWith('/') ? p : `/${p}`
+    } else if (p.startsWith('/static') || p.startsWith('static/')) {
+      baseUrl = p.startsWith('/') ? p : `/${p}`
+    } else {
+      baseUrl = `/uploads/${p}`
+    }
+    
+    // Apply Cloudflare Image optimization for avatars
+    return optimizeAvatar(baseUrl, size)
   })()
   const initials = (username || '?').slice(0, 1).toUpperCase()
   const profileHref = linkToProfile ? `/profile/${encodeURIComponent(username)}` : null

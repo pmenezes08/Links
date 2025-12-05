@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useGifPlayback } from '../hooks/useGifPlayback'
+import { optimizeMessagePhoto } from '../utils/imageOptimizer'
 
 interface MessageImageProps {
   src: string
@@ -14,7 +15,14 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
   const normalizedSrc = useMemo(() => src?.split('?')[0]?.toLowerCase() || '', [src])
   const isGif = normalizedSrc.endsWith('.gif')
   const { isFrozen, stillSrc, replay, canReplay } = useGifPlayback(isGif ? src : null)
-  const displaySrc = isGif && isFrozen && stillSrc ? stillSrc : src
+  
+  // Apply Cloudflare optimization (skip for GIFs to preserve animation)
+  const optimizedSrc = useMemo(() => {
+    if (isGif) return src
+    return optimizeMessagePhoto(src)
+  }, [src, isGif])
+  
+  const displaySrc = isGif && isFrozen && stillSrc ? stillSrc : optimizedSrc
 
   const handleLoad = () => {
     setLoading(false)
