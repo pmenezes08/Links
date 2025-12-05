@@ -9463,27 +9463,18 @@ def send_photo_message():
             
             recipient_username = recipient['username'] if hasattr(recipient, 'keys') else recipient[0]
             
-            # Save the photo
-            import uuid
-            from werkzeug.utils import secure_filename
+            # Save the photo using R2-enabled media service
+            stored_path = save_uploaded_file(
+                photo,
+                subfolder='message_photos',
+                allowed_extensions={'png', 'jpg', 'jpeg', 'gif', 'webp'}
+            )
+            if not stored_path:
+                return jsonify({'success': False, 'error': 'Failed to save photo'})
             
-            # Generate unique filename
-            file_extension = photo.filename.rsplit('.', 1)[1].lower() if '.' in photo.filename else 'jpg'
-            unique_filename = f"message_{uuid.uuid4().hex[:12]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_extension}"
-            
-            # Ensure uploads directory exists
-            uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'message_photos')
-            os.makedirs(uploads_dir, exist_ok=True)
-            
-            # Save file
-            file_path = os.path.join(uploads_dir, unique_filename)
-            photo.save(file_path)
-            
-            # Optimize the image for faster loading
-            optimize_image(file_path, max_width=1280, quality=80)
-            
-            # Store relative path for database
-            relative_path = f"message_photos/{unique_filename}"
+            # stored_path is either CDN URL or local path like "uploads/message_photos/..."
+            # For database, store the path/URL as-is
+            relative_path = stored_path
             
             # Check for duplicate message in last 5 seconds
             c.execute("""
@@ -9737,16 +9728,17 @@ def send_audio_message():
                 return jsonify({'success': False, 'error': 'Recipient not found'})
             recipient_username = rec['username'] if hasattr(rec, 'keys') else rec[0]
 
-            # Save file to uploads/voice_messages
-            import uuid
-            from werkzeug.utils import secure_filename
-            unique_filename = f"voice_{uuid.uuid4().hex[:12]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
-            uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'voice_messages')
-            os.makedirs(uploads_dir, exist_ok=True)
-            file_path = os.path.join(uploads_dir, secure_filename(unique_filename))
-            audio.save(file_path)
+            # Save audio file using R2-enabled media service
+            stored_path = save_uploaded_file(
+                audio,
+                subfolder='voice_messages',
+                allowed_extensions={'webm', 'ogg', 'mp3', 'm4a', 'wav', 'opus'}
+            )
+            if not stored_path:
+                return jsonify({'success': False, 'error': 'Failed to save audio'})
 
-            rel_path = f"voice_messages/{unique_filename}"
+            # stored_path is either CDN URL or local path
+            rel_path = stored_path
 
             # Insert audio message
             c.execute(
@@ -17440,19 +17432,14 @@ def update_community():
             if (is_owner or is_app_admin) and ('background_file' in request.files):
                 file = request.files['background_file']
                 if file and file.filename:
-                    # Save the uploaded file
-                    filename = secure_filename(file.filename)
-                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    name_part, ext = os.path.splitext(filename)
-                    unique_filename = f"{name_part}_{timestamp}{ext}"
-                    
-                    # Create community_backgrounds directory if it doesn't exist
-                    upload_path = os.path.join(app.config['UPLOAD_FOLDER'], 'community_backgrounds')
-                    os.makedirs(upload_path, exist_ok=True)
-                    
-                    filepath = os.path.join(upload_path, unique_filename)
-                    file.save(filepath)
-                    background_path = f"community_backgrounds/{unique_filename}"
+                    # Save the uploaded file using R2-enabled media service
+                    stored_path = save_uploaded_file(
+                        file,
+                        subfolder='community_backgrounds',
+                        allowed_extensions={'png', 'jpg', 'jpeg', 'gif', 'webp'}
+                    )
+                    if stored_path:
+                        background_path = stored_path
             
             # Update the community details
             if remove_background and (is_owner or is_app_admin):
