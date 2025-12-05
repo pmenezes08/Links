@@ -190,7 +190,7 @@ export default function ChatThread(){
   const [editingSaving, setEditingSaving] = useState(false)
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string; sender?:string }|null>(null)
-  const [sending, setSending] = useState(false)
+  const [sending, setSendingState] = useState(false)
   // Check if encryption keys need to be synced from another device
   const [encryptionNeedsSync] = useState(() => 
     localStorage.getItem('encryption_needs_sync') === 'true'
@@ -208,6 +208,7 @@ export default function ChatThread(){
   const isTypingRef = useRef(false) // Track if we've already sent typing indicator
   const pollTimer = useRef<any>(null)
   const pollInFlight = useRef(false)
+  const sendingLockRef = useRef(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
@@ -215,6 +216,10 @@ export default function ChatThread(){
   const audioInputRef = useRef<HTMLInputElement|null>(null)
   const videoInputRef = useRef<HTMLInputElement|null>(null)
   const { recording, recordMs, preview: recordingPreview, start: startVoiceRecording, stop: stopVoiceRecording, clearPreview: cancelRecordingPreview, level } = useAudioRecorder() as any
+  const setSending = useCallback((value: boolean) => {
+    sendingLockRef.current = value
+    setSendingState(value)
+  }, [])
   const [previewImage, setPreviewImage] = useState<string|null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [showMicPermissionModal, setShowMicPermissionModal] = useState(false)
@@ -371,6 +376,20 @@ export default function ChatThread(){
 
   // Mic always enabled for audio messages
   const MIC_ENABLED = true
+  const focusTextarea = useCallback(() => {
+    if (MIC_ENABLED && recording) return
+    const el = textareaRef.current
+    if (!el) return
+    requestAnimationFrame(() => {
+      el.focus()
+      const length = el.value.length
+      try {
+        el.setSelectionRange(length, length)
+      } catch {
+        // Some browsers may not support setSelectionRange on certain inputs
+      }
+    })
+  }, [recording])
   
   // Layout helpers
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
@@ -1549,23 +1568,30 @@ export default function ChatThread(){
   useEffect(() => { adjustTextareaHeight() }, [draft])
 
   async function send(){
-    if (!otherUserId || !draft.trim() || sending) return
-    
     const messageText = draft.trim()
+    if (!otherUserId || !messageText || sendingLockRef.current) return
+    
+    const replySnapshot = replyTo
+    setDraft('')
+    if (replySnapshot) {
+      setReplyTo(null)
+    }
     
     try {
+      setSending(true)
       // Pause polling for 2 seconds to avoid race condition with server confirmation
       skipNextPollsUntil.current = Date.now() + 2000
       const now = new Date().toISOString()
       const tempId = `temp_${Date.now()}_${Math.random()}`
-      const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
+      const replySnippet = replySnapshot ? (replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text) : undefined
+      const replySender = replySnapshot?.sender
       
       // Format message with reply if needed
       let formattedMessage = messageText
-      if (replyTo) {
+      if (replySnapshot) {
         // Add a special format that we can parse later
         // Using a format that won't interfere with normal messages
-        formattedMessage = `[REPLY:${replyTo.sender}:${replyTo.text.slice(0,90)}]\n${messageText}`
+        formattedMessage = `[REPLY:${replySender}:${replySnapshot.text.slice(0,90)}]\n${messageText}`
       }
       
       // Try to encrypt message using Signal Protocol (multi-device)
@@ -1664,11 +1690,6 @@ export default function ChatThread(){
         encrypted_body: isEncrypted ? encryptedBodyForRecipient : undefined,
         encrypted_body_for_sender: isEncrypted ? encryptedBodyForSender : undefined
       }
-      
-      // Clear input immediately for better UX
-      setDraft('')
-      setReplyTo(null)
-      setSending(true)
       
       // Add optimistic message immediately
       const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
@@ -2339,7 +2360,7 @@ export default function ChatThread(){
                       text: m.text,
                       sender: m.sent ? 'You' : (otherProfile?.display_name || username || 'User')
                     })
-                    textareaRef.current?.focus()
+                    focusTextarea()
                   }} 
                   onCopy={() => {
                     try {
@@ -2699,6 +2720,7 @@ export default function ChatThread(){
               touchAction: 'manipulation',
               WebkitTapHighlightColor: 'transparent'
             }}
+            onPointerDown={focusTextarea}
           >
             {/* Recording sound bar - replaces text input during recording */}
             {MIC_ENABLED && recording && (
@@ -2738,12 +2760,13 @@ export default function ChatThread(){
                   pointerEvents: 'auto'
                 } as CSSProperties}
                 onPaste={handlePaste}
-                onClick={(e) => {
-                  e.currentTarget.focus()
+                onPointerDown={() => {
+                  focusTextarea()
                 }}
                 onTouchEnd={(e) => {
-                  // iOS: focus on touch end for reliable keyboard opening
-                  e.currentTarget.focus()
+                  // iOS: ensure the first tap always focuses and opens keyboard
+                  e.preventDefault()
+                  focusTextarea()
                 }}
                 onChange={e=> {
                   setDraft(e.target.value)
