@@ -9813,6 +9813,70 @@ def send_audio_message():
         logger.error(f"Error sending audio message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send audio'})
 
+@app.route('/debug/r2_status')
+@login_required
+def debug_r2_status():
+    """Debug route to check R2 CDN configuration and connectivity"""
+    try:
+        from backend.services.r2_storage import (
+            R2_ENABLED, R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET, 
+            R2_ENDPOINT, R2_PUBLIC_URL, get_s3_client, upload_to_r2
+        )
+        
+        status = {
+            'r2_enabled': R2_ENABLED,
+            'env_vars': {
+                'CLOUDFLARE_R2_ENABLED': os.environ.get('CLOUDFLARE_R2_ENABLED', 'NOT SET'),
+                'CLOUDFLARE_R2_ACCESS_KEY': '***' + R2_ACCESS_KEY[-4:] if R2_ACCESS_KEY else 'NOT SET',
+                'CLOUDFLARE_R2_SECRET_KEY': '***' + R2_SECRET_KEY[-4:] if R2_SECRET_KEY else 'NOT SET',
+                'CLOUDFLARE_R2_BUCKET': R2_BUCKET or 'NOT SET',
+                'CLOUDFLARE_R2_ENDPOINT': R2_ENDPOINT or 'NOT SET',
+                'CLOUDFLARE_R2_PUBLIC_URL': R2_PUBLIC_URL or 'NOT SET',
+            },
+            'boto3_installed': False,
+            'client_created': False,
+            'test_upload': None,
+        }
+        
+        # Check boto3
+        try:
+            import boto3
+            status['boto3_installed'] = True
+            status['boto3_version'] = boto3.__version__
+        except ImportError:
+            status['boto3_installed'] = False
+            status['boto3_error'] = 'boto3 not installed - run: pip install boto3'
+        
+        # Try to create client
+        if R2_ENABLED and status['boto3_installed']:
+            client = get_s3_client()
+            status['client_created'] = client is not None
+            
+            # Try a test upload
+            if client:
+                try:
+                    test_content = b'R2 CDN test file - safe to delete'
+                    test_key = 'test/r2_connectivity_test.txt'
+                    success, url = upload_to_r2(test_content, test_key, 'text/plain')
+                    status['test_upload'] = {
+                        'success': success,
+                        'url': url,
+                        'message': 'Test file uploaded successfully!' if success else 'Upload failed'
+                    }
+                except Exception as e:
+                    status['test_upload'] = {
+                        'success': False,
+                        'error': str(e)
+                    }
+        
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+
 @app.route('/debug/message_photos')
 @login_required
 def debug_message_photos():
