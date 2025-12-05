@@ -1,6 +1,5 @@
 import { useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { optimizeAvatar } from '../utils/imageOptimizer'
 
 type AvatarProps = {
   username: string
