@@ -1064,53 +1064,43 @@ export default function CommunityFeed() {
             className="hidden"
             onChange={handleStoryFileChange}
           />
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-semibold text-white/80">Stories</div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] px-2 py-1.5">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar">
               <button
-                className="text-xs px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                className="flex flex-col items-center gap-0.5 min-w-[52px] text-white/80"
                 onClick={handleStoryUploadClick}
                 disabled={storyUploading || !community_id}
               >
-                {storyUploading ? 'Posting...' : 'Share Story'}
-              </button>
-            </div>
-            {storyError && (
-              <div className="text-xs text-red-400 mb-2">{storyError}</div>
-            )}
-            <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
-              <button
-                className="flex flex-col items-center gap-1 min-w-[68px] text-white/80"
-                onClick={handleStoryUploadClick}
-                disabled={!community_id}
-              >
-                <span className="w-16 h-16 rounded-full border-2 border-dashed border-white/25 flex items-center justify-center">
-                  <i className="fa-solid fa-plus text-lg" />
+                <span className="w-11 h-11 rounded-full border-2 border-dashed border-white/25 flex items-center justify-center">
+                  <i className="fa-solid fa-plus text-sm" />
                 </span>
-                <span className="text-xs text-[#9fb0b5]">Add Story</span>
+                <span className="text-[10px] text-[#9fb0b5]">{storyUploading ? '...' : 'Add'}</span>
               </button>
               {storiesLoading && storyGroups.length === 0 ? (
-                <div className="text-xs text-[#9fb0b5] flex items-center">Loading stories...</div>
+                <div className="text-[10px] text-[#9fb0b5] flex items-center">Loading...</div>
               ) : storyGroups.length === 0 ? (
-                <div className="text-xs text-[#9fb0b5] flex items-center">No stories yet.</div>
+                <div className="text-[10px] text-[#9fb0b5] flex items-center">No stories</div>
               ) : storyGroups.map((group, idx) => (
                 <button
                   key={`${group.username}-${idx}`}
-                  className="flex flex-col items-center gap-1 min-w-[68px]"
+                  className="flex flex-col items-center gap-0.5 min-w-[52px]"
                   onClick={() => openStory(idx, 0)}
                 >
-                  <span className={`w-16 h-16 rounded-full border-2 ${group.has_unseen ? 'border-[#4db6ac]' : 'border-white/20'} p-0.5`}>
+                  <span className={`w-11 h-11 rounded-full border-2 ${group.has_unseen ? 'border-[#4db6ac]' : 'border-white/20'} p-0.5`}>
                     <Avatar
                       username={group.username}
                       url={group.profile_picture || undefined}
-                      size={56}
+                      size={38}
                       linkToProfile={false}
                     />
                   </span>
-                  <span className="text-xs text-[#cfd8dc] truncate max-w-[64px]">@{group.username}</span>
+                  <span className="text-[10px] text-[#cfd8dc] truncate max-w-[48px]">@{group.username}</span>
                 </button>
               ))}
             </div>
+            {storyError && (
+              <div className="text-[10px] text-red-400 mt-1">{storyError}</div>
+            )}
           </div>
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
@@ -1256,15 +1246,19 @@ export default function CommunityFeed() {
                 />
               ))}
             </div>
-            <div className="relative rounded-3xl border border-white/10 bg-black/70 p-4 overflow-hidden">
-              <button
-                className="absolute top-4 right-4 w-9 h-9 rounded-full border border-white/15 text-white hover:bg-white/10"
-                onClick={closeStoryViewer}
-                aria-label="Close story"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-              <div className="flex items-center gap-3 mb-4 pr-10">
+            <div className="relative rounded-3xl border border-white/10 bg-black/70 overflow-hidden">
+              {/* Close button row */}
+              <div className="flex justify-end p-3 pb-0">
+                <button
+                  className="w-9 h-9 rounded-full border border-white/15 text-white hover:bg-white/10 flex items-center justify-center"
+                  onClick={closeStoryViewer}
+                  aria-label="Close story"
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+              {/* User info header */}
+              <div className="flex items-center gap-3 px-4 pb-3">
                 <Avatar
                   username={currentStory.username}
                   url={currentStory.profile_picture || undefined}
@@ -1282,7 +1276,8 @@ export default function CommunityFeed() {
                   <span>{currentStory.view_count ?? 0}</span>
                 </div>
               </div>
-              <div className="relative rounded-2xl border border-white/10 overflow-hidden min-h-[360px] bg-black/40">
+              {/* Video/Image content */}
+              <div className="relative mx-4 rounded-2xl border border-white/10 overflow-hidden min-h-[360px] bg-black/40">
                 {currentStory.media_type === 'video' ? (
                   <video
                     key={currentStory.id}
@@ -1302,9 +1297,9 @@ export default function CommunityFeed() {
                 )}
               </div>
               {currentStory.caption && (
-                <div className="mt-3 text-sm text-white/90 whitespace-pre-wrap break-words">{currentStory.caption}</div>
+                <div className="mt-3 mx-4 text-sm text-white/90 whitespace-pre-wrap break-words">{currentStory.caption}</div>
               )}
-              <div className="flex items-center justify-between mt-4 text-white/80">
+              <div className="flex items-center justify-between mt-4 mx-4 mb-4 text-white/80">
                 <button
                   className="px-4 py-1.5 rounded-full border border-white/20 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
                   onClick={goToPrevStory}
