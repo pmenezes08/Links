@@ -17,8 +17,12 @@ R2_ACCOUNT_ID = os.environ.get('CLOUDFLARE_R2_ACCOUNT_ID')
 R2_PUBLIC_URL = os.environ.get('CLOUDFLARE_R2_PUBLIC_URL', '').rstrip('/')
 R2_ENDPOINT = os.environ.get('CLOUDFLARE_R2_ENDPOINT')
 
-# Check if R2 is configured
-R2_ENABLED = all([R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET, R2_ENDPOINT])
+# Check if R2 is configured AND explicitly enabled
+# Set CLOUDFLARE_R2_ENABLED=true in environment to enable R2 uploads
+R2_ENABLED = (
+    os.environ.get('CLOUDFLARE_R2_ENABLED', '').lower() == 'true' and
+    all([R2_ACCESS_KEY, R2_SECRET_KEY, R2_BUCKET, R2_ENDPOINT])
+)
 
 _s3_client = None
 
