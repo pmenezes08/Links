@@ -196,6 +196,12 @@ FALLBACK_CITY_MAP: Dict[str, List[str]] = {
     'costa rica': ['San José', 'Liberia', 'Alajuela'],
 }
 
+STORY_IMAGE_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp'}
+STORY_VIDEO_EXTENSIONS = {'mp4', 'mov', 'm4v', 'webm', 'avi'}
+STORY_ALLOWED_EXTENSIONS = STORY_IMAGE_EXTENSIONS | STORY_VIDEO_EXTENSIONS
+STORY_DEFAULT_LIFESPAN_HOURS = 24
+STORY_MAX_CAPTION_LENGTH = 2000
+
 # Authentication decorators (defined early so they are in scope for route decorators)
 def login_required(f):
     @wraps(f)
@@ -703,6 +709,185 @@ def upsert_post_view(c, post_id: int, username: Optional[str]) -> Optional[int]:
     except Exception as insert_err:
         logger.warning(f"Failed inserting post_view for post {post_id} and user {username}: {insert_err}")
     return _count_post_views_excluding_admin(c, post_id)
+
+
+def ensure_story_tables(c):
+    """Ensure community_stories and community_story_views tables exist."""
+    try:
+        if USE_MYSQL:
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS community_stories (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    community_id INT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    media_path VARCHAR(512) NOT NULL,
+                    media_type VARCHAR(16) NOT NULL,
+                    caption TEXT,
+                    duration_seconds INT,
+                    status VARCHAR(32) NOT NULL DEFAULT 'active',
+                    created_at DATETIME NOT NULL,
+                    expires_at DATETIME NOT NULL,
+                    view_count INT NOT NULL DEFAULT 0,
+                    last_viewed_at DATETIME,
+                    INDEX idx_cs_comm_expires (community_id, expires_at),
+                    INDEX idx_cs_user_created (username, created_at),
+                    CONSTRAINT fk_cs_community FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
+                    CONSTRAINT fk_cs_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                )
+                """
+            )
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS community_story_views (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    story_id INT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    viewed_at DATETIME NOT NULL,
+                    UNIQUE KEY uniq_story_viewer (story_id, username),
+                    INDEX idx_csv_story (story_id),
+                    INDEX idx_csv_user (username),
+                    CONSTRAINT fk_csv_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
+                    CONSTRAINT fk_csv_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                )
+                """
+            )
+        else:
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS community_stories (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    community_id INTEGER NOT NULL,
+                    username TEXT NOT NULL,
+                    media_path TEXT NOT NULL,
+                    media_type TEXT NOT NULL,
+                    caption TEXT,
+                    duration_seconds INTEGER,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    view_count INTEGER NOT NULL DEFAULT 0,
+                    last_viewed_at TEXT
+                )
+                """
+            )
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS community_story_views (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    story_id INTEGER NOT NULL,
+                    username TEXT NOT NULL,
+                    viewed_at TEXT NOT NULL
+                )
+                """
+            )
+            c.execute("CREATE INDEX IF NOT EXISTS idx_cs_comm_expires ON community_stories (community_id, expires_at)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_cs_user_created ON community_stories (username, created_at)")
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uniq_story_viewer ON community_story_views (story_id, username)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_csv_user ON community_story_views (username)")
+    except Exception as e:
+        logger.warning(f"Could not ensure community story tables: {e}")
+
+
+def user_has_story_access(c, username: Optional[str], community_id: int, creator_username: Optional[str] = None) -> bool:
+    """Check if a user can interact with community-level ephemeral content (member or ancestor admin)."""
+    if not username or not community_id:
+        return False
+    norm_username = str(username).strip().lower()
+    if norm_username == 'admin':
+        return True
+    creator_norm = str(creator_username).strip().lower() if creator_username else None
+    if creator_norm and norm_username == creator_norm:
+        return True
+
+    ph = get_sql_placeholder()
+    try:
+        c.execute(
+            f"""
+            SELECT 1
+            FROM user_communities uc
+            JOIN users u ON uc.user_id = u.id
+            WHERE LOWER(u.username) = LOWER({ph}) AND uc.community_id = {ph}
+            LIMIT 1
+            """,
+            (username, community_id),
+        )
+        if c.fetchone():
+            return True
+    except Exception as membership_err:
+        logger.warning(f"story access membership check failed for community {community_id}: {membership_err}")
+
+    try:
+        parent_ids = get_parent_chain_ids(c, community_id)
+    except Exception as parent_err:
+        logger.warning(f"story access parent chain failed for community {community_id}: {parent_err}")
+        parent_ids = []
+
+    for parent_id in parent_ids:
+        try:
+            c.execute(
+                f"""
+                SELECT uc.role, c.creator_username
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                JOIN communities c ON c.id = uc.community_id
+                WHERE LOWER(u.username) = LOWER({ph}) AND uc.community_id = {ph}
+                LIMIT 1
+                """,
+                (username, parent_id),
+            )
+            row = c.fetchone()
+        except Exception as ancestor_err:
+            logger.warning(f"story access ancestor check failed for {parent_id}: {ancestor_err}")
+            row = None
+        if not row:
+            continue
+        role = row["role"] if hasattr(row, "keys") else (row[0] if len(row) > 0 else None)
+        creator = row["creator_username"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else None)
+        role_norm = (role or "").strip().lower()
+        if role_norm in {"admin", "owner", "manager", "moderator"}:
+            return True
+        creator_parent_norm = (creator or "").strip().lower()
+        if creator_parent_norm and creator_parent_norm == norm_username:
+            return True
+    return False
+
+
+def record_story_view(c, story_id: int, username: str) -> Optional[int]:
+    """Upsert a story view and return the latest total view count."""
+    ensure_story_tables(c)
+    now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        if USE_MYSQL:
+            c.execute(
+                """
+                INSERT INTO community_story_views (story_id, username, viewed_at)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE viewed_at = VALUES(viewed_at)
+                """,
+                (story_id, username, now_str),
+            )
+        else:
+            c.execute(
+                "INSERT OR REPLACE INTO community_story_views (story_id, username, viewed_at) VALUES (?,?,?)",
+                (story_id, username, now_str),
+            )
+    except Exception as view_err:
+        logger.warning(f"Failed recording story view for {story_id}: {view_err}")
+
+    try:
+        ph = get_sql_placeholder()
+        c.execute(f"SELECT COUNT(*) as cnt FROM community_story_views WHERE story_id = {ph}", (story_id,))
+        row = c.fetchone()
+        count = row["cnt"] if hasattr(row, "keys") else (row[0] if row else 0)
+        c.execute(
+            f"UPDATE community_stories SET view_count = {ph}, last_viewed_at = {ph} WHERE id = {ph}",
+            (int(count or 0), now_str, story_id),
+        )
+        return int(count or 0)
+    except Exception as agg_err:
+        logger.warning(f"Failed updating story view count for {story_id}: {agg_err}")
+        return None
 
 # Optional: enforce canonical host (e.g., www.c-point.co) to prevent cookie splits
 CANONICAL_HOST = os.getenv('CANONICAL_HOST')  # e.g., 'www.c-point.co'
@@ -19278,6 +19463,306 @@ def api_post_view():
             return jsonify({'success': True, 'view_count': int(view_count or 0), 'post_id': post_id})
     except Exception as e:
         logger.error(f"Error saving post view for {post_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/community_stories/<int:community_id>')
+@login_required
+def api_community_stories(community_id: int):
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT id, name, creator_username, parent_community_id FROM communities WHERE id = {ph}",
+                (community_id,),
+            )
+            community_row = c.fetchone()
+            if not community_row:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            community_name = (
+                community_row["name"]
+                if hasattr(community_row, "keys")
+                else (community_row[1] if len(community_row) > 1 else None)
+            )
+            creator_username = (
+                community_row["creator_username"]
+                if hasattr(community_row, "keys")
+                else (community_row[2] if len(community_row) > 2 else None)
+            )
+            if not user_has_story_access(c, username, community_id, creator_username):
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+            now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            c.execute(
+                f"""
+                SELECT cs.id, cs.community_id, cs.username, cs.media_path, cs.media_type,
+                       cs.caption, cs.duration_seconds, cs.status, cs.created_at,
+                       cs.expires_at, cs.view_count, cs.last_viewed_at, up.profile_picture
+                FROM community_stories cs
+                LEFT JOIN user_profiles up ON up.username = cs.username
+                WHERE cs.community_id = {ph}
+                  AND cs.status = 'active'
+                  AND cs.expires_at > {ph}
+                ORDER BY cs.created_at DESC
+                LIMIT 200
+                """,
+                (community_id, now_str),
+            )
+            rows = c.fetchall() or []
+            story_ids = []
+            for row in rows:
+                if hasattr(row, "keys"):
+                    story_ids.append(row.get("id"))
+                else:
+                    story_ids.append(row[0] if row else None)
+            story_ids = [sid for sid in story_ids if sid]
+
+            viewed_ids: Set[int] = set()
+            if story_ids:
+                placeholders = ",".join([ph] * len(story_ids))
+                params = list(story_ids) + [username]
+                c.execute(
+                    f"""
+                    SELECT story_id FROM community_story_views
+                    WHERE story_id IN ({placeholders}) AND LOWER(username) = LOWER({ph})
+                    """,
+                    tuple(params),
+                )
+                viewed_rows = c.fetchall() or []
+                for vr in viewed_rows:
+                    if hasattr(vr, "keys"):
+                        viewed_ids.add(int(vr.get("story_id")))
+                    else:
+                        viewed_ids.add(int(vr[0]))
+
+            def _coerce_timestamp(value):
+                if not value:
+                    return None
+                if isinstance(value, datetime):
+                    return value.isoformat()
+                return str(value)
+
+            def _public_url(raw_path):
+                norm = normalize_upload_reference(raw_path)
+                return get_public_upload_url(norm) if norm else None
+
+            groups_map: Dict[str, Dict[str, Any]] = {}
+            stories_payload: List[Dict[str, Any]] = []
+            for row in rows:
+                if hasattr(row, "keys"):
+                    story_id = row.get("id")
+                    author = row.get("username")
+                    media_path = row.get("media_path")
+                    media_type = row.get("media_type")
+                    caption = row.get("caption")
+                    duration_seconds = row.get("duration_seconds")
+                    created_at = row.get("created_at")
+                    expires_at = row.get("expires_at")
+                    view_count = row.get("view_count")
+                    profile_picture = row.get("profile_picture")
+                else:
+                    story_id = row[0]
+                    author = row[2] if len(row) > 2 else None
+                    media_path = row[3] if len(row) > 3 else None
+                    media_type = row[4] if len(row) > 4 else None
+                    caption = row[5] if len(row) > 5 else None
+                    duration_seconds = row[6] if len(row) > 6 else None
+                    created_at = row[8] if len(row) > 8 else None
+                    expires_at = row[9] if len(row) > 9 else None
+                    view_count = row[10] if len(row) > 10 else 0
+                    profile_picture = row[12] if len(row) > 12 else None
+                if not story_id or not author:
+                    continue
+                story_id = int(story_id)
+                has_viewed = story_id in viewed_ids
+                story_payload = {
+                    'id': story_id,
+                    'community_id': community_id,
+                    'username': author,
+                    'media_type': media_type or 'image',
+                    'media_path': media_path,
+                    'media_url': _public_url(media_path),
+                    'caption': caption,
+                    'duration_seconds': duration_seconds,
+                    'created_at': _coerce_timestamp(created_at),
+                    'expires_at': _coerce_timestamp(expires_at),
+                    'view_count': int(view_count or 0),
+                    'has_viewed': has_viewed,
+                    'profile_picture': _public_url(profile_picture),
+                }
+                stories_payload.append(story_payload)
+                group = groups_map.setdefault(
+                    author,
+                    {
+                        'username': author,
+                        'profile_picture': story_payload['profile_picture'],
+                        'stories': [],
+                        'has_unseen': False,
+                    },
+                )
+                group['stories'].append(story_payload)
+                if not has_viewed:
+                    group['has_unseen'] = True
+
+            groups = list(groups_map.values())
+            groups.sort(
+                key=lambda g: g['stories'][0]['created_at'] if g['stories'] else '',
+                reverse=True,
+            )
+            return jsonify({
+                'success': True,
+                'community': {
+                    'id': community_id,
+                    'name': community_name,
+                },
+                'has_new': any(not story['has_viewed'] for story in stories_payload),
+                'groups': groups,
+                'stories': stories_payload,
+            })
+    except Exception as e:
+        logger.error(f"Error loading community stories for {community_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community_stories', methods=['POST'])
+@login_required
+def create_community_story():
+    username = session.get('username')
+    community_id = request.form.get('community_id', type=int)
+    if not community_id:
+        return jsonify({'success': False, 'error': 'community_id required'}), 400
+    media_file = request.files.get('media')
+    if not media_file or not media_file.filename:
+        return jsonify({'success': False, 'error': 'Media file is required'}), 400
+    ext = os.path.splitext(media_file.filename)[1].lower().lstrip('.')
+    if ext not in STORY_ALLOWED_EXTENSIONS:
+        return jsonify({'success': False, 'error': 'Unsupported media type'}), 400
+    media_type = 'image' if ext in STORY_IMAGE_EXTENSIONS else 'video'
+    caption = (request.form.get('caption') or '').strip()
+    if caption and len(caption) > STORY_MAX_CAPTION_LENGTH:
+        caption = caption[:STORY_MAX_CAPTION_LENGTH]
+    duration_seconds = request.form.get('duration_seconds', type=int)
+    if isinstance(duration_seconds, int) and duration_seconds < 0:
+        duration_seconds = None
+
+    stored_path = save_uploaded_file(
+        media_file,
+        subfolder='community_stories',
+        allowed_extensions=STORY_ALLOWED_EXTENSIONS,
+    )
+    if not stored_path:
+        return jsonify({'success': False, 'error': 'Failed to store media'}), 400
+
+    created_at = datetime.utcnow()
+    expires_at = created_at + timedelta(hours=STORY_DEFAULT_LIFESPAN_HOURS)
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+            c.execute(
+                f"SELECT creator_username FROM communities WHERE id = {ph}",
+                (community_id,),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            creator_username = (
+                row["creator_username"]
+                if hasattr(row, "keys")
+                else (row[0] if row else None)
+            )
+            if not user_has_story_access(c, username, community_id, creator_username):
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+            c.execute(
+                f"""
+                INSERT INTO community_stories
+                (community_id, username, media_path, media_type, caption, duration_seconds, status, created_at, expires_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                """,
+                (
+                    community_id,
+                    username,
+                    stored_path,
+                    media_type,
+                    caption if caption else None,
+                    duration_seconds,
+                    'active',
+                    created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                    expires_at.strftime('%Y-%m-%d %H:%M:%S'),
+                ),
+            )
+            story_id = getattr(c, 'lastrowid', None)
+            conn.commit()
+
+        invalidate_community_cache(community_id)
+
+        return jsonify({
+            'success': True,
+            'story': {
+                'id': story_id,
+                'community_id': community_id,
+                'username': username,
+                'media_type': media_type,
+                'media_path': stored_path,
+                'media_url': get_public_upload_url(normalize_upload_reference(stored_path)),
+                'caption': caption,
+                'duration_seconds': duration_seconds,
+                'created_at': created_at.isoformat(),
+                'expires_at': expires_at.isoformat(),
+                'view_count': 0,
+                'has_viewed': True,
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error creating community story for community {community_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community_stories/view', methods=['POST'])
+@login_required
+def api_mark_story_view():
+    username = session.get('username')
+    try:
+        payload = request.get_json(silent=True) or {}
+    except Exception:
+        payload = {}
+    story_id = payload.get('story_id') or request.form.get('story_id')
+    try:
+        story_id = int(story_id)
+    except Exception:
+        return jsonify({'success': False, 'error': 'story_id required'}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+            c.execute(
+                f"""
+                SELECT cs.id, cs.community_id, c.creator_username
+                FROM community_stories cs
+                JOIN communities c ON c.id = cs.community_id
+                WHERE cs.id = {ph}
+                """,
+                (story_id,),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Story not found'}), 404
+            community_id = row["community_id"] if hasattr(row, "keys") else row[1]
+            creator_username = row["creator_username"] if hasattr(row, "keys") else row[2]
+            if not user_has_story_access(c, username, community_id, creator_username):
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            view_count = record_story_view(c, story_id, username)
+            conn.commit()
+            return jsonify({'success': True, 'story_id': story_id, 'view_count': view_count})
+    except Exception as e:
+        logger.error(f"Error recording view for story {story_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/api/community_member_suggest')

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
@@ -22,6 +22,27 @@ type Reply = { id: number; username: string; content: string; timestamp: string;
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean }
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
+type Story = {
+  id: number
+  community_id: number
+  username: string
+  media_type: string
+  media_url?: string | null
+  media_path?: string | null
+  caption?: string | null
+  duration_seconds?: number | null
+  created_at?: string | null
+  expires_at?: string | null
+  view_count?: number
+  has_viewed?: boolean
+  profile_picture?: string | null
+}
+type StoryGroup = {
+  username: string
+  profile_picture?: string | null
+  stories: Story[]
+  has_unseen: boolean
+}
 const COMMUNITY_FEED_CACHE_TTL_MS = 2 * 60 * 1000
 const COMMUNITY_FEED_CACHE_VERSION = 'community-feed-v3'
 
@@ -76,6 +97,14 @@ export default function CommunityFeed() {
   const showTasks = communityTypeLower === 'general' || communityTypeLower.includes('university') || communityNameLower.includes('university')
   const showResourcesSection = communityTypeLower !== 'business'
   const recordedViewsRef = useRef<Set<number>>(new Set())
+  const storyFileInputRef = useRef<HTMLInputElement | null>(null)
+  const viewedStoriesRef = useRef<Set<number>>(new Set())
+  const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([])
+  const [storiesLoading, setStoriesLoading] = useState(false)
+  const [storyError, setStoryError] = useState<string | null>(null)
+  const [storyUploading, setStoryUploading] = useState(false)
+  const [storyRefreshKey, setStoryRefreshKey] = useState(0)
+  const [activeStoryPointer, setActiveStoryPointer] = useState<{ groupIndex: number; storyIndex: number } | null>(null)
 
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
@@ -409,6 +438,260 @@ export default function CommunityFeed() {
       return { ...prev, posts: updated }
     })
   }
+
+  const normalizeStoryGroups = useCallback((rawGroups: any, fallbackStories?: any): StoryGroup[] => {
+    const toStory = (raw: any): Story | null => {
+      if (!raw) return null
+      const id = Number(raw.id ?? raw.story_id)
+      if (!id) return null
+      const username = String(raw.username ?? raw.author ?? '').trim()
+      if (!username) return null
+      const mediaUrl: string | null = typeof raw.media_url === 'string' && raw.media_url.length > 0
+        ? raw.media_url
+        : normalizeMediaPath(raw.media_path || raw.mediaUrl || '')
+      const profileUrl: string | null = typeof raw.profile_picture === 'string' && raw.profile_picture.length > 0
+        ? raw.profile_picture
+        : null
+      return {
+        id,
+        community_id: Number(raw.community_id ?? community_id ?? 0),
+        username,
+        media_type: typeof raw.media_type === 'string' ? raw.media_type : 'image',
+        media_url: mediaUrl,
+        media_path: raw.media_path ?? null,
+        caption: raw.caption ?? null,
+        duration_seconds: typeof raw.duration_seconds === 'number' ? raw.duration_seconds : null,
+        created_at: raw.created_at ?? null,
+        expires_at: raw.expires_at ?? null,
+        view_count: typeof raw.view_count === 'number' ? raw.view_count : 0,
+        has_viewed: !!raw.has_viewed,
+        profile_picture: profileUrl,
+      }
+    }
+    const groups: StoryGroup[] = []
+    if (Array.isArray(rawGroups) && rawGroups.length > 0) {
+      rawGroups.forEach((group: any) => {
+        const stories = Array.isArray(group?.stories) ? group.stories.map(toStory).filter(Boolean) as Story[] : []
+        if (!stories.length) return
+        stories.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+        groups.push({
+          username: String(group?.username || stories[0].username),
+          profile_picture: group?.profile_picture ?? stories[0].profile_picture ?? null,
+          stories,
+          has_unseen: typeof group?.has_unseen === 'boolean' ? group.has_unseen : stories.some(story => !story.has_viewed),
+        })
+      })
+      if (groups.length) return groups
+    }
+    if (Array.isArray(fallbackStories) && fallbackStories.length > 0) {
+      const grouped = new Map<string, Story[]>()
+      fallbackStories.forEach((entry: any) => {
+        const story = toStory(entry)
+        if (!story) return
+        if (!grouped.has(story.username)) grouped.set(story.username, [])
+        grouped.get(story.username)!.push(story)
+      })
+      grouped.forEach((stories, usernameKey) => {
+        stories.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+        groups.push({
+          username: usernameKey,
+          profile_picture: stories[0]?.profile_picture ?? null,
+          stories,
+          has_unseen: stories.some(story => !story.has_viewed),
+        })
+      })
+    }
+    return groups
+  }, [community_id])
+
+  useEffect(() => {
+    let active = true
+    async function loadStories(){
+      if (!community_id){
+        if (active){
+          setStoryGroups([])
+          viewedStoriesRef.current = new Set()
+        }
+        return
+      }
+      setStoriesLoading(true)
+      setStoryError(null)
+      try{
+        const res = await fetch(`/api/community_stories/${community_id}`, { credentials: 'include' })
+        const json = await res.json().catch(() => null)
+        if (!active) return
+        if (!json?.success){
+          setStoryGroups([])
+          setStoryError(json?.error || 'Failed to load stories')
+          viewedStoriesRef.current = new Set()
+        } else {
+          const groups = normalizeStoryGroups(json.groups, json.stories)
+          viewedStoriesRef.current = new Set(
+            groups.flatMap(group => group.stories.filter(story => story.has_viewed).map(story => story.id))
+          )
+          setStoryGroups(groups)
+        }
+      }catch{
+        if (!active) return
+        setStoryGroups([])
+        setStoryError('Failed to load stories')
+        viewedStoriesRef.current = new Set()
+      }finally{
+        if (active) setStoriesLoading(false)
+      }
+    }
+    loadStories()
+    return () => { active = false }
+  }, [community_id, refreshKey, storyRefreshKey, normalizeStoryGroups])
+
+  const handleStoryUploadClick = useCallback(() => {
+    if (!community_id){
+      alert('Select a community before sharing a story.')
+      return
+    }
+    storyFileInputRef.current?.click()
+  }, [community_id])
+
+  const handleStoryFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file){
+      return
+    }
+    if (!community_id){
+      alert('Community not available.')
+      event.target.value = ''
+      return
+    }
+    const caption = window.prompt('Add a caption (optional):', '') ?? ''
+    setStoryUploading(true)
+    try{
+      const fd = new FormData()
+      fd.append('community_id', String(community_id))
+      fd.append('media', file)
+      if (caption.trim()){
+        fd.append('caption', caption.trim())
+      }
+      const res = await fetch('/api/community_stories', {
+        method: 'POST',
+        body: fd,
+        credentials: 'include'
+      })
+      const json = await res.json().catch(() => null)
+      if (!json?.success){
+        throw new Error(json?.error || 'Failed to upload story')
+      }
+      setStoryRefreshKey(key => key + 1)
+    }catch(err){
+      console.error(err)
+      alert((err as Error)?.message || 'Failed to upload story')
+    }finally{
+      setStoryUploading(false)
+      event.target.value = ''
+    }
+  }, [community_id])
+
+  const markStoryAsViewed = useCallback((storyId: number) => {
+    if (!storyId || viewedStoriesRef.current.has(storyId)) return
+    viewedStoriesRef.current.add(storyId)
+    fetch('/api/community_stories/view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ story_id: storyId })
+    })
+      .then(res => res.json().catch(() => null))
+      .then(json => {
+        if (!json?.success) return
+        const nextCount = typeof json.view_count === 'number' ? json.view_count : undefined
+        setStoryGroups(prev => prev.map(group => {
+          const stories = group.stories.map(story => {
+            if (story.id !== storyId) return story
+            return {
+              ...story,
+              has_viewed: true,
+              view_count: typeof nextCount === 'number' ? nextCount : story.view_count,
+            }
+          })
+          return {
+            ...group,
+            stories,
+            has_unseen: stories.some(story => !story.has_viewed),
+          }
+        }))
+      })
+      .catch(() => {})
+  }, [])
+
+  const openStory = useCallback((groupIndex: number, storyIndex = 0) => {
+    const targetStory = storyGroups[groupIndex]?.stories?.[storyIndex]
+    if (!targetStory) return
+    setActiveStoryPointer({ groupIndex, storyIndex })
+    markStoryAsViewed(targetStory.id)
+  }, [storyGroups, markStoryAsViewed])
+
+  const closeStoryViewer = useCallback(() => setActiveStoryPointer(null), [])
+
+  const goToNextStory = useCallback(() => {
+    if (!activeStoryPointer) return
+    const { groupIndex, storyIndex } = activeStoryPointer
+    const group = storyGroups[groupIndex]
+    if (!group) return
+    if (storyIndex + 1 < group.stories.length) {
+      openStory(groupIndex, storyIndex + 1)
+      return
+    }
+    if (groupIndex + 1 < storyGroups.length) {
+      openStory(groupIndex + 1, 0)
+      return
+    }
+    closeStoryViewer()
+  }, [activeStoryPointer, storyGroups, openStory, closeStoryViewer])
+
+  const goToPrevStory = useCallback(() => {
+    if (!activeStoryPointer) return
+    const { groupIndex, storyIndex } = activeStoryPointer
+    if (storyIndex > 0) {
+      openStory(groupIndex, storyIndex - 1)
+      return
+    }
+    if (groupIndex > 0) {
+      const prevGroup = storyGroups[groupIndex - 1]
+      if (prevGroup && prevGroup.stories.length > 0) {
+        openStory(groupIndex - 1, prevGroup.stories.length - 1)
+        return
+      }
+    }
+    closeStoryViewer()
+  }, [activeStoryPointer, storyGroups, openStory, closeStoryViewer])
+
+  const currentStory = useMemo(() => {
+    if (!activeStoryPointer) return null
+    return storyGroups[activeStoryPointer.groupIndex]?.stories?.[activeStoryPointer.storyIndex] ?? null
+  }, [activeStoryPointer, storyGroups])
+
+  const currentStoryGroup = useMemo(() => {
+    if (!activeStoryPointer) return null
+    return storyGroups[activeStoryPointer.groupIndex] ?? null
+  }, [activeStoryPointer, storyGroups])
+
+  const hasPrevStory = useMemo(() => {
+    if (!activeStoryPointer) return false
+    if (activeStoryPointer.storyIndex > 0) return true
+    return activeStoryPointer.groupIndex > 0
+  }, [activeStoryPointer])
+
+  const hasNextStory = useMemo(() => {
+    if (!activeStoryPointer) return false
+    const group = storyGroups[activeStoryPointer.groupIndex]
+    if (!group) return false
+    if (activeStoryPointer.storyIndex + 1 < group.stories.length) return true
+    return activeStoryPointer.groupIndex + 1 < storyGroups.length
+  }, [activeStoryPointer, storyGroups])
+
+  const resolveStoryMediaSrc = useCallback((story?: Story | null) => {
+    if (!story) return ''
+    return story.media_url || normalizeMediaPath(story.media_path || '')
+  }, [])
 
   // Optimistic delete - removes post from UI immediately, syncs with server in background
   async function handleDeletePost(postId: number) {
@@ -774,6 +1057,61 @@ export default function CommunityFeed() {
               <i className="fa-solid fa-magnifying-glass" />
             </button>
           </div>
+          <input
+            ref={storyFileInputRef}
+            type="file"
+            accept="image/*,video/*"
+            className="hidden"
+            onChange={handleStoryFileChange}
+          />
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-semibold text-white/80">Stories</div>
+              <button
+                className="text-xs px-3 py-1.5 rounded-full border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                onClick={handleStoryUploadClick}
+                disabled={storyUploading || !community_id}
+              >
+                {storyUploading ? 'Posting...' : 'Share Story'}
+              </button>
+            </div>
+            {storyError && (
+              <div className="text-xs text-red-400 mb-2">{storyError}</div>
+            )}
+            <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
+              <button
+                className="flex flex-col items-center gap-1 min-w-[68px] text-white/80"
+                onClick={handleStoryUploadClick}
+                disabled={!community_id}
+              >
+                <span className="w-16 h-16 rounded-full border-2 border-dashed border-white/25 flex items-center justify-center">
+                  <i className="fa-solid fa-plus text-lg" />
+                </span>
+                <span className="text-xs text-[#9fb0b5]">Add Story</span>
+              </button>
+              {storiesLoading && storyGroups.length === 0 ? (
+                <div className="text-xs text-[#9fb0b5] flex items-center">Loading stories...</div>
+              ) : storyGroups.length === 0 ? (
+                <div className="text-xs text-[#9fb0b5] flex items-center">No stories yet.</div>
+              ) : storyGroups.map((group, idx) => (
+                <button
+                  key={`${group.username}-${idx}`}
+                  className="flex flex-col items-center gap-1 min-w-[68px]"
+                  onClick={() => openStory(idx, 0)}
+                >
+                  <span className={`w-16 h-16 rounded-full border-2 ${group.has_unseen ? 'border-[#4db6ac]' : 'border-white/20'} p-0.5`}>
+                    <Avatar
+                      username={group.username}
+                      url={group.profile_picture || undefined}
+                      size={56}
+                      linkToProfile={false}
+                    />
+                  </span>
+                  <span className="text-xs text-[#cfd8dc] truncate max-w-[64px]">@{group.username}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
             <div className="community-header-image overflow-hidden rounded-xl border border-white/10 mb-3 relative">
@@ -903,6 +1241,88 @@ export default function CommunityFeed() {
           </button>
           <div className="w-[94vw] h-[86vh] max-w-4xl" style={{ touchAction: 'none' }}>
             <ZoomableImage src={previewImageSrc} alt="preview" className="w-full h-full" onRequestClose={()=> setPreviewImageSrc(null)} />
+          </div>
+        </div>
+      )}
+      {activeStoryPointer && currentStory && (
+        <div className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-sm px-4 flex items-center justify-center">
+          <div className="absolute inset-0" onClick={closeStoryViewer} />
+          <div className="relative z-[121] w-full max-w-md space-y-3">
+            <div className="flex gap-1">
+              {(currentStoryGroup?.stories || []).map((story, idx) => (
+                <div
+                  key={story.id}
+                  className={`flex-1 h-1 rounded-full ${idx <= (activeStoryPointer?.storyIndex ?? 0) ? 'bg-white' : 'bg-white/30'}`}
+                />
+              ))}
+            </div>
+            <div className="relative rounded-3xl border border-white/10 bg-black/70 p-4 overflow-hidden">
+              <button
+                className="absolute top-4 right-4 w-9 h-9 rounded-full border border-white/15 text-white hover:bg-white/10"
+                onClick={closeStoryViewer}
+                aria-label="Close story"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+              <div className="flex items-center gap-3 mb-4 pr-10">
+                <Avatar
+                  username={currentStory.username}
+                  url={currentStory.profile_picture || undefined}
+                  size={40}
+                  linkToProfile
+                />
+                <div className="flex-1">
+                  <div className="font-semibold tracking-tight">{currentStory.username}</div>
+                  <div className="text-xs text-[#9fb0b5]">
+                    {currentStory.created_at ? formatSmartTime(currentStory.created_at) : null}
+                  </div>
+                </div>
+                <div className="text-xs text-[#cfd8dc] flex items-center gap-1">
+                  <i className="fa-regular fa-eye" />
+                  <span>{currentStory.view_count ?? 0}</span>
+                </div>
+              </div>
+              <div className="relative rounded-2xl border border-white/10 overflow-hidden min-h-[360px] bg-black/40">
+                {currentStory.media_type === 'video' ? (
+                  <video
+                    key={currentStory.id}
+                    src={resolveStoryMediaSrc(currentStory)}
+                    className="w-full h-full object-cover"
+                    autoPlay
+                    playsInline
+                    muted
+                    controls
+                  />
+                ) : (
+                  <img
+                    src={resolveStoryMediaSrc(currentStory)}
+                    alt="Story media"
+                    className="w-full h-full object-cover"
+                  />
+                )}
+              </div>
+              {currentStory.caption && (
+                <div className="mt-3 text-sm text-white/90 whitespace-pre-wrap break-words">{currentStory.caption}</div>
+              )}
+              <div className="flex items-center justify-between mt-4 text-white/80">
+                <button
+                  className="px-4 py-1.5 rounded-full border border-white/20 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={goToPrevStory}
+                  disabled={!hasPrevStory}
+                >
+                  <i className="fa-solid fa-chevron-left mr-1" />
+                  Prev
+                </button>
+                <button
+                  className="px-4 py-1.5 rounded-full border border-white/20 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={goToNextStory}
+                  disabled={!hasNextStory}
+                >
+                  Next
+                  <i className="fa-solid fa-chevron-right ml-1" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
