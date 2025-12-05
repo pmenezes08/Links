@@ -100,15 +100,6 @@ function safeLocalStorageGet(key: string): string | null {
   }
 }
 
-const safeLocalStorageGet = (key: string): string | null => {
-  if (typeof window === 'undefined') return null
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
 function formatDateLabel(dateStr: string): string {
   const messageDate = parseMessageTime(dateStr)
   if (!messageDate) return ''
@@ -189,6 +180,7 @@ export default function ChatThread(){
   const [encryptionNeedsSync] = useState(() => 
     localStorage.getItem('encryption_needs_sync') === 'true'
   )
+  const [signalReadyTick, setSignalReadyTick] = useState(0)
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
   const storageKey = useMemo(() => `chat_meta_${username || ''}`, [username])
@@ -405,19 +397,6 @@ export default function ChatThread(){
     }
   }, [])
 
-  useEffect(() => {
-    if (!signalReadyTick) return
-    retryFailedDecrypts()
-  }, [signalReadyTick, retryFailedDecrypts])
-
-  useEffect(() => {
-    if (!messages.some(shouldRetryDecryption)) return
-    const timer = setTimeout(() => {
-      retryFailedDecrypts()
-    }, DECRYPTION_RETRY_DELAY_MS + 200)
-    return () => clearTimeout(timer)
-  }, [messages, retryFailedDecrypts, shouldRetryDecryption])
-  
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
     const probe = document.createElement('div')
@@ -750,7 +729,6 @@ export default function ChatThread(){
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
-  const [signalReadyTick, setSignalReadyTick] = useState(0)
   
   // Load cache from localStorage on mount
   useEffect(() => {
@@ -806,39 +784,6 @@ export default function ChatThread(){
     return Boolean(message.decryption_error) || message.text === SIGNAL_PENDING_TEXT
   }, [])
 
-  const retryFailedDecrypts = useCallback(async () => {
-    const candidates = messagesRef.current.filter(shouldRetryDecryption)
-    if (!candidates.length) return
-
-    const unique = new Map<number | string, Message>()
-    candidates.forEach(msg => unique.set(msg.id, msg))
-
-    unique.forEach((_, id) => decryptionFailures.current.delete(String(id)))
-
-    const refreshed = await Promise.all(
-      Array.from(unique.values()).map(async (msg) => {
-        try {
-          const updated = await decryptMessageIfNeeded(msg)
-          return { id: msg.id, updated }
-        } catch (err) {
-          console.error('🔐 Retry decrypt failed for', msg.id, err)
-          return null
-        }
-      })
-    )
-
-    const updateMap = new Map<number | string, Message>()
-    refreshed.forEach(entry => {
-      if (entry?.updated) {
-        updateMap.set(entry.id, entry.updated)
-      }
-    })
-    if (!updateMap.size) return
-
-    setMessages(prev =>
-      prev.map(m => (updateMap.has(m.id) ? updateMap.get(m.id)! : m))
-    )
-  }, [decryptMessageIfNeeded, shouldRetryDecryption])
 
   const decryptSignalMessage = useCallback(
     async (message: any, attempt = 0): Promise<any> => {
@@ -1080,6 +1025,53 @@ export default function ChatThread(){
       }
     }
   }, [clearDecryptionFailure, decryptSignalMessage, recordDecryptionFailure, saveDecryptionCache])
+  
+  const retryFailedDecrypts = useCallback(async () => {
+    const candidates = messagesRef.current.filter(shouldRetryDecryption)
+    if (!candidates.length) return
+
+    const unique = new Map<number | string, Message>()
+    candidates.forEach(msg => unique.set(msg.id, msg))
+
+    unique.forEach((_, id) => decryptionFailures.current.delete(String(id)))
+
+    const refreshed = await Promise.all(
+      Array.from(unique.values()).map(async (msg) => {
+        try {
+          const updated = await decryptMessageIfNeeded(msg)
+          return { id: msg.id, updated }
+        } catch (err) {
+          console.error('🔐 Retry decrypt failed for', msg.id, err)
+          return null
+        }
+      })
+    )
+
+    const updateMap = new Map<number | string, Message>()
+    refreshed.forEach(entry => {
+      if (entry?.updated) {
+        updateMap.set(entry.id, entry.updated)
+      }
+    })
+    if (!updateMap.size) return
+
+    setMessages(prev =>
+      prev.map(m => (updateMap.has(m.id) ? updateMap.get(m.id)! : m))
+    )
+  }, [decryptMessageIfNeeded, shouldRetryDecryption])
+
+  useEffect(() => {
+    if (!signalReadyTick) return
+    retryFailedDecrypts()
+  }, [signalReadyTick, retryFailedDecrypts])
+
+  useEffect(() => {
+    if (!messages.some(shouldRetryDecryption)) return
+    const timer = setTimeout(() => {
+      retryFailedDecrypts()
+    }, DECRYPTION_RETRY_DELAY_MS + 200)
+    return () => clearTimeout(timer)
+  }, [messages, retryFailedDecrypts, shouldRetryDecryption])
   
   // Encryption is initialized globally in App.tsx - no need for per-chat init
 

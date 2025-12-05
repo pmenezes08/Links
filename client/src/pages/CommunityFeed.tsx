@@ -1,4 +1,4 @@
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
