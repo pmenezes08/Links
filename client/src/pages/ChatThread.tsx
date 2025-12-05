@@ -35,17 +35,11 @@ function normalizeTimestamp(raw?: string): string | undefined {
   if (!raw) return undefined
   const trimmed = raw.trim()
   if (!trimmed) return undefined
-
-  // Always treat server timestamps as UTC wall-clock times.
-  // Some responses include inconsistent offsets (e.g., same clock time with +00:00 vs +08:00),
-  // which causes flickering when interpreted literally. Strip any suffix and re-append Z.
-  const withoutOffset = trimmed.replace(/([+-]\d{2}:\d{2}|Z)$/i, '')
-
-  const base = withoutOffset.includes('T')
-    ? withoutOffset
-    : withoutOffset.replace(' ', 'T')
-
-  return `${base}Z`
+  const hasOffset = /([+-]\d{2}:\d{2}|Z)$/i.test(trimmed)
+  if (trimmed.includes('T')) {
+    return hasOffset ? trimmed : `${trimmed}Z`
+  }
+  return `${trimmed.replace(' ', 'T')}Z`
 }
 
 function parseMessageTime(raw?: string): Date | null {
@@ -140,6 +134,7 @@ const CHAT_CACHE_VERSION = 'chat-v1'
 
 // Avoid hammering decrypt retries more than once every few seconds
 const DECRYPTION_RETRY_DELAY_MS = 4000
+const SIGNAL_PENDING_TEXT = '[🔒 Setting up secure session…]'
 
 type Message = ChatMessage
 
@@ -307,6 +302,37 @@ export default function ChatThread(){
       observer.disconnect()
     }
   }, [])
+
+  useEffect(() => {
+    if (signalService.isInitialized()) {
+      setSignalReadyTick(t => t + 1)
+      return
+    }
+    let cancelled = false
+    const interval = setInterval(() => {
+      if (!cancelled && signalService.isInitialized()) {
+        clearInterval(interval)
+        setSignalReadyTick(t => t + 1)
+      }
+    }, 1000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!signalReadyTick) return
+    retryFailedDecrypts()
+  }, [signalReadyTick, retryFailedDecrypts])
+
+  useEffect(() => {
+    if (!messages.some(shouldRetryDecryption)) return
+    const timer = setTimeout(() => {
+      retryFailedDecrypts()
+    }, DECRYPTION_RETRY_DELAY_MS + 200)
+    return () => clearTimeout(timer)
+  }, [messages, retryFailedDecrypts, shouldRetryDecryption])
   
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
@@ -635,7 +661,12 @@ export default function ChatThread(){
   // Track messages that have been processed (don't decrypt multiple times)
   // Use a GLOBAL cache keyed by message ID that persists in localStorage
   const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(new Map())
-  const decryptionFailures = useRef<Map<number | string, { lastAttempt: number; errorText: string }>>(new Map())
+  const decryptionFailures = useRef<Map<number | string, { lastAttempt: number; errorText: string; permanent?: boolean }>>(new Map())
+  const messagesRef = useRef<Message[]>([])
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+  const [signalReadyTick, setSignalReadyTick] = useState(0)
   
   // Load cache from localStorage on mount
   useEffect(() => {
@@ -672,10 +703,11 @@ export default function ChatThread(){
     }
   }, [])
 
-  const recordDecryptionFailure = useCallback((messageId: number | string, errorText: string) => {
+  const recordDecryptionFailure = useCallback((messageId: number | string, errorText: string, permanent = false) => {
     decryptionFailures.current.set(String(messageId), {
       lastAttempt: Date.now(),
       errorText,
+      permanent,
     })
   }, [])
 
@@ -683,8 +715,139 @@ export default function ChatThread(){
     decryptionFailures.current.delete(String(messageId))
   }, [])
 
+  const shouldRetryDecryption = useCallback((message: Message) => {
+    if (!message) return false
+    const failure = decryptionFailures.current.get(String(message.id))
+    if (failure?.permanent) return false
+    return Boolean(message.decryption_error) || message.text === SIGNAL_PENDING_TEXT
+  }, [])
+
+  const retryFailedDecrypts = useCallback(async () => {
+    const candidates = messagesRef.current.filter(shouldRetryDecryption)
+    if (!candidates.length) return
+
+    const unique = new Map<number | string, Message>()
+    candidates.forEach(msg => unique.set(msg.id, msg))
+
+    unique.forEach((_, id) => decryptionFailures.current.delete(String(id)))
+
+    const refreshed = await Promise.all(
+      Array.from(unique.values()).map(async (msg) => {
+        try {
+          const updated = await decryptMessageIfNeeded(msg)
+          return { id: msg.id, updated }
+        } catch (err) {
+          console.error('🔐 Retry decrypt failed for', msg.id, err)
+          return null
+        }
+      })
+    )
+
+    const updateMap = new Map<number | string, Message>()
+    refreshed.forEach(entry => {
+      if (entry?.updated) {
+        updateMap.set(entry.id, entry.updated)
+      }
+    })
+    if (!updateMap.size) return
+
+    setMessages(prev =>
+      prev.map(m => (updateMap.has(m.id) ? updateMap.get(m.id)! : m))
+    )
+  }, [decryptMessageIfNeeded, shouldRetryDecryption])
+
+  const decryptSignalMessage = useCallback(async (message: any): Promise<any> => {
+    const deviceId = signalService.getDeviceId()
+    
+    if (message.sent) {
+      const cached = decryptionCache.current.get(message.id)
+      if (cached && !cached.error) {
+        clearDecryptionFailure(String(message.id))
+        return {
+          ...message,
+          text: cached.text,
+          decryption_error: false,
+        }
+      }
+    }
+    
+    if (!deviceId) {
+      const pending = '[🔒 Signal: Device not initialized]'
+      recordDecryptionFailure(String(message.id), pending)
+      return {
+        ...message,
+        text: pending,
+        decryption_error: true,
+      }
+    }
+    
+    try {
+      const response = await fetch(
+        `/api/signal/get-ciphertext/${message.id}?deviceId=${deviceId}`,
+        { credentials: 'include' }
+      )
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          const permanentText = '[🔒 Message sent before this device was added]'
+          recordDecryptionFailure(String(message.id), permanentText, true)
+          return {
+            ...message,
+            text: permanentText,
+            decryption_error: true,
+          }
+        }
+        throw new Error(`Failed to fetch ciphertext: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      console.log('🔐 Got ciphertext data:', {
+        messageId: message.id,
+        senderUsername: data.senderUsername,
+        senderDeviceId: data.senderDeviceId,
+        messageType: data.messageType,
+        ciphertextLength: data.ciphertext?.length,
+      })
+      
+      if (!data.success || !data.ciphertext) {
+        throw new Error('Invalid ciphertext response')
+      }
+      
+      const result = await signalService.decryptMessage(
+        data.senderUsername,
+        data.senderDeviceId,
+        data.ciphertext,
+        data.messageType
+      )
+      
+      console.log('🔐 ✅ Decryption succeeded for message:', message.id)
+      
+      decryptionCache.current.set(message.id, { text: result.plaintext, error: false })
+      saveDecryptionCache()
+      clearDecryptionFailure(String(message.id))
+      
+      return {
+        ...message,
+        text: result.plaintext,
+        decryption_error: false,
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      console.error('🔐 ❌ Signal decryption failed for message:', message.id, 'Error:', errorMsg, error)
+      
+      const displayError = `[🔒 Decryption failed: ${errorMsg.slice(0, 50)}]`
+      recordDecryptionFailure(String(message.id), displayError)
+      
+      return {
+        ...message,
+        text: displayError,
+        decryption_error: true,
+      }
+    }
+  }, [clearDecryptionFailure, recordDecryptionFailure, saveDecryptionCache])
+
   // Decrypt message if it's encrypted
-  async function decryptMessageIfNeeded(message: any): Promise<any> {
+  const decryptMessageIfNeeded = useCallback(async (message: any): Promise<any> => {
     if (!message.is_encrypted) {
       return message
     }
@@ -708,6 +871,13 @@ export default function ChatThread(){
     
     const failureInfo = decryptionFailures.current.get(cacheKeyString)
     if (failureInfo) {
+      if (failureInfo.permanent) {
+        return {
+          ...message,
+          text: failureInfo.errorText,
+          decryption_error: true,
+        }
+      }
       const timeSinceFailure = Date.now() - failureInfo.lastAttempt
       if (timeSinceFailure < DECRYPTION_RETRY_DELAY_MS) {
         return {
@@ -724,11 +894,10 @@ export default function ChatThread(){
     // Check if this is a Signal Protocol message
     if (message.signal_protocol) {
       if (!signalService.isInitialized()) {
-        const pendingText = '[🔒 Setting up secure session…]'
-        recordDecryptionFailure(cacheKeyString, pendingText)
+        recordDecryptionFailure(cacheKeyString, SIGNAL_PENDING_TEXT)
         return {
           ...message,
-          text: pendingText,
+          text: SIGNAL_PENDING_TEXT,
           decryption_error: true,
         }
       }
@@ -792,106 +961,8 @@ export default function ChatThread(){
         decryption_error: true,
       }
     }
-  }
+  }, [clearDecryptionFailure, decryptSignalMessage, recordDecryptionFailure, saveDecryptionCache])
   
-  // Decrypt a Signal Protocol message
-  async function decryptSignalMessage(message: any): Promise<any> {
-    const deviceId = signalService.getDeviceId()
-    
-    // For SENT messages: Check cache first (from when we sent it on THIS device)
-    if (message.sent) {
-      const cached = decryptionCache.current.get(message.id)
-      if (cached && !cached.error) {
-        clearDecryptionFailure(String(message.id))
-        return {
-          ...message,
-          text: cached.text,
-          decryption_error: false,
-        }
-      }
-      
-      // Not in cache - we're viewing from a DIFFERENT device than we sent from
-      // Try to fetch and decrypt the ciphertext (we encrypted for our other devices)
-      // Fall through to the normal decryption logic below
-    }
-    
-    // For RECEIVED messages: Fetch and decrypt ciphertext
-    if (!deviceId) {
-      return {
-        ...message,
-        text: '[🔒 Signal: Device not initialized]',
-        decryption_error: true,
-      }
-    }
-    
-    try {
-      // Fetch the ciphertext for this device
-      const response = await fetch(
-        `/api/signal/get-ciphertext/${message.id}?deviceId=${deviceId}`,
-        { credentials: 'include' }
-      )
-      
-      if (!response.ok) {
-        if (response.status === 404) {
-          // No ciphertext for this device - might be from before device was registered
-          // Check if this message was sent before our device was registered
-          return {
-            ...message,
-            text: '[🔒 Message sent before this device was added]',
-            decryption_error: true,
-          }
-        }
-        throw new Error(`Failed to fetch ciphertext: ${response.status}`)
-      }
-      
-      const data = await response.json()
-      console.log('🔐 Got ciphertext data:', {
-        messageId: message.id,
-        senderUsername: data.senderUsername,
-        senderDeviceId: data.senderDeviceId,
-        messageType: data.messageType,
-        ciphertextLength: data.ciphertext?.length,
-      })
-      
-      if (!data.success || !data.ciphertext) {
-        throw new Error('Invalid ciphertext response')
-      }
-      
-      // Decrypt using Signal Protocol
-      const result = await signalService.decryptMessage(
-        data.senderUsername,
-        data.senderDeviceId,
-        data.ciphertext,
-        data.messageType
-      )
-      
-      console.log('🔐 ✅ Decryption succeeded for message:', message.id)
-      
-      // Cache the decrypted text and persist to localStorage
-      decryptionCache.current.set(message.id, { text: result.plaintext, error: false })
-      saveDecryptionCache()
-      clearDecryptionFailure(String(message.id))
-      
-      return {
-        ...message,
-        text: result.plaintext,
-        decryption_error: false,
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error)
-      console.error('🔐 ❌ Signal decryption failed for message:', message.id, 'Error:', errorMsg, error)
-      
-      const displayError = `[🔒 Decryption failed: ${errorMsg.slice(0, 50)}]`
-      recordDecryptionFailure(String(message.id), displayError)
-      
-      return {
-        ...message,
-        text: displayError,
-        decryption_error: true,
-      }
-    }
-  }
-
   // Encryption is initialized globally in App.tsx - no need for per-chat init
 
   // Helper to process raw messages (decrypt, parse replies, add metadata)
@@ -912,7 +983,7 @@ export default function ChatThread(){
       }
 
       const normalizedTime = ensureNormalizedTime(m.time)
-      const meta = readMessageMeta(metaRef.current, m.time, messageText, Boolean(m.sent))
+      const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, Boolean(m.sent))
       return {
         ...m,
         text: messageText,
@@ -924,7 +995,7 @@ export default function ChatThread(){
         edited_at: m.edited_at || null,
       }
     })
-  }, [])
+  }, [decryptMessageIfNeeded])
 
   // Load cached profile immediately
   useEffect(() => {
@@ -1121,10 +1192,9 @@ export default function ChatThread(){
               }
               
               const normalizedTime = ensureNormalizedTime(m.time)
-              const meta = readMessageMeta(metaRef.current, m.time, messageText, isSentByMe)
-              
               // Determine 'sent' strictly from server sender match
               const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
+              const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, isSentByMe)
               
               // Check if we have a bridge mapping or matching optimistic message
               let stableKey = idBridgeRef.current.serverToTemp.get(m.id)
@@ -1222,7 +1292,7 @@ export default function ChatThread(){
                 audio_path: m.audio_path,
                 audio_duration_seconds: m.audio_duration_seconds,
                 sent: isSentByMe,
-                time: normalizedTime,
+                time: existing?.time ?? normalizedTime,
                 reaction: existing?.reaction ?? meta.reaction,
                 replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
                 isOptimistic: false, // No longer optimistic
@@ -1297,7 +1367,7 @@ export default function ChatThread(){
     return () => { 
       if (pollTimer.current) clearInterval(pollTimer.current) 
     }
-  }, [username, otherUserId])
+  }, [username, otherUserId, decryptMessageIfNeeded])
 
   function adjustTextareaHeight(){
     const ta = textareaRef.current
@@ -1528,7 +1598,7 @@ export default function ChatThread(){
                     ...m,
                     id: j.message_id, // Update to server ID
                     isOptimistic: false, // No longer optimistic
-                    time: ensureNormalizedTime(j.time || m.time),
+                    time: m.time ?? ensureNormalizedTime(j.time || m.time),
                     clientKey: tempId, // Keep stable key for React
                     // Keep encryption flags from optimistic message
                     is_encrypted: m.is_encrypted,
