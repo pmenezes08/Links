@@ -207,6 +207,7 @@ export default function ChatThread(){
   const typingTimer = useRef<any>(null)
   const isTypingRef = useRef(false) // Track if we've already sent typing indicator
   const pollTimer = useRef<any>(null)
+  const pollInFlight = useRef(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
@@ -740,6 +741,7 @@ export default function ChatThread(){
   // Use a GLOBAL cache keyed by message ID that persists in localStorage
   const decryptionCache = useRef<Map<number | string, { text: string; error: boolean }>>(new Map())
   const decryptionFailures = useRef<Map<number | string, { lastAttempt: number; errorText: string; permanent?: boolean }>>(new Map())
+  const pendingCiphertextRequests = useRef<Map<string, Promise<any>>>(new Map())
   const messagesRef = useRef<Message[]>([])
   useEffect(() => {
     messagesRef.current = messages
@@ -800,6 +802,36 @@ export default function ChatThread(){
   }, [])
 
 
+  const fetchCiphertextPayload = useCallback(
+    async (messageId: number | string, deviceId: number) => {
+      const key = `${messageId}:${deviceId}`
+      let pending = pendingCiphertextRequests.current.get(key)
+      if (!pending) {
+        pending = (async () => {
+          const encodedId = encodeURIComponent(String(messageId))
+          const response = await fetch(
+            `/api/signal/get-ciphertext/${encodedId}?deviceId=${deviceId}`,
+            { credentials: 'include' }
+          )
+          if (!response.ok) {
+            const error: any = new Error(`Failed to fetch ciphertext: ${response.status}`)
+            error.status = response.status
+            throw error
+          }
+          return response.json()
+        })()
+        pendingCiphertextRequests.current.set(key, pending)
+        pending
+          .finally(() => {
+            pendingCiphertextRequests.current.delete(key)
+          })
+          .catch(() => {})
+      }
+      return pending
+    },
+    []
+  )
+
   const decryptSignalMessage = useCallback(
     async (message: any, attempt = 0): Promise<any> => {
       const ready = await ensureSignalInitialized()
@@ -840,25 +872,23 @@ export default function ChatThread(){
       let senderDeviceIdFromResponse: number | null = null
 
       try {
-        const response = await fetch(
-          `/api/signal/get-ciphertext/${message.id}?deviceId=${deviceId}`,
-          { credentials: 'include' }
-        )
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            const permanentText = '[🔒 Message sent before this device was added]'
-            recordDecryptionFailure(String(message.id), permanentText, true)
+        let data: any
+        try {
+          data = await fetchCiphertextPayload(message.id, deviceId)
+        } catch (fetchError) {
+          const status = (fetchError as any)?.status
+          if (status === 404) {
+            const pendingText = '[🔒 Ciphertext not yet available for this device — retrying…]'
+            recordDecryptionFailure(String(message.id), pendingText)
             return {
               ...message,
-              text: permanentText,
+              text: pendingText,
               decryption_error: true,
             }
           }
-          throw new Error(`Failed to fetch ciphertext: ${response.status}`)
+          throw fetchError
         }
 
-        const data = await response.json()
         senderUsernameFromResponse = data.senderUsername
         senderDeviceIdFromResponse = data.senderDeviceId
 
@@ -896,13 +926,16 @@ export default function ChatThread(){
         const errorMsg = error instanceof Error ? error.message : String(error)
         console.error('🔐 ❌ Signal decryption failed for message:', message.id, 'Error:', errorMsg, error)
 
-        const isCounterError =
+        const shouldResetSession =
           /message key not found/i.test(errorMsg) ||
           /counter was repeated/i.test(errorMsg) ||
-          /session has been reset/i.test(errorMsg)
+          /session has been reset/i.test(errorMsg) ||
+          /bad mac/i.test(errorMsg) ||
+          /invalid mac/i.test(errorMsg) ||
+          /mac check failed/i.test(errorMsg)
 
         if (
-          isCounterError &&
+          shouldResetSession &&
           senderUsernameFromResponse &&
           senderDeviceIdFromResponse &&
           attempt < MAX_SIGNAL_RETRIES
@@ -929,7 +962,7 @@ export default function ChatThread(){
         }
       }
     },
-    [clearDecryptionFailure, ensureSignalInitialized, recordDecryptionFailure, saveDecryptionCache]
+    [clearDecryptionFailure, ensureSignalInitialized, fetchCiphertextPayload, recordDecryptionFailure, saveDecryptionCache]
   )
 
   // Decrypt message if it's encrypted
@@ -1268,219 +1301,227 @@ export default function ChatThread(){
       if (Date.now() < skipNextPollsUntil.current) {
         return
       }
+      if (pollInFlight.current) {
+        return
+      }
+      pollInFlight.current = true
       
       try{
-        const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
-        const r = await fetch('/get_messages', { 
-          method:'POST', 
-          credentials:'include', 
-          headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
-          body: fd 
-        })
-        const j = await r.json()
-        
-        if (j?.success && Array.isArray(j.messages)){
-          // Decrypt encrypted messages before processing
-          const decryptedMessages = await Promise.all(
-            j.messages.map(async (m: any) => await decryptMessageIfNeeded(m))
-          )
+        try{
+          const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
+          const r = await fetch('/get_messages', { 
+            method:'POST', 
+            credentials:'include', 
+            headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
+            body: fd 
+          })
+          const j = await r.json()
           
-          setMessages(prev => {
-            // Build map of existing messages by their stable key (clientKey or id)
-            const messagesByKey = new Map()
-            prev.forEach(m => {
-              const key = String(m.clientKey || m.id)
-              messagesByKey.set(key, m)
-            })
+          if (j?.success && Array.isArray(j.messages)){
+            // Decrypt encrypted messages before processing
+            const decryptedMessages = await Promise.all(
+              j.messages.map(async (m: any) => await decryptMessageIfNeeded(m))
+            )
             
-            // CRITICAL: Add recent optimistic messages that might not be in prev yet
-            // This handles React state batching race condition
-            recentOptimisticRef.current.forEach((entry, key) => {
-              if (!messagesByKey.has(key)) {
-                messagesByKey.set(key, entry.message)
-              }
-            })
-            
-            // Process server messages (now decrypted)
-            const serverMessageKeys = new Set()
-            decryptedMessages.forEach((m: any) => {
-              // Skip if pending deletion
-              if (pendingDeletions.current.has(m.id)) return
+            setMessages(prev => {
+              // Build map of existing messages by their stable key (clientKey or id)
+              const messagesByKey = new Map()
+              prev.forEach(m => {
+                const key = String(m.clientKey || m.id)
+                messagesByKey.set(key, m)
+              })
               
-              // Parse reply information from message text
-              let messageText = m.text
-              let replySnippet = undefined
-              const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
-              if (replyMatch) {
-                replySnippet = replyMatch[2]
-                messageText = replyMatch[3]
-              }
+              // CRITICAL: Add recent optimistic messages that might not be in prev yet
+              // This handles React state batching race condition
+              recentOptimisticRef.current.forEach((entry, key) => {
+                if (!messagesByKey.has(key)) {
+                  messagesByKey.set(key, entry.message)
+                }
+              })
               
-              const normalizedTime = ensureNormalizedTime(m.time)
-              // Determine 'sent' strictly from server sender match
-              const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
-              const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, isSentByMe)
-              
-              // Check if we have a bridge mapping or matching optimistic message
-              let stableKey = idBridgeRef.current.serverToTemp.get(m.id)
-              
-              if (!stableKey) {
-                // Try to find matching message by content or media path
-                for (const [key, existing] of messagesByKey.entries()) {
-                  if (existing.sent !== isSentByMe) continue
-                  
-                  // For photo messages: match by server image_path
-                  if (m.image_path && existing.image_path) {
-                    // If existing already has this server path, it's the same message
-                    if (existing.image_path === m.image_path) {
-                      stableKey = key
-                      idBridgeRef.current.serverToTemp.set(m.id, key)
-                      idBridgeRef.current.tempToServer.set(key, m.id)
-                      break
-                    }
-                    // If existing is optimistic (blob URL) and same text/time, it's likely our upload
-                    if (existing.isOptimistic && existing.image_path.startsWith('blob:')) {
-                      if (existing.text === messageText) {
-                        const serverTs = getMessageTimestamp(m.time)
-                        const existingTs = getMessageTimestamp(existing.time)
-                        if (serverTs !== null && existingTs !== null) {
-                          const timeDiff = Math.abs(serverTs - existingTs)
-                          if (timeDiff < 10000) { // 10 second window for photo uploads
-                            stableKey = key
-                            idBridgeRef.current.serverToTemp.set(m.id, key)
-                            idBridgeRef.current.tempToServer.set(key, m.id)
-                            break
+              // Process server messages (now decrypted)
+              const serverMessageKeys = new Set()
+              decryptedMessages.forEach((m: any) => {
+                // Skip if pending deletion
+                if (pendingDeletions.current.has(m.id)) return
+                
+                // Parse reply information from message text
+                let messageText = m.text
+                let replySnippet = undefined
+                const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+                if (replyMatch) {
+                  replySnippet = replyMatch[2]
+                  messageText = replyMatch[3]
+                }
+                
+                const normalizedTime = ensureNormalizedTime(m.time)
+                // Determine 'sent' strictly from server sender match
+                const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
+                const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, isSentByMe)
+                
+                // Check if we have a bridge mapping or matching optimistic message
+                let stableKey = idBridgeRef.current.serverToTemp.get(m.id)
+                
+                if (!stableKey) {
+                  // Try to find matching message by content or media path
+                  for (const [key, existing] of messagesByKey.entries()) {
+                    if (existing.sent !== isSentByMe) continue
+                    
+                    // For photo messages: match by server image_path
+                    if (m.image_path && existing.image_path) {
+                      // If existing already has this server path, it's the same message
+                      if (existing.image_path === m.image_path) {
+                        stableKey = key
+                        idBridgeRef.current.serverToTemp.set(m.id, key)
+                        idBridgeRef.current.tempToServer.set(key, m.id)
+                        break
+                      }
+                      // If existing is optimistic (blob URL) and same text/time, it's likely our upload
+                      if (existing.isOptimistic && existing.image_path.startsWith('blob:')) {
+                        if (existing.text === messageText) {
+                          const serverTs = getMessageTimestamp(m.time)
+                          const existingTs = getMessageTimestamp(existing.time)
+                          if (serverTs !== null && existingTs !== null) {
+                            const timeDiff = Math.abs(serverTs - existingTs)
+                            if (timeDiff < 10000) { // 10 second window for photo uploads
+                              stableKey = key
+                              idBridgeRef.current.serverToTemp.set(m.id, key)
+                              idBridgeRef.current.tempToServer.set(key, m.id)
+                              break
+                            }
                           }
                         }
                       }
+                      continue
                     }
-                    continue
-                  }
-                  
-                  // For video messages: match by server video_path
-                  if (m.video_path && existing.video_path) {
-                    if (existing.video_path === m.video_path) {
-                      stableKey = key
-                      idBridgeRef.current.serverToTemp.set(m.id, key)
-                      idBridgeRef.current.tempToServer.set(key, m.id)
-                      break
-                    }
-                    if (existing.isOptimistic && existing.video_path.startsWith('blob:')) {
-                      if (existing.text === messageText) {
-                        const serverTs = getMessageTimestamp(m.time)
-                        const existingTs = getMessageTimestamp(existing.time)
-                        if (serverTs !== null && existingTs !== null) {
-                          const timeDiff = Math.abs(serverTs - existingTs)
-                          if (timeDiff < 10000) {
-                            stableKey = key
-                            idBridgeRef.current.serverToTemp.set(m.id, key)
-                            idBridgeRef.current.tempToServer.set(key, m.id)
-                            break
+                    
+                    // For video messages: match by server video_path
+                    if (m.video_path && existing.video_path) {
+                      if (existing.video_path === m.video_path) {
+                        stableKey = key
+                        idBridgeRef.current.serverToTemp.set(m.id, key)
+                        idBridgeRef.current.tempToServer.set(key, m.id)
+                        break
+                      }
+                      if (existing.isOptimistic && existing.video_path.startsWith('blob:')) {
+                        if (existing.text === messageText) {
+                          const serverTs = getMessageTimestamp(m.time)
+                          const existingTs = getMessageTimestamp(existing.time)
+                          if (serverTs !== null && existingTs !== null) {
+                            const timeDiff = Math.abs(serverTs - existingTs)
+                            if (timeDiff < 10000) {
+                              stableKey = key
+                              idBridgeRef.current.serverToTemp.set(m.id, key)
+                              idBridgeRef.current.tempToServer.set(key, m.id)
+                              break
+                            }
                           }
                         }
                       }
+                      continue
                     }
-                    continue
-                  }
-                  
-                  // For text messages: match by content (only if optimistic)
-                  if (!existing.isOptimistic) continue
-                  if (existing.text !== messageText) continue
-                  const serverTs = getMessageTimestamp(m.time)
-                  const existingTs = getMessageTimestamp(existing.time)
-                  if (serverTs !== null && existingTs !== null) {
-                    const timeDiff = Math.abs(serverTs - existingTs)
-                    if (timeDiff < 5000) {
-                      stableKey = key
-                      // Set up bridge for future
-                      idBridgeRef.current.serverToTemp.set(m.id, key)
-                      idBridgeRef.current.tempToServer.set(key, m.id)
-                      break
+                    
+                    // For text messages: match by content (only if optimistic)
+                    if (!existing.isOptimistic) continue
+                    if (existing.text !== messageText) continue
+                    const serverTs = getMessageTimestamp(m.time)
+                    const existingTs = getMessageTimestamp(existing.time)
+                    if (serverTs !== null && existingTs !== null) {
+                      const timeDiff = Math.abs(serverTs - existingTs)
+                      if (timeDiff < 5000) {
+                        stableKey = key
+                        // Set up bridge for future
+                        idBridgeRef.current.serverToTemp.set(m.id, key)
+                        idBridgeRef.current.tempToServer.set(key, m.id)
+                        break
+                      }
                     }
                   }
                 }
-              }
-              
-              // Use stable key if found, otherwise use server id
-              const finalKey = stableKey || String(m.id)
-              serverMessageKeys.add(finalKey)
-              
-              // Get existing message to preserve local state
-              const existing = messagesByKey.get(finalKey)
-              
-              // Update or create message
-              messagesByKey.set(finalKey, {
-                id: m.id, // Use server ID now
-                text: messageText,
-                image_path: m.image_path,
-                video_path: m.video_path,
-                audio_path: m.audio_path,
-                audio_duration_seconds: m.audio_duration_seconds,
-                sent: isSentByMe,
-                time: existing?.time ?? normalizedTime,
-                reaction: existing?.reaction ?? meta.reaction,
-                replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
-                isOptimistic: false, // No longer optimistic
-                edited_at: m.edited_at || null,
-                clientKey: finalKey, // Keep stable key
-                // CRITICAL: Include encryption fields from server!
-                is_encrypted: m.is_encrypted,
-                encrypted_body: m.encrypted_body,
-                encrypted_body_for_sender: m.encrypted_body_for_sender,
-                decryption_error: m.decryption_error
+                
+                // Use stable key if found, otherwise use server id
+                const finalKey = stableKey || String(m.id)
+                serverMessageKeys.add(finalKey)
+                
+                // Get existing message to preserve local state
+                const existing = messagesByKey.get(finalKey)
+                
+                // Update or create message
+                messagesByKey.set(finalKey, {
+                  id: m.id, // Use server ID now
+                  text: messageText,
+                  image_path: m.image_path,
+                  video_path: m.video_path,
+                  audio_path: m.audio_path,
+                  audio_duration_seconds: m.audio_duration_seconds,
+                  sent: isSentByMe,
+                  time: existing?.time ?? normalizedTime,
+                  reaction: existing?.reaction ?? meta.reaction,
+                  replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
+                  isOptimistic: false, // No longer optimistic
+                  edited_at: m.edited_at || null,
+                  clientKey: finalKey, // Keep stable key
+                  // CRITICAL: Include encryption fields from server!
+                  is_encrypted: m.is_encrypted,
+                  encrypted_body: m.encrypted_body,
+                  encrypted_body_for_sender: m.encrypted_body_for_sender,
+                  decryption_error: m.decryption_error
+                })
               })
-            })
-            
-            // Clean up very old UNCONFIRMED optimistic messages (30s timeout)
-            // CRITICAL: Never remove confirmed messages (isOptimistic=false) even if server doesn't return them
-            // This handles server-side caching where newly sent messages don't appear in polls immediately
-            const now = Date.now()
-            for (const [key, msg] of messagesByKey.entries()) {
-              if (msg.isOptimistic) {
-                const ts = getMessageTimestamp(msg.time)
-                if (ts !== null) {
-                  const age = now - ts
-                  if (age > 30000) {
+              
+              // Clean up very old UNCONFIRMED optimistic messages (30s timeout)
+              // CRITICAL: Never remove confirmed messages (isOptimistic=false) even if server doesn't return them
+              // This handles server-side caching where newly sent messages don't appear in polls immediately
+              const now = Date.now()
+              for (const [key, msg] of messagesByKey.entries()) {
+                if (msg.isOptimistic) {
+                  const ts = getMessageTimestamp(msg.time)
+                  if (ts !== null) {
+                    const age = now - ts
+                    if (age > 30000) {
+                      messagesByKey.delete(key)
+                    }
+                  } else {
                     messagesByKey.delete(key)
                   }
-                } else {
-                  messagesByKey.delete(key)
                 }
+                // Never remove confirmed messages (isOptimistic=false), even if not in latest server response
+                // The server confirmed it exists via send response, so trust that over stale poll data
               }
-              // Never remove confirmed messages (isOptimistic=false), even if not in latest server response
-              // The server confirmed it exists via send response, so trust that over stale poll data
-            }
-            
-            // Convert map to array and sort
-            const allMessages = Array.from(messagesByKey.values())
-            
-            return allMessages.sort((a, b) => {
-              const aTs = getMessageTimestamp(a.time) ?? 0
-              const bTs = getMessageTimestamp(b.time) ?? 0
-              return aTs - bTs
+              
+              // Convert map to array and sort
+              const allMessages = Array.from(messagesByKey.values())
+              
+              return allMessages.sort((a, b) => {
+                const aTs = getMessageTimestamp(a.time) ?? 0
+                const bTs = getMessageTimestamp(b.time) ?? 0
+                return aTs - bTs
+              })
             })
-          })
+          }
+        }catch(e){
+          console.error('Polling error:', e)
         }
-      }catch(e){
-        console.error('Polling error:', e)
-      }
+        
+        // Check typing status
+        try{
+          const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
+          const tj = await t.json().catch(()=>null)
+          setTyping(!!tj?.is_typing)
+        }catch{}
       
-      // Check typing status
-      try{
-        const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
-        const tj = await t.json().catch(()=>null)
-        setTyping(!!tj?.is_typing)
-      }catch{}
-
-      // Presence: tell server I'm actively viewing this chat (used to suppress pushes)
-      try{
-        await fetch('/api/active_chat', {
-          method:'POST',
-          credentials:'include',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ peer: username })
-        })
-      }catch{}
+        // Presence: tell server I'm actively viewing this chat (used to suppress pushes)
+        try{
+          await fetch('/api/active_chat', {
+            method:'POST',
+            credentials:'include',
+            headers:{ 'Content-Type':'application/json' },
+            body: JSON.stringify({ peer: username })
+          })
+        }catch{}
+      } finally {
+        pollInFlight.current = false
+      }
     }
     
     // Initial poll after a short delay to let optimistic messages show
