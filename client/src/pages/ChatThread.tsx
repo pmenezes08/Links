@@ -406,9 +406,37 @@ export default function ChatThread(){
     return () => window.removeEventListener('resize', handleResize)
   }, [scrollToBottom])
   
-  // Date formatting functions
+  // Normalize timestamps from the server. We store times as strings in the DB, which
+  // might be ISO with timezone (safe) or MySQL style without timezone (ambiguous).
+  // We interpret missing offsets as UTC so client UI always reflects local device time.
+  function normalizeTimestamp(raw: string): string {
+    if (!raw) return raw
+    const trimmed = raw.trim()
+    if (!trimmed) return trimmed
+    const hasOffset = /[zZ]|([+-]\d{2}:\d{2})$/.test(trimmed)
+    // Already ISO-ish (contains 'T'). Ensure there's a timezone.
+    if (trimmed.includes('T')) {
+      return hasOffset ? trimmed : `${trimmed}Z`
+    }
+    // MySQL style "YYYY-MM-DD HH:MM:SS" -> treat as UTC.
+    const isoLike = trimmed.replace(' ', 'T')
+    return hasOffset ? isoLike : `${isoLike}Z`
+  }
+
+  function parseMessageTime(raw: string | undefined): Date | null {
+    if (!raw) return null
+    try {
+      const normalized = normalizeTimestamp(raw)
+      const d = new Date(normalized)
+      return isNaN(d.getTime()) ? null : d
+    } catch {
+      return null
+    }
+  }
+
   function formatDateLabel(dateStr: string): string {
-    const messageDate = new Date(dateStr)
+    const messageDate = parseMessageTime(dateStr)
+    if (!messageDate) return ''
     const today = new Date()
     const yesterday = new Date(today)
     yesterday.setDate(yesterday.getDate() - 1)
@@ -433,17 +461,19 @@ export default function ChatThread(){
   }
 
   function getDateKey(dateStr: string): string {
-    return new Date(dateStr).toDateString()
+    const parsed = parseMessageTime(dateStr)
+    return parsed ? parsed.toDateString() : dateStr
   }
 
-  function parseMessageTime(s: string | undefined): Date | null {
-    if (!s) return null
-    try {
-      // Normalize "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SS"
-      const norm = s.includes('T') ? s : s.replace(' ', 'T')
-      const d = new Date(norm)
-      return isNaN(d.getTime()) ? null : d
-    } catch { return null }
+  function formatMessageTime(dateStr: string): string {
+    const parsed = parseMessageTime(dateStr)
+    if (!parsed) return ''
+    return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
+  function getMessageTimestamp(dateStr: string | undefined): number | null {
+    const parsed = parseMessageTime(dateStr)
+    return parsed ? parsed.getTime() : null
   }
 
   async function commitEdit(){
@@ -1080,12 +1110,16 @@ export default function ChatThread(){
                     // If existing is optimistic (blob URL) and same text/time, it's likely our upload
                     if (existing.isOptimistic && existing.image_path.startsWith('blob:')) {
                       if (existing.text === messageText) {
-                        const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
-                        if (timeDiff < 10000) { // 10 second window for photo uploads
-                          stableKey = key
-                          idBridgeRef.current.serverToTemp.set(m.id, key)
-                          idBridgeRef.current.tempToServer.set(key, m.id)
-                          break
+                        const serverTs = getMessageTimestamp(m.time)
+                        const existingTs = getMessageTimestamp(existing.time)
+                        if (serverTs !== null && existingTs !== null) {
+                          const timeDiff = Math.abs(serverTs - existingTs)
+                          if (timeDiff < 10000) { // 10 second window for photo uploads
+                            stableKey = key
+                            idBridgeRef.current.serverToTemp.set(m.id, key)
+                            idBridgeRef.current.tempToServer.set(key, m.id)
+                            break
+                          }
                         }
                       }
                     }
@@ -1102,12 +1136,16 @@ export default function ChatThread(){
                     }
                     if (existing.isOptimistic && existing.video_path.startsWith('blob:')) {
                       if (existing.text === messageText) {
-                        const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
-                        if (timeDiff < 10000) {
-                          stableKey = key
-                          idBridgeRef.current.serverToTemp.set(m.id, key)
-                          idBridgeRef.current.tempToServer.set(key, m.id)
-                          break
+                        const serverTs = getMessageTimestamp(m.time)
+                        const existingTs = getMessageTimestamp(existing.time)
+                        if (serverTs !== null && existingTs !== null) {
+                          const timeDiff = Math.abs(serverTs - existingTs)
+                          if (timeDiff < 10000) {
+                            stableKey = key
+                            idBridgeRef.current.serverToTemp.set(m.id, key)
+                            idBridgeRef.current.tempToServer.set(key, m.id)
+                            break
+                          }
                         }
                       }
                     }
@@ -1117,13 +1155,17 @@ export default function ChatThread(){
                   // For text messages: match by content (only if optimistic)
                   if (!existing.isOptimistic) continue
                   if (existing.text !== messageText) continue
-                  const timeDiff = Math.abs(new Date(m.time).getTime() - new Date(existing.time).getTime())
-                  if (timeDiff < 5000) {
-                    stableKey = key
-                    // Set up bridge for future
-                    idBridgeRef.current.serverToTemp.set(m.id, key)
-                    idBridgeRef.current.tempToServer.set(key, m.id)
-                    break
+                  const serverTs = getMessageTimestamp(m.time)
+                  const existingTs = getMessageTimestamp(existing.time)
+                  if (serverTs !== null && existingTs !== null) {
+                    const timeDiff = Math.abs(serverTs - existingTs)
+                    if (timeDiff < 5000) {
+                      stableKey = key
+                      // Set up bridge for future
+                      idBridgeRef.current.serverToTemp.set(m.id, key)
+                      idBridgeRef.current.tempToServer.set(key, m.id)
+                      break
+                    }
                   }
                 }
               }
@@ -1164,8 +1206,13 @@ export default function ChatThread(){
             const now = Date.now()
             for (const [key, msg] of messagesByKey.entries()) {
               if (msg.isOptimistic) {
-                const age = now - new Date(msg.time).getTime()
-                if (age > 30000) {
+                const ts = getMessageTimestamp(msg.time)
+                if (ts !== null) {
+                  const age = now - ts
+                  if (age > 30000) {
+                    messagesByKey.delete(key)
+                  }
+                } else {
                   messagesByKey.delete(key)
                 }
               }
@@ -1176,7 +1223,11 @@ export default function ChatThread(){
             // Convert map to array and sort
             const allMessages = Array.from(messagesByKey.values())
             
-            return allMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+            return allMessages.sort((a, b) => {
+              const aTs = getMessageTimestamp(a.time) ?? 0
+              const bTs = getMessageTimestamp(b.time) ?? 0
+              return aTs - bTs
+            })
           })
         }
       }catch(e){
@@ -1795,7 +1846,11 @@ export default function ChatThread(){
           }
           // Re-add the message in the correct position
           const newMessages = [...prev, messageData]
-          return newMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+          return newMessages.sort((a, b) => {
+            const aTs = getMessageTimestamp(a.time) ?? 0
+            const bTs = getMessageTimestamp(b.time) ?? 0
+            return aTs - bTs
+          })
         })
         
         // Show error
@@ -1823,7 +1878,11 @@ export default function ChatThread(){
           return prev
         }
         const newMessages = [...prev, messageData]
-        return newMessages.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+        return newMessages.sort((a, b) => {
+          const aTs = getMessageTimestamp(a.time) ?? 0
+          const bTs = getMessageTimestamp(b.time) ?? 0
+          return aTs - bTs
+        })
       })
       
       alert('Network error. Could not delete message.')
@@ -2141,12 +2200,12 @@ export default function ChatThread(){
                               <span className="text-[10px] text-white/50 ml-1">edited</span>
                             ) : null}
                             <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
-                              {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {formatMessageTime(m.time)}
                             </span>
                           </div>
                         ) : (
                           <span className={`text-[10px] ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
-                            {new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatMessageTime(m.time)}
                           </span>
                         )
                       )}
