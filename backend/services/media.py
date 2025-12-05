@@ -66,13 +66,21 @@ def get_allowed_extensions(overrides: Optional[Iterable[str]] = None) -> set[str
 
 
 def optimize_image(file_path: str, max_width: int = 1920, quality: int = 85) -> bool:
-    """Optimize image for web - compress and resize if needed, preserving format when possible."""
+    """Optimize image for web - compress, resize, and fix EXIF orientation."""
     if not PIL_AVAILABLE:
         return False
 
     try:
+        from PIL import ImageOps
         ext = os.path.splitext(file_path)[1].lower()
         with Image.open(file_path) as img:  # type: ignore[arg-type]
+            # Fix EXIF orientation (rotate image based on EXIF data)
+            # This is critical for iOS photos which often have rotation in EXIF
+            try:
+                img = ImageOps.exif_transpose(img)
+            except Exception:
+                pass  # If EXIF transpose fails, continue with original
+            
             if img.width > max_width:
                 ratio = max_width / img.width
                 new_height = int(img.height * ratio)

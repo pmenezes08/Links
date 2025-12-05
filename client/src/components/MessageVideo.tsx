@@ -22,11 +22,12 @@ export default function MessageVideo({ src, className = '' }: MessageVideoProps)
   }
 
   return (
-    <div className={`relative inline-block rounded-lg overflow-hidden ${className}`}>
+    <div className={`relative inline-block rounded overflow-hidden ${className}`}>
       {/* Video element */}
       <video
         ref={videoRef}
-        className="max-w-full max-h-64 rounded-lg"
+        className="max-w-full"
+        style={{ maxHeight: '320px' }}
         controls={!showOverlay}
         playsInline
         preload={isNative ? "auto" : "metadata"}
@@ -38,13 +39,13 @@ export default function MessageVideo({ src, className = '' }: MessageVideoProps)
       {showOverlay && (
         <div 
           onClick={handlePlayClick}
-          className="absolute inset-0 flex items-center justify-center cursor-pointer bg-black/20"
+          className="absolute inset-0 flex items-center justify-center cursor-pointer bg-black/10"
         >
           {isLoading ? (
             <div className="w-5 h-5 border-2 border-white/30 border-t-white/80 rounded-full animate-spin" />
           ) : (
-            <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-              <i className="fa-solid fa-play text-black text-sm ml-0.5" />
+            <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+              <i className="fa-solid fa-play text-black text-base ml-0.5" />
             </div>
           )}
         </div>
