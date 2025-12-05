@@ -2008,7 +2008,11 @@ export default function ChatThread(){
                     textareaRef.current?.focus()
                   }} 
                   onCopy={() => {
-                    try{ navigator.clipboard && navigator.clipboard.writeText(m.text) }catch{}
+                    try {
+                      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                        void navigator.clipboard.writeText(m.text)
+                      }
+                    } catch {}
                   }}
                   onEdit={m.sent ? () => {
                     const dt = parseMessageTime(m.time)
@@ -3022,7 +3026,11 @@ function LongPressActionable({
   
   function handleStart(e?: any){
     if (disabled) return
-    try{ e && e.preventDefault && e.preventDefault() }catch{}
+    try {
+      if (e && typeof e.preventDefault === 'function') {
+        e.preventDefault()
+      }
+    } catch {}
     setIsPressed(true)
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {

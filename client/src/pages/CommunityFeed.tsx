@@ -1652,7 +1652,13 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               <button 
                 className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
                 title="Voters"
-                onClick={(e)=> { e.preventDefault(); e.stopPropagation(); onOpenVoters && onOpenVoters(post.poll!.id) }}
+                onClick={(e)=> { 
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (onOpenVoters) {
+                    onOpenVoters(post.poll!.id)
+                  }
+                }}
               >
                 <i className="fa-solid fa-users" />
               </button>
@@ -1710,7 +1716,12 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             </div>
             <ReactionFA icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> onToggleReaction(post.id, 'thumbs-up')} />
             <ReactionFA icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> onToggleReaction(post.id, 'thumbs-down')} />
-            <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-white" title="View reactions" onClick={(e)=> { e.stopPropagation(); onOpenReactions && onOpenReactions() }}>
+            <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-white" title="View reactions" onClick={(e)=> { 
+              e.stopPropagation()
+              if (onOpenReactions) {
+                onOpenReactions()
+              }
+            }}>
               <i className="fa-solid fa-users" />
             </button>
             <button className="ml-auto px-2.5 py-1 rounded-full text-[#cfd8dc]"
@@ -1865,7 +1876,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                                 const resp = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
                                 const j = await resp.json().catch(()=>null)
                                 if (j?.success && j.reply){
-                                  onAddReply && onAddReply(post.id, j.reply as any)
+                                  if (onAddReply) {
+                                    onAddReply(post.id, j.reply as any)
+                                  }
                                   setChildReplyText('')
                                   setChildReplyGif(null)
                                   setActiveChildReplyFor(null)
@@ -1949,7 +1962,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
                       const j = await r.json().catch(()=>null)
                       if (j?.success && j.reply){
-                        onAddReply && onAddReply(post.id, j.reply as any)
+                        if (onAddReply) {
+                          onAddReply(post.id, j.reply as any)
+                        }
                         setReplyText('')
                         setReplyGif(null)
                       } else {

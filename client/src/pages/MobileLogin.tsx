@@ -248,12 +248,6 @@ export default function MobileLogin() {
             </button>
           </form>
         )}
-        {false && (
-          <div className="mt-3">
-            <a href="/login_back" className="text-xs text-white/60 hover:text-white/80">Back</a>
-          </div>
-        )}
-
         <div className="text-center mt-3">
           <button onClick={() => { setShowForgot(true); setResetSent(false) }} className="text-teal-300 text-sm">Forgot Password?</button>
         </div>

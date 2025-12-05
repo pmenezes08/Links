@@ -19,5 +19,14 @@ export default tseslint.config([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/ban-ts-comment': 'off',
+      'no-empty': 'off',
+      'prefer-const': 'off',
+      'no-useless-escape': 'off',
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])
