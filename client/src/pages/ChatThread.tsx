@@ -29,6 +29,106 @@ import { sendImageMessage, sendVideoMessage } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
 import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
 
+type MessageMeta = { reaction?: string; replySnippet?: string }
+
+function normalizeTimestamp(raw?: string): string | undefined {
+  if (!raw) return undefined
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
+  const hasOffset = /[zZ]|([+-]\d{2}:\d{2})$/.test(trimmed)
+  if (trimmed.includes('T')) {
+    return hasOffset ? trimmed : `${trimmed}Z`
+  }
+  const isoLike = trimmed.replace(' ', 'T')
+  return hasOffset ? isoLike : `${isoLike}Z`
+}
+
+function parseMessageTime(raw?: string): Date | null {
+  const normalized = normalizeTimestamp(raw)
+  if (!normalized) return null
+  const parsed = new Date(normalized)
+  return isNaN(parsed.getTime()) ? null : parsed
+}
+
+function ensureNormalizedTime(raw?: string): string {
+  const parsed = parseMessageTime(raw)
+  if (parsed) return parsed.toISOString()
+  if (raw) {
+    const normalized = normalizeTimestamp(raw)
+    if (normalized) {
+      const reparsed = new Date(normalized)
+      if (!isNaN(reparsed.getTime())) return reparsed.toISOString()
+    }
+  }
+  return new Date().toISOString()
+}
+
+function getMessageTimestamp(raw?: string): number | null {
+  const parsed = parseMessageTime(raw)
+  return parsed ? parsed.getTime() : null
+}
+
+function buildMetaKeys(time: string | undefined, messageText: string, sent: boolean) {
+  const suffix = `|${messageText}|${sent ? 'me' : 'other'}`
+  const normalized = parseMessageTime(time)?.toISOString()
+  return {
+    normalizedKey: normalized ? `${normalized}${suffix}` : null,
+    legacyKey: time ? `${time}${suffix}` : null,
+  }
+}
+
+function readMessageMeta(store: Record<string, MessageMeta>, time: string | undefined, messageText: string, sent: boolean): MessageMeta {
+  const { normalizedKey, legacyKey } = buildMetaKeys(time, messageText, sent)
+  return (normalizedKey && store[normalizedKey]) || (legacyKey && store[legacyKey]) || {}
+}
+
+function writeMessageMeta(store: Record<string, MessageMeta>, time: string | undefined, messageText: string, sent: boolean, updates: MessageMeta) {
+  const { normalizedKey, legacyKey } = buildMetaKeys(time, messageText, sent)
+  if (normalizedKey) {
+    store[normalizedKey] = { ...(store[normalizedKey] || {}), ...updates }
+  }
+  if (legacyKey && legacyKey !== normalizedKey) {
+    store[legacyKey] = { ...(store[legacyKey] || {}), ...updates }
+  }
+}
+
+function formatDateLabel(dateStr: string): string {
+  const messageDate = parseMessageTime(dateStr)
+  if (!messageDate) return ''
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+
+  const msgDateOnly = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate())
+  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
+
+  if (msgDateOnly.getTime() === todayOnly.getTime()) {
+    return 'Today'
+  } else if (msgDateOnly.getTime() === yesterdayOnly.getTime()) {
+    return 'Yesterday'
+  } else {
+    const daysDiff = Math.floor((todayOnly.getTime() - msgDateOnly.getTime()) / (1000 * 60 * 60 * 24))
+    if (daysDiff <= 6) {
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+      return days[messageDate.getDay()]
+    } else {
+      return messageDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    }
+  }
+}
+
+function getDateKey(dateStr: string): string {
+  const parsed = parseMessageTime(dateStr)
+  return parsed ? parsed.toDateString() : dateStr
+}
+
+function formatMessageTime(dateStr: string): string {
+  const parsed = parseMessageTime(dateStr)
+  if (!parsed) return ''
+  return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 // Cache settings for chat messages
 const CHAT_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes (matches server Redis TTL)
 const CHAT_CACHE_VERSION = 'chat-v1'
@@ -406,76 +506,6 @@ export default function ChatThread(){
     return () => window.removeEventListener('resize', handleResize)
   }, [scrollToBottom])
   
-  // Normalize timestamps from the server. We store times as strings in the DB, which
-  // might be ISO with timezone (safe) or MySQL style without timezone (ambiguous).
-  // We interpret missing offsets as UTC so client UI always reflects local device time.
-  function normalizeTimestamp(raw: string): string {
-    if (!raw) return raw
-    const trimmed = raw.trim()
-    if (!trimmed) return trimmed
-    const hasOffset = /[zZ]|([+-]\d{2}:\d{2})$/.test(trimmed)
-    // Already ISO-ish (contains 'T'). Ensure there's a timezone.
-    if (trimmed.includes('T')) {
-      return hasOffset ? trimmed : `${trimmed}Z`
-    }
-    // MySQL style "YYYY-MM-DD HH:MM:SS" -> treat as UTC.
-    const isoLike = trimmed.replace(' ', 'T')
-    return hasOffset ? isoLike : `${isoLike}Z`
-  }
-
-  function parseMessageTime(raw: string | undefined): Date | null {
-    if (!raw) return null
-    try {
-      const normalized = normalizeTimestamp(raw)
-      const d = new Date(normalized)
-      return isNaN(d.getTime()) ? null : d
-    } catch {
-      return null
-    }
-  }
-
-  function formatDateLabel(dateStr: string): string {
-    const messageDate = parseMessageTime(dateStr)
-    if (!messageDate) return ''
-    const today = new Date()
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-    
-    const msgDateOnly = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate())
-    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-    const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
-    
-    if (msgDateOnly.getTime() === todayOnly.getTime()) {
-      return 'Today'
-    } else if (msgDateOnly.getTime() === yesterdayOnly.getTime()) {
-      return 'Yesterday'
-    } else {
-      const daysDiff = Math.floor((todayOnly.getTime() - msgDateOnly.getTime()) / (1000 * 60 * 60 * 24))
-      if (daysDiff <= 6) {
-        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-        return days[messageDate.getDay()]
-      } else {
-        return messageDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      }
-    }
-  }
-
-  function getDateKey(dateStr: string): string {
-    const parsed = parseMessageTime(dateStr)
-    return parsed ? parsed.toDateString() : dateStr
-  }
-
-  function formatMessageTime(dateStr: string): string {
-    const parsed = parseMessageTime(dateStr)
-    if (!parsed) return ''
-    return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
-
-  function getMessageTimestamp(dateStr: string | undefined): number | null {
-    const parsed = parseMessageTime(dateStr)
-    return parsed ? parsed.getTime() : null
-  }
-
   async function commitEdit(){
     if (!editingId) return
     const newBody = editText.trim()
@@ -869,23 +899,24 @@ export default function ChatThread(){
     return decryptedMessages.map((m: any) => {
       // Parse reply information from message text
       let messageText = m.text
-      let replySnippet = undefined
+      let replySnippet: string | undefined
       const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
       if (replyMatch) {
         replySnippet = replyMatch[2]
         messageText = replyMatch[3]
       }
-      
-      const k = `${m.time}|${messageText}|${m.sent ? 'me' : 'other'}`
-      const meta = metaRef.current[k] || {}
-      return { 
+
+      const normalizedTime = ensureNormalizedTime(m.time)
+      const meta = readMessageMeta(metaRef.current, m.time, messageText, Boolean(m.sent))
+      return {
         ...m,
         text: messageText,
+        time: normalizedTime,
         video_path: m.video_path,
-        reaction: meta.reaction, 
+        reaction: meta.reaction,
         replySnippet: replySnippet || meta.replySnippet,
         isOptimistic: false,
-        edited_at: m.edited_at || null
+        edited_at: m.edited_at || null,
       }
     })
   }, [])
@@ -1084,8 +1115,8 @@ export default function ChatThread(){
                 messageText = replyMatch[3]
               }
               
-              const k = `${m.time}|${messageText}|${m.sent ? 'me' : 'other'}`
-              const meta = metaRef.current[k] || {}
+              const normalizedTime = ensureNormalizedTime(m.time)
+              const meta = readMessageMeta(metaRef.current, m.time, messageText, isSentByMe)
               
               // Determine 'sent' strictly from server sender match
               const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
@@ -1186,7 +1217,7 @@ export default function ChatThread(){
                 audio_path: m.audio_path,
                 audio_duration_seconds: m.audio_duration_seconds,
                 sent: isSentByMe,
-                time: m.time,
+                time: normalizedTime,
                 reaction: existing?.reaction ?? meta.reaction,
                 replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
                 isOptimistic: false, // No longer optimistic
@@ -1282,7 +1313,7 @@ export default function ChatThread(){
     try {
       // Pause polling for 2 seconds to avoid race condition with server confirmation
       skipNextPollsUntil.current = Date.now() + 2000
-      const now = new Date().toISOString().slice(0,19).replace('T',' ')
+      const now = new Date().toISOString()
       const tempId = `temp_${Date.now()}_${Math.random()}`
       const replySnippet = replyTo ? (replyTo.text.length > 90 ? replyTo.text.slice(0,90) + '…' : replyTo.text) : undefined
       
@@ -1411,8 +1442,7 @@ export default function ChatThread(){
       
       // Store reply snippet in metadata if needed
       if (replySnippet){
-        const k = `${now}|${messageText}|me`
-        metaRef.current[k] = { ...(metaRef.current[k]||{}), replySnippet }
+        writeMessageMeta(metaRef.current, now, messageText, true, { replySnippet })
         try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
       }
       
@@ -1493,7 +1523,7 @@ export default function ChatThread(){
                     ...m,
                     id: j.message_id, // Update to server ID
                     isOptimistic: false, // No longer optimistic
-                    time: j.time || m.time, // Use server time if available
+                    time: ensureNormalizedTime(j.time || m.time),
                     clientKey: tempId, // Keep stable key for React
                     // Keep encryption flags from optimistic message
                     is_encrypted: m.is_encrypted,
@@ -1669,7 +1699,7 @@ export default function ChatThread(){
     setSending(true)
     try{
       const url = URL.createObjectURL(blob)
-      const now = new Date().toISOString().slice(0,19).replace('T',' ')
+      const now = new Date().toISOString()
       const optimistic: Message = { id: `temp_audio_${Date.now()}`, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true }
       setMessages(prev => [...prev, optimistic])
       setTimeout(scrollToBottom, 50)
@@ -1723,7 +1753,7 @@ export default function ChatThread(){
     setSending(true)
     try{
       const url = URL.createObjectURL(blob)
-      const now = new Date().toISOString().slice(0,19).replace('T',' ')
+      const now = new Date().toISOString()
       const optimistic: Message = { id: `temp_audio_${Date.now()}`, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true }
       setMessages(prev => [...prev, optimistic])
       setTimeout(scrollToBottom, 50)
@@ -2058,8 +2088,7 @@ export default function ChatThread(){
                   onDelete={() => handleDeleteMessage(m.id, m)}
                   onReact={(emoji)=> {
                     setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
-                    const k = `${m.time}|${m.text}|${m.sent ? 'me' : 'other'}`
-                    metaRef.current[k] = { ...(metaRef.current[k]||{}), reaction: emoji }
+                    writeMessageMeta(metaRef.current, m.time, m.text, Boolean(m.sent), { reaction: emoji })
                     try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
                   }} 
                   onReply={() => {
