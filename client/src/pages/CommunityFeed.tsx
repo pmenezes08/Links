@@ -1064,44 +1064,6 @@ export default function CommunityFeed() {
             className="hidden"
             onChange={handleStoryFileChange}
           />
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] px-2 py-1.5">
-            <div className="flex gap-2 overflow-x-auto no-scrollbar">
-              <button
-                className="flex flex-col items-center gap-0.5 min-w-[52px] text-white/80"
-                onClick={handleStoryUploadClick}
-                disabled={storyUploading || !community_id}
-              >
-                <span className="w-11 h-11 rounded-full border-2 border-dashed border-white/25 flex items-center justify-center">
-                  <i className="fa-solid fa-plus text-sm" />
-                </span>
-                <span className="text-[10px] text-[#9fb0b5]">{storyUploading ? '...' : 'Add'}</span>
-              </button>
-              {storiesLoading && storyGroups.length === 0 ? (
-                <div className="text-[10px] text-[#9fb0b5] flex items-center">Loading...</div>
-              ) : storyGroups.length === 0 ? (
-                <div className="text-[10px] text-[#9fb0b5] flex items-center">No stories</div>
-              ) : storyGroups.map((group, idx) => (
-                <button
-                  key={`${group.username}-${idx}`}
-                  className="flex flex-col items-center gap-0.5 min-w-[52px]"
-                  onClick={() => openStory(idx, 0)}
-                >
-                  <span className={`w-11 h-11 rounded-full border-2 ${group.has_unseen ? 'border-[#4db6ac]' : 'border-white/20'} p-0.5`}>
-                    <Avatar
-                      username={group.username}
-                      url={group.profile_picture || undefined}
-                      size={38}
-                      linkToProfile={false}
-                    />
-                  </span>
-                  <span className="text-[10px] text-[#cfd8dc] truncate max-w-[48px]">@{group.username}</span>
-                </button>
-              ))}
-            </div>
-            {storyError && (
-              <div className="text-[10px] text-red-400 mt-1">{storyError}</div>
-            )}
-          </div>
           {/* Top header image from legacy template */}
           {data.community?.background_path ? (
             <div className="community-header-image overflow-hidden rounded-xl border border-white/10 mb-3 relative">
@@ -1147,6 +1109,45 @@ export default function CommunityFeed() {
               </div>
             </div>
           ) : null}
+          {/* Stories panel - below community header image */}
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] px-2 py-1.5 mb-3">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar">
+              <button
+                className="flex flex-col items-center gap-0.5 min-w-[52px] text-white/80"
+                onClick={handleStoryUploadClick}
+                disabled={storyUploading || !community_id}
+              >
+                <span className="w-11 h-11 rounded-full border-2 border-dashed border-white/25 flex items-center justify-center">
+                  <i className="fa-solid fa-plus text-sm" />
+                </span>
+                <span className="text-[10px] text-[#9fb0b5]">{storyUploading ? '...' : 'Add'}</span>
+              </button>
+              {storiesLoading && storyGroups.length === 0 ? (
+                <div className="text-[10px] text-[#9fb0b5] flex items-center">Loading...</div>
+              ) : storyGroups.length === 0 ? (
+                <div className="text-[10px] text-[#9fb0b5] flex items-center">No stories</div>
+              ) : storyGroups.map((group, idx) => (
+                <button
+                  key={`${group.username}-${idx}`}
+                  className="flex flex-col items-center gap-0.5 min-w-[52px]"
+                  onClick={() => openStory(idx, 0)}
+                >
+                  <span className={`w-11 h-11 rounded-full border-2 ${group.has_unseen ? 'border-[#4db6ac]' : 'border-white/20'} p-0.5`}>
+                    <Avatar
+                      username={group.username}
+                      url={group.profile_picture || undefined}
+                      size={38}
+                      linkToProfile={false}
+                    />
+                  </span>
+                  <span className="text-[10px] text-[#cfd8dc] truncate max-w-[48px]">@{group.username}</span>
+                </button>
+              ))}
+            </div>
+            {storyError && (
+              <div className="text-[10px] text-red-400 mt-1">{storyError}</div>
+            )}
+          </div>
 
             {/* Feed items */}
             {postsOnly.length === 0 ? (
@@ -1235,30 +1236,33 @@ export default function CommunityFeed() {
         </div>
       )}
       {activeStoryPointer && currentStory && (
-        <div className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-sm px-4 flex items-center justify-center">
-          <div className="absolute inset-0" onClick={closeStoryViewer} />
-          <div className="relative z-[121] w-full max-w-md space-y-3">
-            <div className="flex gap-1">
-              {(currentStoryGroup?.stories || []).map((story, idx) => (
-                <div
-                  key={story.id}
-                  className={`flex-1 h-1 rounded-full ${idx <= (activeStoryPointer?.storyIndex ?? 0) ? 'bg-white' : 'bg-white/30'}`}
-                />
-              ))}
-            </div>
-            <div className="relative rounded-3xl border border-white/10 bg-black/70 overflow-hidden">
-              {/* Close button row */}
-              <div className="flex justify-end p-3 pb-0">
-                <button
-                  className="w-9 h-9 rounded-full border border-white/15 text-white hover:bg-white/10 flex items-center justify-center"
-                  onClick={closeStoryViewer}
-                  aria-label="Close story"
-                >
-                  <i className="fa-solid fa-xmark" />
-                </button>
-              </div>
+        <div className="fixed inset-0 z-[120] bg-black/95 flex flex-col">
+          {/* Fixed close button at top - always accessible */}
+          <div className="flex-shrink-0 flex justify-end p-4 pt-6">
+            <button
+              className="w-11 h-11 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 flex items-center justify-center z-[125]"
+              onClick={closeStoryViewer}
+              aria-label="Close story"
+            >
+              <i className="fa-solid fa-xmark text-lg" />
+            </button>
+          </div>
+          
+          {/* Progress bar */}
+          <div className="flex-shrink-0 flex gap-1 px-4 mb-3">
+            {(currentStoryGroup?.stories || []).map((story, idx) => (
+              <div
+                key={story.id}
+                className={`flex-1 h-1 rounded-full ${idx <= (activeStoryPointer?.storyIndex ?? 0) ? 'bg-white' : 'bg-white/30'}`}
+              />
+            ))}
+          </div>
+          
+          {/* Scrollable content area */}
+          <div className="flex-1 overflow-y-auto px-4 pb-4">
+            <div className="max-w-md mx-auto">
               {/* User info header */}
-              <div className="flex items-center gap-3 px-4 pb-3">
+              <div className="flex items-center gap-3 mb-4">
                 <Avatar
                   username={currentStory.username}
                   url={currentStory.profile_picture || undefined}
@@ -1276,13 +1280,14 @@ export default function CommunityFeed() {
                   <span>{currentStory.view_count ?? 0}</span>
                 </div>
               </div>
+              
               {/* Video/Image content */}
-              <div className="relative mx-4 rounded-2xl border border-white/10 overflow-hidden min-h-[360px] bg-black/40">
+              <div className="relative rounded-2xl border border-white/10 overflow-hidden bg-black/40">
                 {currentStory.media_type === 'video' ? (
                   <video
                     key={currentStory.id}
                     src={resolveStoryMediaSrc(currentStory)}
-                    className="w-full h-full object-cover"
+                    className="w-full max-h-[60vh] object-contain"
                     autoPlay
                     playsInline
                     muted
@@ -1292,14 +1297,17 @@ export default function CommunityFeed() {
                   <img
                     src={resolveStoryMediaSrc(currentStory)}
                     alt="Story media"
-                    className="w-full h-full object-cover"
+                    className="w-full max-h-[60vh] object-contain"
                   />
                 )}
               </div>
+              
               {currentStory.caption && (
-                <div className="mt-3 mx-4 text-sm text-white/90 whitespace-pre-wrap break-words">{currentStory.caption}</div>
+                <div className="mt-3 text-sm text-white/90 whitespace-pre-wrap break-words">{currentStory.caption}</div>
               )}
-              <div className="flex items-center justify-between mt-4 mx-4 mb-4 text-white/80">
+              
+              {/* Navigation buttons */}
+              <div className="flex items-center justify-between mt-4 text-white/80">
                 <button
                   className="px-4 py-1.5 rounded-full border border-white/20 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
                   onClick={goToPrevStory}
