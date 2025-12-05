@@ -1236,41 +1236,39 @@ export default function CommunityFeed() {
         </div>
       )}
       {activeStoryPointer && currentStory && (
-        <div className="fixed inset-0 z-[120] bg-black/95 flex flex-col">
-          {/* Fixed close button at top - always accessible */}
-          <div className="flex-shrink-0 flex justify-end p-4 pt-6">
-            <button
-              className="w-11 h-11 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 flex items-center justify-center z-[125]"
-              onClick={closeStoryViewer}
-              aria-label="Close story"
-            >
-              <i className="fa-solid fa-xmark text-lg" />
-            </button>
-          </div>
+        <div className="fixed inset-0 z-[120] bg-black/95">
+          {/* Close button - absolutely positioned at top right */}
+          <button
+            className="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 flex items-center justify-center z-[130]"
+            onClick={closeStoryViewer}
+            aria-label="Close story"
+          >
+            <i className="fa-solid fa-xmark text-lg" />
+          </button>
           
-          {/* Progress bar */}
-          <div className="flex-shrink-0 flex gap-1 px-4 mb-3">
-            {(currentStoryGroup?.stories || []).map((story, idx) => (
-              <div
-                key={story.id}
-                className={`flex-1 h-1 rounded-full ${idx <= (activeStoryPointer?.storyIndex ?? 0) ? 'bg-white' : 'bg-white/30'}`}
-              />
-            ))}
-          </div>
-          
-          {/* Scrollable content area */}
-          <div className="flex-1 overflow-y-auto px-4 pb-4">
-            <div className="max-w-md mx-auto">
+          {/* Centered content container */}
+          <div className="absolute inset-0 flex items-center justify-center p-4 pt-16 pb-4">
+            <div className="w-full max-w-md">
+              {/* Progress bar */}
+              <div className="flex gap-1 mb-3">
+                {(currentStoryGroup?.stories || []).map((story, idx) => (
+                  <div
+                    key={story.id}
+                    className={`flex-1 h-1 rounded-full ${idx <= (activeStoryPointer?.storyIndex ?? 0) ? 'bg-white' : 'bg-white/30'}`}
+                  />
+                ))}
+              </div>
+              
               {/* User info header */}
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center gap-3 mb-3">
                 <Avatar
                   username={currentStory.username}
                   url={currentStory.profile_picture || undefined}
-                  size={40}
+                  size={36}
                   linkToProfile
                 />
                 <div className="flex-1">
-                  <div className="font-semibold tracking-tight">{currentStory.username}</div>
+                  <div className="font-semibold tracking-tight text-sm">{currentStory.username}</div>
                   <div className="text-xs text-[#9fb0b5]">
                     {currentStory.created_at ? formatSmartTime(currentStory.created_at) : null}
                   </div>
@@ -1281,13 +1279,13 @@ export default function CommunityFeed() {
                 </div>
               </div>
               
-              {/* Video/Image content */}
+              {/* Video/Image content - centered */}
               <div className="relative rounded-2xl border border-white/10 overflow-hidden bg-black/40">
                 {currentStory.media_type === 'video' ? (
                   <video
                     key={currentStory.id}
                     src={resolveStoryMediaSrc(currentStory)}
-                    className="w-full max-h-[60vh] object-contain"
+                    className="w-full max-h-[50vh] object-contain"
                     autoPlay
                     playsInline
                     muted
@@ -1297,13 +1295,13 @@ export default function CommunityFeed() {
                   <img
                     src={resolveStoryMediaSrc(currentStory)}
                     alt="Story media"
-                    className="w-full max-h-[60vh] object-contain"
+                    className="w-full max-h-[50vh] object-contain"
                   />
                 )}
               </div>
               
               {currentStory.caption && (
-                <div className="mt-3 text-sm text-white/90 whitespace-pre-wrap break-words">{currentStory.caption}</div>
+                <div className="mt-3 text-sm text-white/90 whitespace-pre-wrap break-words max-h-20 overflow-y-auto">{currentStory.caption}</div>
               )}
               
               {/* Navigation buttons */}
