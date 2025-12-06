@@ -15,7 +15,7 @@ const features = [
   {
     icon: MessageSquare,
     title: "Communication Styles",
-    description: "Choose how you connect—C-Point lets you switch between text, voice, or short videos (stories) so every exchange fits your style.",
+    description: "Choose how you connect—switch between text, voice, or short videos (stories) so every exchange fits your style.",
   },
   {
     icon: Lock,
