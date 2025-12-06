@@ -105,10 +105,17 @@ export default function PushInit(){
         await navigator.serviceWorker.ready
         try{
           navigator.serviceWorker.addEventListener('message', (e: any) => {
-            if (e?.data?.type === 'SW_ACTIVATED' && !sessionStorage.getItem('swReloaded')){
-              sessionStorage.setItem('swReloaded', '1')
-              // Light reload to pick up new index.html/assets
-              location.reload()
+            if (e?.data?.type === 'SW_ACTIVATED'){
+              const version = e?.data?.version || 'unknown'
+              console.log(`[SW] Service worker activated: v${version}`)
+              
+              // Force reload if explicitly requested, or if not reloaded yet
+              if (e?.data?.forceReload || !sessionStorage.getItem('swReloaded')){
+                sessionStorage.setItem('swReloaded', '1')
+                console.log('[SW] Reloading to pick up new assets...')
+                // Hard reload to bypass cache
+                location.reload()
+              }
             }
           })
         }catch{}

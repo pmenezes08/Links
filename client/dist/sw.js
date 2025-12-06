@@ -1,8 +1,9 @@
-const SW_VERSION = '2.12.0'
+const SW_VERSION = '2.13.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
 const MAX_MEDIA_CACHE_SIZE = 50 // Max number of videos/large media to cache
+const FORCE_UPDATE_TIMESTAMP = 1764987500000 // Force cache clear after this timestamp
 
 const STATIC_ASSETS = [
   '/',
@@ -34,21 +35,26 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     try {
       const cacheNames = await caches.keys()
+      // Delete ALL old caches to force refresh
       await Promise.all(
         cacheNames
           .filter((cacheName) => cacheName !== APP_SHELL_CACHE && cacheName !== RUNTIME_CACHE && cacheName !== MEDIA_CACHE)
           .map((cacheName) => caches.delete(cacheName))
       )
+      
+      // Also clear current runtime cache to force refetch of assets
+      await caches.delete(RUNTIME_CACHE)
+      
       await self.clients.claim()
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       for (const client of clients){
         try {
-          client.postMessage({ type: 'SW_ACTIVATED', version: SW_VERSION })
+          client.postMessage({ type: 'SW_ACTIVATED', version: SW_VERSION, forceReload: true })
         } catch (error) {
           console.warn('[SW] Failed to notify client', error)
         }
       }
-      console.log(`[SW] Activated v${SW_VERSION}`)
+      console.log(`[SW] Activated v${SW_VERSION} - forced cache clear`)
     } catch (error) {
       console.error('[SW] Activation error', error)
     }
@@ -175,7 +181,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.origin === self.location.origin && url.pathname.startsWith('/assets/')){
-    event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
+    // Use network-first for JS files to ensure latest code, stale-while-revalidate for CSS
+    if (url.pathname.endsWith('.js')) {
+      event.respondWith(networkFirst(request, RUNTIME_CACHE))
+    } else {
+      event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
+    }
     return
   }
 
