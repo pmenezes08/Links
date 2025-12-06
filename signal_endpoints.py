@@ -615,6 +615,11 @@ def register_signal_endpoints(app, get_db_connection, logger):
                         'senderDeviceId': row[3],
                     })
 
+        except (BrokenPipeError, OSError) as e:
+            # Client disconnected before response could be sent - this is normal
+            # and happens frequently on mobile apps when requests are cancelled
+            logger.debug(f"Signal: Client disconnected during get-ciphertext/{message_id}: {str(e)}")
+            return '', 499  # Use 499 (Client Closed Request) status code
         except Exception as e:
             logger.error(f"Signal: Error getting ciphertext: {str(e)}")
             return jsonify({'success': False, 'error': str(e)}), 500
