@@ -716,7 +716,8 @@ export default function PostDetail(){
         ref={contentRef}
         className="flex-1 overflow-y-auto overflow-x-hidden min-h-0"
         style={{
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + 48px + ${pullPx}px)`,
+          // Add a touch more breathing room so the back button doesn't hug the header
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + 56px + ${pullPx}px)`,
           WebkitOverflowScrolling: 'touch' as any,
           overscrollBehaviorY: 'auto' as any,
         }}
