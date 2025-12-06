@@ -821,6 +821,13 @@ export default function CommunityFeed() {
         return
       }
       
+      // Don't navigate if clicking on interactive elements (buttons, links, etc)
+      const target = event.target as HTMLElement
+      if (target.closest('button') || target.closest('a') || target.closest('video[controls]')) {
+        storySwipeRef.current = null
+        return
+      }
+      
       const dx = event.clientX - swipe.startX
       const dy = event.clientY - swipe.startY
       const distance = Math.sqrt(dx * dx + dy * dy)
@@ -1603,10 +1610,13 @@ export default function CommunityFeed() {
                       <button
                         key={reaction}
                         type="button"
-                        className={`px-3 py-1 rounded-full border flex items-center gap-1 text-sm ${
+                        className={`px-3 py-1 rounded-full border flex items-center gap-1 text-sm transition-colors ${
                           isActive ? 'bg-white text-black border-white' : 'border-white/20 text-white/80 hover:bg-white/10'
                         }`}
-                        onClick={() => handleStoryReaction(currentStory, reaction)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleStoryReaction(currentStory, reaction)
+                        }}
                       >
                         <span className="text-base leading-none">{reaction}</span>
                         {count > 0 && <span className="text-xs font-semibold">{count}</span>}
