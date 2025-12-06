@@ -60,7 +60,7 @@ def main():
                 CREATE TABLE community_stories (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     community_id INT NOT NULL,
-                    username VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+                    username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
                     media_path VARCHAR(512) NOT NULL,
                     media_type VARCHAR(16) NOT NULL,
                     caption TEXT,
@@ -74,7 +74,7 @@ def main():
                     INDEX idx_cs_user_created (username, created_at),
                     CONSTRAINT fk_cs_community FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
                     CONSTRAINT fk_cs_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
             """)
             print("Created community_stories table")
         
@@ -84,14 +84,14 @@ def main():
             CREATE TABLE community_story_views (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 story_id INT NOT NULL,
-                username VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+                username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
                 viewed_at DATETIME NOT NULL,
                 UNIQUE KEY uniq_story_viewer (story_id, username),
                 INDEX idx_csv_story (story_id),
                 INDEX idx_csv_user (username),
                 CONSTRAINT fk_csv_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
                 CONSTRAINT fk_csv_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
         """)
         print("Created community_story_views table")
         
@@ -101,7 +101,7 @@ def main():
             CREATE TABLE community_story_reactions (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 story_id INT NOT NULL,
-                username VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+                username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
                 reaction VARCHAR(16) NOT NULL,
                 created_at DATETIME NOT NULL,
                 UNIQUE KEY uniq_story_reaction (story_id, username),
@@ -109,7 +109,7 @@ def main():
                 INDEX idx_csr_reaction (reaction),
                 CONSTRAINT fk_csr_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
                 CONSTRAINT fk_csr_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
         """)
         print("Created community_story_reactions table")
         
