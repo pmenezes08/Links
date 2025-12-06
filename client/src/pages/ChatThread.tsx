@@ -1040,10 +1040,22 @@ export default function ChatThread(){
                 // Get existing message to preserve local state
                 const existing = messagesByKey.get(finalKey)
                 
+                // CRITICAL: Preserve successfully decrypted text
+                // If we already have a successful decryption, don't overwrite it with a failed one
+                const shouldPreserveExistingText = 
+                  existing && 
+                  !existing.decryption_error && 
+                  existing.text && 
+                  !existing.text.startsWith('[🔒') &&
+                  m.decryption_error
+                
+                const finalText = shouldPreserveExistingText ? existing.text : messageText
+                const finalDecryptionError = shouldPreserveExistingText ? false : m.decryption_error
+                
                 // Update or create message
                 messagesByKey.set(finalKey, {
                   id: m.id, // Use server ID now
-                  text: messageText,
+                  text: finalText,
                   image_path: m.image_path,
                   video_path: m.video_path,
                   audio_path: m.audio_path,
@@ -1059,7 +1071,7 @@ export default function ChatThread(){
                   is_encrypted: m.is_encrypted,
                   encrypted_body: m.encrypted_body,
                   encrypted_body_for_sender: m.encrypted_body_for_sender,
-                  decryption_error: m.decryption_error
+                  decryption_error: finalDecryptionError
                 })
               })
               

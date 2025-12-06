@@ -7,7 +7,7 @@ import { safeLocalStorageGet } from '../utils/storage'
 export const DECRYPTION_RETRY_DELAY_MS = 4000
 export const SIGNAL_PENDING_TEXT = '[🔒 Setting up secure session…]'
 
-const MAX_SIGNAL_RETRIES = 2
+// const MAX_SIGNAL_RETRIES = 2 // Currently unused - session errors are marked permanent
 const SIGNAL_DECRYPT_CACHE_BASE_KEY = 'signal_decrypted_messages'
 const SIGNAL_DECRYPT_CACHE_VERSION = 'signal-v2'
 const SIGNAL_DECRYPT_CACHE_LIMIT = 400
@@ -293,7 +293,7 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
   }, [])
 
   const decryptSignalMessage = useCallback(
-    async (message: ChatMessage, attempt = 0): Promise<ChatMessage> => {
+    async (message: ChatMessage): Promise<ChatMessage> => {
       const ready = await ensureSignalInitialized()
       if (!ready) {
         const pending = '[🔒 Signal: Device not initialized]'
@@ -442,6 +442,7 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
 
       const cacheKeyString = normalizeCacheMessageId(message.id)
 
+      // First check in-memory cache
       const cached = decryptionCache.current.get(cacheKeyString)
       // Only use cache for SUCCESSFUL decryptions - don't cache errors
       if (cached && !cached.error) {
@@ -452,6 +453,19 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
           text: cached.text,
           decryption_error: false,
         }
+      }
+
+      // Check if message already has valid decrypted text (from state)
+      // This handles the case where text was decrypted but cache was cleared
+      if (message.text && 
+          !message.decryption_error && 
+          !message.text.startsWith('[🔒') &&
+          message.text.trim().length > 0) {
+        // Message has valid plaintext - cache it for future use
+        console.log('🔐 Message already has plaintext, caching:', message.id)
+        cacheDecryptedMessage(message.id, { text: message.text, error: false })
+        clearDecryptionFailure(cacheKeyString)
+        return message
       }
 
       const failureInfo = decryptionFailures.current.get(cacheKeyString)
