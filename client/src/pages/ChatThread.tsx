@@ -16,8 +16,6 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
-import MessageImage from '../components/MessageImage'
-import MessageVideo from '../components/MessageVideo'
 import ZoomableImage from '../components/ZoomableImage'
 import { encryptionService } from '../services/simpleEncryption'
 import { signalService } from '../services/signalProtocol'
@@ -30,9 +28,8 @@ import { sendImageMessage, sendVideoMessage } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
 import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
 
-// Import utilities from chat module
+// Import utilities and components from chat module
 import {
-  normalizeMediaPath,
   parseMessageTime,
   ensureNormalizedTime,
   getMessageTimestamp,
@@ -40,10 +37,9 @@ import {
   writeMessageMeta,
   formatDateLabel,
   getDateKey,
-  formatMessageTime,
-  formatDuration,
   CHAT_CACHE_TTL_MS,
   CHAT_CACHE_VERSION,
+  MessageBubble,
 } from '../chat'
 
 type Message = ChatMessage
@@ -1830,20 +1826,25 @@ export default function ChatThread(){
               )}
               
               <div data-message-date={m.time}>
-                <LongPressActionable 
+                <MessageBubble
+                  message={m}
+                  isEditing={editingId === m.id}
+                  editText={editText}
+                  editingSaving={editingSaving}
+                  otherDisplayName={otherProfile?.display_name || username || 'User'}
                   onDelete={() => handleDeleteMessage(m.id, m)}
-                  onReact={(emoji)=> {
-                    setMessages(msgs => msgs.map(x => x.id===m.id ? { ...x, reaction: emoji } : x))
+                  onReact={(emoji) => {
+                    setMessages(msgs => msgs.map(x => x.id === m.id ? { ...x, reaction: emoji } : x))
                     writeMessageMeta(metaRef.current, m.time, m.text, Boolean(m.sent), { reaction: emoji })
-                    try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
-                  }} 
+                    try { localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) } catch {}
+                  }}
                   onReply={() => {
-                    setReplyTo({ 
+                    setReplyTo({
                       text: m.text,
                       sender: m.sent ? 'You' : (otherProfile?.display_name || username || 'User')
                     })
                     focusTextarea()
-                  }} 
+                  }}
                   onCopy={() => {
                     try {
                       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
@@ -1853,145 +1854,19 @@ export default function ChatThread(){
                   }}
                   onEdit={m.sent ? () => {
                     const dt = parseMessageTime(m.time)
-                    if (dt && (Date.now() - dt.getTime()) > 5*60*1000) return
-                    setEditingId(m.id); setEditText(m.text)
+                    if (dt && (Date.now() - dt.getTime()) > 5 * 60 * 1000) return
+                    setEditingId(m.id)
+                    setEditText(m.text)
                   } : undefined}
-                  disabled={editingId === m.id}
-                >
-                  <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-                    <div
-                      className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} max-w-[82%] md:max-w-[65%] px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
-                        m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
-                      } ${m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
-                      style={{ 
-                        position: 'relative', 
-                        ...(m.reaction ? { paddingRight: '1.75rem', paddingBottom: '1.25rem' } : {}) 
-                      } as any}
-                    >
-                      {m.replySnippet ? (
-                        <div className="mb-2 flex items-stretch gap-0 bg-black/20 rounded-lg overflow-hidden">
-                          {/* WhatsApp-style left accent bar */}
-                          <div className={`w-1 flex-shrink-0 ${m.sent ? 'bg-white/40' : 'bg-[#4db6ac]'}`} />
-                          <div className="flex-1 px-2.5 py-1.5 min-w-0">
-                            <div className={`text-[11px] font-medium truncate ${m.sent ? 'text-white/70' : 'text-[#4db6ac]'}`}>
-                              {m.sent ? (otherProfile?.display_name || username || 'User') : 'You'}
-                            </div>
-                            <div className="text-[12px] text-white/60 line-clamp-1 mt-0.5">
-                              {m.replySnippet}
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-                      
-                      {/* Audio message */}
-                      {m.audio_path && !m.image_path ? (
-                        <AudioMessage
-                          message={m}
-                          audioPath={normalizeMediaPath(m.audio_path)}
-                        />
-                      ) : null}
-                      {/* Image display with loader */}
-                      {m.image_path ? (
-                        <div className="mb-1.5">
-                          <MessageImage
-                            src={normalizeMediaPath(m.image_path)}
-                            alt="Shared photo"
-                            className="max-w-full max-h-64 cursor-pointer"
-                            onClick={() => {
-                              setPreviewImage(normalizeMediaPath(m.image_path))
-                            }}
-                          />
-                        </div>
-                      ) : null}
-                      
-                      {m.video_path ? (
-                        <div className="mb-1.5" onClick={e => e.stopPropagation()}>
-                          <MessageVideo
-                            src={normalizeMediaPath(m.video_path)}
-                            className="max-h-64"
-                          />
-                        </div>
-                      ) : null}
-                      
-                      {/* Encryption indicator - BIGGER AND MORE VISIBLE */}
-                      {/* Use Boolean() to prevent rendering "0" when is_encrypted is 0 */}
-                      {Boolean(m.is_encrypted) && !m.decryption_error && (
-                        <div className="flex items-center gap-1.5 mb-1.5 text-[11px] text-[#7fe7df]">
-                          <i className="fa-solid fa-lock text-[10px]" />
-                          <span className="font-medium">End-to-end encrypted</span>
-                        </div>
-                      )}
-                      
-                      {/* Decryption error indicator */}
-                      {m.decryption_error && (
-                        <div className="flex items-center gap-1.5 mb-1.5 text-[11px] text-red-400">
-                          <i className="fa-solid fa-triangle-exclamation text-[10px]" />
-                          <span className="font-medium">Decryption failed</span>
-                        </div>
-                      )}
-                      
-                      {/* Text content or editor */}
-                      {editingId === m.id ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-xs text-white/60">
-                            <i className="fa-regular fa-pen-to-square" />
-                            <span>Edit message</span>
-                          </div>
-                          <div className="relative group" onClick={(e)=> e.stopPropagation()} onMouseDown={(e)=> e.stopPropagation()} onTouchStart={(e)=> e.stopPropagation()}>
-                            <textarea
-                              className="w-full bg-black/30 border border-white/15 rounded-xl px-3 py-2 text-sm pr-10 focus:outline-none focus:border-[#4db6ac] shadow-inner"
-                              value={editText}
-                              onChange={e=> setEditText(e.target.value)}
-                              rows={3}
-                              placeholder="Edit your message..."
-                            />
-                            <button
-                              className={`absolute top-2 right-2 w-8 h-8 rounded-lg flex items-center justify-center ${editingSaving ? 'bg-gray-600 text-gray-300' : 'bg-[#4db6ac] text-black hover:brightness-110'}`}
-                              onClick={editingSaving ? undefined : commitEdit}
-                              disabled={editingSaving}
-                              title="Save"
-                            >
-                              {editingSaving ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-check" />}
-                            </button>
-                          </div>
-                          <div className="flex gap-2 justify-end">
-                            <button className="px-3 py-1.5 text-xs bg-white/10 border border-white/20 rounded-lg hover:bg-white/15" onClick={()=> { setEditingId(null); setEditText('') }}>Cancel</button>
-                          </div>
-                        </div>
-                      ) : (
-                        m.text ? (
-                          <div 
-                            className="inline"
-                            onDoubleClick={()=> {
-                              if (!m.sent) return
-                              // Enforce 5-minute window on client: hide editor entry if expired
-                              const dt = parseMessageTime(m.time)
-                              if (dt && (Date.now() - dt.getTime()) > 5*60*1000) return
-                              setEditingId(m.id); setEditText(m.text)
-                            }}
-                          >
-                            {linkifyText(m.text)}
-                            {m.edited_at ? (
-                              <span className="text-[10px] text-white/50 ml-1">edited</span>
-                            ) : null}
-                            <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
-                              {formatMessageTime(m.time)}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className={`text-[10px] ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
-                            {formatMessageTime(m.time)}
-                          </span>
-                        )
-                      )}
-                      {m.reaction ? (
-                        <span className="absolute bottom-0.5 right-1 text-base leading-none select-none z-10">
-                          {m.reaction}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </LongPressActionable>
+                  onEditTextChange={setEditText}
+                  onCommitEdit={commitEdit}
+                  onCancelEdit={() => {
+                    setEditingId(null)
+                    setEditText('')
+                  }}
+                  onImageClick={(imagePath) => setPreviewImage(imagePath)}
+                  linkifyText={linkifyText}
+                />
               </div>
             </div>
           )
@@ -2628,292 +2503,4 @@ export default function ChatThread(){
   )
 }
 
-function AudioMessage({ message, audioPath }: { message: Message; audioPath: string }) {
-  const [debugText, setDebugText] = useState<string>('')
-
-  // Detect Safari browser
-  const isSafari = typeof navigator !== 'undefined' &&
-    /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-
-  const [playing, setPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [error, setError] = useState<string | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
-  const audioRef = useRef<HTMLAudioElement>(null)
-
-  // Add cache-busting to prevent Safari caching issues
-  const cacheBustedPath = useMemo(() => {
-    if (!audioPath) return ''
-    // Add timestamp only on first load and retries to bust cache
-    const separator = audioPath.includes('?') ? '&' : '?'
-    return `${audioPath}${separator}_cb=${Date.now()}_${retryCount}`
-  }, [audioPath, retryCount])
-
-  useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    // CRITICAL iOS FIX: Force load on iOS to prevent stuck state
-    try {
-      audio.load()
-    } catch (e) {
-      console.error('🎵 Audio load error:', e)
-    }
-    setDebugText(`Mounted: ${message.id}`)
-
-    const handleError = (e: Event) => {
-      const target = e.target as HTMLAudioElement
-      const errorCode = target.error?.code
-      const errorMessage = target.error?.message
-      console.error('🎵 Audio load error:', {
-        audioPath: cacheBustedPath,
-        errorCode,
-        errorMessage,
-        networkState: target.networkState,
-        readyState: target.readyState
-      })
-      setDebugText(`Load error: ${errorCode || 'unknown'}`)
-      setError('Could not load audio')
-    }
-
-    const handleCanPlay = () => {
-      setDebugText(`Loaded OK: ${message.id}`)
-      setError(null)
-    }
-
-    const handleLoadedMetadata = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        setDuration(audio.duration)
-      }
-    }
-
-    const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime)
-    }
-
-    audio.addEventListener('error', handleError)
-    audio.addEventListener('canplay', handleCanPlay)
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
-    audio.addEventListener('timeupdate', handleTimeUpdate)
-
-    return () => {
-      audio.removeEventListener('error', handleError)
-      audio.removeEventListener('canplay', handleCanPlay)
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
-      audio.removeEventListener('timeupdate', handleTimeUpdate)
-    }
-  }, [cacheBustedPath, message.id])
-
-  const togglePlay = async () => {
-    if (!audioRef.current) return
-
-    try {
-      if (playing) {
-        audioRef.current.pause()
-        setPlaying(false)
-        setDebugText(`Paused: ${message.id}`)
-      } else {
-        // Force reload if there was an error
-        if (error) {
-          audioRef.current.load()
-          setError(null)
-        }
-
-        if (isSafari) {
-          // Safari blocks autoplay completely - just try to play directly
-          setDebugText(`Safari play attempt: ${message.id}`)
-        } else {
-          setDebugText(`Playing: ${message.id}`)
-        }
-
-        // Clear any previous error state for fresh attempt
-        if (error === 'Tap play to enable audio') {
-          setError(null)
-          setDebugText(`Fresh play attempt: ${message.id}`)
-        }
-
-        await audioRef.current.play()
-
-        // Check if we're actually playing after a short delay
-        setTimeout(() => {
-          if (audioRef.current && !audioRef.current.paused && audioRef.current.currentTime > 0) {
-            setDebugText(`Audio working: ${message.id}`)
-            setPlaying(true)
-          } else {
-            // Playback was blocked
-            if (isSafari) {
-              setDebugText(`Safari blocked audio: ${message.id}`)
-            } else {
-              setDebugText(`Playback blocked - tap red button: ${message.id}`)
-            }
-            setPlaying(false)
-            setError('Tap play to enable audio')
-          }
-        }, isSafari ? 500 : 200) // Longer delay for Safari
-
-        // Optimistically set playing state
-        setPlaying(true)
-      }
-    } catch (err) {
-      console.error('🎵 Playback error:', err, 'for:', cacheBustedPath)
-      setDebugText(`Play failed: ${err instanceof Error ? err.message : 'Unknown'}`)
-
-      // If autoplay failed, show appropriate message
-      if (err instanceof Error && err.name === 'NotAllowedError') {
-        if (isSafari) {
-          setDebugText(`Safari requires user interaction: ${message.id}`)
-          setError('Safari blocks audio - try a different browser')
-        } else {
-          setDebugText(`Tap play again to start: ${message.id}`)
-          setError('Tap play to enable audio')
-        }
-      }
-      setPlaying(false)
-    }
-  }
-  
-  const handleRetry = () => {
-    setError(null)
-    setRetryCount(prev => prev + 1)
-  }
-
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
-
-  return (
-    <div className="px-2 py-1">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={togglePlay}
-          className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-            error === 'Tap play to enable audio'
-              ? isSafari
-                ? 'bg-orange-500 hover:bg-orange-600 animate-pulse'
-                : 'bg-red-500 hover:bg-red-600 animate-pulse'
-              : 'bg-[#4db6ac] hover:bg-[#45a99c]'
-          }`}
-          disabled={false}
-          title={isSafari ? 'Safari blocks audio autoplay - tap to play' : 'Play audio'}
-        >
-          <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-xs`} />
-        </button>
-        <div className="flex-1">
-          <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-white/50 transition-all" style={{ width: `${progress}%` }} />
-          </div>
-          <div className="mt-1 flex items-center justify-between text-[11px] text-white/60">
-            <span>{playing && duration > 0 ? formatDuration(currentTime) : duration > 0 ? formatDuration(duration) : (message.audio_duration_seconds ? formatDuration(message.audio_duration_seconds) : '--:--')}</span>
-            {error ? (
-              <button 
-                onClick={handleRetry}
-                className="text-red-400 hover:text-red-300 underline"
-              >
-                Tap to retry
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-      <audio
-        ref={audioRef}
-        src={cacheBustedPath}
-        preload="metadata"
-        playsInline
-        webkit-playsinline="true"
-        onEnded={() => setPlaying(false)}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        className="hidden"
-      />
-
-      {/* Debug info for this specific audio message */}
-      {debugText && (
-        <div className="mt-1 text-xs text-red-400 font-mono bg-red-900/20 px-2 py-1 rounded">
-          🎵 {debugText}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function LongPressActionable({ 
-  children, 
-  onDelete, 
-  onReact, 
-  onReply, 
-  onCopy, 
-  onEdit, 
-  disabled 
-}: { 
-  children: React.ReactNode
-  onDelete: () => void
-  onReact: (emoji:string)=>void
-  onReply: ()=>void
-  onCopy: ()=>void
-  onEdit?: ()=>void
-  disabled?: boolean
-}){
-  const [showMenu, setShowMenu] = useState(false)
-  const [isPressed, setIsPressed] = useState(false)
-  const timerRef = useRef<any>(null)
-  
-  function handleStart(e?: any){
-    if (disabled) return
-    try {
-      if (e && typeof e.preventDefault === 'function') {
-        e.preventDefault()
-      }
-    } catch {}
-    setIsPressed(true)
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      setShowMenu(true)
-      setIsPressed(false)
-    }, 500) // 500ms for better UX
-  }
-  
-  function handleEnd(){
-    if (disabled) return
-    setIsPressed(false)
-    if (timerRef.current) clearTimeout(timerRef.current)
-  }
-  
-  return (
-    <div className="relative" style={{ userSelect: disabled ? 'text' : 'none', WebkitUserSelect: disabled ? 'text' : 'none', WebkitTouchCallout: 'none' as any }}>
-      <div
-        className={`transition-opacity ${!disabled && isPressed ? 'opacity-70' : 'opacity-100'}`}
-        onMouseDown={disabled ? undefined : handleStart}
-        onMouseUp={disabled ? undefined : handleEnd}
-        onMouseLeave={disabled ? undefined : handleEnd}
-        onTouchStart={disabled ? undefined : handleStart}
-        onTouchEnd={disabled ? undefined : handleEnd}
-        onContextMenu={(e) => {
-          if (disabled) return
-          e.preventDefault()
-          setShowMenu(true)
-        }}
-        title="Hold for options or right-click"
-      >
-        {children}
-      </div>
-      {!disabled && showMenu && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
-          <div className="absolute z-50 -top-12 right-2 bg-[#111] border border-white/15 rounded-lg shadow-xl px-2 py-2 min-w-[160px]">
-            <div className="flex items-center gap-2 px-2 pb-2 border-b border-white/10">
-              {["👍","❤️","😂","🔥","👏"].map(e => (
-                <button key={e} className="text-lg" onClick={()=> { setShowMenu(false); onReact(e) }}>{e}</button>
-              ))}
-            </div>
-            <div className="pt-2 flex flex-col">
-              <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onReply() }}>Reply</button>
-              <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onCopy() }}>Copy</button>
-              {onEdit && <button className="text-left px-2 py-1 text-sm hover:bg-white/5" onClick={()=> { setShowMenu(false); onEdit() }}>Edit</button>}
-              <button className="text-left px-2 py-1 text-sm text-red-400 hover:bg-white/5" onClick={()=> { setShowMenu(false); onDelete() }}>Delete</button>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
+// AudioMessage and LongPressActionable are now imported from ../chat via MessageBubble

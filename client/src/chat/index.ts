@@ -28,6 +28,8 @@ export {
 export { default as AudioMessage } from './AudioMessage'
 export { default as LongPressActionable } from './LongPressActionable'
 export { default as ChatHeader } from './ChatHeader'
+export { default as MessageBubble } from './MessageBubble'
+export type { MessageBubbleProps } from './MessageBubble'
 
 // Hooks
 export {
