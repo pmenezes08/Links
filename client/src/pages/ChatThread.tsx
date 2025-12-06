@@ -261,7 +261,7 @@ export default function ChatThread(){
   const decryptionCacheStorageKeyRef = useRef(
     buildDecryptionCacheKey(initialUsername, initialSignalDeviceId)
   )
-  const pendingDecryptionCacheSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingDecryptionCacheSaveRef = useRef<number | null>(null)
   const loadDecryptionCache = useCallback((storageKey: string) => {
     if (typeof window === 'undefined') return
     try {
@@ -300,17 +300,6 @@ export default function ChatThread(){
     }
   }, [])
 
-  useEffect(() => {
-    loadDecryptionCache(decryptionCacheStorageKeyRef.current)
-    return () => {
-      if (pendingDecryptionCacheSaveRef.current) {
-        clearTimeout(pendingDecryptionCacheSaveRef.current)
-        pendingDecryptionCacheSaveRef.current = null
-        persistDecryptionCache()
-      }
-    }
-  }, [loadDecryptionCache, persistDecryptionCache])
-
   const persistDecryptionCache = useCallback(() => {
     if (typeof window === 'undefined') return
     try {
@@ -336,6 +325,17 @@ export default function ChatThread(){
     }, 600)
   }, [persistDecryptionCache])
 
+  useEffect(() => {
+    loadDecryptionCache(decryptionCacheStorageKeyRef.current)
+    return () => {
+      if (pendingDecryptionCacheSaveRef.current !== null) {
+        window.clearTimeout(pendingDecryptionCacheSaveRef.current)
+        pendingDecryptionCacheSaveRef.current = null
+        persistDecryptionCache()
+      }
+    }
+  }, [loadDecryptionCache, persistDecryptionCache])
+
   const cacheDecryptedMessage = useCallback(
     (messageId: number | string, value: { text: string; error: boolean }) => {
       const cacheKey = normalizeCacheMessageId(messageId)
@@ -346,6 +346,7 @@ export default function ChatThread(){
       cache.set(cacheKey, value)
       while (cache.size > SIGNAL_DECRYPT_CACHE_LIMIT) {
         const oldestKey = cache.keys().next().value
+        if (typeof oldestKey === 'undefined') break
         cache.delete(oldestKey)
       }
       scheduleDecryptionCacheSave()
@@ -797,8 +798,11 @@ export default function ChatThread(){
       decryption_error: false
     }) : m))
     // Clear decryption cache for this message so it doesn't use stale cached decryption
-    decryptionCache.current.delete(editingId)
-    clearDecryptionFailure(editingId)
+    if (editingId != null) {
+      const cacheKey = normalizeCacheMessageId(editingId)
+      decryptionCache.current.delete(cacheKey)
+      clearDecryptionFailure(cacheKey)
+    }
     try{
       const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
       const j = await res.json().catch(()=>null)

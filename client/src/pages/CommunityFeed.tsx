@@ -283,53 +283,6 @@ export default function CommunityFeed() {
     },
     [reactToStory]
   )
-
-  const handleStoryBackdropClick = useCallback(
-    (event: ReactMouseEvent<HTMLDivElement>) => {
-      if (!storyContentRef.current) {
-        closeStoryViewer()
-        return
-      }
-      if (!storyContentRef.current.contains(event.target as Node)) {
-        closeStoryViewer()
-      }
-    },
-    [closeStoryViewer]
-  )
-
-  const handleStoryPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    storySwipeRef.current = {
-      startX: event.clientX,
-      startY: event.clientY,
-      time: Date.now(),
-      pointerId: event.pointerId,
-    }
-  }, [])
-
-  const handleStoryPointerUp = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const swipe = storySwipeRef.current
-      if (!swipe || (swipe.pointerId != null && swipe.pointerId !== event.pointerId)) {
-        storySwipeRef.current = null
-        return
-      }
-      const dx = event.clientX - swipe.startX
-      const dy = event.clientY - swipe.startY
-      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
-        if (dx > 0) {
-          goToPrevStory()
-        } else {
-          goToNextStory()
-        }
-      }
-      storySwipeRef.current = null
-    },
-    [goToNextStory, goToPrevStory]
-  )
-
-  const handleStoryPointerCancel = useCallback(() => {
-    storySwipeRef.current = null
-  }, [])
   
   // Check if we should highlight from onboarding
   const [highlightStep, setHighlightStep] = useState<'reaction' | 'post' | null>(null)
@@ -791,14 +744,7 @@ export default function CommunityFeed() {
       .catch(() => {})
   }, [])
 
-  const updateStoryInGroups = useCallback((storyId: number, updates: Partial<Story>) => {
-    setStoryGroups(prev =>
-      prev.map(group => {
-        let touched = false
-        const stories = group.stories.map(story => {
-          if (story.id !== storyId) return story
-          touched = True
-Oops patch failure; need craft carefully.
+  const openStory = useCallback((groupIndex: number, storyIndex = 0) => {
     const targetStory = storyGroups[groupIndex]?.stories?.[storyIndex]
     if (!targetStory) return
     setStoryViewersState(prev => ({ ...prev, open: false }))
@@ -844,6 +790,53 @@ Oops patch failure; need craft carefully.
     }
     closeStoryViewer()
   }, [activeStoryPointer, storyGroups, openStory, closeStoryViewer])
+
+  const handleStoryBackdropClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (!storyContentRef.current) {
+        closeStoryViewer()
+        return
+      }
+      if (!storyContentRef.current.contains(event.target as Node)) {
+        closeStoryViewer()
+      }
+    },
+    [closeStoryViewer]
+  )
+
+  const handleStoryPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    storySwipeRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      time: Date.now(),
+      pointerId: event.pointerId,
+    }
+  }, [])
+
+  const handleStoryPointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const swipe = storySwipeRef.current
+      if (!swipe || (swipe.pointerId != null && swipe.pointerId !== event.pointerId)) {
+        storySwipeRef.current = null
+        return
+      }
+      const dx = event.clientX - swipe.startX
+      const dy = event.clientY - swipe.startY
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 0) {
+          goToPrevStory()
+        } else {
+          goToNextStory()
+        }
+      }
+      storySwipeRef.current = null
+    },
+    [goToNextStory, goToPrevStory]
+  )
+
+  const handleStoryPointerCancel = useCallback(() => {
+    storySwipeRef.current = null
+  }, [])
 
   const currentStory = useMemo(() => {
     if (!activeStoryPointer) return null
