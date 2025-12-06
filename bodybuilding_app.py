@@ -20137,23 +20137,26 @@ def api_story_reaction():
                         f"DELETE FROM community_story_reactions WHERE story_id = {ph} AND LOWER(username) = LOWER({ph})",
                         (story_id, username),
                     )
-                elif existing_reaction:
-                    c.execute(
-                        f"""
-                        UPDATE community_story_reactions
-                        SET reaction = {ph}, created_at = {ph}
-                        WHERE story_id = {ph} AND LOWER(username) = LOWER({ph})
-                        """,
-                        (normalized_reaction, now_str, story_id, username),
-                    )
                 else:
-                    c.execute(
-                        f"""
-                        INSERT INTO community_story_reactions (story_id, username, reaction, created_at)
-                        VALUES ({ph}, {ph}, {ph}, {ph})
-                        """,
-                        (story_id, username, normalized_reaction, now_str),
-                    )
+                    if USE_MYSQL:
+                        c.execute(
+                            """
+                            INSERT INTO community_story_reactions (story_id, username, reaction, created_at)
+                            VALUES (%s, %s, %s, %s)
+                            ON DUPLICATE KEY UPDATE reaction = VALUES(reaction), created_at = VALUES(created_at)
+                            """,
+                            (story_id, username, normalized_reaction, now_str),
+                        )
+                    else:
+                        c.execute(
+                            """
+                            INSERT INTO community_story_reactions (story_id, username, reaction, created_at)
+                            VALUES (?, ?, ?, ?)
+                            ON CONFLICT(story_id, username)
+                            DO UPDATE SET reaction = excluded.reaction, created_at = excluded.created_at
+                            """,
+                            (story_id, username, normalized_reaction, now_str),
+                        )
 
             conn.commit()
             reaction_counts, user_reactions = fetch_story_reaction_maps(c, [story_id], username)
