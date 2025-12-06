@@ -1,4 +1,4 @@
-import { Users, Lock, Lightbulb, Shield } from "lucide-react";
+import { Users, Lock, Lightbulb, Shield, MessageSquare } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 const features = [
@@ -11,6 +11,11 @@ const features = [
     icon: Lightbulb,
     title: "Share Ideas",
     description: "Transform your thoughts into conversations. Share insights and get valuable feedback from peers.",
+  },
+  {
+    icon: MessageSquare,
+    title: "Communication Styles",
+    description: "Choose how you connect—C-Point lets you switch between text, voice, or short videos (stories) so every exchange fits your style.",
   },
   {
     icon: Lock,
@@ -37,7 +42,7 @@ export const Features = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           {features.map((feature, index) => (
             <Card 
               key={index} 
