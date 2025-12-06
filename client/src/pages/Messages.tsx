@@ -288,7 +288,11 @@ export default function Messages(){
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
       >
         <div className="max-w-3xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> { if (window.history.length > 1) navigate(-1); else navigate('/home') }} aria-label="Back">
+          <button
+            className="p-2 rounded-full hover:bg-white/5"
+            onClick={() => navigate('/premium_dashboard')}
+            aria-label="Back"
+          >
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
