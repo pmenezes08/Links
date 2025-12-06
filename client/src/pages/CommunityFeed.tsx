@@ -1,4 +1,4 @@
-import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ChangeEvent, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
@@ -36,6 +36,8 @@ type Story = {
   view_count?: number
   has_viewed?: boolean
   profile_picture?: string | null
+  reactions?: Record<string, number>
+  user_reaction?: string | null
 }
 type StoryGroup = {
   username: string
@@ -43,8 +45,10 @@ type StoryGroup = {
   stories: Story[]
   has_unseen: boolean
 }
+type StoryViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 const COMMUNITY_FEED_CACHE_TTL_MS = 2 * 60 * 1000
 const COMMUNITY_FEED_CACHE_VERSION = 'community-feed-v3'
+const STORY_REACTIONS = ['❤️', '🔥', '👏', '😂', '😮', '👍']
 
 function normalizeMediaPath(p?: string | null){
   if (!p) return ''
@@ -105,6 +109,21 @@ export default function CommunityFeed() {
   const [storyUploading, setStoryUploading] = useState(false)
   const [storyRefreshKey, setStoryRefreshKey] = useState(0)
   const [activeStoryPointer, setActiveStoryPointer] = useState<{ groupIndex: number; storyIndex: number } | null>(null)
+  const storyContentRef = useRef<HTMLDivElement | null>(null)
+  const storySwipeRef = useRef<{ startX: number; startY: number; time: number; pointerId?: number | null } | null>(null)
+  const [storyViewersState, setStoryViewersState] = useState<{
+    open: boolean
+    storyId: number | null
+    viewers: StoryViewer[]
+    loading: boolean
+    error: string | null
+  }>({
+    open: false,
+    storyId: null,
+    viewers: [],
+    loading: false,
+    error: null,
+  })
 
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
@@ -164,6 +183,152 @@ export default function CommunityFeed() {
     } catch {
       recordedViewsRef.current.delete(postId)
     }
+  }, [])
+
+  const openStoryViewers = useCallback((storyId: number) => {
+    if (!storyId) return
+    setStoryViewersState({
+      open: true,
+      storyId,
+      viewers: [],
+      loading: true,
+      error: null,
+    })
+    fetch(`/api/community_stories/${storyId}/viewers`, { credentials: 'include' })
+      .then(res => res.json())
+      .then(json => {
+        if (json?.success) {
+          setStoryViewersState(prev => ({
+            ...prev,
+            loading: false,
+            error: null,
+            viewers: Array.isArray(json.viewers) ? json.viewers : [],
+          }))
+        } else {
+          setStoryViewersState(prev => ({
+            ...prev,
+            loading: false,
+            error: json?.error || 'Unable to load viewers',
+          }))
+        }
+      })
+      .catch(() => {
+        setStoryViewersState(prev => ({
+          ...prev,
+          loading: false,
+          error: 'Unable to load viewers',
+        }))
+      })
+  }, [])
+
+  const closeStoryViewersModal = useCallback(() => {
+    setStoryViewersState(prev => ({ ...prev, open: false }))
+  }, [])
+
+  const updateStoryInGroups = useCallback((storyId: number, updates: Partial<Story>) => {
+    setStoryGroups(prev =>
+      prev.map(group => {
+        let touched = false
+        const updatedStories = group.stories.map(story => {
+          if (story.id !== storyId) return story
+          touched = true
+          return { ...story, ...updates }
+        })
+        if (!touched) return group
+        return {
+          ...group,
+          stories: updatedStories,
+          has_unseen: updatedStories.some(story => !story.has_viewed),
+        }
+      })
+    )
+  }, [])
+
+  const reactToStory = useCallback(
+    async (storyId: number, nextReaction: string | null) => {
+      if (!storyId) return
+      try {
+        const res = await fetch('/api/community_stories/react', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            story_id: storyId,
+            reaction: nextReaction || '',
+          }),
+        })
+        const json = await res.json().catch(() => null)
+        if (json?.success) {
+          updateStoryInGroups(storyId, {
+            reactions: json.reactions || {},
+            user_reaction: json.user_reaction || null,
+          })
+        } else if (json?.error) {
+          alert(json.error)
+        }
+      } catch (err) {
+        console.error('Failed to react to story', err)
+        alert('Unable to react to this story right now.')
+      }
+    },
+    [updateStoryInGroups]
+  )
+
+  const handleStoryReaction = useCallback(
+    (story: Story, reaction: string) => {
+      if (!story?.id) return
+      const current = story.user_reaction || null
+      const next = current === reaction ? null : reaction
+      reactToStory(story.id, next)
+    },
+    [reactToStory]
+  )
+
+  const handleStoryBackdropClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (!storyContentRef.current) {
+        closeStoryViewer()
+        return
+      }
+      if (!storyContentRef.current.contains(event.target as Node)) {
+        closeStoryViewer()
+      }
+    },
+    [closeStoryViewer]
+  )
+
+  const handleStoryPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    storySwipeRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      time: Date.now(),
+      pointerId: event.pointerId,
+    }
+  }, [])
+
+  const handleStoryPointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const swipe = storySwipeRef.current
+      if (!swipe || (swipe.pointerId != null && swipe.pointerId !== event.pointerId)) {
+        storySwipeRef.current = null
+        return
+      }
+      const dx = event.clientX - swipe.startX
+      const dy = event.clientY - swipe.startY
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 0) {
+          goToPrevStory()
+        } else {
+          goToNextStory()
+        }
+      }
+      storySwipeRef.current = null
+    },
+    [goToNextStory, goToPrevStory]
+  )
+
+  const handleStoryPointerCancel = useCallback(() => {
+    storySwipeRef.current = null
   }, [])
   
   // Check if we should highlight from onboarding
@@ -466,6 +631,10 @@ export default function CommunityFeed() {
         view_count: typeof raw.view_count === 'number' ? raw.view_count : 0,
         has_viewed: !!raw.has_viewed,
         profile_picture: profileUrl,
+        reactions: typeof raw.reactions === 'object' && raw.reactions !== null ? raw.reactions : {},
+        user_reaction: typeof raw.user_reaction === 'string'
+          ? raw.user_reaction
+          : (typeof raw.userReaction === 'string' ? raw.userReaction : null),
       }
     }
     const groups: StoryGroup[] = []
@@ -622,14 +791,26 @@ export default function CommunityFeed() {
       .catch(() => {})
   }, [])
 
-  const openStory = useCallback((groupIndex: number, storyIndex = 0) => {
+  const updateStoryInGroups = useCallback((storyId: number, updates: Partial<Story>) => {
+    setStoryGroups(prev =>
+      prev.map(group => {
+        let touched = false
+        const stories = group.stories.map(story => {
+          if (story.id !== storyId) return story
+          touched = True
+Oops patch failure; need craft carefully.
     const targetStory = storyGroups[groupIndex]?.stories?.[storyIndex]
     if (!targetStory) return
+    setStoryViewersState(prev => ({ ...prev, open: false }))
     setActiveStoryPointer({ groupIndex, storyIndex })
     markStoryAsViewed(targetStory.id)
   }, [storyGroups, markStoryAsViewed])
 
-  const closeStoryViewer = useCallback(() => setActiveStoryPointer(null), [])
+  const closeStoryViewer = useCallback(() => {
+    storySwipeRef.current = null
+    setActiveStoryPointer(null)
+    setStoryViewersState(prev => ({ ...prev, open: false }))
+  }, [])
 
   const goToNextStory = useCallback(() => {
     if (!activeStoryPointer) return
@@ -711,10 +892,16 @@ export default function CommunityFeed() {
       if (json.success) {
         // Remove story from local state
         setStoryGroups(prev => {
-          const updated = prev.map(group => ({
-            ...group,
-            stories: group.stories.filter(s => s.id !== storyId)
-          })).filter(group => group.stories.length > 0)
+          const updated = prev
+            .map(group => {
+              const stories = group.stories.filter(s => s.id !== storyId)
+              return {
+                ...group,
+                stories,
+                has_unseen: stories.some(story => !story.has_viewed),
+              }
+            })
+            .filter(group => group.stories.length > 0)
           return updated
         })
         
@@ -1280,14 +1467,10 @@ export default function CommunityFeed() {
         </div>
       )}
       {activeStoryPointer && currentStory && (
-        <div 
-          className="fixed inset-0 z-[120] bg-black/95"
-          onClick={(e) => {
-            // Close when clicking the backdrop (outside content)
-            if (e.target === e.currentTarget) closeStoryViewer()
-          }}
+        <div
+          className="fixed inset-0 z-[120] bg-black/95 flex flex-col"
+          onClick={handleStoryBackdropClick}
         >
-          {/* Close button - top right */}
           <button
             className="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 flex items-center justify-center z-[130]"
             onClick={closeStoryViewer}
@@ -1295,16 +1478,8 @@ export default function CommunityFeed() {
           >
             <i className="fa-solid fa-xmark text-lg" />
           </button>
-          
-          {/* Centered content container */}
-          <div 
-            className="absolute inset-0 flex items-center justify-center p-4 pt-16 pb-4 pointer-events-none"
-          >
-            <div 
-              className="w-full max-w-md pointer-events-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Progress bar */}
+          <div className="flex-1 flex items-center justify-center p-4 pt-16 pb-6">
+            <div ref={storyContentRef} className="w-full max-w-md">
               <div className="flex gap-1 mb-3">
                 {(currentStoryGroup?.stories || []).map((story, idx) => (
                   <div
@@ -1313,8 +1488,6 @@ export default function CommunityFeed() {
                   />
                 ))}
               </div>
-              
-              {/* User info header */}
               <div className="flex items-center gap-3 mb-3">
                 <Avatar
                   username={currentStory.username}
@@ -1329,11 +1502,14 @@ export default function CommunityFeed() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="text-xs text-[#cfd8dc] flex items-center gap-1">
+                  <button
+                    type="button"
+                    className="text-xs text-[#cfd8dc] flex items-center gap-1 hover:text-white transition-colors"
+                    onClick={() => openStoryViewers(currentStory.id)}
+                  >
                     <i className="fa-regular fa-eye" />
                     <span>{currentStory.view_count ?? 0}</span>
-                  </div>
-                  {/* Delete button - only for story owner */}
+                  </button>
                   {(currentStory.username?.toLowerCase() === data?.username?.toLowerCase()) && (
                     <button
                       className="w-8 h-8 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 flex items-center justify-center disabled:opacity-50"
@@ -1346,9 +1522,13 @@ export default function CommunityFeed() {
                   )}
                 </div>
               </div>
-              
-              {/* Video/Image content - centered */}
-              <div className="relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center">
+              <div
+                className="relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center"
+                onPointerDown={handleStoryPointerDown}
+                onPointerUp={handleStoryPointerUp}
+                onPointerLeave={handleStoryPointerCancel}
+                onPointerCancel={handleStoryPointerCancel}
+              >
                 {currentStory.media_type === 'video' ? (
                   <>
                     <video
@@ -1361,19 +1541,16 @@ export default function CommunityFeed() {
                       controls
                       preload="metadata"
                       onLoadedData={(e) => {
-                        // Hide loader when video data is loaded
                         const container = e.currentTarget.parentElement
                         const loader = container?.querySelector('.video-loader') as HTMLElement
                         if (loader) loader.style.display = 'none'
                       }}
                       onWaiting={(e) => {
-                        // Show loader when buffering
                         const container = e.currentTarget.parentElement
                         const loader = container?.querySelector('.video-loader') as HTMLElement
                         if (loader) loader.style.display = 'flex'
                       }}
                       onPlaying={(e) => {
-                        // Hide loader when playing
                         const container = e.currentTarget.parentElement
                         const loader = container?.querySelector('.video-loader') as HTMLElement
                         if (loader) loader.style.display = 'none'
@@ -1394,31 +1571,75 @@ export default function CommunityFeed() {
                   />
                 )}
               </div>
-              
               {currentStory.caption && (
                 <div className="mt-3 text-sm text-white/90 whitespace-pre-wrap break-words max-h-20 overflow-y-auto">{currentStory.caption}</div>
               )}
-              
-              {/* Navigation buttons */}
-              <div className="flex items-center justify-between mt-4 text-white/80">
-                <button
-                  className="px-4 py-1.5 rounded-full border border-white/20 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-                  onClick={goToPrevStory}
-                  disabled={!hasPrevStory}
-                >
-                  <i className="fa-solid fa-chevron-left mr-1" />
-                  Prev
-                </button>
-                <button
-                  className="px-4 py-1.5 rounded-full border border-white/20 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-                  onClick={goToNextStory}
-                  disabled={!hasNextStory}
-                >
-                  Next
-                  <i className="fa-solid fa-chevron-right ml-1" />
-                </button>
+              <div className="mt-4">
+                <div className="flex flex-wrap justify-center gap-2">
+                  {STORY_REACTIONS.map(reaction => {
+                    const count = currentStory.reactions?.[reaction] ?? 0
+                    const isActive = currentStory.user_reaction === reaction
+                    return (
+                      <button
+                        key={reaction}
+                        type="button"
+                        className={`px-3 py-1 rounded-full border flex items-center gap-1 text-sm ${
+                          isActive ? 'bg-white text-black border-white' : 'border-white/20 text-white/80 hover:bg-white/10'
+                        }`}
+                        onClick={() => handleStoryReaction(currentStory, reaction)}
+                      >
+                        <span className="text-base leading-none">{reaction}</span>
+                        {count > 0 && <span className="text-xs font-semibold">{count}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {storyViewersState.open && (
+        <div
+          className="fixed inset-0 z-[130] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeStoryViewersModal()
+          }}
+        >
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0b0b0b] p-5 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-white font-semibold text-lg">Story viewers</div>
+              <button
+                className="w-8 h-8 rounded-full border border-white/20 text-white/70 hover:bg-white/10 flex items-center justify-center"
+                onClick={closeStoryViewersModal}
+                aria-label="Close viewers modal"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            {storyViewersState.loading ? (
+              <div className="flex items-center justify-center py-6 text-white/70 gap-2">
+                <i className="fa-solid fa-spinner fa-spin" />
+                Loading viewers...
+              </div>
+            ) : storyViewersState.error ? (
+              <div className="text-sm text-red-300">{storyViewersState.error}</div>
+            ) : storyViewersState.viewers.length === 0 ? (
+              <div className="text-sm text-white/70">No viewers yet.</div>
+            ) : (
+              <div className="space-y-3">
+                {storyViewersState.viewers.map(viewer => (
+                  <div key={`${viewer.username}-${viewer.viewed_at || ''}`} className="flex items-center gap-3">
+                    <Avatar username={viewer.username} url={viewer.profile_picture || undefined} size={36} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white text-sm font-medium truncate">{viewer.username}</div>
+                      <div className="text-xs text-white/60">{formatViewerRelative(viewer.viewed_at)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

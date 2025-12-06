@@ -37,7 +37,7 @@ from redis_cache import (
 )
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from urllib.parse import urlencode, urljoin, quote_plus
-from typing import Optional, Dict, Any, List, Iterable, Tuple, Set
+from typing import Optional, Dict, Any, List, Iterable, Tuple, Set, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
 from signal_endpoints import register_signal_endpoints
@@ -712,7 +712,7 @@ def upsert_post_view(c, post_id: int, username: Optional[str]) -> Optional[int]:
 
 
 def ensure_story_tables(c):
-    """Ensure community_stories and community_story_views tables exist."""
+    """Ensure community_stories, views, and reactions tables exist."""
     try:
         if USE_MYSQL:
             c.execute(
@@ -752,6 +752,22 @@ def ensure_story_tables(c):
                 )
                 """
             )
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS community_story_reactions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    story_id INT NOT NULL,
+                    username VARCHAR(191) NOT NULL,
+                    reaction VARCHAR(16) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    UNIQUE KEY uniq_story_reaction (story_id, username),
+                    INDEX idx_csr_story (story_id),
+                    INDEX idx_csr_reaction (reaction),
+                    CONSTRAINT fk_csr_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
+                    CONSTRAINT fk_csr_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                )
+                """
+            )
         else:
             c.execute(
                 """
@@ -785,8 +801,91 @@ def ensure_story_tables(c):
             c.execute("CREATE INDEX IF NOT EXISTS idx_cs_user_created ON community_stories (username, created_at)")
             c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uniq_story_viewer ON community_story_views (story_id, username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_csv_user ON community_story_views (username)")
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS community_story_reactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    story_id INTEGER NOT NULL,
+                    username TEXT NOT NULL,
+                    reaction TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uniq_story_reaction ON community_story_reactions (story_id, username)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_csr_story ON community_story_reactions (story_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_csr_reaction ON community_story_reactions (reaction)")
     except Exception as e:
         logger.warning(f"Could not ensure community story tables: {e}")
+
+
+STORY_ALLOWED_REACTIONS: Set[str] = {"❤️", "🔥", "👏", "😂", "😮", "👍"}
+
+
+def normalize_story_reaction(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    token = str(value).strip()
+    return token if token in STORY_ALLOWED_REACTIONS else None
+
+
+def fetch_story_reaction_maps(
+    c,
+    story_ids: Sequence[int],
+    username: Optional[str] = None,
+) -> Tuple[Dict[int, Dict[str, int]], Dict[int, Optional[str]]]:
+    if not story_ids:
+        return {}, {}
+    ensure_story_tables(c)
+    ph = get_sql_placeholder()
+    placeholders = ",".join([ph] * len(story_ids))
+
+    reaction_counts: Dict[int, Dict[str, int]] = {}
+    user_reactions: Dict[int, Optional[str]] = {}
+
+    try:
+        c.execute(
+            f"""
+            SELECT story_id, reaction, COUNT(*) as cnt
+            FROM community_story_reactions
+            WHERE story_id IN ({placeholders})
+            GROUP BY story_id, reaction
+            """,
+            tuple(story_ids),
+        )
+        rows = c.fetchall() or []
+        for row in rows:
+            story_id = row["story_id"] if hasattr(row, "keys") else row[0]
+            reaction = row["reaction"] if hasattr(row, "keys") else row[1]
+            count = row["cnt"] if hasattr(row, "keys") else (row[2] if len(row) > 2 else 0)
+            if story_id is None or reaction is None:
+                continue
+            reaction_counts.setdefault(int(story_id), {})[reaction] = int(count or 0)
+    except Exception as err:
+        logger.warning(f"Failed to aggregate story reactions: {err}")
+
+    if username:
+        try:
+            params = list(story_ids) + [username]
+            c.execute(
+                f"""
+                SELECT story_id, reaction
+                FROM community_story_reactions
+                WHERE story_id IN ({placeholders}) AND LOWER(username) = LOWER({ph})
+                """,
+                tuple(params),
+            )
+            rows = c.fetchall() or []
+            for row in rows:
+                story_id = row["story_id"] if hasattr(row, "keys") else row[0]
+                reaction = row["reaction"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else None)
+                if story_id is None:
+                    continue
+                user_reactions[int(story_id)] = reaction
+        except Exception as err:
+            logger.warning(f"Failed to fetch user story reactions: {err}")
+
+    return reaction_counts, user_reactions
 
 
 def user_has_story_access(c, username: Optional[str], community_id: int, creator_username: Optional[str] = None) -> bool:
@@ -19568,7 +19667,7 @@ def api_community_stories(community_id: int):
                     story_ids.append(row.get("id"))
                 else:
                     story_ids.append(row[0] if row else None)
-            story_ids = [sid for sid in story_ids if sid]
+            story_ids = [int(sid) for sid in story_ids if sid]
 
             viewed_ids: Set[int] = set()
             if story_ids:
@@ -19587,6 +19686,8 @@ def api_community_stories(community_id: int):
                         viewed_ids.add(int(vr.get("story_id")))
                     else:
                         viewed_ids.add(int(vr[0]))
+
+            reaction_counts, user_reactions = fetch_story_reaction_maps(c, story_ids, username)
 
             def _coerce_timestamp(value):
                 if not value:
@@ -19647,6 +19748,8 @@ def api_community_stories(community_id: int):
                     'view_count': int(view_count or 0),
                     'has_viewed': has_viewed,
                     'profile_picture': _public_url(profile_picture),
+                    'reactions': reaction_counts.get(story_id, {}),
+                    'user_reaction': user_reactions.get(story_id),
                 }
                 stories_payload.append(story_payload)
                 group = groups_map.setdefault(
@@ -19822,6 +19925,62 @@ def api_mark_story_view():
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
+@app.route('/api/community_stories/<int:story_id>/viewers', methods=['GET'])
+@login_required
+def api_get_story_viewers(story_id: int):
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+            c.execute(
+                f"""
+                SELECT cs.community_id, c.creator_username
+                FROM community_stories cs
+                JOIN communities c ON c.id = cs.community_id
+                WHERE cs.id = {ph}
+                """,
+                (story_id,),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Story not found'}), 404
+            community_id = row["community_id"] if hasattr(row, "keys") else row[0]
+            creator_username = row["creator_username"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else None)
+            if not user_has_story_access(c, username, community_id, creator_username):
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+            c.execute(
+                f"""
+                SELECT csv.username, csv.viewed_at, up.profile_picture
+                FROM community_story_views csv
+                LEFT JOIN user_profiles up ON up.username = csv.username
+                WHERE csv.story_id = {ph}
+                ORDER BY csv.viewed_at DESC
+                LIMIT 500
+                """,
+                (story_id,),
+            )
+            rows = c.fetchall() or []
+            viewers: List[Dict[str, Any]] = []
+            for viewer in rows:
+                viewer_username = viewer["username"] if hasattr(viewer, "keys") else viewer[0]
+                viewed_at = viewer["viewed_at"] if hasattr(viewer, "keys") else (viewer[1] if len(viewer) > 1 else None)
+                profile_pic = viewer["profile_picture"] if hasattr(viewer, "keys") else (viewer[2] if len(viewer) > 2 else None)
+                viewers.append(
+                    {
+                        'username': viewer_username,
+                        'profile_picture': get_public_upload_url(normalize_upload_reference(profile_pic)) if profile_pic else None,
+                        'viewed_at': viewed_at,
+                    }
+                )
+            return jsonify({'success': True, 'story_id': story_id, 'viewers': viewers})
+    except Exception as e:
+        logger.error(f"Error fetching viewers for story {story_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
 @app.route('/api/community_stories/<int:story_id>', methods=['DELETE'])
 @login_required
 def delete_community_story(story_id: int):
@@ -19871,6 +20030,107 @@ def delete_community_story(story_id: int):
             
     except Exception as e:
         logger.error(f"Error deleting story {story_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community_stories/react', methods=['POST'])
+@login_required
+def api_story_reaction():
+    username = session.get('username')
+    try:
+        payload = request.get_json(silent=True) or {}
+    except Exception:
+        payload = {}
+    story_id = payload.get('story_id') or request.form.get('story_id')
+    reaction = payload.get('reaction')
+    try:
+        story_id = int(story_id)
+    except Exception:
+        return jsonify({'success': False, 'error': 'story_id required'}), 400
+
+    normalized_reaction = normalize_story_reaction(reaction) if reaction else None
+    if reaction and not normalized_reaction:
+        return jsonify({'success': False, 'error': 'Invalid reaction'}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+            c.execute(
+                f"""
+                SELECT cs.community_id, c.creator_username
+                FROM community_stories cs
+                JOIN communities c ON c.id = cs.community_id
+                WHERE cs.id = {ph}
+                """,
+                (story_id,),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Story not found'}), 404
+            community_id = row["community_id"] if hasattr(row, "keys") else row[0]
+            creator_username = row["creator_username"] if hasattr(row, "keys") else (row[1] if len(row) > 1 else None)
+            if not user_has_story_access(c, username, community_id, creator_username):
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+
+            now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            c.execute(
+                f"""
+                SELECT reaction FROM community_story_reactions
+                WHERE story_id = {ph} AND LOWER(username) = LOWER({ph})
+                """,
+                (story_id, username),
+            )
+            existing_row = c.fetchone()
+            existing_reaction = (
+                existing_row["reaction"]
+                if hasattr(existing_row, "keys")
+                else (existing_row[0] if existing_row else None)
+            )
+
+            if not normalized_reaction:
+                if existing_reaction:
+                    c.execute(
+                        f"DELETE FROM community_story_reactions WHERE story_id = {ph} AND LOWER(username) = LOWER({ph})",
+                        (story_id, username),
+                    )
+            else:
+                if existing_reaction and existing_reaction == normalized_reaction:
+                    c.execute(
+                        f"DELETE FROM community_story_reactions WHERE story_id = {ph} AND LOWER(username) = LOWER({ph})",
+                        (story_id, username),
+                    )
+                elif existing_reaction:
+                    c.execute(
+                        f"""
+                        UPDATE community_story_reactions
+                        SET reaction = {ph}, created_at = {ph}
+                        WHERE story_id = {ph} AND LOWER(username) = LOWER({ph})
+                        """,
+                        (normalized_reaction, now_str, story_id, username),
+                    )
+                else:
+                    c.execute(
+                        f"""
+                        INSERT INTO community_story_reactions (story_id, username, reaction, created_at)
+                        VALUES ({ph}, {ph}, {ph}, {ph})
+                        """,
+                        (story_id, username, normalized_reaction, now_str),
+                    )
+
+            conn.commit()
+            reaction_counts, user_reactions = fetch_story_reaction_maps(c, [story_id], username)
+            return jsonify(
+                {
+                    'success': True,
+                    'story_id': story_id,
+                    'reactions': reaction_counts.get(story_id, {}),
+                    'user_reaction': user_reactions.get(story_id),
+                }
+            )
+    except Exception as e:
+        logger.error(f"Error reacting to story {story_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
