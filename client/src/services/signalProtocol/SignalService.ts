@@ -328,17 +328,16 @@ class SignalService {
       }
     }
 
-    // Also encrypt for sender's OTHER devices (so they can read their own sent messages)
+    // Also encrypt for sender's ALL devices (including current) so they can read their own sent messages
+    // This is important because:
+    // 1. The plaintext cache might be cleared (page refresh, storage cleared)
+    // 2. Other devices of the sender need to decrypt the message
+    // 3. Having a ciphertext for own device ensures the message is always readable
     if (recipientUsername !== this.currentUsername) {
       const myDevices = await this.getUserDevices(this.currentUsername)
-      console.log(`🔐 Encrypting for own ${myDevices.length} device(s), current device: ${this.currentDeviceId}`)
+      console.log(`🔐 Encrypting for own ${myDevices.length} device(s), including current device: ${this.currentDeviceId}`)
       
       for (const device of myDevices) {
-        if (device.deviceId === this.currentDeviceId) {
-          console.log(`🔐 Skipping current device ${device.deviceId}`)
-          continue
-        }
-        
         try {
           console.log(`🔐 Encrypting for own device ${device.deviceId} (${device.deviceName})...`)
           const ciphertext = await this.encryptForDevice(
@@ -351,7 +350,7 @@ class SignalService {
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error)
           console.error(`🔐 ❌ Failed to encrypt for own device ${device.deviceId}:`, errorMsg, error)
-          // Track this failure
+          // Track this failure - but don't fail the whole send if it's just our own device
           failedDevices.push({
             deviceId: device.deviceId,
             error: `Own device: ${errorMsg}`,
