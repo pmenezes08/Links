@@ -712,9 +712,13 @@ def upsert_post_view(c, post_id: int, username: Optional[str]) -> Optional[int]:
 
 
 def ensure_story_tables(c):
-    """Ensure community_stories, views, and reactions tables exist."""
+    """Ensure community_stories, views, and reactions tables exist. Returns True if successful."""
     try:
+        # First check if tables already exist
         if USE_MYSQL:
+            c.execute("SHOW TABLES LIKE 'community_stories'")
+            if c.fetchone():
+                return True  # Tables already exist
             c.execute(
                 """
                 CREATE TABLE IF NOT EXISTS community_stories (
@@ -815,8 +819,10 @@ def ensure_story_tables(c):
             c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uniq_story_reaction ON community_story_reactions (story_id, username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_csr_story ON community_story_reactions (story_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_csr_reaction ON community_story_reactions (reaction)")
+        return True
     except Exception as e:
-        logger.warning(f"Could not ensure community story tables: {e}")
+        logger.error(f"Could not ensure community story tables: {e}")
+        return False
 
 
 STORY_ALLOWED_REACTIONS: Set[str] = {"❤️", "🔥", "👏", "😂", "😮", "👍"}
