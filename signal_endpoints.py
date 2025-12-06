@@ -15,6 +15,7 @@ from flask import request, jsonify, session
 from functools import wraps
 import json
 from datetime import datetime
+import errno
 
 def login_required(f):
     """Decorator to require login"""
@@ -23,6 +24,33 @@ def login_required(f):
         if 'username' not in session:
             return jsonify({'success': False, 'error': 'Not logged in'}), 401
         return f(*args, **kwargs)
+    return decorated_function
+
+
+def handle_broken_pipe(f):
+    """
+    Decorator to gracefully handle broken pipe errors.
+    
+    These occur when the client disconnects before the server finishes 
+    sending the response. Common on mobile apps when requests are cancelled.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except (BrokenPipeError, ConnectionResetError) as e:
+            # Client disconnected - this is normal behavior
+            return '', 499  # 499 = Client Closed Request
+        except OSError as e:
+            # Check for EPIPE (broken pipe) or ECONNRESET
+            if e.errno in (errno.EPIPE, errno.ECONNRESET, errno.ENOTCONN):
+                return '', 499
+            raise  # Re-raise other OS errors
+        except IOError as e:
+            # Also catch IOError for write errors
+            if 'write error' in str(e).lower() or 'broken pipe' in str(e).lower():
+                return '', 499
+            raise
     return decorated_function
 
 def register_signal_endpoints(app, get_db_connection, logger):
@@ -157,6 +185,7 @@ def register_signal_endpoints(app, get_db_connection, logger):
 
     @app.route('/api/signal/devices/<username>', methods=['GET'])
     @login_required
+    @handle_broken_pipe
     def get_user_devices(username):
         """Get all devices for a user"""
         try:
@@ -199,6 +228,7 @@ def register_signal_endpoints(app, get_db_connection, logger):
 
     @app.route('/api/signal/prekey-bundle/<username>/<int:device_id>', methods=['GET'])
     @login_required
+    @handle_broken_pipe
     def get_prekey_bundle(username, device_id):
         """
         Get prekey bundle for establishing a session with a device.
@@ -302,6 +332,7 @@ def register_signal_endpoints(app, get_db_connection, logger):
 
     @app.route('/api/signal/prekey-bundles/<username>', methods=['GET'])
     @login_required
+    @handle_broken_pipe
     def get_all_prekey_bundles(username):
         """Get prekey bundles for all devices of a user"""
         try:
@@ -499,6 +530,7 @@ def register_signal_endpoints(app, get_db_connection, logger):
 
     @app.route('/api/signal/prekey-count', methods=['GET'])
     @login_required
+    @handle_broken_pipe
     def get_prekey_count():
         """Get count of remaining prekeys for current device"""
         try:
@@ -574,6 +606,7 @@ def register_signal_endpoints(app, get_db_connection, logger):
 
     @app.route('/api/signal/get-ciphertext/<int:message_id>', methods=['GET'])
     @login_required
+    @handle_broken_pipe
     def get_ciphertext(message_id):
         """
         Get the ciphertext for a message for the current device.
@@ -615,17 +648,13 @@ def register_signal_endpoints(app, get_db_connection, logger):
                         'senderDeviceId': row[3],
                     })
 
-        except (BrokenPipeError, OSError) as e:
-            # Client disconnected before response could be sent - this is normal
-            # and happens frequently on mobile apps when requests are cancelled
-            logger.debug(f"Signal: Client disconnected during get-ciphertext/{message_id}: {str(e)}")
-            return '', 499  # Use 499 (Client Closed Request) status code
         except Exception as e:
             logger.error(f"Signal: Error getting ciphertext: {str(e)}")
             return jsonify({'success': False, 'error': str(e)}), 500
 
     @app.route('/api/signal/my-devices', methods=['GET'])
     @login_required
+    @handle_broken_pipe
     def get_my_devices():
         """Get all devices for the current user"""
         username = session.get('username')
