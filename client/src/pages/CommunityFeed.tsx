@@ -820,15 +820,25 @@ export default function CommunityFeed() {
         storySwipeRef.current = null
         return
       }
+      
       const dx = event.clientX - swipe.startX
       const dy = event.clientY - swipe.startY
-      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
-        if (dx > 0) {
+      const distance = Math.sqrt(dx * dx + dy * dy)
+      
+      // If pointer moved less than 10px, treat it as a tap
+      if (distance < 10) {
+        const rect = event.currentTarget.getBoundingClientRect()
+        const tapX = event.clientX - rect.left
+        const containerWidth = rect.width
+        
+        // Tap on left 40% = previous story, right 40% = next story, middle 20% = do nothing
+        if (tapX < containerWidth * 0.4) {
           goToPrevStory()
-        } else {
+        } else if (tapX > containerWidth * 0.6) {
           goToNextStory()
         }
       }
+      
       storySwipeRef.current = null
     },
     [goToNextStory, goToPrevStory]
@@ -1516,7 +1526,7 @@ export default function CommunityFeed() {
                 </div>
               </div>
               <div
-                className="relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center"
+                className="group relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center"
                 onPointerDown={handleStoryPointerDown}
                 onPointerUp={handleStoryPointerUp}
                 onPointerLeave={handleStoryPointerCancel}
@@ -1562,6 +1572,23 @@ export default function CommunityFeed() {
                     alt="Story media"
                     className="w-full max-h-[50vh] object-contain"
                   />
+                )}
+                {/* Subtle tap zone indicators */}
+                {hasPrevStory && (
+                  <div className="absolute left-0 top-0 bottom-0 w-[40%] z-[3] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute inset-y-0 left-0 w-full bg-gradient-to-r from-black/20 to-transparent" />
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                      <i className="fa-solid fa-chevron-left text-white text-sm" />
+                    </div>
+                  </div>
+                )}
+                {hasNextStory && (
+                  <div className="absolute right-0 top-0 bottom-0 w-[40%] z-[3] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute inset-y-0 right-0 w-full bg-gradient-to-l from-black/20 to-transparent" />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                      <i className="fa-solid fa-chevron-right text-white text-sm" />
+                    </div>
+                  </div>
                 )}
               </div>
               {currentStory.caption && (
