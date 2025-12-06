@@ -9861,13 +9861,16 @@ def send_audio_message():
             recipient_username = rec['username'] if hasattr(rec, 'keys') else rec[0]
 
             # Save audio file using R2-enabled media service
+            # Include all common audio formats (iOS may send .caf, .aac, .m4a, etc.)
             stored_path = save_uploaded_file(
                 audio,
                 subfolder='voice_messages',
-                allowed_extensions={'webm', 'ogg', 'mp3', 'm4a', 'wav', 'opus'}
+                allowed_extensions={'webm', 'ogg', 'mp3', 'm4a', 'wav', 'opus', 'aac', 'caf', '3gp', '3g2', 'mpeg', 'mp4'}
             )
             if not stored_path:
-                return jsonify({'success': False, 'error': 'Failed to save audio'})
+                # Log more details for debugging
+                logger.error(f"Failed to save audio: filename={audio.filename}, mimetype={audio.mimetype}, content_length={audio.content_length}")
+                return jsonify({'success': False, 'error': 'Failed to save audio - unsupported format'})
 
             # stored_path is either CDN URL or local path
             rel_path = stored_path

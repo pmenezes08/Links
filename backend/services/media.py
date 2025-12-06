@@ -132,11 +132,36 @@ def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions
     - If R2 fails or disabled: returns local path (uploads/...)
     """
     if not file or not file.filename:
+        logger.warning("save_uploaded_file: No file or filename provided")
         return None
-    if not allowed_file(file.filename, allowed_extensions):
+    
+    original_filename = file.filename
+    if not allowed_file(original_filename, allowed_extensions):
+        logger.warning(f"save_uploaded_file: File not allowed - filename={original_filename}, allowed={allowed_extensions}")
         return None
 
-    filename = secure_filename(file.filename)
+    filename = secure_filename(original_filename)
+    
+    # If secure_filename removed the extension, try to preserve it
+    if '.' not in filename and '.' in original_filename:
+        ext_from_original = original_filename.rsplit('.', 1)[-1].lower()
+        if ext_from_original and len(ext_from_original) <= 5:  # sanity check
+            filename = f"{filename or 'file'}.{ext_from_original}"
+    
+    # Handle case where filename becomes empty after secure_filename
+    if not filename:
+        # Try to infer extension from mimetype
+        ext_map = {
+            'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3',
+            'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/aac': 'aac',
+            'audio/wav': 'wav', 'video/webm': 'webm', 'video/mp4': 'mp4',
+            'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+        }
+        mime = getattr(file, 'mimetype', '') or ''
+        ext = ext_map.get(mime.lower(), 'bin')
+        filename = f"file.{ext}"
+        logger.info(f"save_uploaded_file: Generated filename from mimetype: {filename}")
+    
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     name, ext = os.path.splitext(filename)
     unique_filename = f"{name}_{timestamp}{ext}"
