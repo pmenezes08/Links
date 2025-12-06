@@ -16,4 +16,5 @@ export interface ChatMessage {
   encrypted_body?: string
   encrypted_body_for_sender?: string
   decryption_error?: boolean
+  signal_protocol?: boolean
 }

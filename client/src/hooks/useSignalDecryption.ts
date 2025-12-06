@@ -562,5 +562,6 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
     shouldRetryDecryption,
     signalReady: signalReadyTick > 0,
     invalidateCachedDecryption,
+    cacheDecryptedMessage,
   }
 }

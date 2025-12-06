@@ -21,7 +21,7 @@ import MessageVideo from '../components/MessageVideo'
 import ZoomableImage from '../components/ZoomableImage'
 import { encryptionService } from '../services/simpleEncryption'
 import { signalService } from '../services/signalProtocol'
-import { useSignalDecryption, SIGNAL_PENDING_TEXT, DECRYPTION_RETRY_DELAY_MS } from '../hooks/useSignalDecryption'
+import { useSignalDecryption, DECRYPTION_RETRY_DELAY_MS } from '../hooks/useSignalDecryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -225,7 +225,7 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  const { decryptMessageIfNeeded, retryFailedDecrypts, shouldRetryDecryption, signalReady, invalidateCachedDecryption } =
+  const { decryptMessageIfNeeded, retryFailedDecrypts, shouldRetryDecryption, signalReady, invalidateCachedDecryption, cacheDecryptedMessage } =
     useSignalDecryption({
       messages,
       setMessages,

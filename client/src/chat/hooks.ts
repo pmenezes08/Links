@@ -21,7 +21,7 @@ interface UseKeyboardLayoutReturn {
   showKeyboard: boolean
   composerHeight: number
   safeBottomPx: number
-  composerCardRef: React.RefObject<HTMLDivElement>
+  composerCardRef: React.RefObject<HTMLDivElement | null>
   keyboardLift: number
   effectiveComposerHeight: number
 }
