@@ -1439,10 +1439,11 @@ export default function ChatThread(){
     }
     
     setSending(true)
+    const tempId = `temp_audio_${Date.now()}`
     try{
       const url = URL.createObjectURL(blob)
       const now = new Date().toISOString()
-      const optimistic: Message = { id: `temp_audio_${Date.now()}`, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true }
+      const optimistic: Message = { id: tempId, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true, clientKey: tempId }
       setMessages(prev => [...prev, optimistic])
       setTimeout(scrollToBottom, 50)
       const fd = new FormData()
@@ -1452,16 +1453,33 @@ export default function ChatThread(){
       const r = await fetch('/send_audio_message', { method:'POST', credentials:'include', body: fd })
       const j = await r.json().catch(()=>null)
       if (!j?.success){
-        setMessages(prev => prev.filter(m => m.id !== optimistic.id))
-        // Revoke blob URL on failure
+        setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
         URL.revokeObjectURL(url)
         alert(j?.error || 'Failed to send audio')
       } else {
-        // Revoke blob URL after successful upload to free memory
+        // Update optimistic message with server data
+        if (j.message_id) {
+          idBridgeRef.current.tempToServer.set(tempId, j.message_id)
+          idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
+          setMessages(prev => prev.map(m => {
+            if ((m.clientKey || m.id) === tempId) {
+              return {
+                ...m,
+                id: j.message_id,
+                audio_path: j.audio_path || m.audio_path,
+                isOptimistic: false,
+                clientKey: tempId,
+              }
+            }
+            return m
+          }))
+        }
+        // Revoke blob URL after successful upload
         setTimeout(() => URL.revokeObjectURL(url), 100)
       }
     }catch(error){
       console.error('Failed to send audio', error)
+      setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
       alert('Failed to send audio')
     }finally{
       setSending(false)
@@ -1493,10 +1511,11 @@ export default function ChatThread(){
     }
     
     setSending(true)
+    const tempId = `temp_audio_${Date.now()}`
     try{
       const url = URL.createObjectURL(blob)
       const now = new Date().toISOString()
-      const optimistic: Message = { id: `temp_audio_${Date.now()}`, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true }
+      const optimistic: Message = { id: tempId, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true, clientKey: tempId }
       setMessages(prev => [...prev, optimistic])
       setTimeout(scrollToBottom, 50)
       const fd = new FormData()
@@ -1517,16 +1536,34 @@ export default function ChatThread(){
       const r = await fetch('/send_audio_message', { method:'POST', credentials:'include', body: fd })
       const j = await r.json().catch(()=>null)
       if (!j?.success){
-        setMessages(prev => prev.filter(m => m.id !== optimistic.id))
-        // Revoke blob URL on failure
+        setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
         URL.revokeObjectURL(url)
         alert(j?.error || 'Failed to send audio message')
       } else {
-        // Revoke blob URL after successful upload to free memory
+        // Update optimistic message with server data
+        if (j.message_id) {
+          idBridgeRef.current.tempToServer.set(tempId, j.message_id)
+          idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
+          setMessages(prev => prev.map(m => {
+            if ((m.clientKey || m.id) === tempId) {
+              return {
+                ...m,
+                id: j.message_id,
+                audio_path: j.audio_path || m.audio_path,
+                audio_duration_seconds: durationSeconds,
+                isOptimistic: false,
+                clientKey: tempId,
+              }
+            }
+            return m
+          }))
+        }
+        // Revoke blob URL after successful upload
         setTimeout(() => URL.revokeObjectURL(url), 100)
       }
     }catch(error){
       console.error('Failed to send voice message', error)
+      setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
       const message = error instanceof Error ? error.message : String(error)
       alert('Failed to send voice message: ' + message)
     } finally {

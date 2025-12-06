@@ -8,8 +8,6 @@ interface AudioMessageProps {
 }
 
 export default function AudioMessage({ message, audioPath }: AudioMessageProps) {
-  const [debugText, setDebugText] = useState<string>('')
-
   // Detect Safari browser
   const isSafari = typeof navigator !== 'undefined' &&
     /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
@@ -37,27 +35,14 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     try {
       audio.load()
     } catch (e) {
-      console.error('🎵 Audio load error:', e)
+      console.error('Audio load error:', e)
     }
-    setDebugText(`Mounted: ${message.id}`)
 
-    const handleError = (e: Event) => {
-      const target = e.target as HTMLAudioElement
-      const errorCode = target.error?.code
-      const errorMessage = target.error?.message
-      console.error('🎵 Audio load error:', {
-        audioPath: cacheBustedPath,
-        errorCode,
-        errorMessage,
-        networkState: target.networkState,
-        readyState: target.readyState
-      })
-      setDebugText(`Load error: ${errorCode || 'unknown'}`)
+    const handleError = () => {
       setError('Could not load audio')
     }
 
     const handleCanPlay = () => {
-      setDebugText(`Loaded OK: ${message.id}`)
       setError(null)
     }
 
@@ -91,7 +76,6 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       if (playing) {
         audioRef.current.pause()
         setPlaying(false)
-        setDebugText(`Paused: ${message.id}`)
       } else {
         // Force reload if there was an error
         if (error) {
@@ -99,17 +83,9 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
           setError(null)
         }
 
-        if (isSafari) {
-          // Safari blocks autoplay completely - just try to play directly
-          setDebugText(`Safari play attempt: ${message.id}`)
-        } else {
-          setDebugText(`Playing: ${message.id}`)
-        }
-
         // Clear any previous error state for fresh attempt
         if (error === 'Tap play to enable audio') {
           setError(null)
-          setDebugText(`Fresh play attempt: ${message.id}`)
         }
 
         await audioRef.current.play()
@@ -117,15 +93,9 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
         // Check if we're actually playing after a short delay
         setTimeout(() => {
           if (audioRef.current && !audioRef.current.paused && audioRef.current.currentTime > 0) {
-            setDebugText(`Audio working: ${message.id}`)
             setPlaying(true)
           } else {
             // Playback was blocked
-            if (isSafari) {
-              setDebugText(`Safari blocked audio: ${message.id}`)
-            } else {
-              setDebugText(`Playback blocked - tap red button: ${message.id}`)
-            }
             setPlaying(false)
             setError('Tap play to enable audio')
           }
@@ -135,16 +105,11 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
         setPlaying(true)
       }
     } catch (err) {
-      console.error('🎵 Playback error:', err, 'for:', cacheBustedPath)
-      setDebugText(`Play failed: ${err instanceof Error ? err.message : 'Unknown'}`)
-
       // If autoplay failed, show appropriate message
       if (err instanceof Error && err.name === 'NotAllowedError') {
         if (isSafari) {
-          setDebugText(`Safari requires user interaction: ${message.id}`)
           setError('Safari blocks audio - try a different browser')
         } else {
-          setDebugText(`Tap play again to start: ${message.id}`)
           setError('Tap play to enable audio')
         }
       }
@@ -204,13 +169,6 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
         onPause={() => setPlaying(false)}
         className="hidden"
       />
-
-      {/* Debug info for this specific audio message */}
-      {debugText && (
-        <div className="mt-1 text-xs text-red-400 font-mono bg-red-900/20 px-2 py-1 rounded">
-          🎵 {debugText}
-        </div>
-      )}
     </div>
   )
 }
