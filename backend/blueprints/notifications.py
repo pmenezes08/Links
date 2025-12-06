@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 from datetime import datetime, timedelta
 from functools import wraps
@@ -26,6 +27,25 @@ from backend.services.notifications import (
 
 
 notifications_bp = Blueprint("notifications", __name__)
+
+
+def _handle_broken_pipe(f):
+    """Decorator to gracefully handle broken pipe errors (client disconnected)."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except (BrokenPipeError, ConnectionResetError):
+            return '', 499
+        except OSError as e:
+            if e.errno in (errno.EPIPE, errno.ECONNRESET, errno.ENOTCONN):
+                return '', 499
+            raise
+        except IOError as e:
+            if 'write error' in str(e).lower() or 'broken pipe' in str(e).lower():
+                return '', 499
+            raise
+    return decorated_function
 
 
 def _login_required(view_func):
@@ -65,6 +85,7 @@ def notifications_page():
 
 @notifications_bp.route("/api/notifications/check", endpoint="check_new_notifications")
 @_login_required
+@_handle_broken_pipe
 def check_new_notifications():
     """Check for new notifications since last check timestamp."""
     username = session["username"]
@@ -117,6 +138,7 @@ def check_new_notifications():
 
 @notifications_bp.route("/api/notifications", endpoint="get_notifications")
 @_login_required
+@_handle_broken_pipe
 def get_notifications():
     """Get notifications for the current user."""
     username = session["username"]

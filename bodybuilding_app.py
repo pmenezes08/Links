@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
 from collections import deque, defaultdict
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
+import errno
 import os
 import sys
 import json
@@ -221,6 +222,32 @@ def business_login_required(f):
         if 'business_id' not in session:
             return redirect(url_for('business_login'))
         return f(*args, **kwargs)
+    return decorated_function
+
+def handle_broken_pipe(f):
+    """
+    Decorator to gracefully handle broken pipe errors.
+    
+    These occur when the client disconnects before the server finishes 
+    sending the response. Common on mobile apps when requests are cancelled.
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except (BrokenPipeError, ConnectionResetError):
+            # Client disconnected - this is normal behavior
+            return '', 499  # 499 = Client Closed Request
+        except OSError as e:
+            # Check for EPIPE (broken pipe) or ECONNRESET
+            if e.errno in (errno.EPIPE, errno.ECONNRESET, errno.ENOTCONN):
+                return '', 499
+            raise  # Re-raise other OS errors
+        except IOError as e:
+            # Also catch IOError for write errors
+            if 'write error' in str(e).lower() or 'broken pipe' in str(e).lower():
+                return '', 499
+            raise
     return decorated_function
 
 # Add caching headers for static files (especially images)
@@ -26502,6 +26529,7 @@ def api_get_user_profile_brief():
 # --- Typing status APIs ---
 @app.route('/api/typing', methods=['POST'])
 @login_required
+@handle_broken_pipe
 def api_set_typing():
     try:
         me = session['username']
@@ -26526,6 +26554,7 @@ def api_set_typing():
 
 @app.route('/api/typing', methods=['GET'])
 @login_required
+@handle_broken_pipe
 def api_get_typing():
     try:
         me = session['username']
@@ -26694,6 +26723,7 @@ def api_native_push_unregister():
 
 @app.route('/api/active_chat', methods=['POST'])
 @login_required
+@handle_broken_pipe
 def api_active_chat():
     """Record that the current user is actively viewing a chat with peer. Used to suppress push notifications."""
     try:
