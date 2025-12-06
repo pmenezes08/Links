@@ -224,6 +224,9 @@ export default function ChatThread(){
   const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
+  // Track last decryption retry to prevent infinite loops
+  const lastDecryptionRetryRef = useRef<number>(0)
+  const decryptionRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { decryptMessageIfNeeded, retryFailedDecrypts, shouldRetryDecryption, signalReady, invalidateCachedDecryption, cacheDecryptedMessage } =
     useSignalDecryption({
@@ -233,15 +236,49 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (!signalReady) return
+    // Only retry on signal ready if we haven't retried recently
+    const now = Date.now()
+    if (now - lastDecryptionRetryRef.current < DECRYPTION_RETRY_DELAY_MS) return
+    lastDecryptionRetryRef.current = now
     retryFailedDecrypts()
   }, [signalReady, retryFailedDecrypts])
 
   useEffect(() => {
-    if (!messages.some(shouldRetryDecryption)) return
-    const timer = setTimeout(() => {
+    // Clear any pending timer on cleanup or re-run
+    if (decryptionRetryTimerRef.current) {
+      clearTimeout(decryptionRetryTimerRef.current)
+      decryptionRetryTimerRef.current = null
+    }
+    
+    // Check if any messages need retry
+    const needsRetry = messages.some(shouldRetryDecryption)
+    if (!needsRetry) return
+    
+    // Check if we've retried recently - prevent infinite loops
+    const now = Date.now()
+    const timeSinceLastRetry = now - lastDecryptionRetryRef.current
+    if (timeSinceLastRetry < DECRYPTION_RETRY_DELAY_MS) {
+      // Schedule retry after the remaining delay
+      const remainingDelay = DECRYPTION_RETRY_DELAY_MS - timeSinceLastRetry + 200
+      decryptionRetryTimerRef.current = setTimeout(() => {
+        lastDecryptionRetryRef.current = Date.now()
+        retryFailedDecrypts()
+      }, remainingDelay)
+      return
+    }
+    
+    // Schedule normal retry
+    decryptionRetryTimerRef.current = setTimeout(() => {
+      lastDecryptionRetryRef.current = Date.now()
       retryFailedDecrypts()
     }, DECRYPTION_RETRY_DELAY_MS + 200)
-    return () => clearTimeout(timer)
+    
+    return () => {
+      if (decryptionRetryTimerRef.current) {
+        clearTimeout(decryptionRetryTimerRef.current)
+        decryptionRetryTimerRef.current = null
+      }
+    }
   }, [messages, retryFailedDecrypts, shouldRetryDecryption])
 
   // Auto-scroll logic - declared early so it can be used in useEffects

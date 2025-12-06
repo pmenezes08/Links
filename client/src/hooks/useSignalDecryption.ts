@@ -384,7 +384,9 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
         const errorMsg = error instanceof Error ? error.message : String(error)
         console.error('🔐 ❌ Signal decryption failed for message:', message.id, 'Error:', errorMsg, error)
 
-        const shouldResetSession =
+        // Determine if this is a permanent error that won't improve with retries
+        // These are typically session/key state issues that require re-encryption
+        const isSessionError =
           /message key not found/i.test(errorMsg) ||
           /counter was repeated/i.test(errorMsg) ||
           /session has been reset/i.test(errorMsg) ||
@@ -392,28 +394,35 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
           /invalid mac/i.test(errorMsg) ||
           /mac check failed/i.test(errorMsg) ||
           /no record for device/i.test(errorMsg) ||
-          /no session for device/i.test(errorMsg)
+          /no session for device/i.test(errorMsg) ||
+          /invalid ciphertext/i.test(errorMsg)
 
-        if (
-          shouldResetSession &&
-          senderUsernameFromResponse &&
-          senderDeviceIdFromResponse &&
-          attempt < MAX_SIGNAL_RETRIES
-        ) {
-          const addressLabel = `${senderUsernameFromResponse}.${senderDeviceIdFromResponse}`
-          try {
-            await signalService.clearSessionForDevice(senderUsernameFromResponse, senderDeviceIdFromResponse)
-          } catch (sessionError) {
-            console.warn('🔐 Failed to clear Signal session for', addressLabel, sessionError)
+        // Session errors are permanent - the message was encrypted with a key/session
+        // that no longer matches. Re-trying won't help.
+        if (isSessionError) {
+          const displayError = '[🔒 Message cannot be decrypted - session mismatch]'
+          recordDecryptionFailure(message.id, displayError, true) // permanent
+          
+          // Try to clear the corrupted session for future messages
+          if (senderUsernameFromResponse && senderDeviceIdFromResponse) {
+            try {
+              await signalService.clearSessionForDevice(senderUsernameFromResponse, senderDeviceIdFromResponse)
+              console.log('🔐 Cleared corrupted session for future messages')
+            } catch {
+              // Ignore - best effort
+            }
           }
-          const reinitialized = await ensureSignalInitialized()
-          if (reinitialized) {
-            return decryptSignalMessage(message, attempt + 1)
+          
+          return {
+            ...message,
+            text: displayError,
+            decryption_error: true,
           }
         }
 
+        // Other errors might be transient - allow retry
         const displayError = `[🔒 Decryption failed: ${errorMsg.slice(0, 50)}]`
-        recordDecryptionFailure(message.id, displayError)
+        recordDecryptionFailure(message.id, displayError, false)
 
         return {
           ...message,
@@ -434,13 +443,14 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
       const cacheKeyString = normalizeCacheMessageId(message.id)
 
       const cached = decryptionCache.current.get(cacheKeyString)
-      if (cached) {
+      // Only use cache for SUCCESSFUL decryptions - don't cache errors
+      if (cached && !cached.error) {
         console.log('🔐 Using cached decryption for message:', message.id)
         clearDecryptionFailure(cacheKeyString)
         return {
           ...message,
           text: cached.text,
-          decryption_error: cached.error,
+          decryption_error: false,
         }
       }
 
@@ -466,7 +476,10 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
 
       if (message.signal_protocol) {
         const decryptedSignal = await decryptSignalMessage(message)
-        clearDecryptionFailure(cacheKeyString)
+        // Only clear failure if decryption succeeded
+        if (!decryptedSignal.decryption_error) {
+          clearDecryptionFailure(cacheKeyString)
+        }
         return decryptedSignal
       }
 
@@ -478,18 +491,24 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
           if (message.text && message.text.trim()) {
             return { ...message, decryption_error: false }
           }
+          // Missing sender copy is permanent - data wasn't stored
+          const errorText = '[🔒 Encrypted message - missing sender copy]'
+          recordDecryptionFailure(message.id, errorText, true)
           return {
             ...message,
-            text: '[🔒 Encrypted message - missing sender copy]',
+            text: errorText,
             decryption_error: true,
           }
         }
       } else {
         encryptedData = message.encrypted_body ?? null
         if (!encryptedData) {
+          // Missing data is permanent - data wasn't stored
+          const errorText = '[🔒 Encrypted message - missing data]'
+          recordDecryptionFailure(message.id, errorText, true)
           return {
             ...message,
-            text: '[🔒 Encrypted message - missing data]',
+            text: errorText,
             decryption_error: true,
           }
         }
