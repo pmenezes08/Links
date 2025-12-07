@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
@@ -48,6 +48,10 @@ export default function PremiumDashboard() {
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
   const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
+  const refreshTriggerRef = useRef<HTMLDivElement | null>(null)
+  const refreshInFlightRef = useRef(false)
+  const lastScrollRefreshRef = useRef(0)
+  const [autoRefreshing, setAutoRefreshing] = useState(false)
   const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)
   const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)
   const [pendingInviteTarget, setPendingInviteTarget] = useState<{ communityId: number; communityName?: string | null } | null>(null)
@@ -210,96 +214,128 @@ export default function PremiumDashboard() {
     }
   }
 
-  useEffect(() => {
-    async function loadUserData() {
-      let profileSnapshot: DashboardCachePayload['profile'] | null = null
-      let cachedCommunities: Array<{ id: number; name: string; type: string }> = []
-      let hasGymAccessFlag = false
-      let isAdminFlag = false
-      try {
-        // Profile (email verification status)
-        try{
-          const r = await fetch('/api/profile_me', { credentials:'include' })
-          if (r.status === 403){ navigate('/verify_required', { replace: true }); return }
-          const me = await r.json().catch(()=>null)
-          if (me?.success && me.profile){
-            setEmailVerified(!!me.profile.email_verified)
-            setEmailVerifiedAt(me.profile.email_verified_at || null)
-            setUsername(me.profile.username || '')
-            setFirstName(me.profile.first_name || '')
-            setDisplayName(me.profile.display_name || me.profile.username)
-            const profilePicValue = me.profile.profile_picture || null
-            const resolvedPic = resolveAvatar(profilePicValue)
-            setHasProfilePic(!!profilePicValue)
-            setExistingProfilePic(resolvedPic)
-            setPicPreview(prev => prev || resolvedPic)
-            setSubscription((me.profile.subscription || 'free') as string)
-            profileSnapshot = {
-              emailVerified: !!me.profile.email_verified,
-              emailVerifiedAt: me.profile.email_verified_at || null,
-              username: me.profile.username || '',
-              firstName: me.profile.first_name || '',
-              displayName: me.profile.display_name || me.profile.username || '',
-              subscription: (me.profile.subscription || 'free') as string,
-              hasProfilePic: !!profilePicValue,
-              existingProfilePic: resolvedPic,
-            }
+  const loadUserData = useCallback(async () => {
+    let profileSnapshot: DashboardCachePayload['profile'] | null = null
+    let cachedCommunities: Array<{ id: number; name: string; type: string }> = []
+    let hasGymAccessFlag = false
+    let isAdminFlag = false
+    try {
+      // Profile (email verification status)
+      try{
+        const r = await fetch('/api/profile_me', { credentials:'include' })
+        if (r.status === 403){ navigate('/verify_required', { replace: true }); return }
+        const me = await r.json().catch(()=>null)
+        if (me?.success && me.profile){
+          setEmailVerified(!!me.profile.email_verified)
+          setEmailVerifiedAt(me.profile.email_verified_at || null)
+          setUsername(me.profile.username || '')
+          setFirstName(me.profile.first_name || '')
+          setDisplayName(me.profile.display_name || me.profile.username)
+          const profilePicValue = me.profile.profile_picture || null
+          const resolvedPic = resolveAvatar(profilePicValue)
+          setHasProfilePic(!!profilePicValue)
+          setExistingProfilePic(resolvedPic)
+          setPicPreview(prev => prev || resolvedPic)
+          setSubscription((me.profile.subscription || 'free') as string)
+          profileSnapshot = {
+            emailVerified: !!me.profile.email_verified,
+            emailVerifiedAt: me.profile.email_verified_at || null,
+            username: me.profile.username || '',
+            firstName: me.profile.first_name || '',
+            displayName: me.profile.display_name || me.profile.username || '',
+            subscription: (me.profile.subscription || 'free') as string,
+            hasProfilePic: !!profilePicValue,
+            existingProfilePic: resolvedPic,
           }
-        }catch{ setEmailVerified(null) }
-
-        // Check gym membership
-        const gymData = await fetchJson('/api/check_gym_membership')
-        hasGymAccessFlag = !!(gymData?.hasGymAccess)
-        setHasGymAccess(hasGymAccessFlag)
-        
-        // Check if user is app admin
-        try {
-          const adminCheck = await fetchJson('/api/check_admin')
-          isAdminFlag = !!(adminCheck?.is_admin)
-          setIsAppAdmin(isAdminFlag)
-        } catch {
-          setIsAppAdmin(false)
-          isAdminFlag = false
         }
+      }catch{ setEmailVerified(null) }
 
-        // Get all user communities and decide using the fetched value (avoid stale state)
-        const parentData = await fetchJson('/api/user_parent_community')
-        console.log('Dashboard: Parent communities API response:', parentData)
-        const resolvedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
-        cachedCommunities = resolvedCommunities
-        if (resolvedCommunities.length > 0) {
-          console.log('Dashboard: Setting communities:', resolvedCommunities)
-          setCommunities(resolvedCommunities)
-          setCommunitiesLoaded(true)
-        } else {
-          console.log('Dashboard: No communities found or API error')
-          setCommunities([])
-          setCommunitiesLoaded(true)
-          // Direct fix: do not redirect here; welcome/join modal handles first-time case
-        }
-
-        if (profileSnapshot) {
-          writeDeviceCache(
-            DASHBOARD_DEVICE_CACHE_KEY,
-            {
-              profile: profileSnapshot,
-              communities: cachedCommunities,
-              hasGymAccess: hasGymAccessFlag,
-              isAppAdmin: isAdminFlag,
-            },
-            DASHBOARD_CACHE_TTL_MS,
-            DASHBOARD_CACHE_VERSION
-          )
-        }
-      } catch (error) {
-        console.error('Error loading user data:', error)
-        setHasGymAccess(false)
-        setCommunities([])
+      // Check gym membership
+      const gymData = await fetchJson('/api/check_gym_membership')
+      hasGymAccessFlag = !!(gymData?.hasGymAccess)
+      setHasGymAccess(hasGymAccessFlag)
+      
+      // Check if user is app admin
+      try {
+        const adminCheck = await fetchJson('/api/check_admin')
+        isAdminFlag = !!(adminCheck?.is_admin)
+        setIsAppAdmin(isAdminFlag)
+      } catch {
+        setIsAppAdmin(false)
+        isAdminFlag = false
       }
+
+      // Get all user communities and decide using the fetched value (avoid stale state)
+      const parentData = await fetchJson('/api/user_parent_community')
+      console.log('Dashboard: Parent communities API response:', parentData)
+      const resolvedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
+      cachedCommunities = resolvedCommunities
+      if (resolvedCommunities.length > 0) {
+        console.log('Dashboard: Setting communities:', resolvedCommunities)
+        setCommunities(resolvedCommunities)
+        setCommunitiesLoaded(true)
+      } else {
+        console.log('Dashboard: No communities found or API error')
+        setCommunities([])
+        setCommunitiesLoaded(true)
+        // Direct fix: do not redirect here; welcome/join modal handles first-time case
+      }
+
+      if (profileSnapshot) {
+        writeDeviceCache(
+          DASHBOARD_DEVICE_CACHE_KEY,
+          {
+            profile: profileSnapshot,
+            communities: cachedCommunities,
+            hasGymAccess: hasGymAccessFlag,
+            isAppAdmin: isAdminFlag,
+          },
+          DASHBOARD_CACHE_TTL_MS,
+          DASHBOARD_CACHE_VERSION
+        )
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error)
+      setHasGymAccess(false)
+      setCommunities([])
     }
-    
+  }, [navigate])
+
+  const refreshDashboardSilently = useCallback(async () => {
+    if (refreshInFlightRef.current) return
+    const now = Date.now()
+    if (now - lastScrollRefreshRef.current < 15000) return
+    refreshInFlightRef.current = true
+    setAutoRefreshing(true)
+    try{
+      await triggerDashboardServerPull()
+      await loadUserData()
+      lastScrollRefreshRef.current = Date.now()
+    }catch(err){
+      console.warn('Dashboard auto-refresh failed', err)
+    }finally{
+      refreshInFlightRef.current = false
+      setAutoRefreshing(false)
+    }
+  }, [loadUserData])
+
+  useEffect(() => {
     loadUserData()
-  }, [])
+  }, [loadUserData])
+
+  useEffect(() => {
+    const target = refreshTriggerRef.current
+    if (!target) return
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          refreshDashboardSilently()
+        }
+      })
+    }, { rootMargin: '200px 0px 0px 0px' })
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [refreshDashboardSilently])
 
   // Robust re-check after email verification: when tab regains focus or becomes visible
   useEffect(() => {
@@ -889,6 +925,12 @@ export default function PremiumDashboard() {
           </div>
         </div>
       )}
+      <div
+        ref={refreshTriggerRef}
+        className="h-20 flex items-center justify-center text-xs text-[#9fb0b5]"
+      >
+        {autoRefreshing ? 'Refreshing dashboard…' : 'Scroll a bit more to refresh dashboard'}
+      </div>
     </div>
   )
 }
