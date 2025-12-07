@@ -2,30 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
+import {
+  DASHBOARD_CACHE_TTL_MS,
+  DASHBOARD_CACHE_VERSION,
+  DASHBOARD_DEVICE_CACHE_KEY,
+  DashboardCachePayload,
+  refreshDashboardCommunities,
+} from '../utils/dashboardCache'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
-const DASHBOARD_DEVICE_CACHE_KEY = 'dashboard-device-cache'
-const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000
-const DASHBOARD_CACHE_VERSION = 'dashboard-v2'
-
-type DashboardCachePayload = {
-  profile: {
-    emailVerified: boolean | null
-    emailVerifiedAt: string | null
-    username: string
-    firstName: string
-    displayName: string
-    subscription: string
-    hasProfilePic: boolean
-    existingProfilePic: string
-  }
-  communities: Array<{ id: number; name: string; type: string }>
-  hasGymAccess: boolean
-  isAppAdmin: boolean
-}
-
 // type Community = { id: number; name: string; type: string }
 
 export default function PremiumDashboard() {
@@ -839,10 +826,11 @@ export default function PremiumDashboard() {
                         handleCloseCreateModal()
                         try { localStorage.setItem(doneKey, '1') } catch {}
                         setOnbStep(0)
-                        // Refresh dashboard communities
-                        const resp = await fetch('/api/user_parent_community', { method:'GET', credentials:'include' })
-                        const data = await resp.json().catch(()=>null)
-                        if (data?.success && data.communities) setCommunities(data.communities)
+                        const refreshed = await refreshDashboardCommunities()
+                        if (refreshed) {
+                          setCommunities(refreshed)
+                          setCommunitiesLoaded(true)
+                        }
                       } else alert(j?.error || 'Failed to create community')
                   }catch{ alert('Failed to create community') }
                 }}>Create</button>
@@ -882,6 +870,11 @@ export default function PremiumDashboard() {
                         setShowJoinModal(false); 
                       setJoinCode('');
                       setShowSuccessModal(true);
+                      const refreshed = await refreshDashboardCommunities()
+                      if (refreshed) {
+                        setCommunities(refreshed)
+                        setCommunitiesLoaded(true)
+                      }
                     }
                       else alert(j?.error || 'Failed to join community')
                   }catch{ 

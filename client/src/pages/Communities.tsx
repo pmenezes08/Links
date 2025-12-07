@@ -10,6 +10,7 @@ import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
+import { refreshDashboardCommunities } from '../utils/dashboardCache'
 
 type Community = { 
   id: number; 
@@ -426,7 +427,10 @@ export default function Communities(){
                                     const url = asDelete ? '/delete_community' : '/leave_community'
                                     const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                                     const j = await r.json().catch(()=>null)
-                                    if (j?.success) window.location.reload()
+                                    if (j?.success) {
+                                      await refreshDashboardCommunities()
+                                      window.location.reload()
+                                    }
                                     else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
                                   }}
                                   currentUsername={_data?.username || ''}
@@ -599,6 +603,7 @@ export default function Communities(){
                             setShowCreateSubModal(false)
                             setNewSubName('')
                             setSelectedSubCommunityId('none')
+                        await refreshDashboardCommunities()
                             // Refresh current view to show the new child
                             window.location.reload()
                           } else {
@@ -1468,7 +1473,10 @@ function NestedCommunities({
                 const url = asDelete ? '/delete_community' : '/leave_community'
                 const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                 const j = await r.json().catch(()=>null)
-                if (j?.success) window.location.reload()
+                if (j?.success) {
+                  await refreshDashboardCommunities()
+                  window.location.reload()
+                }
                 else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
               }}
               isChild={level >= 1}
