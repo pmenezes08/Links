@@ -1,3 +1,5 @@
+import { triggerDashboardServerPull } from './serverPull'
+
 /**
  * Internal Link Handler
  * Intercepts links to app.c-point.co and handles them within the app
@@ -103,6 +105,7 @@ export async function joinCommunityWithInvite(token: string): Promise<InviteResu
     const data = await response.json()
 
     if (response.ok && data.success) {
+      await triggerDashboardServerPull()
       return {
         success: true,
         communityId: data.community_id,

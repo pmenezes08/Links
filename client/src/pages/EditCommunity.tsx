@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { clearDeviceCache } from '../utils/deviceCache'
 import { refreshDashboardCommunities } from '../utils/dashboardCache'
+import { triggerDashboardServerPull } from '../utils/serverPull'
 
 export default function EditCommunity(){
   const { community_id } = useParams()
@@ -98,6 +99,7 @@ export default function EditCommunity(){
       const j = await r.json().catch(()=>null)
       if (j?.success){
         alert('Community deleted successfully')
+        await triggerDashboardServerPull()
         await refreshDashboardCommunities()
         navigate('/communities_react')
       } else {

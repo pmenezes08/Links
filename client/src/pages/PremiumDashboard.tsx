@@ -9,6 +9,7 @@ import {
   DashboardCachePayload,
   refreshDashboardCommunities,
 } from '../utils/dashboardCache'
+import { triggerDashboardServerPull } from '../utils/serverPull'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
@@ -826,6 +827,7 @@ export default function PremiumDashboard() {
                         handleCloseCreateModal()
                         try { localStorage.setItem(doneKey, '1') } catch {}
                         setOnbStep(0)
+                        await triggerDashboardServerPull()
                         const refreshed = await refreshDashboardCommunities()
                         if (refreshed) {
                           setCommunities(refreshed)
@@ -870,6 +872,7 @@ export default function PremiumDashboard() {
                         setShowJoinModal(false); 
                       setJoinCode('');
                       setShowSuccessModal(true);
+                      await triggerDashboardServerPull()
                       const refreshed = await refreshDashboardCommunities()
                       if (refreshed) {
                         setCommunities(refreshed)

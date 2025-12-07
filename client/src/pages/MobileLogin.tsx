@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { triggerDashboardServerPull } from '../utils/serverPull'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 
@@ -77,6 +78,7 @@ export default function MobileLogin() {
                 })
                 const joinData = await joinResponse.json()
                 if (joinData?.success) {
+                  await triggerDashboardServerPull()
                   // Redirect to the community
                   navigate(`/community_feed_react/${joinData.community_id}`, { replace: true })
                   return

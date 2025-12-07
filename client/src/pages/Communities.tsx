@@ -11,6 +11,7 @@ import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import { refreshDashboardCommunities } from '../utils/dashboardCache'
+import { triggerDashboardServerPull } from '../utils/serverPull'
 
 type Community = { 
   id: number; 
@@ -428,6 +429,7 @@ export default function Communities(){
                                     const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                                     const j = await r.json().catch(()=>null)
                                     if (j?.success) {
+                                      await triggerDashboardServerPull()
                                       await refreshDashboardCommunities()
                                       window.location.reload()
                                     }
@@ -603,7 +605,8 @@ export default function Communities(){
                             setShowCreateSubModal(false)
                             setNewSubName('')
                             setSelectedSubCommunityId('none')
-                        await refreshDashboardCommunities()
+                            await triggerDashboardServerPull()
+                            await refreshDashboardCommunities()
                             // Refresh current view to show the new child
                             window.location.reload()
                           } else {
@@ -1474,6 +1477,7 @@ function NestedCommunities({
                 const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                 const j = await r.json().catch(()=>null)
                 if (j?.success) {
+                  await triggerDashboardServerPull()
                   await refreshDashboardCommunities()
                   window.location.reload()
                 }

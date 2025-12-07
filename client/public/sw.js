@@ -301,7 +301,53 @@ self.addEventListener('pushsubscriptionchange', (event) => {
 })
 
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING'){
+  const data = event.data || {}
+  if (data.type === 'SKIP_WAITING'){
     self.skipWaiting()
+    return
+  }
+
+  if (data.type === 'SERVER_PULL'){
+    const urls = Array.isArray(data.urls) ? data.urls : []
+    const requestId = data.requestId
+    if (!urls.length) return
+    event.waitUntil((async () => {
+      const results = []
+      const cache = await caches.open(RUNTIME_CACHE)
+      for (const rawUrl of urls){
+        const absolute = rawUrl.startsWith('http') ? rawUrl : new URL(rawUrl, self.location.origin).href
+        try{
+          const request = new Request(absolute, { credentials: 'include', cache: 'reload' })
+          const response = await fetch(request)
+          if (response && response.ok){
+            await cache.put(request, response.clone())
+            results.push({ url: rawUrl, success: true })
+          } else {
+            results.push({ url: rawUrl, success: false, status: response?.status || 0 })
+          }
+        }catch(error){
+          results.push({ url: rawUrl, success: false, error: String(error) })
+        }
+      }
+      const payload = {
+        type: 'SERVER_PULL_COMPLETE',
+        requestId,
+        success: results.every((result) => result.success),
+        results,
+      }
+      const targets = []
+      if (event.source) targets.push(event.source)
+      try{
+        const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' })
+        for (const client of clientsList){
+          if (!targets.includes(client)) targets.push(client)
+        }
+      }catch{}
+      for (const client of targets){
+        try{
+          client.postMessage(payload)
+        }catch{}
+      }
+    })())
   }
 })

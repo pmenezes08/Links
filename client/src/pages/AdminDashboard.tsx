@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'r
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { refreshDashboardCommunities } from '../utils/dashboardCache'
+import { triggerDashboardServerPull } from '../utils/serverPull'
 
 interface Stats {
   total_users: number
@@ -646,6 +647,7 @@ export default function AdminDashboard() {
       const data = await response.json()
       if (data.success) {
         alert('Community deleted successfully.')
+        await triggerDashboardServerPull()
         await refreshDashboardCommunities()
         await loadAdminData()
       } else {
