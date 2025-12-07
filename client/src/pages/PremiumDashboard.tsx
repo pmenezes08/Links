@@ -50,7 +50,6 @@ export default function PremiumDashboard() {
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
   const refreshInFlightRef = useRef(false)
   const lastScrollRefreshRef = useRef(0)
-  const [autoRefreshing, setAutoRefreshing] = useState(false)
   const [pullHint, setPullHint] = useState<'idle' | 'ready' | 'refreshing'>('idle')
   const lastScrollYRef = useRef(0)
   const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)
@@ -309,7 +308,6 @@ export default function PremiumDashboard() {
     if (now - lastScrollRefreshRef.current < 15000) return
     refreshInFlightRef.current = true
     setPullHint('refreshing')
-    setAutoRefreshing(true)
     try{
       await triggerDashboardServerPull()
       await loadUserData()
@@ -318,7 +316,6 @@ export default function PremiumDashboard() {
       console.warn('Dashboard auto-refresh failed', err)
     }finally{
       refreshInFlightRef.current = false
-      setAutoRefreshing(false)
       setPullHint('idle')
     }
   }, [loadUserData])
@@ -329,25 +326,37 @@ export default function PremiumDashboard() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    lastScrollYRef.current = window.scrollY || document.documentElement?.scrollTop || 0
+    const scrollElement = document.scrollingElement || document.documentElement || document.body
+    const readScrollTop = () => {
+      if (typeof window === 'undefined') return 0
+      return scrollElement.scrollTop || window.scrollY || 0
+    }
+    lastScrollYRef.current = readScrollTop()
     const handleScroll = () => {
-      const current = window.scrollY || document.documentElement?.scrollTop || 0
-      const directionUp = current < lastScrollYRef.current
-      const nearTop = current <= 40
-      if (directionUp && nearTop && !refreshInFlightRef.current) {
-        if (current <= 2) {
+      const current = readScrollTop()
+      const movingUp = current < lastScrollYRef.current
+      if (movingUp && current <= 80 && !refreshInFlightRef.current) {
+        if (current <= 4) {
           refreshDashboardSilently()
-        } else if (pullHint !== 'refreshing') {
+        } else {
           setPullHint('ready')
         }
-      } else if (!autoRefreshing && pullHint !== 'refreshing') {
+      } else if (!refreshInFlightRef.current) {
         setPullHint('idle')
       }
       lastScrollYRef.current = current
     }
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [refreshDashboardSilently, autoRefreshing, pullHint])
+    const handleResize = () => {
+      lastScrollYRef.current = readScrollTop()
+    }
+    scrollElement.addEventListener('scroll', handleScroll, { passive: true })
+    window.addEventListener('resize', handleResize)
+    handleScroll()
+    return () => {
+      scrollElement.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [refreshDashboardSilently])
 
   // Robust re-check after email verification: when tab regains focus or becomes visible
   useEffect(() => {
@@ -535,15 +544,19 @@ export default function PremiumDashboard() {
       {/* Main content area with proper positioning */}
       <div className="min-h-screen md:ml-52 pb-20">
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
-          {(pullHint !== 'idle' || autoRefreshing) && (
-            <div className="mb-3 text-center text-xs text-[#9fb0b5]">
-              {pullHint === 'refreshing' || autoRefreshing
+          <div className="sticky top-0 z-20 mb-3 flex justify-center pointer-events-none">
+            <span
+              className={`rounded-full border border-white/10 bg-black/70 px-4 py-1 text-[11px] text-[#9fb0b5] transition-opacity ${
+                pullHint === 'idle' ? 'opacity-60' : 'opacity-100'
+              }`}
+            >
+              {pullHint === 'refreshing'
                 ? 'Refreshing dashboard…'
                 : pullHint === 'ready'
                   ? 'Release to refresh dashboard'
                   : 'Scroll up to refresh dashboard'}
-            </div>
-          )}
+            </span>
+          </div>
             {communities.length === 0 ? (
               <div className="px-3 py-10">
                 <div className="mx-auto max-w-xl liquid-glass-surface border border-white/10 rounded-2xl p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
