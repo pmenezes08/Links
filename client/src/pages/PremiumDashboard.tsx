@@ -48,10 +48,11 @@ export default function PremiumDashboard() {
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
   const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
-  const refreshTriggerRef = useRef<HTMLDivElement | null>(null)
   const refreshInFlightRef = useRef(false)
   const lastScrollRefreshRef = useRef(0)
   const [autoRefreshing, setAutoRefreshing] = useState(false)
+  const [pullHint, setPullHint] = useState<'idle' | 'ready' | 'refreshing'>('idle')
+  const lastScrollYRef = useRef(0)
   const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)
   const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)
   const [pendingInviteTarget, setPendingInviteTarget] = useState<{ communityId: number; communityName?: string | null } | null>(null)
@@ -307,6 +308,7 @@ export default function PremiumDashboard() {
     const now = Date.now()
     if (now - lastScrollRefreshRef.current < 15000) return
     refreshInFlightRef.current = true
+    setPullHint('refreshing')
     setAutoRefreshing(true)
     try{
       await triggerDashboardServerPull()
@@ -317,6 +319,7 @@ export default function PremiumDashboard() {
     }finally{
       refreshInFlightRef.current = false
       setAutoRefreshing(false)
+      setPullHint('idle')
     }
   }, [loadUserData])
 
@@ -325,18 +328,26 @@ export default function PremiumDashboard() {
   }, [loadUserData])
 
   useEffect(() => {
-    const target = refreshTriggerRef.current
-    if (!target) return
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
+    if (typeof window === 'undefined') return
+    lastScrollYRef.current = window.scrollY || document.documentElement?.scrollTop || 0
+    const handleScroll = () => {
+      const current = window.scrollY || document.documentElement?.scrollTop || 0
+      const directionUp = current < lastScrollYRef.current
+      const nearTop = current <= 40
+      if (directionUp && nearTop && !refreshInFlightRef.current) {
+        if (current <= 2) {
           refreshDashboardSilently()
+        } else if (pullHint !== 'refreshing') {
+          setPullHint('ready')
         }
-      })
-    }, { rootMargin: '200px 0px 0px 0px' })
-    observer.observe(target)
-    return () => observer.disconnect()
-  }, [refreshDashboardSilently])
+      } else if (!autoRefreshing && pullHint !== 'refreshing') {
+        setPullHint('idle')
+      }
+      lastScrollYRef.current = current
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [refreshDashboardSilently, autoRefreshing, pullHint])
 
   // Robust re-check after email verification: when tab regains focus or becomes visible
   useEffect(() => {
@@ -524,6 +535,15 @@ export default function PremiumDashboard() {
       {/* Main content area with proper positioning */}
       <div className="min-h-screen md:ml-52 pb-20">
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
+          {(pullHint !== 'idle' || autoRefreshing) && (
+            <div className="mb-3 text-center text-xs text-[#9fb0b5]">
+              {pullHint === 'refreshing' || autoRefreshing
+                ? 'Refreshing dashboard…'
+                : pullHint === 'ready'
+                  ? 'Release to refresh dashboard'
+                  : 'Scroll up to refresh dashboard'}
+            </div>
+          )}
             {communities.length === 0 ? (
               <div className="px-3 py-10">
                 <div className="mx-auto max-w-xl liquid-glass-surface border border-white/10 rounded-2xl p-6 text-center shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
@@ -926,12 +946,6 @@ export default function PremiumDashboard() {
           </div>
         </div>
       )}
-      <div
-        ref={refreshTriggerRef}
-        className="h-20 flex items-center justify-center text-xs text-[#9fb0b5]"
-      >
-        {autoRefreshing ? 'Refreshing dashboard…' : 'Scroll a bit more to refresh dashboard'}
-      </div>
     </div>
   )
 }
