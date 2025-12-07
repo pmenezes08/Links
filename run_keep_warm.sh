@@ -7,4 +7,4 @@ set -euo pipefail
 export KEEP_WARM_COOKIE="cpoint_session=eyJfcGVybWFuZW50Ijp0cnVlLCJ1c2VybmFtZSI6IlBhdWxvIn0.aTTyHA.AQ4fNKFNpJp4ct2Bpex5qWupl50"
 
 cd /home/puntz08
-exec python3 keep_warm.py
+exec python3 -u keep_warm.py
