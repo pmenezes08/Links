@@ -1,4 +1,4 @@
-const SW_VERSION = '2.13.0'
+const SW_VERSION = '2.14.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
@@ -16,6 +16,12 @@ const STATIC_ASSETS = [
 ]
 
 const STATIC_ASSET_PATHS = new Set(STATIC_ASSETS)
+const STALE_API_ENDPOINTS = new Set([
+  '/api/profile_me',
+  '/api/user_communities_hierarchical',
+  '/get_user_communities_with_members',
+  '/api/premium_dashboard_summary',
+])
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -209,6 +215,11 @@ self.addEventListener('fetch', (event) => {
   // Also catch video files by extension (fallback)
   if (url.origin === self.location.origin && /\.(mp4|webm|mov|m4v)$/i.test(url.pathname)){
     event.respondWith(cacheFirstMedia(request))
+    return
+  }
+
+  if (STALE_API_ENDPOINTS.has(url.pathname) && request.headers.get('accept')?.includes('application/json')){
+    event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
     return
   }
 
