@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
-import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
+import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
@@ -89,7 +89,7 @@ export default function PremiumDashboard() {
   }
 
   useEffect(() => {
-    const cached = readDeviceCache<DashboardCachePayload>(DASHBOARD_DEVICE_CACHE_KEY, DASHBOARD_CACHE_VERSION)
+    const { data: cached } = readDeviceCacheStale<DashboardCachePayload>(DASHBOARD_DEVICE_CACHE_KEY, DASHBOARD_CACHE_VERSION)
     if (!cached) return
     if (cached.profile) {
       setEmailVerified(cached.profile.emailVerified)

@@ -18,26 +18,36 @@ function getStorage() {
   }
 }
 
-export function readDeviceCache<T>(key: string, version: string = DEFAULT_VERSION): T | null {
+function getEnvelope<T>(key: string, version: string = DEFAULT_VERSION, { allowExpired }: { allowExpired?: boolean } = {}): { data: T | null; expired: boolean } {
   const storage = getStorage()
-  if (!storage) return null
+  if (!storage) return { data: null, expired: false }
   try {
     const raw = storage.getItem(key)
-    if (!raw) return null
+    if (!raw) return { data: null, expired: false }
     const envelope = JSON.parse(raw) as CacheEnvelope<T>
-    if (!envelope || typeof envelope.expiresAt !== 'number') return null
+    if (!envelope || typeof envelope.expiresAt !== 'number') return { data: null, expired: false }
     if (envelope.version && envelope.version !== version) {
       storage.removeItem(key)
-      return null
+      return { data: null, expired: false }
     }
-    if (envelope.expiresAt < Date.now()) {
+    const expired = envelope.expiresAt < Date.now()
+    if (expired && !allowExpired) {
       storage.removeItem(key)
-      return null
+      return { data: null, expired: true }
     }
-    return envelope.data
+    return { data: envelope.data ?? null, expired }
   } catch {
-    return null
+    return { data: null, expired: false }
   }
+}
+
+export function readDeviceCache<T>(key: string, version: string = DEFAULT_VERSION): T | null {
+  const { data } = getEnvelope<T>(key, version, { allowExpired: false })
+  return data
+}
+
+export function readDeviceCacheStale<T>(key: string, version: string = DEFAULT_VERSION): { data: T | null; expired: boolean } {
+  return getEnvelope<T>(key, version, { allowExpired: true })
 }
 
 export function writeDeviceCache<T>(key: string, value: T, ttlMs: number = DEFAULT_TTL_MS, version: string = DEFAULT_VERSION) {
