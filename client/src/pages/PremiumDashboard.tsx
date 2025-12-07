@@ -6,9 +6,9 @@ import {
   DASHBOARD_CACHE_TTL_MS,
   DASHBOARD_CACHE_VERSION,
   DASHBOARD_DEVICE_CACHE_KEY,
-  DashboardCachePayload,
   refreshDashboardCommunities,
 } from '../utils/dashboardCache'
+import type { DashboardCachePayload } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
@@ -83,16 +83,17 @@ export default function PremiumDashboard() {
   useEffect(() => {
     const { data: cached } = readDeviceCacheStale<DashboardCachePayload>(DASHBOARD_DEVICE_CACHE_KEY, DASHBOARD_CACHE_VERSION)
     if (!cached) return
-    if (cached.profile) {
-      setEmailVerified(cached.profile.emailVerified)
-      setEmailVerifiedAt(cached.profile.emailVerifiedAt)
-      setUsername(cached.profile.username)
-      setFirstName(cached.profile.firstName)
-      setDisplayName(cached.profile.displayName)
-      setSubscription(cached.profile.subscription || 'free')
-      setHasProfilePic(cached.profile.hasProfilePic)
-      setExistingProfilePic(cached.profile.existingProfilePic || '')
-      setPicPreview(prev => prev || cached.profile.existingProfilePic || '')
+    const profile = cached.profile
+    if (profile) {
+      setEmailVerified(profile.emailVerified)
+      setEmailVerifiedAt(profile.emailVerifiedAt)
+      setUsername(profile.username)
+      setFirstName(profile.firstName)
+      setDisplayName(profile.displayName)
+      setSubscription(profile.subscription || 'free')
+      setHasProfilePic(profile.hasProfilePic)
+      setExistingProfilePic(profile.existingProfilePic || '')
+      setPicPreview(prev => prev || profile.existingProfilePic || '')
     }
     if (Array.isArray(cached.communities)) {
       setCommunities(cached.communities)

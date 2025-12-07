@@ -39,25 +39,26 @@ export function invalidateDashboardCache() {
 
 export async function refreshDashboardCommunities(communities?: DashboardCommunity[]): Promise<DashboardCommunity[] | null> {
   try {
-    let resolved = communities
+    let resolved: DashboardCommunity[] | null = communities ?? null
     if (!resolved) {
       const resp = await fetch('/api/user_parent_community', { credentials: 'include' })
       const data = await resp.json().catch(() => null)
       if (!(data?.success && Array.isArray(data.communities))) {
         return null
       }
-      resolved = data.communities
+      resolved = data.communities ?? []
     }
 
+    const communitiesSnapshot = resolved ?? []
     const cached = getCachedDashboardSnapshot()
     writeDashboardCacheSnapshot({
       profile: cached?.profile,
       hasGymAccess: cached?.hasGymAccess,
       isAppAdmin: cached?.isAppAdmin,
-      communities: resolved,
+      communities: communitiesSnapshot,
     })
 
-    return resolved
+    return communitiesSnapshot
   } catch (error) {
     invalidateDashboardCache()
     return null
