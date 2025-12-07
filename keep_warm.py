@@ -23,11 +23,21 @@ URLS = [
 
 def fetch(url: str, timeout: float = 10) -> None:
     """Fire-and-forget GET request with basic logging."""
+    headers = {}
+    cookie = os.environ.get("KEEP_WARM_COOKIE")
+    if cookie:
+        headers["Cookie"] = cookie
+
+    request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             status = response.getcode()
             print(f"[keep-warm] {url} -> {status}")
     except urllib.error.HTTPError as http_err:
+        # 401 is expected for auth-protected endpoints when no cookie is provided
+        if http_err.code == 401 and not cookie:
+            print(f"[keep-warm] {url} -> 401 (unauthorized, no cookie provided)")
+            return
         print(f"[keep-warm] HTTP {http_err.code} for {url}: {http_err.reason}")
     except Exception as exc:  # pragma: no cover - best effort logging
         print(f"[keep-warm] error requesting {url}: {exc}")
