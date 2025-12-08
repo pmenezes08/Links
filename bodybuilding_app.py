@@ -21219,15 +21219,26 @@ def api_home_timeline():
                 post['image_path'] = normalize_path(post.get('image_path'))
                 post['video_path'] = normalize_path(post.get('video_path'))
                 
-                # Convert timestamp to DD-MM-YYYY format for display
+                # Timestamp formatting - use YYYY-MM-DD HH:MM:SS format (same as community feed)
+                # This format is parsed by frontend as UTC, allowing correct relative time display
                 try:
-                    if post.get('timestamp'):
-                        dt = datetime.strptime(str(post['timestamp'])[:19], '%Y-%m-%d %H:%M:%S')
-                        post['display_timestamp'] = dt.strftime('%d-%m-%Y %H:%M:%S')
+                    raw_ts = (post.get('timestamp') or post.get('created_at') or '').strip()
+                    if raw_ts and not raw_ts.startswith('0000-00-00'):
+                        dt = None
+                        try:
+                            dt = datetime.strptime(raw_ts[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                        except Exception:
+                            for fmt in ('%d-%m-%Y %H:%M:%S','%d-%m-%Y %H:%M','%Y-%m-%d %H:%M','%m.%d.%y %H:%M','%Y-%m-%d','%Y-%m-%dT%H:%M:%S'):
+                                try:
+                                    dt = datetime.strptime(raw_ts.replace('T',' '), fmt)
+                                    break
+                                except Exception:
+                                    continue
+                        post['display_timestamp'] = dt.strftime('%Y-%m-%d %H:%M:%S') if dt else raw_ts[:19].replace('T',' ')
                     else:
-                        post['display_timestamp'] = post.get('timestamp', '')
+                        post['display_timestamp'] = ''
                 except Exception:
-                    post['display_timestamp'] = post.get('timestamp', '')
+                    post['display_timestamp'] = ''
                 
                 # Use batched data
                 pp = profile_pics.get(post['username'])
