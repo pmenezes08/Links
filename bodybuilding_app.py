@@ -17273,6 +17273,10 @@ def create_community():
             
             conn.commit()
             
+            # Invalidate dashboard cache so new community appears immediately
+            invalidate_user_cache(username)
+            logger.info(f"Invalidated dashboard cache for {username} after community creation")
+            
             return jsonify({
                 'success': True, 
                 'community_id': community_id,
@@ -17727,11 +17731,16 @@ def delete_community():
             
             conn.commit()
             
+            # Invalidate dashboard cache so deleted community disappears immediately
+            invalidate_user_cache(username)
+            logger.info(f"Invalidated dashboard cache for {username} after community deletion")
+            
             return jsonify({'success': True, 'message': 'Community deleted successfully', 'deleted_ids': deleted_ids})
             
     except Exception as e:
         logger.error(f"Error deleting community: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to delete community'}), 500
+
 @app.route('/migrate_parent_communities')
 @login_required
 def migrate_parent_communities():
@@ -18461,6 +18470,10 @@ def join_with_invite():
             
             conn.commit()
             
+            # Invalidate dashboard cache so new community appears immediately
+            invalidate_user_cache(username)
+            logger.info(f"Invalidated dashboard cache for {username} after joining via invite")
+            
             return jsonify({
                 'success': True, 
                 'community_id': community_id,
@@ -18904,11 +18917,16 @@ def leave_community():
             
             conn.commit()
             
+            # Invalidate dashboard cache so left community disappears immediately
+            invalidate_user_cache(username)
+            logger.info(f"Invalidated dashboard cache for {username} after leaving community")
+            
         return jsonify({'success': True, 'message': 'Successfully left the community'})
         
     except Exception as e:
         logger.error(f"Error leaving community: {str(e)}")
         return jsonify({'success': False, 'error': 'An error occurred while leaving the community'})
+
 @app.route('/community_feed/<int:community_id>')
 @login_required
 def community_feed(community_id):
