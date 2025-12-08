@@ -4851,8 +4851,11 @@ def api_community_group_feed(parent_id: int):
             
             placeholders = ','.join([ph for _ in community_ids])
             
-            # 2. Fetch posts with membership check - fetch more and filter in Python
-            # This is more robust than SQL string comparison for timestamps
+            # 2. Fetch posts from last 48 hours with membership check - FILTER IN SQL
+            # Using created_at filter in SQL to reduce data transfer
+            cutoff = datetime.now() - timedelta(hours=48)
+            cutoff_str = cutoff.strftime('%Y-%m-%d %H:%M:%S')
+            
             c.execute(f"""
                 SELECT DISTINCT p.id, p.username, p.content, p.community_id, 
                        p.created_at, p.timestamp, p.image_path, p.video_path,
@@ -4862,58 +4865,12 @@ def api_community_group_feed(parent_id: int):
                 JOIN users u ON u.id = uc.user_id
                 WHERE p.community_id IN ({placeholders})
                   AND u.username = {ph}
-                ORDER BY p.id DESC
-                LIMIT 300
-            """, tuple(community_ids) + (username,))
+                  AND (p.created_at >= {ph} OR p.timestamp >= {ph} OR p.created_at IS NULL)
+                ORDER BY COALESCE(p.created_at, p.timestamp) DESC
+                LIMIT 200
+            """, tuple(community_ids) + (username, cutoff_str, cutoff_str))
             
-            all_rows = c.fetchall()
-            logger.info(f"Community group feed: parent_id={parent_id}, fetched {len(all_rows)} posts before filtering")
-            
-            # Robust timestamp parsing - same as home_timeline
-            def parse_ts(raw):
-                if not raw:
-                    return None
-                if isinstance(raw, datetime):
-                    return raw
-                s = str(raw).strip()
-                if not s or s.startswith('0000-00-00'):
-                    return None
-                s_normalized = s[:19].replace('T', ' ')
-                try:
-                    return datetime.strptime(s_normalized, '%Y-%m-%d %H:%M:%S')
-                except Exception:
-                    pass
-                for fmt in ('%d-%m-%Y %H:%M:%S', '%d-%m-%Y %H:%M', '%Y-%m-%d %H:%M', '%m.%d.%y %H:%M', '%Y-%m-%d', '%m/%d/%y %I:%M %p'):
-                    try:
-                        return datetime.strptime(s.replace('T', ' '), fmt)
-                    except Exception:
-                        continue
-                try:
-                    if s.isdigit():
-                        n = int(s)
-                        return datetime.utcfromtimestamp(n if n < 1e12 else n / 1000)
-                except Exception:
-                    pass
-                try:
-                    return datetime.fromisoformat(s_normalized)
-                except Exception:
-                    return None
-            
-            # Filter posts from last 48 hours in Python
-            # Use datetime.now() - timestamps are stored in server local time
-            cutoff = datetime.now() - timedelta(hours=48)
-            rows = []
-            for r in all_rows:
-                # Try created_at first, then timestamp
-                ts_raw = (r.get('created_at') if hasattr(r, 'keys') else r[4]) or (r.get('timestamp') if hasattr(r, 'keys') else r[5])
-                dt = parse_ts(ts_raw)
-                if dt and dt >= cutoff:
-                    rows.append(r)
-            
-            logger.info(f"Community group feed: {len(rows)} posts after 48h filter (cutoff={cutoff})")
-            if rows:
-                first = rows[0]
-                logger.info(f"First post: id={first.get('id') if hasattr(first, 'keys') else first[0]}, created_at={first.get('created_at') if hasattr(first, 'keys') else first[4]}, timestamp={first.get('timestamp') if hasattr(first, 'keys') else first[5]}")
+            rows = c.fetchall()
             
             if not rows:
                 return jsonify({'success': True, 'posts': [], 'username': username})
