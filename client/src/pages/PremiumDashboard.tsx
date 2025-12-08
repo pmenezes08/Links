@@ -51,7 +51,7 @@ export default function PremiumDashboard() {
   const refreshInFlightRef = useRef(false)
   const lastScrollRefreshRef = useRef(0)
   const [pullHint, setPullHint] = useState<'idle' | 'ready' | 'refreshing'>('idle')
-  const lastScrollYRef = useRef(0)
+  const [pullPx, setPullPx] = useState(0)
   const [joinedCommunityName, setJoinedCommunityName] = useState<string | null>(null)
   const [joinedCommunityId, setJoinedCommunityId] = useState<number | null>(null)
   const [pendingInviteTarget, setPendingInviteTarget] = useState<{ communityId: number; communityName?: string | null } | null>(null)
@@ -324,37 +324,73 @@ export default function PremiumDashboard() {
     loadUserData()
   }, [loadUserData])
 
+  // Touch-based pull-to-refresh for iOS Capacitor
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const scrollElement = document.scrollingElement || document.documentElement || document.body
-    const readScrollTop = () => {
-      if (typeof window === 'undefined') return 0
-      return scrollElement.scrollTop || window.scrollY || 0
-    }
-    lastScrollYRef.current = readScrollTop()
-    const handleScroll = () => {
-      const current = readScrollTop()
-      const movingUp = current < lastScrollYRef.current
-      if (movingUp && current <= 80 && !refreshInFlightRef.current) {
-        if (current <= 4) {
-          refreshDashboardSilently()
-        } else {
-          setPullHint('ready')
-        }
-      } else if (!refreshInFlightRef.current) {
+    let startY = 0
+    const threshold = 64
+    
+    function onTouchStart(ev: TouchEvent) {
+      try {
+        startY = ev.touches?.[0]?.clientY || 0
+      } catch {
+        startY = 0
+      }
+      setPullPx(0)
+      if (!refreshInFlightRef.current) {
         setPullHint('idle')
       }
-      lastScrollYRef.current = current
     }
-    const handleResize = () => {
-      lastScrollYRef.current = readScrollTop()
+    
+    function onTouchMove(ev: TouchEvent) {
+      if (refreshInFlightRef.current) return
+      try {
+        const scrollY = window.scrollY || document.documentElement?.scrollTop || 0
+        const curY = ev.touches?.[0]?.clientY || 0
+        const dy = curY - startY
+        
+        // Only activate pull-to-refresh when at top of page and pulling down
+        if (scrollY <= 0 && dy > 0) {
+          const px = Math.min(100, Math.max(0, dy * 0.5))
+          setPullPx(px)
+          
+          if (px > 8) {
+            setPullHint('ready')
+          }
+          
+          // Trigger refresh when threshold is reached
+          if (px >= threshold) {
+            const now = Date.now()
+            if (now - lastScrollRefreshRef.current >= 15000) {
+              refreshDashboardSilently()
+            }
+          }
+        } else {
+          setPullPx(0)
+          if (!refreshInFlightRef.current) {
+            setPullHint('idle')
+          }
+        }
+      } catch {
+        // ignore
+      }
     }
-    scrollElement.addEventListener('scroll', handleScroll, { passive: true })
-    window.addEventListener('resize', handleResize)
-    handleScroll()
+    
+    function onTouchEnd() {
+      setPullPx(0)
+      if (!refreshInFlightRef.current) {
+        setPullHint('idle')
+      }
+    }
+    
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove', onTouchMove, { passive: true })
+    window.addEventListener('touchend', onTouchEnd, { passive: true })
+    
     return () => {
-      scrollElement.removeEventListener('scroll', handleScroll)
-      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onTouchEnd)
     }
   }, [refreshDashboardSilently])
 
@@ -544,17 +580,34 @@ export default function PremiumDashboard() {
       {/* Main content area with proper positioning */}
       <div className="min-h-screen md:ml-52 pb-20">
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
-          <div className="sticky top-0 z-20 mb-3 flex justify-center pointer-events-none">
+          <div 
+            className="sticky top-0 z-20 mb-3 flex justify-center pointer-events-none transition-transform duration-150"
+            style={{ transform: `translateY(${Math.min(pullPx * 0.5, 30)}px)` }}
+          >
             <span
-              className={`rounded-full border border-white/10 bg-black/70 px-4 py-1 text-[11px] text-[#9fb0b5] transition-opacity ${
+              className={`rounded-full border border-white/10 bg-black/70 px-4 py-1 text-[11px] text-[#9fb0b5] transition-opacity flex items-center gap-2 ${
                 pullHint === 'idle' ? 'opacity-60' : 'opacity-100'
               }`}
             >
-              {pullHint === 'refreshing'
-                ? 'Refreshing dashboard…'
-                : pullHint === 'ready'
-                  ? 'Release to refresh dashboard'
-                  : 'Scroll up to refresh dashboard'}
+              {pullHint === 'refreshing' ? (
+                <>
+                  <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Refreshing…
+                </>
+              ) : pullHint === 'ready' ? (
+                <>
+                  <i className="fa-solid fa-arrow-down text-[10px]" />
+                  Release to refresh
+                </>
+              ) : (
+                <>
+                  <i className="fa-solid fa-arrow-down text-[10px]" />
+                  Pull down to refresh
+                </>
+              )}
             </span>
           </div>
             {communities.length === 0 ? (
