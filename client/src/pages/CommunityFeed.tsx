@@ -1797,7 +1797,7 @@ export default function CommunityFeed() {
                       playsInline
                       muted
                       controls
-                      preload="metadata"
+                      preload="auto"
                       onLoadedData={(e) => {
                         const container = e.currentTarget.parentElement
                         const loader = container?.querySelector('.video-loader') as HTMLElement
@@ -1823,9 +1823,11 @@ export default function CommunityFeed() {
                   </>
                 ) : (
                   <img
+                    key={currentStory.id}
                     src={resolveStoryMediaSrc(currentStory)}
                     alt="Story media"
                     className="w-full max-h-[50vh] object-contain"
+                    loading="eager"
                   />
                 )}
                 {/* Text overlays */}
