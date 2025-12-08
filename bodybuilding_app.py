@@ -12124,8 +12124,8 @@ def post_status():
             else:
                 return redirect(url_for('feed') + '?error=Content, image, video or audio is required!')
     
-    # Store in DB-friendly ISO format to avoid MySQL zero-datetime coercion
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # Store in DB-friendly ISO format in UTC to avoid MySQL zero-datetime coercion
+    timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -12423,8 +12423,8 @@ def post_reply():
     # Idempotency token (optional)
     dedupe_token = (request.form.get('dedupe_token') or '').strip()
 
-    # Use DB-friendly ISO for storage; frontend will format for display
-    now = datetime.now()
+    # Use DB-friendly ISO for storage in UTC; frontend will format for display
+    now = datetime.utcnow()
     timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
     timestamp_display = now.strftime('%d-%m-%Y')
 
@@ -22912,7 +22912,7 @@ def api_group_posts_create():
                     pass
             # Insert
             c.execute(f"INSERT INTO {'`group_posts`' if USE_MYSQL else 'group_posts'} (group_id, username, content, image_path, created_at) VALUES ({ph}, {ph}, {ph}, {ph}, {ph})",
-                      (group_id, username, content, image_path, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                      (group_id, username, content, image_path, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')))
             if not USE_MYSQL: conn.commit()
             return jsonify({'success': True})
     except Exception as e:
@@ -23073,7 +23073,7 @@ def api_group_replies_create():
             if 'image' in request.files and request.files['image'].filename:
                 image_path = save_uploaded_file(request.files['image'])
             c.execute(f"INSERT INTO {'`group_replies`' if USE_MYSQL else 'group_replies'} (group_post_id, parent_reply_id, username, content, image_path, created_at) VALUES ({get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()})",
-                      (post_id, parent_id, username, content, image_path, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                      (post_id, parent_id, username, content, image_path, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')))
             if not USE_MYSQL: conn.commit()
             return jsonify({'success': True})
     except Exception as e:
