@@ -1599,17 +1599,17 @@ export default function CommunityFeed() {
             </div>
           ) : null}
           {/* Stories panel - below community header image */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] px-2 py-1.5 mb-3">
-            <div className="flex gap-2 overflow-x-auto no-scrollbar">
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2.5 mb-3">
+            <div className="flex gap-4 overflow-x-auto no-scrollbar">
               <button
-                className="flex flex-col items-center gap-0.5 min-w-[52px] text-white/80"
+                className="flex flex-col items-center gap-1 min-w-[60px] text-white/80"
                 onClick={handleStoryUploadClick}
                 disabled={storyUploading || !community_id}
               >
-                <span className="w-11 h-11 rounded-full border-2 border-dashed border-white/25 flex items-center justify-center">
-                  <i className="fa-solid fa-plus text-sm" />
+                <span className="w-14 h-14 rounded-full border-[3px] border-dashed border-white/25 flex items-center justify-center">
+                  <i className="fa-solid fa-plus text-base" />
                 </span>
-                <span className="text-[10px] text-[#9fb0b5]">{storyUploading ? '...' : 'Add'}</span>
+                <span className="text-[11px] text-[#9fb0b5]">{storyUploading ? '...' : 'Add'}</span>
               </button>
               {storiesLoading && storyGroups.length === 0 ? (
                 <div className="text-[10px] text-[#9fb0b5] flex items-center">Loading...</div>
@@ -1618,18 +1618,18 @@ export default function CommunityFeed() {
               ) : storyGroups.map((group, idx) => (
                 <button
                   key={`${group.username}-${idx}`}
-                  className="flex flex-col items-center gap-0.5 min-w-[52px]"
+                  className="flex flex-col items-center gap-1 min-w-[60px]"
                   onClick={() => openStory(idx, 0)}
                 >
-                  <span className={`w-11 h-11 rounded-full border-2 ${group.has_unseen ? 'border-[#4db6ac]' : 'border-white/20'} p-0.5`}>
+                  <span className={`w-14 h-14 rounded-full border-[3px] ${group.has_unseen ? 'border-[#4db6ac]' : 'border-white/20'} p-0.5`}>
                     <Avatar
                       username={group.username}
                       url={group.profile_picture || undefined}
-                      size={38}
+                      size={48}
                       linkToProfile={false}
                     />
                   </span>
-                  <span className="text-[10px] text-[#cfd8dc] truncate max-w-[48px]">@{group.username}</span>
+                  <span className="text-[11px] text-[#cfd8dc] truncate max-w-[56px]">@{group.username}</span>
                 </button>
               ))}
             </div>
