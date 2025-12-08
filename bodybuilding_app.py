@@ -21030,7 +21030,7 @@ def api_home_timeline():
             # Strict: only posts from communities the user directly belongs to
             # Get posts ordered by ID (most recent first), then filter by timestamp in Python
             from datetime import datetime, timedelta
-            now = datetime.now()  # Use local time, not UTC - timestamps are stored in server local time
+            now = datetime.utcnow()  # Use UTC - posts are stored with UTC timestamps
             forty_eight = timedelta(hours=48)
             
             ph = get_sql_placeholder()
