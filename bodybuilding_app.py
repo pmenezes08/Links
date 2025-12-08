@@ -6702,13 +6702,34 @@ def admin_delete_community():
                 return jsonify({'success': False, 'error': 'Community not found'}), 404
 
             descendant_ids = get_descendant_community_ids(c, community_id)
+            
+            # Get all members of communities being deleted BEFORE deleting
+            affected_usernames: Set[str] = set()
+            for target_id in descendant_ids:
+                ph = get_sql_placeholder()
+                c.execute(f"""
+                    SELECT DISTINCT u.username 
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE uc.community_id = {ph}
+                """, (target_id,))
+                for row in c.fetchall():
+                    uname = row['username'] if hasattr(row, 'keys') else row[0]
+                    if uname:
+                        affected_usernames.add(uname)
+            
             deleted_ids: List[int] = []
-
             for target_id in descendant_ids:
                 delete_community_records(c, target_id)
                 deleted_ids.append(target_id)
             
             conn.commit()
+            
+            # Invalidate dashboard cache for ALL affected users
+            for affected_user in affected_usernames:
+                invalidate_user_cache(affected_user)
+            logger.info(f"Admin delete: Invalidated cache for {len(affected_usernames)} users")
+            
             return jsonify({'success': True, 'deleted_ids': deleted_ids})
             
     except Exception as e:
@@ -17724,6 +17745,21 @@ def delete_community():
                         'error': 'This community has nested communities you do not own. Please contact an admin to remove them first.'
                     }), 403
 
+            # Get all members of communities being deleted BEFORE deleting
+            affected_usernames: Set[str] = set()
+            for target_id in descendant_ids:
+                placeholder = get_sql_placeholder()
+                c.execute(f"""
+                    SELECT DISTINCT u.username 
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE uc.community_id = {placeholder}
+                """, (target_id,))
+                for row in c.fetchall():
+                    uname = row['username'] if hasattr(row, 'keys') else row[0]
+                    if uname:
+                        affected_usernames.add(uname)
+            
             deleted_ids: List[int] = []
             for target_id in descendant_ids:
                 delete_community_records(c, target_id)
@@ -17731,9 +17767,10 @@ def delete_community():
             
             conn.commit()
             
-            # Invalidate dashboard cache so deleted community disappears immediately
-            invalidate_user_cache(username)
-            logger.info(f"Invalidated dashboard cache for {username} after community deletion")
+            # Invalidate dashboard cache for ALL affected users
+            for affected_user in affected_usernames:
+                invalidate_user_cache(affected_user)
+            logger.info(f"Invalidated dashboard cache for {len(affected_usernames)} users after community deletion: {list(affected_usernames)[:5]}...")
             
             return jsonify({'success': True, 'message': 'Community deleted successfully', 'deleted_ids': deleted_ids})
             

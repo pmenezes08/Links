@@ -26,6 +26,7 @@ export default function PremiumDashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCommName, setNewCommName] = useState('')
   const [newCommType, setNewCommType] = useState<'Gym'|'University'|'General'|'Business'>('General')
+  const [isCreatingCommunity, setIsCreatingCommunity] = useState(false)
   const [isAppAdmin, setIsAppAdmin] = useState(false)
   // Parent-only creation; no parent selection
   // Removed parentsWithChildren usage in desktop since cards now route to unified communities page
@@ -65,6 +66,7 @@ export default function PremiumDashboard() {
     setShowCreateModal(false)
     setNewCommName('')
     setNewCommType('General')
+    setIsCreatingCommunity(false)
   }
 
   const storePendingInviteTarget = (info: { communityId?: number | null; communityName?: string | null }) => {
@@ -938,27 +940,39 @@ export default function PremiumDashboard() {
               {/* For parent-only creation: remove parent selector and always create top-level */}
               <div className="text-xs text-[#9fb0b5]">This will create a parent community.</div>
                 <div className="flex items-center justify-end gap-2">
-                  <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={handleCloseCreateModal}>Cancel</button>
-                    <button className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110" onClick={async()=> {
-                  if (!newCommName.trim()) { alert('Please provide a name'); return }
-                  try{
-                      const fd = new URLSearchParams({ name: newCommName.trim(), type: newCommType })
-                  // Force parent community creation: do not include parent_community_id
-                    const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
-                    const j = await r.json().catch(()=>null)
-                      if (j?.success){
-                        handleCloseCreateModal()
-                        try { localStorage.setItem(doneKey, '1') } catch {}
-                        setOnbStep(0)
-                        await triggerDashboardServerPull()
-                        const refreshed = await refreshDashboardCommunities()
-                        if (refreshed) {
-                          setCommunities(refreshed)
-                          setCommunitiesLoaded(true)
+                  <button className="px-3 py-2 rounded-md bg:white/10 hover:bg:white/15" onClick={handleCloseCreateModal} disabled={isCreatingCommunity}>Cancel</button>
+                    <button 
+                      className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed" 
+                      disabled={isCreatingCommunity}
+                      onClick={async()=> {
+                        if (isCreatingCommunity) return // Extra guard
+                        if (!newCommName.trim()) { alert('Please provide a name'); return }
+                        setIsCreatingCommunity(true)
+                        try{
+                          const fd = new URLSearchParams({ name: newCommName.trim(), type: newCommType })
+                          // Force parent community creation: do not include parent_community_id
+                          const r = await fetch('/create_community', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
+                          const j = await r.json().catch(()=>null)
+                          if (j?.success){
+                            handleCloseCreateModal()
+                            try { localStorage.setItem(doneKey, '1') } catch {}
+                            setOnbStep(0)
+                            await triggerDashboardServerPull()
+                            const refreshed = await refreshDashboardCommunities()
+                            if (refreshed) {
+                              setCommunities(refreshed)
+                              setCommunitiesLoaded(true)
+                            }
+                          } else {
+                            alert(j?.error || 'Failed to create community')
+                            setIsCreatingCommunity(false)
+                          }
+                        }catch{ 
+                          alert('Failed to create community')
+                          setIsCreatingCommunity(false)
                         }
-                      } else alert(j?.error || 'Failed to create community')
-                  }catch{ alert('Failed to create community') }
-                }}>Create</button>
+                      }}
+                    >{isCreatingCommunity ? 'Creating…' : 'Create'}</button>
               </div>
             </div>
           </div>
