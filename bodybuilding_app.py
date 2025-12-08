@@ -4900,7 +4900,8 @@ def api_community_group_feed(parent_id: int):
                     return None
             
             # Filter posts from last 48 hours in Python
-            cutoff = datetime.utcnow() - timedelta(hours=48)
+            # Use datetime.now() - timestamps are stored in server local time
+            cutoff = datetime.now() - timedelta(hours=48)
             rows = []
             for r in all_rows:
                 # Try created_at first, then timestamp
@@ -21072,7 +21073,7 @@ def api_home_timeline():
             # Strict: only posts from communities the user directly belongs to
             # Get posts ordered by ID (most recent first), then filter by timestamp in Python
             from datetime import datetime, timedelta
-            now = datetime.utcnow()  # Use UTC - posts are stored with UTC timestamps
+            now = datetime.now()  # Use server local time - matches how timestamps are stored
             forty_eight = timedelta(hours=48)
             
             ph = get_sql_placeholder()
