@@ -934,12 +934,14 @@ function ParentTimeline({ parentId }:{ parentId:number }){
       if (inflight) return
       inflight = true
       // Try session cache first to avoid refetch loops on remount
+      // Cache TTL: 3 minutes for better UX while keeping data reasonably fresh
+      const CACHE_TTL_MS = 3 * 60 * 1000
       try{
         const key = `parent_tl_cache:${parentId}`
         const raw = sessionStorage.getItem(key)
         if (raw){
           const cached = JSON.parse(raw)
-          if (cached && Array.isArray(cached.posts) && typeof cached.ts === 'number' && (Date.now() - cached.ts) < 10000){
+          if (cached && Array.isArray(cached.posts) && typeof cached.ts === 'number' && (Date.now() - cached.ts) < CACHE_TTL_MS){
             setPosts(cached.posts)
             setLoading(false)
             setLoadedOnce(true)
@@ -949,7 +951,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
         }
         // Check module-level cache/inflight as well
         const entry = cacheRef.get(parentId)
-        if (entry && (Date.now() - entry.ts) < 10000){
+        if (entry && (Date.now() - entry.ts) < CACHE_TTL_MS){
           setPosts(entry.posts || [])
           setLoading(false)
           setLoadedOnce(true)
