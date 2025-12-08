@@ -21091,16 +21091,25 @@ def api_home_timeline():
             
             # Filter posts from last 48 hours
             posts = []
+            cutoff = now - forty_eight
+            logger.info(f"Home timeline filter: now={now}, cutoff={cutoff}")
+            
             for r in rows:
-                ts_str = r.get('timestamp', '')
+                ts_raw = r.get('timestamp', '')
+                ts_str = str(ts_raw) if ts_raw else ''
                 dt = parse_ts(ts_str)
                 if dt is None:
-                    logger.warning(f"Could not parse timestamp '{ts_str}' for post {r.get('id')}")
+                    logger.warning(f"Could not parse timestamp '{ts_str}' (type={type(ts_raw).__name__}) for post {r.get('id')}")
                     continue
-                if now - dt <= forty_eight:
+                # Include post if its timestamp is after the cutoff (within last 48h)
+                if dt >= cutoff:
                     posts.append(r)
+                else:
+                    # Log first few rejected posts to debug
+                    if len([p for p in rows if parse_ts(str(p.get('timestamp',''))) and parse_ts(str(p.get('timestamp',''))) < cutoff]) <= 3:
+                        logger.info(f"Post {r.get('id')} rejected: dt={dt} < cutoff={cutoff}")
             
-            logger.info(f"Home timeline: {len(posts)} posts after 48h filter")
+            logger.info(f"Home timeline: {len(posts)} posts after 48h filter (from {len(rows)} fetched)")
 
             # OPTIMIZED: Batch queries to avoid N+1 problem
             post_ids = [p['id'] for p in posts]
