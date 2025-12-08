@@ -313,18 +313,60 @@ export default function CommunityFeed() {
     }
   }, [deviceFeedCacheKey, routerLocation.state])
 
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const lastRefreshRef = useRef(0)
+
+  const refreshFeed = useCallback(async () => {
+    if (isRefreshing) return
+    const now = Date.now()
+    if (now - lastRefreshRef.current < 5000) return // Debounce 5s
+    
+    setIsRefreshing(true)
+    lastRefreshRef.current = now
+    
+    try {
+      // Clear device cache first
+      if (deviceFeedCacheKey) {
+        clearDeviceCache(deviceFeedCacheKey)
+      }
+      
+      // Fetch fresh data
+      const r = await fetch(`/api/community_feed/${community_id}`, { 
+        credentials: 'include',
+        cache: 'reload'
+      })
+      const json = await r.json().catch(() => null)
+      
+      if (json?.success) {
+        setData(json)
+        if (deviceFeedCacheKey) {
+          writeDeviceCache(deviceFeedCacheKey, json, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_FEED_CACHE_VERSION)
+        }
+      }
+      
+      // Also refresh stories
+      setStoryRefreshKey(prev => prev + 1)
+    } catch (err) {
+      console.warn('Feed refresh failed', err)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [community_id, deviceFeedCacheKey, isRefreshing])
+
   useEffect(() => {
     // Pull-to-refresh behavior on overscroll at top with a small elastic offset
     const el = scrollRef.current
     if (!el) return
     let startY = 0
     const threshold = 64
-    const reloadingRef = { current: false }
+    
     function onTS(ev: TouchEvent){
       try{ startY = ev.touches[0]?.clientY || 0 }catch{ startY = 0 }
-      // reset tracking
+      setPullPx(0)
+      if (!isRefreshing) setRefreshHint(false)
     }
     function onTM(ev: TouchEvent){
+      if (isRefreshing) return
       try{
         const y = (el ? el.scrollTop : 0) || 0
         const curY = ev.touches[0]?.clientY || 0
@@ -333,14 +375,19 @@ export default function CommunityFeed() {
           const px = Math.min(100, Math.max(0, dy * 0.5))
           setPullPx(px)
           setRefreshHint(px > 8)
-          if (px >= threshold && !reloadingRef.current){ reloadingRef.current = true; location.reload() }
+          if (px >= threshold) {
+            refreshFeed()
+          }
         } else {
           setPullPx(0)
-          setRefreshHint(false)
+          if (!isRefreshing) setRefreshHint(false)
         }
       }catch{}
     }
-    function onTE(){ setPullPx(0); setRefreshHint(false) }
+    function onTE(){ 
+      setPullPx(0)
+      if (!isRefreshing) setRefreshHint(false)
+    }
     el.addEventListener('touchstart', onTS, { passive: true })
     el.addEventListener('touchmove', onTM, { passive: true })
     el.addEventListener('touchend', onTE, { passive: true })
@@ -349,7 +396,7 @@ export default function CommunityFeed() {
       el.removeEventListener('touchmove', onTM as any)
       el.removeEventListener('touchend', onTE as any)
     }
-  }, [])
+  }, [isRefreshing, refreshFeed])
 
   useEffect(() => {
     // Ensure legacy css is attached once to avoid flashes between pages
@@ -1258,11 +1305,26 @@ export default function CommunityFeed() {
 
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
-      {refreshHint && (
-        <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
-            <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
-              <i className="fa-solid fa-rotate fa-spin" />
-              <span>Refreshing...</span>
+      {(refreshHint || isRefreshing) && (
+        <div 
+          className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none transition-transform duration-150"
+          style={{ transform: `translateY(${Math.min(pullPx * 0.3, 20)}px)` }}
+        >
+            <div className="px-3 py-1.5 text-xs rounded-full bg-black/80 border border-white/15 text-white/80 flex items-center gap-2">
+              {isRefreshing ? (
+                <>
+                  <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>Refreshing…</span>
+                </>
+              ) : (
+                <>
+                  <i className="fa-solid fa-arrow-down text-[10px]" />
+                  <span>Release to refresh</span>
+                </>
+              )}
             </div>
         </div>
       )}

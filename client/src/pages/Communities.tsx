@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import type { CSSProperties, Dispatch, SetStateAction } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { formatSmartTime } from '../utils/time'
@@ -835,9 +835,98 @@ function ParentTimeline({ parentId }:{ parentId:number }){
   const [error, setError] = useState<string|undefined>()
   const [loadedOnce, setLoadedOnce] = useState(false)
   const [currentUser, setCurrentUser] = useState('')
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [pullPx, setPullPx] = useState(0)
+  const [refreshHint, setRefreshHint] = useState(false)
+  const lastRefreshRef = useRef(0)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   // Module-level caches to prevent duplicate network requests across quick remounts
   const cacheRef = (window as any).__parentTlCache || ((window as any).__parentTlCache = new Map<number, { ts:number; posts:any[] }>())
   const inflightRef = (window as any).__parentTlInflight || ((window as any).__parentTlInflight = new Map<number, Promise<any>>())
+
+  const refreshTimeline = useCallback(async () => {
+    if (isRefreshing) return
+    const now = Date.now()
+    if (now - lastRefreshRef.current < 5000) return // Debounce 5s
+    
+    setIsRefreshing(true)
+    lastRefreshRef.current = now
+    
+    try {
+      // Clear caches
+      const key = `parent_tl_cache:${parentId}`
+      try { sessionStorage.removeItem(key) } catch {}
+      try { cacheRef.delete(parentId) } catch {}
+      
+      // Fetch fresh data
+      const r = await fetch(`/api/community_group_feed/${parentId}`, { 
+        credentials: 'include',
+        cache: 'reload'
+      })
+      const j = await r.json()
+      
+      if (j?.success) {
+        setPosts(j.posts || [])
+        if (j.username) setCurrentUser(j.username)
+        try { sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), posts: j.posts || [] })) } catch {}
+        try { cacheRef.set(parentId, { ts: Date.now(), posts: j.posts || [] }) } catch {}
+      }
+    } catch (err) {
+      console.warn('Timeline refresh failed', err)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [parentId, isRefreshing])
+
+  // Touch-based pull-to-refresh
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    let startY = 0
+    const threshold = 64
+    
+    function onTouchStart(ev: TouchEvent) {
+      try { startY = ev.touches?.[0]?.clientY || 0 } catch { startY = 0 }
+      setPullPx(0)
+      if (!isRefreshing) setRefreshHint(false)
+    }
+    
+    function onTouchMove(ev: TouchEvent) {
+      if (isRefreshing) return
+      try {
+        const scrollY = window.scrollY || document.documentElement?.scrollTop || 0
+        const curY = ev.touches?.[0]?.clientY || 0
+        const dy = curY - startY
+        
+        if (scrollY <= 0 && dy > 0) {
+          const px = Math.min(100, Math.max(0, dy * 0.5))
+          setPullPx(px)
+          if (px > 8) setRefreshHint(true)
+          if (px >= threshold) {
+            refreshTimeline()
+          }
+        } else {
+          setPullPx(0)
+          if (!isRefreshing) setRefreshHint(false)
+        }
+      } catch {}
+    }
+    
+    function onTouchEnd() {
+      setPullPx(0)
+      if (!isRefreshing) setRefreshHint(false)
+    }
+    
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove', onTouchMove, { passive: true })
+    window.addEventListener('touchend', onTouchEnd, { passive: true })
+    
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [isRefreshing, refreshTimeline])
+
   useEffect(() => {
     let ok = true
     let inflight = false
@@ -912,7 +1001,31 @@ function ParentTimeline({ parentId }:{ parentId:number }){
   if (error && !loadedOnce) return null
 
   return (
-    <div>
+    <div ref={containerRef} style={{ paddingTop: pullPx > 0 ? `${pullPx * 0.5}px` : undefined }}>
+      {/* Pull-to-refresh indicator */}
+      {(refreshHint || isRefreshing) && (
+        <div 
+          className="flex justify-center mb-3 pointer-events-none transition-transform duration-150"
+          style={{ transform: `translateY(${Math.min(pullPx * 0.3, 20)}px)` }}
+        >
+          <span className="rounded-full border border-white/10 bg-black/80 px-4 py-1.5 text-[11px] text-[#9fb0b5] flex items-center gap-2">
+            {isRefreshing ? (
+              <>
+                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Refreshing…
+              </>
+            ) : (
+              <>
+                <i className="fa-solid fa-arrow-down text-[10px]" />
+                Release to refresh
+              </>
+            )}
+          </span>
+        </div>
+      )}
       {posts.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 px-4">
           <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-3">
