@@ -1963,7 +1963,7 @@ export default function CommunityFeed() {
       {storyEditorOpen && storyEditorFiles.length > 0 && (
         <div className="fixed inset-0 z-[140] bg-black flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+          <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
             <button
               onClick={handleStoryEditorClose}
               className="text-white/80 hover:text-white flex items-center gap-2"
@@ -1984,7 +1984,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+          <div className="flex-1 flex items-center justify-center p-6 pt-8 overflow-hidden">
             <div 
               ref={storyEditorMediaRef}
               className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"

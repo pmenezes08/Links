@@ -21028,76 +21028,27 @@ def api_home_timeline():
                 })
 
             # Strict: only posts from communities the user directly belongs to
+            # Filter by timestamp in SQL to ensure recent posts are included
+            from datetime import datetime, timedelta
+            now = datetime.utcnow()
+            forty_eight_ago = now - timedelta(hours=48)
+            forty_eight_ago_str = forty_eight_ago.strftime('%Y-%m-%d %H:%M:%S')
+            
             ph = get_sql_placeholder()
             c.execute(
                 f"""
-                SELECT p.*
+                SELECT DISTINCT p.*
                 FROM posts p
                 JOIN user_communities uc ON uc.community_id = p.community_id
                 JOIN users u ON u.id = uc.user_id
                 WHERE u.username = {ph}
-                ORDER BY p.id DESC
-                LIMIT 50
+                  AND p.timestamp >= {ph}
+                ORDER BY p.timestamp DESC
+                LIMIT 100
                 """,
-                (username,),
+                (username, forty_eight_ago_str),
             )
-            rows = [dict(row) for row in c.fetchall()]
-
-            # Robust timestamp parsing
-            from datetime import datetime, timedelta
-            now = datetime.utcnow()
-            forty_eight = timedelta(hours=48)
-
-            def parse_ts(s: str):
-                if not s:
-                    return None
-                try:
-                    # Try ISO / MySQL format (YYYY-MM-DD HH:MM:SS) - most common
-                    return datetime.strptime(s[:19], '%Y-%m-%d %H:%M:%S')
-                except Exception:
-                    pass
-                try:
-                    # Try DD-MM-YYYY HH:MM:SS (new format)
-                    return datetime.strptime(s[:19], '%d-%m-%Y %H:%M:%S')
-                except Exception:
-                    pass
-                try:
-                    # MM.DD.YY HH:MM (legacy)
-                    return datetime.strptime(s, '%m.%d.%y %H:%M')
-                except Exception:
-                    pass
-                try:
-                    # MM/DD/YY HH:MM AM/PM (legacy)
-                    return datetime.strptime(s, '%m/%d/%y %I:%M %p')
-                except Exception:
-                    pass
-                try:
-                    # Epoch seconds
-                    if s.isdigit():
-                        n = int(s)
-                        if n < 1e12:
-                            from datetime import timezone
-                            return datetime.fromtimestamp(n, tz=timezone.utc).replace(tzinfo=None)
-                        else:
-                            from datetime import timezone
-                            return datetime.fromtimestamp(n/1000, tz=timezone.utc).replace(tzinfo=None)
-                except Exception:
-                    pass
-                try:
-                    # Fallback to Python parser
-                    return datetime.fromisoformat(s.replace(' ', 'T')[:19])
-                except Exception:
-                    return None
-
-            posts = []
-            for r in rows:
-                dt = parse_ts(str(r.get('timestamp', '')))
-                if dt is None:
-                    # Skip posts with unparseable timestamps
-                    continue
-                # Filter posts from last 48 hours
-                if now - dt <= forty_eight:
-                    posts.append(r)
+            posts = [dict(row) for row in c.fetchall()]
 
             # OPTIMIZED: Batch queries to avoid N+1 problem
             post_ids = [p['id'] for p in posts]
