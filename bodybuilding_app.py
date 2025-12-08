@@ -21054,27 +21054,30 @@ def api_home_timeline():
                 logger.info(f"First post timestamp: {rows[0].get('timestamp')}, id: {rows[0].get('id')}")
                 logger.info(f"Last post timestamp: {rows[-1].get('timestamp')}, id: {rows[-1].get('id')}")
             
-            # Robust timestamp parsing
-            def parse_ts(s):
-                if not s:
+            # Robust timestamp parsing - matches community feed approach
+            def parse_ts(raw):
+                if not raw:
                     return None
-                s = str(s)
+                # Handle case where MySQL returns datetime object directly
+                if isinstance(raw, datetime):
+                    return raw
+                s = str(raw).strip()
+                if not s or s.startswith('0000-00-00'):
+                    return None
+                # Normalize: replace T with space, take first 19 chars
+                s_normalized = s[:19].replace('T', ' ')
+                # Try primary format first (same as community feed)
                 try:
-                    return datetime.strptime(s[:19], '%Y-%m-%d %H:%M:%S')
+                    return datetime.strptime(s_normalized, '%Y-%m-%d %H:%M:%S')
                 except Exception:
                     pass
-                try:
-                    return datetime.strptime(s[:19], '%d-%m-%Y %H:%M:%S')
-                except Exception:
-                    pass
-                try:
-                    return datetime.strptime(s, '%m.%d.%y %H:%M')
-                except Exception:
-                    pass
-                try:
-                    return datetime.strptime(s, '%m/%d/%y %I:%M %p')
-                except Exception:
-                    pass
+                # Try other formats
+                for fmt in ('%d-%m-%Y %H:%M:%S', '%d-%m-%Y %H:%M', '%Y-%m-%d %H:%M', '%m.%d.%y %H:%M', '%Y-%m-%d', '%m/%d/%y %I:%M %p'):
+                    try:
+                        return datetime.strptime(s.replace('T', ' '), fmt)
+                    except Exception:
+                        continue
+                # Try epoch timestamps
                 try:
                     if s.isdigit():
                         n = int(s)
@@ -21084,8 +21087,9 @@ def api_home_timeline():
                             return datetime.utcfromtimestamp(n / 1000)
                 except Exception:
                     pass
+                # Final fallback: fromisoformat
                 try:
-                    return datetime.fromisoformat(s.replace(' ', 'T')[:19])
+                    return datetime.fromisoformat(s_normalized)
                 except Exception:
                     return None
             
@@ -21095,11 +21099,11 @@ def api_home_timeline():
             logger.info(f"Home timeline filter: now={now}, cutoff={cutoff}")
             
             for r in rows:
-                ts_raw = r.get('timestamp', '')
-                ts_str = str(ts_raw) if ts_raw else ''
-                dt = parse_ts(ts_str)
+                # Check both timestamp and created_at (same as community feed)
+                ts_raw = r.get('timestamp') or r.get('created_at') or ''
+                dt = parse_ts(ts_raw)
                 if dt is None:
-                    logger.warning(f"Could not parse timestamp '{ts_str}' (type={type(ts_raw).__name__}) for post {r.get('id')}")
+                    logger.warning(f"Could not parse timestamp '{ts_raw}' (type={type(ts_raw).__name__}) for post {r.get('id')}")
                     continue
                 # Include post if its timestamp is after the cutoff (within last 48h)
                 if dt >= cutoff:
