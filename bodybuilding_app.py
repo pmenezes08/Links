@@ -21028,11 +21028,10 @@ def api_home_timeline():
                 })
 
             # Strict: only posts from communities the user directly belongs to
-            # Filter by timestamp in SQL to ensure recent posts are included
+            # Get posts ordered by ID (most recent first), then filter by timestamp in Python
             from datetime import datetime, timedelta
             now = datetime.utcnow()
-            forty_eight_ago = now - timedelta(hours=48)
-            forty_eight_ago_str = forty_eight_ago.strftime('%Y-%m-%d %H:%M:%S')
+            forty_eight = timedelta(hours=48)
             
             ph = get_sql_placeholder()
             c.execute(
@@ -21042,13 +21041,66 @@ def api_home_timeline():
                 JOIN user_communities uc ON uc.community_id = p.community_id
                 JOIN users u ON u.id = uc.user_id
                 WHERE u.username = {ph}
-                  AND p.timestamp >= {ph}
-                ORDER BY p.timestamp DESC
-                LIMIT 100
+                ORDER BY p.id DESC
+                LIMIT 200
                 """,
-                (username, forty_eight_ago_str),
+                (username,),
             )
-            posts = [dict(row) for row in c.fetchall()]
+            rows = [dict(row) for row in c.fetchall()]
+            
+            # Debug log
+            logger.info(f"Home timeline: fetched {len(rows)} posts for user {username}")
+            if rows:
+                logger.info(f"First post timestamp: {rows[0].get('timestamp')}, id: {rows[0].get('id')}")
+                logger.info(f"Last post timestamp: {rows[-1].get('timestamp')}, id: {rows[-1].get('id')}")
+            
+            # Robust timestamp parsing
+            def parse_ts(s):
+                if not s:
+                    return None
+                s = str(s)
+                try:
+                    return datetime.strptime(s[:19], '%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    pass
+                try:
+                    return datetime.strptime(s[:19], '%d-%m-%Y %H:%M:%S')
+                except Exception:
+                    pass
+                try:
+                    return datetime.strptime(s, '%m.%d.%y %H:%M')
+                except Exception:
+                    pass
+                try:
+                    return datetime.strptime(s, '%m/%d/%y %I:%M %p')
+                except Exception:
+                    pass
+                try:
+                    if s.isdigit():
+                        n = int(s)
+                        if n < 1e12:
+                            return datetime.utcfromtimestamp(n)
+                        else:
+                            return datetime.utcfromtimestamp(n / 1000)
+                except Exception:
+                    pass
+                try:
+                    return datetime.fromisoformat(s.replace(' ', 'T')[:19])
+                except Exception:
+                    return None
+            
+            # Filter posts from last 48 hours
+            posts = []
+            for r in rows:
+                ts_str = r.get('timestamp', '')
+                dt = parse_ts(ts_str)
+                if dt is None:
+                    logger.warning(f"Could not parse timestamp '{ts_str}' for post {r.get('id')}")
+                    continue
+                if now - dt <= forty_eight:
+                    posts.append(r)
+            
+            logger.info(f"Home timeline: {len(posts)} posts after 48h filter")
 
             # OPTIMIZED: Batch queries to avoid N+1 problem
             post_ids = [p['id'] for p in posts]
