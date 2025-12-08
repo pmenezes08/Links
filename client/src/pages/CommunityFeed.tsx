@@ -1781,7 +1781,7 @@ export default function CommunityFeed() {
                 </div>
               </div>
               <div
-                className="group relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center"
+                className="group relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center mt-6"
                 onPointerDown={handleStoryPointerDown}
                 onPointerUp={handleStoryPointerUp}
                 onPointerLeave={handleStoryPointerCancel}
@@ -1975,7 +1975,7 @@ export default function CommunityFeed() {
             <button
               onClick={handleStoryEditorPublish}
               disabled={storyUploading}
-              className="px-4 py-1.5 rounded-full bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50"
+              className="px-5 py-2 rounded-full bg-[#4db6ac] text-black font-bold text-base hover:brightness-110 disabled:opacity-50 shadow-lg"
             >
               {storyUploading ? 'Posting...' : 'Share'}
             </button>
