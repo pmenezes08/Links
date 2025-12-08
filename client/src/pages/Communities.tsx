@@ -71,6 +71,16 @@ export default function Communities(){
     const qs = new URLSearchParams(location.search)
     return qs.get('parent_id') ? 'timeline' : 'management'
   })
+  
+  // Update activeTab when URL changes (e.g., navigating from sub-community feed)
+  useEffect(() => {
+    const qs = new URLSearchParams(location.search)
+    const hasParentId = qs.get('parent_id')
+    if (hasParentId) {
+      setActiveTab('timeline')
+    }
+  }, [location.search])
+  
   // Sub-community creation state
   const [showCreateSubModal, setShowCreateSubModal] = useState(false)
   const [newSubName, setNewSubName] = useState('')
