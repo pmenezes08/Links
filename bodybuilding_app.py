@@ -4828,23 +4828,31 @@ def api_community_group_feed(parent_id: int):
             c = conn.cursor()
             ph = get_sql_placeholder()
             
-            # 1. Get all community IDs (parent + children) in one query
-            c.execute(f"""
-                SELECT id, name FROM communities 
-                WHERE id = {ph} OR parent_community_id = {ph}
-            """, (parent_id, parent_id))
-            community_rows = c.fetchall()
-            
-            if not community_rows:
+            # 1. Get all community IDs (parent + all descendants)
+            descendant_ids = get_descendant_community_ids(c, parent_id) or []
+            if not descendant_ids:
                 return jsonify({'success': True, 'posts': [], 'username': username})
-            
-            community_ids = []
+
+            placeholders = ','.join([ph] * len(descendant_ids))
+            c.execute(
+                f"SELECT id, name FROM communities WHERE id IN ({placeholders})",
+                tuple(descendant_ids),
+            )
+            name_rows = c.fetchall()
+
+            if not name_rows:
+                return jsonify({'success': True, 'posts': [], 'username': username})
+
             name_map = {}
-            for r in community_rows:
+            for r in name_rows:
                 cid = r['id'] if hasattr(r, 'keys') else r[0]
                 cname = r['name'] if hasattr(r, 'keys') else r[1]
-                community_ids.append(cid)
                 name_map[cid] = cname
+
+            if parent_id not in name_map:
+                return jsonify({'success': True, 'posts': [], 'username': username})
+
+            community_ids = [cid for cid in descendant_ids if cid in name_map]
             
             if not community_ids:
                 return jsonify({'success': True, 'posts': [], 'username': username})
