@@ -1,4 +1,5 @@
 import { triggerDashboardServerPull } from './serverPull'
+import { refreshDashboardCommunities } from './dashboardCache'
 
 /**
  * Internal Link Handler
@@ -106,6 +107,7 @@ export async function joinCommunityWithInvite(token: string): Promise<InviteResu
 
     if (response.ok && data.success) {
       await triggerDashboardServerPull()
+      await refreshDashboardCommunities()
       return {
         success: true,
         communityId: data.community_id,

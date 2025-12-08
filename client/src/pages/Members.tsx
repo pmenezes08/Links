@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo, useCallback, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
+import { triggerDashboardServerPull } from '../utils/serverPull'
+import { refreshDashboardCommunities } from '../utils/dashboardCache'
 
 type Member = {
   username: string;
@@ -330,6 +332,8 @@ export default function Members(){
     const r = await fetch('/leave_community', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     if (j?.success){
+      await triggerDashboardServerPull()
+      await refreshDashboardCommunities()
       navigate('/communities')
     } else {
       alert(j?.error || 'Unable to leave community')
