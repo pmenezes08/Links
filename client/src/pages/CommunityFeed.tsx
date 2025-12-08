@@ -1345,11 +1345,10 @@ export default function CommunityFeed() {
           <div className="flex items-center gap-2">
             <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
               onClick={()=> {
-                // Navigate to the root parent's management page
-                // If this is a sub-community, go to parent's page
-                // If this is already a root community, go to its own management page
-                const parentId = data?.community?.parent_community_id
-                const targetId = parentId || community_id
+                // Navigate to the root parent's timeline page
+                // Use root_parent_id to always go to the top-level parent community
+                const rootParentId = data?.root_parent_id
+                const targetId = rootParentId || data?.community?.parent_community_id || community_id
                 navigate(`/communities?parent_id=${targetId}`)
               }}
             >

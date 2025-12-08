@@ -19293,13 +19293,30 @@ def api_community_feed(community_id):
             community = dict(community_row)
             community['allow_nsfw_imagine'] = bool(community.get('allow_nsfw_imagine')) if community.get('allow_nsfw_imagine') is not None else False
 
-            # Parent community (optional)
+            # Parent community (optional) and root parent ID
             parent_community = None
+            root_parent_id = None
             if community.get('parent_community_id'):
                 c.execute("SELECT id, name, type FROM communities WHERE id = ?", (community['parent_community_id'],))
                 parent_row = c.fetchone()
                 if parent_row:
                     parent_community = dict(parent_row)
+                
+                # Find the root parent (top-level community with no parent)
+                ancestors = get_community_ancestors(c, community_id)
+                if ancestors:
+                    # The last ancestor is the root (or self if no parent)
+                    root = ancestors[-1]
+                    root_parent_id = root.get('id') if root.get('parent_community_id') is None else None
+                    # If root still has a parent, traverse up to find true root
+                    if root_parent_id is None:
+                        for anc in reversed(ancestors):
+                            if anc.get('parent_community_id') is None:
+                                root_parent_id = anc.get('id')
+                                break
+            else:
+                # This community is already a root
+                root_parent_id = community_id
 
             # Current user's profile picture
             try:
@@ -19624,6 +19641,7 @@ def api_community_feed(community_id):
                 'success': True,
                 'community': community,
                 'parent_community': parent_community,
+                'root_parent_id': root_parent_id,
                 'username': username,
                 'is_community_admin': is_community_admin(username, community_id),
                 'current_user_profile_picture': current_user_profile_picture,
