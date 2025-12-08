@@ -1,9 +1,9 @@
-const SW_VERSION = '2.14.0'
+const SW_VERSION = '2.15.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
 const MAX_MEDIA_CACHE_SIZE = 50 // Max number of videos/large media to cache
-const FORCE_UPDATE_TIMESTAMP = 1764987500000 // Force cache clear after this timestamp
+const FORCE_UPDATE_TIMESTAMP = 1765177700000 // Force cache clear after this timestamp
 
 const STATIC_ASSETS = [
   '/',
