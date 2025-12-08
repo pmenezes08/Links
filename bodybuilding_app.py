@@ -761,6 +761,8 @@ def ensure_story_tables(c):
                     expires_at DATETIME NOT NULL,
                     view_count INT NOT NULL DEFAULT 0,
                     last_viewed_at DATETIME,
+                    text_overlays JSON,
+                    location_data JSON,
                     INDEX idx_cs_comm_expires (community_id, expires_at),
                     INDEX idx_cs_user_created (username, created_at),
                     CONSTRAINT fk_cs_community FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
@@ -814,7 +816,9 @@ def ensure_story_tables(c):
                     created_at TEXT NOT NULL,
                     expires_at TEXT NOT NULL,
                     view_count INTEGER NOT NULL DEFAULT 0,
-                    last_viewed_at TEXT
+                    last_viewed_at TEXT,
+                    text_overlays TEXT,
+                    location_data TEXT
                 )
                 """
             )
@@ -19744,7 +19748,8 @@ def api_community_stories(community_id: int):
                 f"""
                 SELECT cs.id, cs.community_id, cs.username, cs.media_path, cs.media_type,
                        cs.caption, cs.duration_seconds, cs.status, cs.created_at,
-                       cs.expires_at, cs.view_count, cs.last_viewed_at, up.profile_picture
+                       cs.expires_at, cs.view_count, cs.last_viewed_at, up.profile_picture,
+                       cs.text_overlays, cs.location_data
                 FROM community_stories cs
                 LEFT JOIN user_profiles up ON up.username = cs.username
                 WHERE cs.community_id = {ph}
@@ -19814,6 +19819,8 @@ def api_community_stories(community_id: int):
                     expires_at = row.get("expires_at")
                     view_count = row.get("view_count")
                     profile_picture = row.get("profile_picture")
+                    text_overlays_raw = row.get("text_overlays")
+                    location_data_raw = row.get("location_data")
                 else:
                     story_id = row[0]
                     author = row[2] if len(row) > 2 else None
@@ -19825,10 +19832,27 @@ def api_community_stories(community_id: int):
                     expires_at = row[9] if len(row) > 9 else None
                     view_count = row[10] if len(row) > 10 else 0
                     profile_picture = row[12] if len(row) > 12 else None
+                    text_overlays_raw = row[13] if len(row) > 13 else None
+                    location_data_raw = row[14] if len(row) > 14 else None
                 if not story_id or not author:
                     continue
                 story_id = int(story_id)
                 has_viewed = story_id in viewed_ids
+                
+                # Parse JSON fields
+                text_overlays = None
+                if text_overlays_raw:
+                    try:
+                        text_overlays = json.loads(text_overlays_raw) if isinstance(text_overlays_raw, str) else text_overlays_raw
+                    except Exception:
+                        pass
+                location_data = None
+                if location_data_raw:
+                    try:
+                        location_data = json.loads(location_data_raw) if isinstance(location_data_raw, str) else location_data_raw
+                    except Exception:
+                        pass
+                
                 story_payload = {
                     'id': story_id,
                     'community_id': community_id,
@@ -19845,6 +19869,8 @@ def api_community_stories(community_id: int):
                     'profile_picture': _public_url(profile_picture),
                     'reactions': reaction_counts.get(story_id, {}),
                     'user_reaction': user_reactions.get(story_id),
+                    'text_overlays': text_overlays,
+                    'location_data': location_data,
                 }
                 stories_payload.append(story_payload)
                 group = groups_map.setdefault(
@@ -19887,35 +19913,87 @@ def create_community_story():
     community_id = request.form.get('community_id', type=int)
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
-    media_file = request.files.get('media')
-    if not media_file or not media_file.filename:
-        return jsonify({'success': False, 'error': 'Media file is required'}), 400
-    ext = os.path.splitext(media_file.filename)[1].lower().lstrip('.')
-    if ext not in STORY_ALLOWED_EXTENSIONS:
-        return jsonify({'success': False, 'error': 'Unsupported media type'}), 400
-    media_type = 'image' if ext in STORY_IMAGE_EXTENSIONS else 'video'
+    
+    # Support multiple file uploads - check for 'media' (single) and 'media[]' (multiple)
+    media_files = request.files.getlist('media') or request.files.getlist('media[]')
+    single_media = request.files.get('media')
+    if single_media and single_media.filename and not media_files:
+        media_files = [single_media]
+    
+    if not media_files or all(not f.filename for f in media_files):
+        return jsonify({'success': False, 'error': 'Media file(s) required'}), 400
+    
+    # Filter out empty files
+    media_files = [f for f in media_files if f and f.filename]
+    if not media_files:
+        return jsonify({'success': False, 'error': 'Media file(s) required'}), 400
+    
+    # Parse shared metadata (caption, text_overlays, location_data)
     caption = (request.form.get('caption') or '').strip()
     if caption and len(caption) > STORY_MAX_CAPTION_LENGTH:
         caption = caption[:STORY_MAX_CAPTION_LENGTH]
+    
+    # Text overlays: JSON array of {text, x, y, fontSize, color, fontFamily, rotation}
+    text_overlays_raw = request.form.get('text_overlays', '')
+    text_overlays = None
+    if text_overlays_raw:
+        try:
+            text_overlays = json.loads(text_overlays_raw)
+            if not isinstance(text_overlays, list):
+                text_overlays = None
+        except Exception:
+            text_overlays = None
+    
+    # Location data: JSON object {name, x, y}
+    location_data_raw = request.form.get('location_data', '')
+    location_data = None
+    if location_data_raw:
+        try:
+            location_data = json.loads(location_data_raw)
+            if not isinstance(location_data, dict):
+                location_data = None
+        except Exception:
+            location_data = None
+    
+    # Per-file metadata (optional, JSON array matching files order)
+    per_file_meta_raw = request.form.get('per_file_metadata', '')
+    per_file_meta = []
+    if per_file_meta_raw:
+        try:
+            per_file_meta = json.loads(per_file_meta_raw)
+            if not isinstance(per_file_meta, list):
+                per_file_meta = []
+        except Exception:
+            per_file_meta = []
+    
     duration_seconds = request.form.get('duration_seconds', type=int)
     if isinstance(duration_seconds, int) and duration_seconds < 0:
         duration_seconds = None
-
-    stored_path = save_uploaded_file(
-        media_file,
-        subfolder='community_stories',
-        allowed_extensions=STORY_ALLOWED_EXTENSIONS,
-    )
-    if not stored_path:
-        return jsonify({'success': False, 'error': 'Failed to store media'}), 400
-
-    created_at = datetime.utcnow()
-    expires_at = created_at + timedelta(hours=STORY_DEFAULT_LIFESPAN_HOURS)
-
+    
+    created_stories = []
+    base_created_at = datetime.utcnow()
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ensure_story_tables(c)
+            
+            # Ensure new columns exist
+            try:
+                if USE_MYSQL:
+                    c.execute("ALTER TABLE community_stories ADD COLUMN text_overlays JSON")
+                else:
+                    c.execute("ALTER TABLE community_stories ADD COLUMN text_overlays TEXT")
+            except Exception:
+                pass
+            try:
+                if USE_MYSQL:
+                    c.execute("ALTER TABLE community_stories ADD COLUMN location_data JSON")
+                else:
+                    c.execute("ALTER TABLE community_stories ADD COLUMN location_data TEXT")
+            except Exception:
+                pass
+            
             ph = get_sql_placeholder()
             c.execute(
                 f"SELECT creator_username FROM communities WHERE id = {ph}",
@@ -19931,46 +20009,103 @@ def create_community_story():
             )
             if not user_has_story_access(c, username, community_id, creator_username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
-
-            c.execute(
-                f"""
-                INSERT INTO community_stories
-                (community_id, username, media_path, media_type, caption, duration_seconds, status, created_at, expires_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-                """,
-                (
-                    community_id,
-                    username,
-                    stored_path,
-                    media_type,
-                    caption if caption else None,
-                    duration_seconds,
-                    'active',
-                    created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                    expires_at.strftime('%Y-%m-%d %H:%M:%S'),
-                ),
-            )
-            story_id = getattr(c, 'lastrowid', None)
+            
+            # Process each file
+            for idx, media_file in enumerate(media_files):
+                ext = os.path.splitext(media_file.filename)[1].lower().lstrip('.')
+                if ext not in STORY_ALLOWED_EXTENSIONS:
+                    continue  # Skip unsupported files
+                
+                media_type = 'image' if ext in STORY_IMAGE_EXTENSIONS else 'video'
+                
+                stored_path = save_uploaded_file(
+                    media_file,
+                    subfolder='community_stories',
+                    allowed_extensions=STORY_ALLOWED_EXTENSIONS,
+                )
+                if not stored_path:
+                    continue  # Skip files that fail to save
+                
+                # Get per-file metadata if provided
+                file_caption = caption
+                file_text_overlays = text_overlays
+                file_location_data = location_data
+                file_duration = duration_seconds
+                
+                if idx < len(per_file_meta) and isinstance(per_file_meta[idx], dict):
+                    meta = per_file_meta[idx]
+                    if 'caption' in meta:
+                        file_caption = str(meta['caption'])[:STORY_MAX_CAPTION_LENGTH]
+                    if 'text_overlays' in meta and isinstance(meta['text_overlays'], list):
+                        file_text_overlays = meta['text_overlays']
+                    if 'location_data' in meta and isinstance(meta['location_data'], dict):
+                        file_location_data = meta['location_data']
+                    if 'duration_seconds' in meta:
+                        try:
+                            file_duration = int(meta['duration_seconds'])
+                        except Exception:
+                            pass
+                
+                # Stagger created_at slightly for each file to maintain order
+                created_at = base_created_at + timedelta(milliseconds=idx * 100)
+                expires_at = created_at + timedelta(hours=STORY_DEFAULT_LIFESPAN_HOURS)
+                
+                # Serialize JSON fields
+                text_overlays_str = json.dumps(file_text_overlays) if file_text_overlays else None
+                location_data_str = json.dumps(file_location_data) if file_location_data else None
+                
+                c.execute(
+                    f"""
+                    INSERT INTO community_stories
+                    (community_id, username, media_path, media_type, caption, duration_seconds, status, created_at, expires_at, text_overlays, location_data)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                    """,
+                    (
+                        community_id,
+                        username,
+                        stored_path,
+                        media_type,
+                        file_caption if file_caption else None,
+                        file_duration,
+                        'active',
+                        created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                        expires_at.strftime('%Y-%m-%d %H:%M:%S'),
+                        text_overlays_str,
+                        location_data_str,
+                    ),
+                )
+                story_id = getattr(c, 'lastrowid', None)
+                
+                created_stories.append({
+                    'id': story_id,
+                    'community_id': community_id,
+                    'username': username,
+                    'media_type': media_type,
+                    'media_path': stored_path,
+                    'media_url': get_public_upload_url(normalize_upload_reference(stored_path)),
+                    'caption': file_caption,
+                    'text_overlays': file_text_overlays,
+                    'location_data': file_location_data,
+                    'duration_seconds': file_duration,
+                    'created_at': created_at.isoformat(),
+                    'expires_at': expires_at.isoformat(),
+                    'view_count': 0,
+                    'has_viewed': True,
+                })
+            
             conn.commit()
-
+        
+        if not created_stories:
+            return jsonify({'success': False, 'error': 'No valid media files were uploaded'}), 400
+        
         invalidate_community_cache(community_id)
-
+        
+        # Return single story for backwards compatibility, plus array of all
         return jsonify({
             'success': True,
-            'story': {
-                'id': story_id,
-                'community_id': community_id,
-                'username': username,
-                'media_type': media_type,
-                'media_path': stored_path,
-                'media_url': get_public_upload_url(normalize_upload_reference(stored_path)),
-                'caption': caption,
-                'duration_seconds': duration_seconds,
-                'created_at': created_at.isoformat(),
-                'expires_at': expires_at.isoformat(),
-                'view_count': 0,
-                'has_viewed': True,
-            }
+            'story': created_stories[0] if created_stories else None,
+            'stories': created_stories,
+            'count': len(created_stories),
         })
     except Exception as e:
         logger.error(f"Error creating community story for community {community_id}: {e}")

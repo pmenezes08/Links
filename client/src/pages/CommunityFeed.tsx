@@ -22,6 +22,21 @@ type Reply = { id: number; username: string; content: string; timestamp: string;
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean }
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
+type TextOverlay = {
+  id: string
+  text: string
+  x: number
+  y: number
+  fontSize: number
+  color: string
+  fontFamily: string
+  rotation: number
+}
+type LocationData = {
+  name: string
+  x: number
+  y: number
+}
 type Story = {
   id: number
   community_id: number
@@ -38,6 +53,8 @@ type Story = {
   profile_picture?: string | null
   reactions?: Record<string, number>
   user_reaction?: string | null
+  text_overlays?: TextOverlay[] | null
+  location_data?: LocationData | null
 }
 type StoryGroup = {
   username: string
@@ -124,6 +141,22 @@ export default function CommunityFeed() {
     loading: false,
     error: null,
   })
+  // Story editor modal state
+  type StoryEditorFile = {
+    file: File
+    preview: string
+    type: 'image' | 'video'
+    caption: string
+    textOverlays: TextOverlay[]
+    locationData: LocationData | null
+  }
+  const [storyEditorOpen, setStoryEditorOpen] = useState(false)
+  const [storyEditorFiles, setStoryEditorFiles] = useState<StoryEditorFile[]>([])
+  const [storyEditorActiveIndex, setStoryEditorActiveIndex] = useState(0)
+  const [storyEditorDragging, setStoryEditorDragging] = useState<{ type: 'text' | 'location'; id?: string } | null>(null)
+  const storyEditorMediaRef = useRef<HTMLDivElement | null>(null)
+  const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
+  const [storyEditorNewText, setStoryEditorNewText] = useState('')
 
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
@@ -617,6 +650,25 @@ export default function CommunityFeed() {
       const profileUrl: string | null = typeof raw.profile_picture === 'string' && raw.profile_picture.length > 0
         ? raw.profile_picture
         : null
+      // Parse text_overlays and location_data from JSON if string
+      let textOverlays: TextOverlay[] | null = null
+      if (raw.text_overlays) {
+        try {
+          textOverlays = typeof raw.text_overlays === 'string' 
+            ? JSON.parse(raw.text_overlays) 
+            : raw.text_overlays
+          if (!Array.isArray(textOverlays)) textOverlays = null
+        } catch { textOverlays = null }
+      }
+      let locationData: LocationData | null = null
+      if (raw.location_data) {
+        try {
+          locationData = typeof raw.location_data === 'string'
+            ? JSON.parse(raw.location_data)
+            : raw.location_data
+          if (typeof locationData !== 'object' || !locationData?.name) locationData = null
+        } catch { locationData = null }
+      }
       return {
         id,
         community_id: Number(raw.community_id ?? community_id ?? 0),
@@ -635,6 +687,8 @@ export default function CommunityFeed() {
         user_reaction: typeof raw.user_reaction === 'string'
           ? raw.user_reaction
           : (typeof raw.userReaction === 'string' ? raw.userReaction : null),
+        text_overlays: textOverlays,
+        location_data: locationData,
       }
     }
     const groups: StoryGroup[] = []
@@ -642,7 +696,8 @@ export default function CommunityFeed() {
       rawGroups.forEach((group: any) => {
         const stories = Array.isArray(group?.stories) ? group.stories.map(toStory).filter(Boolean) as Story[] : []
         if (!stories.length) return
-        stories.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+        // Sort oldest first (left) to newest (right) for chronological viewing
+        stories.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
         groups.push({
           username: String(group?.username || stories[0].username),
           profile_picture: group?.profile_picture ?? stories[0].profile_picture ?? null,
@@ -661,7 +716,8 @@ export default function CommunityFeed() {
         grouped.get(story.username)!.push(story)
       })
       grouped.forEach((stories, usernameKey) => {
-        stories.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+        // Sort oldest first (left) to newest (right) for chronological viewing
+        stories.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
         groups.push({
           username: usernameKey,
           profile_picture: stories[0]?.profile_picture ?? null,
@@ -721,43 +777,173 @@ export default function CommunityFeed() {
     storyFileInputRef.current?.click()
   }, [community_id])
 
-  const handleStoryFileChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file){
+  const handleStoryFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) {
       return
     }
-    if (!community_id){
+    if (!community_id) {
       alert('Community not available.')
       event.target.value = ''
       return
     }
-    const caption = window.prompt('Add a caption (optional):', '') ?? ''
+    
+    // Convert FileList to array and create preview data
+    const validFiles: StoryEditorFile[] = []
+    Array.from(files).forEach(file => {
+      const ext = file.name.split('.').pop()?.toLowerCase() || ''
+      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)
+      const isVideo = ['mp4', 'mov', 'webm', 'avi'].includes(ext)
+      if (!isImage && !isVideo) return
+      
+      validFiles.push({
+        file,
+        preview: URL.createObjectURL(file),
+        type: isImage ? 'image' : 'video',
+        caption: '',
+        textOverlays: [],
+        locationData: null,
+      })
+    })
+    
+    if (validFiles.length === 0) {
+      alert('No valid media files selected')
+      event.target.value = ''
+      return
+    }
+    
+    setStoryEditorFiles(validFiles)
+    setStoryEditorActiveIndex(0)
+    setStoryEditorOpen(true)
+    event.target.value = ''
+  }, [community_id])
+
+  const handleStoryEditorClose = useCallback(() => {
+    // Revoke object URLs to free memory
+    storyEditorFiles.forEach(f => URL.revokeObjectURL(f.preview))
+    setStoryEditorFiles([])
+    setStoryEditorOpen(false)
+    setStoryEditorActiveIndex(0)
+    setStoryEditorDragging(null)
+    setStoryEditorAddingText(false)
+    setStoryEditorNewText('')
+  }, [storyEditorFiles])
+
+  const handleStoryEditorPublish = useCallback(async () => {
+    if (!community_id || storyEditorFiles.length === 0) return
+    
     setStoryUploading(true)
-    try{
+    try {
       const fd = new FormData()
       fd.append('community_id', String(community_id))
-      fd.append('media', file)
-      if (caption.trim()){
-        fd.append('caption', caption.trim())
-      }
+      
+      // Add all files
+      storyEditorFiles.forEach(item => {
+        fd.append('media', item.file)
+      })
+      
+      // Add per-file metadata
+      const perFileMeta = storyEditorFiles.map(item => ({
+        caption: item.caption,
+        text_overlays: item.textOverlays,
+        location_data: item.locationData,
+      }))
+      fd.append('per_file_metadata', JSON.stringify(perFileMeta))
+      
       const res = await fetch('/api/community_stories', {
         method: 'POST',
         body: fd,
         credentials: 'include'
       })
       const json = await res.json().catch(() => null)
-      if (!json?.success){
+      if (!json?.success) {
         throw new Error(json?.error || 'Failed to upload story')
       }
       setStoryRefreshKey(key => key + 1)
-    }catch(err){
+      handleStoryEditorClose()
+    } catch (err) {
       console.error(err)
       alert((err as Error)?.message || 'Failed to upload story')
-    }finally{
+    } finally {
       setStoryUploading(false)
-      event.target.value = ''
     }
-  }, [community_id])
+  }, [community_id, storyEditorFiles, handleStoryEditorClose])
+
+  const updateActiveStoryEditorFile = useCallback((updates: Partial<StoryEditorFile>) => {
+    setStoryEditorFiles(prev => prev.map((f, i) => 
+      i === storyEditorActiveIndex ? { ...f, ...updates } : f
+    ))
+  }, [storyEditorActiveIndex])
+
+  const addTextOverlay = useCallback(() => {
+    if (!storyEditorNewText.trim()) return
+    const newOverlay: TextOverlay = {
+      id: `text-${Date.now()}`,
+      text: storyEditorNewText.trim(),
+      x: 50,
+      y: 50,
+      fontSize: 24,
+      color: '#ffffff',
+      fontFamily: 'sans-serif',
+      rotation: 0,
+    }
+    updateActiveStoryEditorFile({
+      textOverlays: [...(storyEditorFiles[storyEditorActiveIndex]?.textOverlays || []), newOverlay]
+    })
+    setStoryEditorNewText('')
+    setStoryEditorAddingText(false)
+  }, [storyEditorNewText, storyEditorFiles, storyEditorActiveIndex, updateActiveStoryEditorFile])
+
+  const removeTextOverlay = useCallback((id: string) => {
+    const current = storyEditorFiles[storyEditorActiveIndex]
+    if (!current) return
+    updateActiveStoryEditorFile({
+      textOverlays: current.textOverlays.filter(t => t.id !== id)
+    })
+  }, [storyEditorFiles, storyEditorActiveIndex, updateActiveStoryEditorFile])
+
+  const setLocationData = useCallback((location: LocationData | null) => {
+    updateActiveStoryEditorFile({ locationData: location })
+  }, [updateActiveStoryEditorFile])
+
+  const handleOverlayDrag = useCallback((e: React.PointerEvent, type: 'text' | 'location', id?: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setStoryEditorDragging({ type, id })
+    const container = storyEditorMediaRef.current
+    if (!container) return
+    
+    const rect = container.getBoundingClientRect()
+    const moveHandler = (moveE: PointerEvent) => {
+      const x = ((moveE.clientX - rect.left) / rect.width) * 100
+      const y = ((moveE.clientY - rect.top) / rect.height) * 100
+      const clampedX = Math.max(0, Math.min(100, x))
+      const clampedY = Math.max(0, Math.min(100, y))
+      
+      if (type === 'location') {
+        setStoryEditorFiles(prev => prev.map((f, i) => 
+          i === storyEditorActiveIndex && f.locationData
+            ? { ...f, locationData: { ...f.locationData, x: clampedX, y: clampedY } }
+            : f
+        ))
+      } else if (type === 'text' && id) {
+        setStoryEditorFiles(prev => prev.map((f, i) => 
+          i === storyEditorActiveIndex
+            ? { ...f, textOverlays: f.textOverlays.map(t => t.id === id ? { ...t, x: clampedX, y: clampedY } : t) }
+            : f
+        ))
+      }
+    }
+    
+    const upHandler = () => {
+      setStoryEditorDragging(null)
+      window.removeEventListener('pointermove', moveHandler)
+      window.removeEventListener('pointerup', upHandler)
+    }
+    
+    window.addEventListener('pointermove', moveHandler)
+    window.addEventListener('pointerup', upHandler)
+  }, [storyEditorActiveIndex])
 
   const markStoryAsViewed = useCallback((storyId: number) => {
     if (!storyId || viewedStoriesRef.current.has(storyId)) return
@@ -1363,6 +1549,7 @@ export default function CommunityFeed() {
             ref={storyFileInputRef}
             type="file"
             accept="image/*,video/*"
+            multiple
             className="hidden"
             onChange={handleStoryFileChange}
           />
@@ -1641,6 +1828,41 @@ export default function CommunityFeed() {
                     className="w-full max-h-[50vh] object-contain"
                   />
                 )}
+                {/* Text overlays */}
+                {currentStory.text_overlays && currentStory.text_overlays.map(overlay => (
+                  <div
+                    key={overlay.id}
+                    className="absolute pointer-events-none z-[4]"
+                    style={{
+                      left: `${overlay.x}%`,
+                      top: `${overlay.y}%`,
+                      transform: `translate(-50%, -50%) rotate(${overlay.rotation}deg)`,
+                      fontSize: `${overlay.fontSize}px`,
+                      color: overlay.color,
+                      fontFamily: overlay.fontFamily,
+                      textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                      WebkitTextStroke: '0.5px rgba(0,0,0,0.3)',
+                    }}
+                  >
+                    <span className="whitespace-nowrap">{overlay.text}</span>
+                  </div>
+                ))}
+                {/* Location overlay */}
+                {currentStory.location_data && (
+                  <div
+                    className="absolute pointer-events-none z-[4] bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/20"
+                    style={{
+                      left: `${currentStory.location_data.x}%`,
+                      top: `${currentStory.location_data.y}%`,
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  >
+                    <span className="text-white text-sm flex items-center gap-1.5">
+                      <i className="fa-solid fa-location-dot text-[#4db6ac]" />
+                      {currentStory.location_data.name}
+                    </span>
+                  </div>
+                )}
                 {/* Subtle tap zone indicators */}
                 {hasPrevStory && (
                   <div className="absolute left-0 top-0 bottom-0 w-[40%] z-[3] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1731,6 +1953,215 @@ export default function CommunityFeed() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Story Editor Modal */}
+      {storyEditorOpen && storyEditorFiles.length > 0 && (
+        <div className="fixed inset-0 z-[140] bg-black flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <button
+              onClick={handleStoryEditorClose}
+              className="text-white/80 hover:text-white flex items-center gap-2"
+            >
+              <i className="fa-solid fa-xmark text-lg" />
+              <span className="text-sm">Cancel</span>
+            </button>
+            <div className="text-white font-semibold">
+              {storyEditorFiles.length > 1 ? `${storyEditorActiveIndex + 1} / ${storyEditorFiles.length}` : 'New Story'}
+            </div>
+            <button
+              onClick={handleStoryEditorPublish}
+              disabled={storyUploading}
+              className="px-4 py-1.5 rounded-full bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50"
+            >
+              {storyUploading ? 'Posting...' : 'Share'}
+            </button>
+          </div>
+          
+          {/* Media preview with overlays */}
+          <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
+            <div 
+              ref={storyEditorMediaRef}
+              className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
+              style={{ touchAction: storyEditorDragging ? 'none' : 'auto' }}
+            >
+              {storyEditorFiles[storyEditorActiveIndex]?.type === 'video' ? (
+                <video
+                  src={storyEditorFiles[storyEditorActiveIndex]?.preview}
+                  className="w-full h-full object-contain"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                />
+              ) : (
+                <img
+                  src={storyEditorFiles[storyEditorActiveIndex]?.preview}
+                  alt="Story preview"
+                  className="w-full h-full object-contain"
+                />
+              )}
+              
+              {/* Text overlays */}
+              {storyEditorFiles[storyEditorActiveIndex]?.textOverlays.map(overlay => (
+                <div
+                  key={overlay.id}
+                  className="absolute cursor-move select-none"
+                  style={{
+                    left: `${overlay.x}%`,
+                    top: `${overlay.y}%`,
+                    transform: `translate(-50%, -50%) rotate(${overlay.rotation}deg)`,
+                    fontSize: `${overlay.fontSize}px`,
+                    color: overlay.color,
+                    fontFamily: overlay.fontFamily,
+                    textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                    WebkitTextStroke: '0.5px rgba(0,0,0,0.3)',
+                  }}
+                  onPointerDown={(e) => handleOverlayDrag(e, 'text', overlay.id)}
+                >
+                  <span className="whitespace-nowrap">{overlay.text}</span>
+                  <button
+                    className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center"
+                    onClick={(e) => { e.stopPropagation(); removeTextOverlay(overlay.id); }}
+                  >
+                    <i className="fa-solid fa-xmark" />
+                  </button>
+                </div>
+              ))}
+              
+              {/* Location overlay */}
+              {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+                <div
+                  className="absolute cursor-move select-none bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/20"
+                  style={{
+                    left: `${storyEditorFiles[storyEditorActiveIndex].locationData!.x}%`,
+                    top: `${storyEditorFiles[storyEditorActiveIndex].locationData!.y}%`,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                  onPointerDown={(e) => handleOverlayDrag(e, 'location')}
+                >
+                  <span className="text-white text-sm flex items-center gap-1.5">
+                    <i className="fa-solid fa-location-dot text-[#4db6ac]" />
+                    {storyEditorFiles[storyEditorActiveIndex].locationData!.name}
+                  </span>
+                  <button
+                    className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center"
+                    onClick={(e) => { e.stopPropagation(); setLocationData(null); }}
+                  >
+                    <i className="fa-solid fa-xmark" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Thumbnails strip for multiple files */}
+          {storyEditorFiles.length > 1 && (
+            <div className="px-4 py-2 border-t border-white/10">
+              <div className="flex gap-2 overflow-x-auto no-scrollbar">
+                {storyEditorFiles.map((file, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setStoryEditorActiveIndex(idx)}
+                    className={`relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border-2 ${
+                      idx === storyEditorActiveIndex ? 'border-[#4db6ac]' : 'border-transparent'
+                    }`}
+                  >
+                    {file.type === 'video' ? (
+                      <video src={file.preview} className="w-full h-full object-cover" muted />
+                    ) : (
+                      <img src={file.preview} alt="" className="w-full h-full object-cover" />
+                    )}
+                    {file.type === 'video' && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                        <i className="fa-solid fa-play text-white text-xs" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Tools panel */}
+          <div className="px-4 py-3 border-t border-white/10 space-y-3">
+            {/* Caption input */}
+            <div>
+              <input
+                type="text"
+                value={storyEditorFiles[storyEditorActiveIndex]?.caption || ''}
+                onChange={(e) => updateActiveStoryEditorFile({ caption: e.target.value })}
+                placeholder="Add a caption..."
+                maxLength={500}
+                className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
+              />
+            </div>
+            
+            {/* Tool buttons */}
+            <div className="flex items-center gap-3">
+              {/* Add text button */}
+              <button
+                onClick={() => setStoryEditorAddingText(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm"
+              >
+                <i className="fa-solid fa-font" />
+                <span>Add Text</span>
+              </button>
+              
+              {/* Add location button */}
+              {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+                <button
+                  onClick={() => {
+                    const name = window.prompt('Enter location name:')
+                    if (name?.trim()) {
+                      setLocationData({ name: name.trim(), x: 50, y: 85 })
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm"
+                >
+                  <i className="fa-solid fa-location-dot" />
+                  <span>Add Location</span>
+                </button>
+              )}
+            </div>
+            
+            {/* Add text input */}
+            {storyEditorAddingText && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={storyEditorNewText}
+                  onChange={(e) => setStoryEditorNewText(e.target.value)}
+                  placeholder="Enter text..."
+                  autoFocus
+                  className="flex-1 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') addTextOverlay()
+                    if (e.key === 'Escape') { setStoryEditorAddingText(false); setStoryEditorNewText(''); }
+                  }}
+                />
+                <button
+                  onClick={addTextOverlay}
+                  disabled={!storyEditorNewText.trim()}
+                  className="px-4 py-2 rounded-xl bg-[#4db6ac] text-black font-medium text-sm disabled:opacity-50"
+                >
+                  Add
+                </button>
+                <button
+                  onClick={() => { setStoryEditorAddingText(false); setStoryEditorNewText(''); }}
+                  className="px-3 py-2 rounded-xl bg-white/10 text-white/70 text-sm"
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+            )}
+            
+            <p className="text-xs text-white/40 text-center">
+              Drag text and location to reposition them on the image
+            </p>
           </div>
         </div>
       )}
