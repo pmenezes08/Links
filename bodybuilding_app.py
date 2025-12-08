@@ -4852,8 +4852,8 @@ def api_community_group_feed(parent_id: int):
             placeholders = ','.join([ph for _ in community_ids])
             
             # 2. Fetch posts from last 48 hours with membership check - FILTER IN SQL
-            # Using created_at filter in SQL to reduce data transfer
-            cutoff = datetime.now() - timedelta(hours=48)
+            # Use UTC for cutoff since posts are stored with datetime.utcnow()
+            cutoff = datetime.utcnow() - timedelta(hours=48)
             cutoff_str = cutoff.strftime('%Y-%m-%d %H:%M:%S')
             
             c.execute(f"""
@@ -21030,7 +21030,7 @@ def api_home_timeline():
             # Strict: only posts from communities the user directly belongs to
             # Get posts ordered by ID (most recent first), then filter by timestamp in Python
             from datetime import datetime, timedelta
-            now = datetime.now()  # Use server local time - matches how timestamps are stored
+            now = datetime.utcnow()  # Use UTC - posts are stored with datetime.utcnow()
             forty_eight = timedelta(hours=48)
             
             ph = get_sql_placeholder()
