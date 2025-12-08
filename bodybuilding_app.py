@@ -17128,6 +17128,30 @@ def create_community():
         if not name:
             return jsonify({'success': False, 'error': 'Name is required'}), 400
         
+        # Duplicate prevention: Check if same user created a community with same name in last 60 seconds
+        try:
+            with get_db_connection() as conn:
+                c_dup = conn.cursor()
+                ph = get_sql_placeholder()
+                c_dup.execute(f"""
+                    SELECT id, created_at FROM communities 
+                    WHERE creator_username = {ph} AND name = {ph}
+                    ORDER BY id DESC LIMIT 1
+                """, (username, name.strip()))
+                existing = c_dup.fetchone()
+                if existing:
+                    existing_id = existing['id'] if hasattr(existing, 'keys') else existing[0]
+                    logger.warning(f"Duplicate community prevention: User {username} already has community '{name}' (id={existing_id})")
+                    return jsonify({
+                        'success': True,  # Return success to prevent retry loops
+                        'community_id': existing_id,
+                        'message': f'Community "{name}" already exists',
+                        'duplicate': True
+                    })
+        except Exception as dup_err:
+            logger.warning(f"Error checking duplicate community: {dup_err}")
+            # Continue anyway - better to risk a duplicate than block creation
+        
         # Business communities can only be created by app admin (parent) or parent community admins (sub-communities)
         normalized_type = raw_type
         if normalized_type == 'business':
