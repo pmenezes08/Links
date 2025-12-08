@@ -4812,327 +4812,289 @@ def api_debug_login_test():
 @app.route('/api/community_group_feed/<int:parent_id>')
 @login_required
 def api_community_group_feed(parent_id: int):
-    """Return recent posts for a parent community and all its child communities."""
+    """Return recent posts (last 48h) for a parent community and all its child communities.
+    
+    OPTIMIZED VERSION: Uses batch queries instead of N+1 pattern.
+    """
+    from datetime import datetime, timedelta
     username = session.get('username')
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-
-            # Build list of community IDs: parent + children
             ph = get_sql_placeholder()
-            c.execute(f"SELECT id FROM communities WHERE parent_community_id = {ph}", (parent_id,))
-            child_rows = c.fetchall()
-            community_ids = [parent_id]
-            for r in child_rows:
-                cid = r['id'] if hasattr(r, 'keys') else r[0]
-                if cid:
-                    community_ids.append(cid)
-
-            # Fetch recent posts across these communities, but only from communities the user belongs to
-            if not community_ids:
-                return jsonify({'success': True, 'posts': []})
-
-            placeholders = ','.join([ph for _ in community_ids])
-            logger.info(f"Community group feed: parent_id={parent_id}, fetching posts for communities (pre-filter): {community_ids}")
-            # Strict membership join to avoid showing child posts the user doesn't belong to
+            
+            # 1. Get all community IDs (parent + children) in one query
             c.execute(f"""
-                SELECT p.*
+                SELECT id, name FROM communities 
+                WHERE id = {ph} OR parent_community_id = {ph}
+            """, (parent_id, parent_id))
+            community_rows = c.fetchall()
+            
+            if not community_rows:
+                return jsonify({'success': True, 'posts': [], 'username': username})
+            
+            community_ids = []
+            name_map = {}
+            for r in community_rows:
+                cid = r['id'] if hasattr(r, 'keys') else r[0]
+                cname = r['name'] if hasattr(r, 'keys') else r[1]
+                community_ids.append(cid)
+                name_map[cid] = cname
+            
+            if not community_ids:
+                return jsonify({'success': True, 'posts': [], 'username': username})
+            
+            placeholders = ','.join([ph for _ in community_ids])
+            
+            # 2. Fetch posts from last 48 hours with membership check - FILTER IN SQL
+            # Using created_at filter in SQL to reduce data transfer
+            cutoff = datetime.now() - timedelta(hours=48)
+            cutoff_str = cutoff.strftime('%Y-%m-%d %H:%M:%S')
+            
+            c.execute(f"""
+                SELECT DISTINCT p.id, p.username, p.content, p.community_id, 
+                       p.created_at, p.timestamp, p.image_path, p.video_path,
+                       p.audio_path, p.audio_summary
                 FROM posts p
                 JOIN user_communities uc ON uc.community_id = p.community_id
                 JOIN users u ON u.id = uc.user_id
                 WHERE p.community_id IN ({placeholders})
                   AND u.username = {ph}
-                ORDER BY p.id DESC
-                LIMIT 1000
-            """, tuple(community_ids) + (username,))
-
+                  AND (p.created_at >= {ph} OR p.timestamp >= {ph} OR p.created_at IS NULL)
+                ORDER BY COALESCE(p.created_at, p.timestamp) DESC
+                LIMIT 200
+            """, tuple(community_ids) + (username, cutoff_str, cutoff_str))
+            
             rows = c.fetchall()
-            logger.info(f"Community group feed: fetched {len(rows)} rows before filtering")
+            
+            if not rows:
+                return jsonify({'success': True, 'posts': [], 'username': username})
+            
+            # Extract post IDs for batch queries
+            post_ids = []
+            post_usernames = set()
+            for row in rows:
+                pid = row['id'] if hasattr(row, 'keys') else row[0]
+                uname = row['username'] if hasattr(row, 'keys') else row[1]
+                post_ids.append(pid)
+                if uname:
+                    post_usernames.add(uname)
+            
+            post_placeholders = ','.join([ph for _ in post_ids])
+            
+            # 3. Batch fetch all reactions for these posts
+            reaction_map = {}  # {post_id: {reaction_type: count}}
+            user_reaction_map = {}  # {post_id: reaction_type}
+            
+            if post_ids:
+                # Get reaction counts grouped by post
+                c.execute(f"""
+                    SELECT post_id, reaction_type, COUNT(*) as count
+                    FROM reactions
+                    WHERE post_id IN ({post_placeholders})
+                    GROUP BY post_id, reaction_type
+                """, tuple(post_ids))
+                for r in c.fetchall():
+                    pid = r['post_id'] if hasattr(r, 'keys') else r[0]
+                    rtype = r['reaction_type'] if hasattr(r, 'keys') else r[1]
+                    cnt = r['count'] if hasattr(r, 'keys') else r[2]
+                    if pid not in reaction_map:
+                        reaction_map[pid] = {}
+                    reaction_map[pid][rtype] = cnt
+                
+                # Get current user's reactions
+                c.execute(f"""
+                    SELECT post_id, reaction_type
+                    FROM reactions
+                    WHERE post_id IN ({post_placeholders}) AND username = {ph}
+                """, tuple(post_ids) + (username,))
+                for r in c.fetchall():
+                    pid = r['post_id'] if hasattr(r, 'keys') else r[0]
+                    rtype = r['reaction_type'] if hasattr(r, 'keys') else r[1]
+                    user_reaction_map[pid] = rtype
+            
+            # 4. Batch fetch reply counts
+            reply_count_map = {}  # {post_id: count}
+            if post_ids:
+                c.execute(f"""
+                    SELECT post_id, COUNT(*) as cnt
+                    FROM replies
+                    WHERE post_id IN ({post_placeholders})
+                    GROUP BY post_id
+                """, tuple(post_ids))
+                for r in c.fetchall():
+                    pid = r['post_id'] if hasattr(r, 'keys') else r[0]
+                    cnt = r['cnt'] if hasattr(r, 'keys') else r[1]
+                    reply_count_map[pid] = cnt
+            
+            # 5. Batch fetch profile pictures
+            pp_map = {}  # {username: profile_picture}
+            if post_usernames:
+                user_placeholders = ','.join([ph for _ in post_usernames])
+                c.execute(f"""
+                    SELECT username, profile_picture
+                    FROM user_profiles
+                    WHERE username IN ({user_placeholders})
+                """, tuple(post_usernames))
+                for r in c.fetchall():
+                    uname = r['username'] if hasattr(r, 'keys') else r[0]
+                    pp = r['profile_picture'] if hasattr(r, 'keys') else r[1]
+                    pp_map[uname] = pp
+            
+            # 6. Batch fetch polls for these posts
+            poll_map = {}  # {post_id: poll_obj}
+            if post_ids:
+                c.execute(f"""
+                    SELECT * FROM polls
+                    WHERE post_id IN ({post_placeholders}) AND is_active = 1
+                """, tuple(post_ids))
+                poll_rows = c.fetchall()
+                
+                poll_ids = []
+                poll_post_map = {}  # {poll_id: post_id}
+                for pr in poll_rows:
+                    poll_id = pr['id'] if hasattr(pr, 'keys') else pr[0]
+                    post_id = pr['post_id'] if hasattr(pr, 'keys') else pr[1]
+                    poll_ids.append(poll_id)
+                    poll_post_map[poll_id] = post_id
+                    poll_map[post_id] = dict(pr) if hasattr(pr, 'keys') else {
+                        'id': poll_id,
+                        'post_id': post_id,
+                        'question': pr[2] if len(pr) > 2 else '',
+                        'is_active': pr[3] if len(pr) > 3 else 1,
+                        'single_vote': pr[4] if len(pr) > 4 else 1,
+                        'expires_at': pr[5] if len(pr) > 5 else None,
+                    }
+                    poll_map[post_id]['options'] = []
+                
+                if poll_ids:
+                    poll_placeholders = ','.join([ph for _ in poll_ids])
+                    
+                    # Get all poll options
+                    c.execute(f"""
+                        SELECT * FROM poll_options
+                        WHERE poll_id IN ({poll_placeholders})
+                        ORDER BY poll_id, id
+                    """, tuple(poll_ids))
+                    option_rows = c.fetchall()
+                    
+                    option_ids = []
+                    option_poll_map = {}  # {option_id: poll_id}
+                    for opt in option_rows:
+                        opt_id = opt['id'] if hasattr(opt, 'keys') else opt[0]
+                        poll_id = opt['poll_id'] if hasattr(opt, 'keys') else opt[1]
+                        option_ids.append(opt_id)
+                        option_poll_map[opt_id] = poll_id
+                        post_id = poll_post_map.get(poll_id)
+                        if post_id and post_id in poll_map:
+                            opt_dict = dict(opt) if hasattr(opt, 'keys') else {
+                                'id': opt_id,
+                                'poll_id': poll_id,
+                                'option_text': opt[2] if len(opt) > 2 else '',
+                            }
+                            opt_dict['text'] = opt_dict.get('option_text', '')
+                            opt_dict['votes'] = 0
+                            opt_dict['user_voted'] = False
+                            poll_map[post_id]['options'].append(opt_dict)
+                    
+                    if option_ids:
+                        opt_placeholders = ','.join([ph for _ in option_ids])
+                        
+                        # Get vote counts per option
+                        c.execute(f"""
+                            SELECT option_id, COUNT(*) as count
+                            FROM poll_votes
+                            WHERE option_id IN ({opt_placeholders})
+                            GROUP BY option_id
+                        """, tuple(option_ids))
+                        for vc in c.fetchall():
+                            opt_id = vc['option_id'] if hasattr(vc, 'keys') else vc[0]
+                            cnt = vc['count'] if hasattr(vc, 'keys') else vc[1]
+                            poll_id = option_poll_map.get(opt_id)
+                            post_id = poll_post_map.get(poll_id) if poll_id else None
+                            if post_id and post_id in poll_map:
+                                for opt in poll_map[post_id]['options']:
+                                    if opt['id'] == opt_id:
+                                        opt['votes'] = cnt
+                                        break
+                        
+                        # Get user's votes
+                        c.execute(f"""
+                            SELECT option_id
+                            FROM poll_votes
+                            WHERE option_id IN ({opt_placeholders}) AND username = {ph}
+                        """, tuple(option_ids) + (username,))
+                        user_voted_options = set()
+                        for uv in c.fetchall():
+                            opt_id = uv['option_id'] if hasattr(uv, 'keys') else uv[0]
+                            user_voted_options.add(opt_id)
+                        
+                        # Mark user's votes and calculate totals
+                        for post_id, poll in poll_map.items():
+                            total = 0
+                            user_vote = None
+                            for opt in poll.get('options', []):
+                                total += opt.get('votes', 0)
+                                if opt['id'] in user_voted_options:
+                                    opt['user_voted'] = True
+                                    user_vote = opt['id']
+                            poll['total_votes'] = total
+                            poll['user_vote'] = user_vote
+            
+            # 7. Build final posts list
             posts = []
-
-            # Lazy profile picture cache to avoid repeated lookups
-            pp_cache: dict[str, str|None] = {}
-            def get_profile_picture(u: str|None):
-                if not u:
-                    return None
-                if u in pp_cache:
-                    return pp_cache[u]
-                try:
-                    c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (u,))
-                    rpp = c.fetchone()
-                    val = None
-                    if rpp:
-                        try:
-                            val = rpp['profile_picture'] if 'profile_picture' in rpp.keys() else rpp[0]
-                        except Exception:
-                            try:
-                                val = rpp[0]
-                            except Exception:
-                                val = None
-                    pp_cache[u] = val
-                    return val
-                except Exception:
-                    pp_cache[u] = None
-                    return None
-
-            # Optionally map community names for display
-            name_map = {}
-            for cid in community_ids:
-                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (cid,))
-                nm = c.fetchone()
-                if nm:
-                    name_map[cid] = nm['name'] if hasattr(nm, 'keys') else nm[0]
-
-            from datetime import datetime, timedelta
-            cutoff = datetime.now() - timedelta(hours=48)
-
-            def parse_dt(created_at_val, timestamp_val):
-                candidates = []
-                if created_at_val:
-                    candidates.append(created_at_val)
-                if timestamp_val:
-                    candidates.append(timestamp_val)
-                for val in candidates:
-                    # If numeric epoch string
-                    try:
-                        sval = str(val).strip()
-                        # Treat MySQL zero datetime as invalid
-                        if sval.startswith('0000-00-00'):
-                            continue
-                        if sval.isdigit() and len(sval) >= 10:
-                            epoch = int(sval[:10])
-                            return datetime.fromtimestamp(epoch)
-                    except Exception:
-                        pass
-                    # Try fromisoformat
-                    try:
-                        dt = datetime.fromisoformat(str(val).replace('Z', '+00:00'))
-                        return dt
-                    except Exception:
-                        pass
-                    # Try various common formats
-                    for fmt in (
-                        '%Y-%m-%d %H:%M:%S',
-                        '%Y-%m-%d %H:%M',
-                        '%d-%m-%Y %H:%M:%S',
-                        '%d-%m-%Y %H:%M',
-                        '%m.%d.%y %H:%M',
-                        '%Y-%m-%dT%H:%M:%S',
-                        '%Y-%m-%dT%H:%M:%S.%f',
-                        '%Y-%m-%dT%H:%M:%SZ',
-                        '%Y-%m-%dT%H:%M:%S.%fZ',
-                    ):
-                        try:
-                            return datetime.strptime(str(val), fmt)
-                        except Exception:
-                            continue
-                return None
-
-            sample_logged = 0
             for row in rows:
                 if hasattr(row, 'keys'):
                     pid = row['id']
-                    dt = parse_dt(row.get('created_at'), row.get('timestamp'))
-                    if sample_logged < 5:
-                        logger.info(f"Group feed row id={pid}, raw_created_at={row.get('created_at')}, raw_timestamp={row.get('timestamp')}, parsed={dt}")
-                        sample_logged += 1
                     uname = row.get('username')
-                    # Post reaction counts
-                    try:
-                        c.execute("""
-                            SELECT reaction_type, COUNT(*) as count
-                            FROM reactions
-                            WHERE post_id = ?
-                            GROUP BY reaction_type
-                        """, (pid,))
-                        rc = c.fetchall()
-                        reaction_counts = {r['reaction_type']: r['count'] for r in rc}
-                    except Exception:
-                        reaction_counts = {}
-                    # Current user's reaction
-                    try:
-                        c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (pid, username))
-                        urr = c.fetchone()
-                        user_reaction_val = urr['reaction_type'] if urr else None
-                    except Exception:
-                        user_reaction_val = None
-                    # Replies count
-                    try:
-                        c.execute("SELECT COUNT(*) as cnt FROM replies WHERE post_id = ?", (pid,))
-                        rr = c.fetchone()
-                        replies_count_val = rr['cnt'] if hasattr(rr, 'keys') else (rr[0] if rr else 0)
-                    except Exception:
-                        replies_count_val = 0
-                    
-                    # Poll (if active)
-                    poll_obj = None
-                    try:
-                        c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (pid,))
-                        poll_raw = c.fetchone()
-                        if poll_raw:
-                            poll = dict(poll_raw)
-                            c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
-                            options = [dict(o) for o in c.fetchall()]
-                            
-                            # Calculate vote counts for each option
-                            for opt in options:
-                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ?", (poll['id'], opt['id']))
-                                vote_count = c.fetchone()
-                                opt['votes'] = vote_count['count'] if vote_count else 0
-                                # Rename option_text to text for frontend compatibility
-                                opt['text'] = opt.get('option_text', '')
-                                # Check if current user voted on this specific option
-                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ? AND username = ?", (poll['id'], opt['id'], username))
-                                user_vote_check = c.fetchone()
-                                opt['user_voted'] = (user_vote_check['count'] if user_vote_check else 0) > 0
-                            
-                            poll['options'] = options
-                            # Current user's vote (for single vote polls - keeps first one found)
-                            c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
-                            uv = c.fetchone()
-                            poll['user_vote'] = uv['option_id'] if uv else None
-                            poll['total_votes'] = sum(opt.get('votes', 0) for opt in options)
-                            poll_obj = poll
-                    except Exception:
-                        pass
-                    
+                    cid = row.get('community_id')
                     post_obj = {
                         'id': pid,
                         'username': uname,
                         'content': row.get('content'),
-                        'community_id': row.get('community_id'),
-                        'community_name': name_map.get(row.get('community_id')),
+                        'community_id': cid,
+                        'community_name': name_map.get(cid),
                         'created_at': row.get('created_at') or row.get('timestamp'),
                         'image_path': row.get('image_path'),
                         'video_path': row.get('video_path'),
                         'audio_path': row.get('audio_path'),
                         'audio_summary': row.get('audio_summary'),
-                        'profile_picture': get_profile_picture(uname),
-                        'reactions': reaction_counts,
-                        'user_reaction': user_reaction_val,
-                        'replies_count': replies_count_val,
-                        'poll': poll_obj
+                        'profile_picture': pp_map.get(uname),
+                        'reactions': reaction_map.get(pid, {}),
+                        'user_reaction': user_reaction_map.get(pid),
+                        'replies_count': reply_count_map.get(pid, 0),
+                        'poll': poll_map.get(pid)
                     }
-                    # Include posts missing a parsable datetime as a fallback
-                    if (dt is None) or (dt >= cutoff):
-                        posts.append(post_obj)
                 else:
-                    pid, uname, content, cid, created_at_val, timestamp_val, image_path, *rest = row
-                    video_path_val = None
-                    if rest:
-                        video_path_val = rest[0]
-                    dt = parse_dt(created_at_val, timestamp_val)
-                    if sample_logged < 5:
-                        logger.info(f"Group feed row id={pid}, raw_created_at={created_at_val}, raw_timestamp={timestamp_val}, parsed={dt}")
-                        sample_logged += 1
-                    # Post reaction counts
-                    try:
-                        c.execute("""
-                            SELECT reaction_type, COUNT(*) as count
-                            FROM reactions
-                            WHERE post_id = ?
-                            GROUP BY reaction_type
-                        """, (pid,))
-                        rc = c.fetchall()
-                        reaction_counts = {r['reaction_type']: r['count'] for r in rc}
-                    except Exception:
-                        reaction_counts = {}
-                    # Current user's reaction
-                    try:
-                        c.execute("SELECT reaction_type FROM reactions WHERE post_id = ? AND username = ?", (pid, username))
-                        urr = c.fetchone()
-                        user_reaction_val = urr['reaction_type'] if urr else None
-                    except Exception:
-                        user_reaction_val = None
-                    # Replies count
-                    try:
-                        c.execute("SELECT COUNT(*) as cnt FROM replies WHERE post_id = ?", (pid,))
-                        rr = c.fetchone()
-                        replies_count_val = rr['cnt'] if hasattr(rr, 'keys') else (rr[0] if rr else 0)
-                    except Exception:
-                        replies_count_val = 0
-                    
-                    # Poll (if active)
-                    poll_obj = None
-                    try:
-                        c.execute("SELECT * FROM polls WHERE post_id = ? AND is_active = 1", (pid,))
-                        poll_raw = c.fetchone()
-                        if poll_raw:
-                            poll = dict(poll_raw)
-                            c.execute("SELECT * FROM poll_options WHERE poll_id = ? ORDER BY id", (poll['id'],))
-                            options = [dict(o) for o in c.fetchall()]
-                            
-                            # Calculate vote counts for each option
-                            for opt in options:
-                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ?", (poll['id'], opt['id']))
-                                vote_count = c.fetchone()
-                                opt['votes'] = vote_count['count'] if vote_count else 0
-                                # Rename option_text to text for frontend compatibility
-                                opt['text'] = opt.get('option_text', '')
-                                # Check if current user voted on this specific option
-                                c.execute("SELECT COUNT(*) as count FROM poll_votes WHERE poll_id = ? AND option_id = ? AND username = ?", (poll['id'], opt['id'], username))
-                                user_vote_check = c.fetchone()
-                                opt['user_voted'] = (user_vote_check['count'] if user_vote_check else 0) > 0
-                            
-                            poll['options'] = options
-                            # Current user's vote (for single vote polls - keeps first one found)
-                            c.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND username = ?", (poll['id'], username))
-                            uv = c.fetchone()
-                            poll['user_vote'] = uv['option_id'] if uv else None
-                            poll['total_votes'] = sum(opt.get('votes', 0) for opt in options)
-                            poll_obj = poll
-                    except Exception:
-                        pass
-                    
+                    pid, uname, content, cid, created_at, timestamp, image_path, video_path, audio_path, audio_summary = row[:10]
                     post_obj = {
                         'id': pid,
                         'username': uname,
                         'content': content,
                         'community_id': cid,
                         'community_name': name_map.get(cid),
-                        'created_at': created_at_val or timestamp_val,
+                        'created_at': created_at or timestamp,
                         'image_path': image_path,
-                        'video_path': video_path_val,
-                        'audio_path': None,
-                        'audio_summary': None,
-                        'profile_picture': get_profile_picture(uname),
-                        'reactions': reaction_counts,
-                        'user_reaction': user_reaction_val,
-                        'replies_count': replies_count_val,
-                        'poll': poll_obj
+                        'video_path': video_path,
+                        'audio_path': audio_path,
+                        'audio_summary': audio_summary,
+                        'profile_picture': pp_map.get(uname),
+                        'reactions': reaction_map.get(pid, {}),
+                        'user_reaction': user_reaction_map.get(pid),
+                        'replies_count': reply_count_map.get(pid, 0),
+                        'poll': poll_map.get(pid)
                     }
-                    # Include posts missing a parsable datetime as a fallback
-                    if (dt is None) or (dt >= cutoff):
-                        posts.append(post_obj)
-
-            # Sort by parsed datetime desc
-            def sort_key(p):
-                for fmt in (
-                    '%Y-%m-%d %H:%M:%S',
-                    '%Y-%m-%d %H:%M',
-                    '%d-%m-%Y %H:%M:%S',
-                    '%d-%m-%Y %H:%M',
-                    '%m.%d.%y %H:%M',
-                    '%Y-%m-%dT%H:%M:%S',
-                    '%Y-%m-%dT%H:%M:%S.%f',
-                    '%Y-%m-%dT%H:%M:%SZ',
-                    '%Y-%m-%dT%H:%M:%S.%fZ',
-                ):
-                    try:
-                        return datetime.strptime(str(p.get('created_at') or ''), fmt)
-                    except Exception:
-                        continue
-                return datetime.min
-            posts.sort(key=sort_key, reverse=True)
-            logger.info(f"Community group feed: returning {len(posts)} posts after 48h filter")
-
-            return jsonify({'success': True, 'posts': posts})
+                posts.append(post_obj)
+            
+            logger.info(f"Community group feed (optimized): parent_id={parent_id}, returning {len(posts)} posts")
+            return jsonify({'success': True, 'posts': posts, 'username': username})
+            
     except Exception as e:
         logger.error(f"Error in community_group_feed for parent {parent_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({'success': False, 'error': str(e)}), 500
-    except Exception as e:
-        logger.error(f"Error serving React asset {filename}: {str(e)}")
-        abort(404)
 
 @app.route('/api/community_photos')
 @login_required
