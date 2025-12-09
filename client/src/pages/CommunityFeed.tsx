@@ -2109,7 +2109,12 @@ export default function CommunityFeed() {
                     e.stopPropagation()
                     setShowLocationInput(true)
                   }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm cursor-pointer"
+                  onTouchEnd={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setShowLocationInput(true)
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm cursor-pointer active:bg-white/15"
                 >
                   <i className="fa-solid fa-location-dot" />
                   <span>Add Location</span>
