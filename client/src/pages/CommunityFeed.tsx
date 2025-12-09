@@ -2107,13 +2107,16 @@ export default function CommunityFeed() {
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
+                    console.log('Add Location button clicked!')
                     setShowLocationInput(true)
                   }}
                   onTouchEnd={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
+                    console.log('Add Location button touched!')
                     setShowLocationInput(true)
                   }}
+                  style={{ touchAction: 'manipulation', pointerEvents: 'auto', zIndex: 10 }}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm cursor-pointer active:bg-white/15"
                 >
                   <i className="fa-solid fa-location-dot" />
