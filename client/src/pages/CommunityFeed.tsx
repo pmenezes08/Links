@@ -155,6 +155,8 @@ export default function CommunityFeed() {
   const [storyEditorActiveIndex, setStoryEditorActiveIndex] = useState(0)
   const [storyEditorDragging, setStoryEditorDragging] = useState<{ type: 'text' | 'location'; id?: string } | null>(null)
   const storyEditorMediaRef = useRef<HTMLDivElement | null>(null)
+  const [showLocationInput, setShowLocationInput] = useState(false)
+  const [locationInputValue, setLocationInputValue] = useState('')
   // const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
   // const [storyEditorNewText, setStoryEditorNewText] = useState('')
 
@@ -2105,10 +2107,7 @@ export default function CommunityFeed() {
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    const name = window.prompt('Enter location name:')
-                    if (name?.trim()) {
-                      setLocationData({ name: name.trim(), x: 50, y: 85 })
-                    }
+                    setShowLocationInput(true)
                   }}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm cursor-pointer"
                 >
@@ -2124,6 +2123,58 @@ export default function CommunityFeed() {
               </p>
             )}
           </div>
+
+          {/* Location Input Modal */}
+          {showLocationInput && (
+            <div className="fixed inset-0 z-[1200] bg-black/80 backdrop-blur-sm flex items-center justify-center px-4">
+              <div className="bg-[#1a1a1a] rounded-2xl border border-white/10 p-6 w-full max-w-sm">
+                <h3 className="text-white font-semibold text-lg mb-4">Add Location</h3>
+                <input
+                  type="text"
+                  value={locationInputValue}
+                  onChange={(e) => setLocationInputValue(e.target.value)}
+                  placeholder="Enter location name..."
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/20 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50 mb-4"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && locationInputValue.trim()) {
+                      setLocationData({ name: locationInputValue.trim(), x: 50, y: 85 })
+                      setLocationInputValue('')
+                      setShowLocationInput(false)
+                    }
+                    if (e.key === 'Escape') {
+                      setLocationInputValue('')
+                      setShowLocationInput(false)
+                    }
+                  }}
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setLocationInputValue('')
+                      setShowLocationInput(false)
+                    }}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (locationInputValue.trim()) {
+                        setLocationData({ name: locationInputValue.trim(), x: 50, y: 85 })
+                        setLocationInputValue('')
+                        setShowLocationInput(false)
+                      }
+                    }}
+                    disabled={!locationInputValue.trim()}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
