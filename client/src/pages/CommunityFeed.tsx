@@ -1963,28 +1963,28 @@ export default function CommunityFeed() {
       {storyEditorOpen && storyEditorFiles.length > 0 && (
         <div className="fixed top-14 bottom-0 left-0 right-0 z-[1100] bg-black flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-4 border-b border-white/10 bg-black">
+          <div className="flex items-center justify-between px-4 py-4 border-b border-white/10 bg-black min-h-[64px] flex-shrink-0 mb-4">
             <button
               onClick={handleStoryEditorClose}
-              className="text-white/80 hover:text-white flex items-center gap-2"
+              className="text-white hover:text-white flex items-center gap-2 text-base font-medium"
             >
-              <i className="fa-solid fa-xmark text-lg" />
-              <span className="text-sm">Cancel</span>
+              <i className="fa-solid fa-xmark text-xl" />
+              <span>Cancel</span>
             </button>
-            <div className="text-white font-semibold">
+            <div className="text-white font-semibold text-base">
               {storyEditorFiles.length > 1 ? `${storyEditorActiveIndex + 1} / ${storyEditorFiles.length}` : 'New Story'}
             </div>
             <button
               onClick={handleStoryEditorPublish}
               disabled={storyUploading}
-              className="px-5 py-2 rounded-full bg-[#4db6ac] text-black font-bold text-base hover:brightness-110 disabled:opacity-50 shadow-lg"
+              className="px-6 py-2.5 rounded-full bg-[#4db6ac] text-black font-bold text-base hover:brightness-110 disabled:opacity-50 shadow-lg"
             >
               {storyUploading ? 'Posting...' : 'Share'}
             </button>
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex-1 flex items-center justify-center p-6 pt-16 overflow-hidden">
+          <div className="flex-1 flex items-center justify-center p-6 pt-8 overflow-hidden">
             <div 
               ref={storyEditorMediaRef}
               className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
