@@ -2171,7 +2171,7 @@ export default function CommunityFeed() {
           
           {/* Thumbnails strip for multiple files */}
           {storyEditorFiles.length > 1 && (
-            <div className="px-4 border-t border-white/10 bg-black" style={{ flexShrink: 0, paddingTop: '6px', paddingBottom: '2px', paddingLeft: '16px', paddingRight: '16px' }}>
+            <div className="px-4 border-t border-white/10 bg-black absolute left-0 right-0" style={{ bottom: keyboardHeight ? `calc(${keyboardHeight}px + 130px)` : '130px', zIndex: 9998, paddingTop: '6px', paddingBottom: '2px' }}>
               <div className="flex gap-2 overflow-x-auto no-scrollbar" style={{ margin: 0, padding: 0 }}>
                 {storyEditorFiles.map((file, idx) => (
                   <div key={idx} className="relative flex-shrink-0">
