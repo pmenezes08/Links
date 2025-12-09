@@ -1,5 +1,6 @@
 import { type ChangeEvent, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
+import { Keyboard } from '@capacitor/keyboard'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime } from '../utils/time'
@@ -157,6 +158,7 @@ export default function CommunityFeed() {
   const storyEditorMediaRef = useRef<HTMLDivElement | null>(null)
   const [showLocationInput, setShowLocationInput] = useState(false)
   const [locationInputValue, setLocationInputValue] = useState('')
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
   // const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
   // const [storyEditorNewText, setStoryEditorNewText] = useState('')
 
@@ -829,9 +831,32 @@ export default function CommunityFeed() {
     setStoryEditorDragging(null)
     setShowLocationInput(false)
     setLocationInputValue('')
+    setKeyboardHeight(0)
     // setStoryEditorAddingText(false)
     // setStoryEditorNewText('')
   }, [storyEditorFiles])
+
+  // Keyboard event listeners for story editor
+  useEffect(() => {
+    if (!storyEditorOpen) return
+
+    const handleKeyboardShow = (info: any) => {
+      setKeyboardHeight(info.keyboardHeight || 0)
+    }
+
+    const handleKeyboardHide = () => {
+      setKeyboardHeight(0)
+    }
+
+    Keyboard.addListener('keyboardWillShow', handleKeyboardShow)
+    Keyboard.addListener('keyboardDidShow', handleKeyboardShow)
+    Keyboard.addListener('keyboardWillHide', handleKeyboardHide)
+    Keyboard.addListener('keyboardDidHide', handleKeyboardHide)
+
+    return () => {
+      Keyboard.removeAllListeners()
+    }
+  }, [storyEditorOpen])
 
   const handleStoryEditorPublish = useCallback(async () => {
     if (!community_id || storyEditorFiles.length === 0) return
@@ -1985,7 +2010,7 @@ export default function CommunityFeed() {
             bottom: 0,
             display: 'flex', 
             flexDirection: 'column',
-            paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+            paddingBottom: keyboardHeight ? `${keyboardHeight}px` : 'env(safe-area-inset-bottom, 0px)'
           }}
         >
           {/* Header - compact and black */}
@@ -2017,14 +2042,14 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '48px', paddingBottom: '200px' }}>
+          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '48px', paddingBottom: keyboardHeight ? '20px' : '200px' }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
               style={{ 
                 touchAction: storyEditorDragging ? 'none' : 'auto', 
                 pointerEvents: 'auto',
-                width: 'min(100%, 400px)',
+                width: 'min(100%, 500px)',
                 maxHeight: '100%'
               }}
             >
