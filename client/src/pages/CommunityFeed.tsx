@@ -2128,6 +2128,16 @@ export default function CommunityFeed() {
                     {storyEditorFiles[storyEditorActiveIndex].locationData!.name}
                   </span>
                   <button
+                    className="absolute -top-2 -right-8 w-6 h-6 rounded-full bg-black/80 border border-white/30 text-white/90 text-xs flex items-center justify-center hover:bg-black hover:border-white/50 transition-colors"
+                    onClick={(e) => { 
+                      e.stopPropagation()
+                      setLocationInputValue(storyEditorFiles[storyEditorActiveIndex].locationData!.name)
+                      setShowLocationInput(true)
+                    }}
+                  >
+                    <i className="fa-solid fa-pencil" />
+                  </button>
+                  <button
                     className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-black/80 border border-white/30 text-white/90 text-xs flex items-center justify-center hover:bg-black hover:border-white/50 transition-colors"
                     onClick={(e) => { e.stopPropagation(); setLocationData(null); }}
                   >
