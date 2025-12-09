@@ -817,11 +817,17 @@ export default function CommunityFeed() {
       return
     }
     
-    setStoryEditorFiles(validFiles)
-    setStoryEditorActiveIndex(0)
-    setStoryEditorOpen(true)
+    // If editor is already open, append to existing files
+    if (storyEditorOpen) {
+      setStoryEditorFiles(prev => [...prev, ...validFiles])
+      setStoryEditorActiveIndex(storyEditorFiles.length) // Switch to first newly added file
+    } else {
+      setStoryEditorFiles(validFiles)
+      setStoryEditorActiveIndex(0)
+      setStoryEditorOpen(true)
+    }
     event.target.value = ''
-  }, [community_id])
+  }, [community_id, storyEditorOpen, storyEditorFiles.length])
 
   const handleStoryEditorClose = useCallback(() => {
     // Revoke object URLs to free memory
@@ -2204,6 +2210,12 @@ export default function CommunityFeed() {
                     </button>
                   </div>
                 ))}
+                <button
+                  onClick={() => storyFileInputRef.current?.click()}
+                  className="w-16 h-16 rounded-lg flex-shrink-0 border-2 border-dashed border-white/30 bg-white/5 hover:bg-white/10 flex items-center justify-center"
+                >
+                  <i className="fa-solid fa-plus text-white/70 text-xl" />
+                </button>
               </div>
             </div>
           )}
