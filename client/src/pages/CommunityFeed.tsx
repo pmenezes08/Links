@@ -1980,7 +1980,7 @@ export default function CommunityFeed() {
 
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
-        <div className="fixed inset-0 z-[1100] bg-black flex flex-col" style={{ top: 'var(--app-header-height, 56px)' }}>
+        <div className="fixed inset-0 z-[1100] bg-black flex flex-col" style={{ top: 'var(--app-header-height, 56px)', WebkitOverflowScrolling: 'touch', touchAction: 'manipulation' }}>
           {/* Header - compact and black */}
           <div 
             className="w-full bg-black px-4 py-2 flex items-center justify-between flex-shrink-0 border-b border-white/10"
@@ -2004,7 +2004,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex-1 flex items-center justify-center p-6 pt-16 overflow-hidden" style={{ pointerEvents: 'none' }}>
+          <div className="flex-1 flex items-center justify-center p-6 pt-16 overflow-hidden">
             <div 
               ref={storyEditorMediaRef}
               className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
@@ -2085,7 +2085,7 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 py-3 border-t border-white/10 space-y-3 bg-red-500 fixed bottom-0 left-0 right-0" style={{ pointerEvents: 'auto', zIndex: 9999 }}>
+          <div className="px-4 py-3 border-t border-white/10 space-y-3" style={{ pointerEvents: 'auto', position: 'relative', zIndex: 20 }}>
             {/* Caption input */}
             <div>
               <input
@@ -2106,41 +2106,33 @@ export default function CommunityFeed() {
             {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
               <div className="flex items-center gap-3" style={{ position: 'relative', zIndex: 30 }}>
                 {/* Add location button */}
-                <div
-                  onClick={() => {
-                    alert('BUTTON CLICKED!')
-                    console.log('Add Location DIV clicked!')
-                    setShowLocationInput(true)
-                  }}
-                  onPointerDown={() => console.log('Add Location DIV pointer down!')}
-                  onPointerUp={() => console.log('Add Location DIV pointer up!')}
+                <button
+                  type="button"
                   onTouchStart={(e) => {
-                    console.log('Add Location DIV touch start!')
                     e.stopPropagation()
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    console.log('Touch start at button position:', rect.top, rect.left)
                   }}
                   onTouchEnd={(e) => {
-                    console.log('Add Location DIV touch end!')
                     e.preventDefault()
                     e.stopPropagation()
-                    alert('TOUCH END FIRED!')
                     setShowLocationInput(true)
                   }}
-                  role="button"
-                  tabIndex={0}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setShowLocationInput(true)
+                  }}
                   style={{ 
                     touchAction: 'manipulation', 
-                    pointerEvents: 'auto', 
-                    position: 'relative', 
-                    zIndex: 50,
-                    WebkitTapHighlightColor: 'rgba(0,0,0,0)',
+                    WebkitTapHighlightColor: 'rgba(75, 182, 172, 0.3)',
                     WebkitUserSelect: 'none',
-                    userSelect: 'none'
+                    cursor: 'pointer'
                   }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500 border border-white/10 text-black font-bold hover:bg-green-400 text-sm cursor-pointer active:bg-green-600"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm active:bg-white/15"
                 >
                   <i className="fa-solid fa-location-dot" />
                   <span>Add Location</span>
-                </div>
+                </button>
               </div>
             )}
             
