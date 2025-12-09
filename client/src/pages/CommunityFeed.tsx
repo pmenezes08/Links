@@ -1963,7 +1963,7 @@ export default function CommunityFeed() {
       {storyEditorOpen && storyEditorFiles.length > 0 && (
         <div className="fixed inset-0 z-[140] bg-black flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
+          <div className="flex items-center justify-between px-4 py-6 border-b border-white/10">
             <button
               onClick={handleStoryEditorClose}
               className="text-white/80 hover:text-white flex items-center gap-2"
