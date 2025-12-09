@@ -1961,9 +1961,9 @@ export default function CommunityFeed() {
 
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
-        <div className="fixed top-14 bottom-0 left-0 right-0 z-[1100] bg-black flex flex-col">
+        <div className="fixed top-0 bottom-0 left-0 right-0 z-[1100] bg-black flex flex-col" style={{ paddingTop: '72px' }}>
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-4 border-b border-white/10 bg-black min-h-[64px] flex-shrink-0 mb-4">
+          <div className="flex items-center justify-between px-4 py-5 border-b-2 border-white/20 bg-[#1a1a1a] min-h-[72px] flex-shrink-0 mb-6">
             <button
               onClick={handleStoryEditorClose}
               className="text-white hover:text-white flex items-center gap-2 text-base font-medium"
