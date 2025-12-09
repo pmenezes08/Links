@@ -918,8 +918,8 @@ export default function CommunityFeed() {
     const container = storyEditorMediaRef.current
     if (!container) return
     
+    const overlay = e.currentTarget as HTMLElement
     const rect = container.getBoundingClientRect()
-    let rafId: number | null = null
     let lastX = 0
     let lastY = 0
     
@@ -929,41 +929,32 @@ export default function CommunityFeed() {
       lastX = Math.max(0, Math.min(100, x))
       lastY = Math.max(0, Math.min(100, y))
       
-      // Cancel previous frame if not yet executed
-      if (rafId !== null) return
-      
-      // Schedule update for next frame
-      rafId = requestAnimationFrame(() => {
-        rafId = null
-        
-        if (type === 'location') {
-          setStoryEditorFiles(prev => prev.map((f, i) => 
-            i === storyEditorActiveIndex && f.locationData
-              ? { ...f, locationData: { ...f.locationData, x: lastX, y: lastY } }
-              : f
-          ))
-        } else if (type === 'text' && id) {
-          setStoryEditorFiles(prev => prev.map((f, i) => 
-            i === storyEditorActiveIndex
-              ? { ...f, textOverlays: f.textOverlays.map(t => t.id === id ? { ...t, x: lastX, y: lastY } : t) }
-              : f
-          ))
-        }
-      })
+      // Update DOM directly for smooth dragging
+      overlay.style.left = `${lastX}%`
+      overlay.style.top = `${lastY}%`
     }
     
     const upHandler = () => {
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId)
-        rafId = null
-      }
       setStoryEditorDragging(null)
+      
+      // Update React state only when drag ends
+      if (type === 'location') {
+        setStoryEditorFiles(prev => prev.map((f, i) => 
+          i === storyEditorActiveIndex && f.locationData
+            ? { ...f, locationData: { ...f.locationData, x: lastX, y: lastY } }
+            : f
+        ))
+      } else if (type === 'text' && id) {
+        setStoryEditorFiles(prev => prev.map((f, i) => 
+          i === storyEditorActiveIndex
+            ? { ...f, textOverlays: f.textOverlays.map(t => t.id === id ? { ...t, x: lastX, y: lastY } : t) }
+            : f
+        ))
+      }
+      
       window.removeEventListener('pointermove', moveHandler)
       window.removeEventListener('pointerup', upHandler)
       window.removeEventListener('pointercancel', upHandler)
-      window.removeEventListener('touchmove', moveHandler as any)
-      window.removeEventListener('touchend', upHandler)
-      window.removeEventListener('touchcancel', upHandler)
     }
     
     window.addEventListener('pointermove', moveHandler)
@@ -1987,7 +1978,7 @@ export default function CommunityFeed() {
 
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
-        <div className="fixed inset-0 z-[1100] bg-black flex flex-col" style={{ top: 'var(--app-header-height, 56px)', WebkitOverflowScrolling: 'touch', touchAction: 'manipulation' }}>
+        <div className="fixed inset-0 z-[1100] bg-black" style={{ top: 'var(--app-header-height, 56px)', display: 'flex', flexDirection: 'column', height: 'auto' }}>
           {/* Header - compact and black */}
           <div 
             className="w-full bg-black px-4 py-2 flex items-center justify-between flex-shrink-0 border-b border-white/10"
@@ -1998,20 +1989,8 @@ export default function CommunityFeed() {
             >
               Cancel
             </button>
-            <div className="flex items-center gap-3">
-              <div className="text-white font-semibold text-sm">
-                {storyEditorFiles.length > 1 ? `${storyEditorActiveIndex + 1} / ${storyEditorFiles.length}` : 'New Story'}
-              </div>
-              {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
-                <button
-                  type="button"
-                  onClick={() => setShowLocationInput(true)}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 border border-white/20 text-white/90 hover:bg-white/15 text-xs"
-                >
-                  <i className="fa-solid fa-location-dot" />
-                  <span>Location</span>
-                </button>
-              )}
+            <div className="text-white font-semibold text-sm">
+              {storyEditorFiles.length > 1 ? `${storyEditorActiveIndex + 1} / ${storyEditorFiles.length}` : 'New Story'}
             </div>
             <button
               onClick={handleStoryEditorPublish}
@@ -2023,7 +2002,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex-1 flex items-center justify-center overflow-hidden">
+          <div className="flex items-center justify-center overflow-hidden" style={{ flex: '1 1 0%', minHeight: 0 }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
@@ -2052,7 +2031,7 @@ export default function CommunityFeed() {
               {/* Location overlay */}
               {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
                 <div
-                  className="absolute cursor-move select-none bg-black/70 backdrop-blur-md px-4 py-2 rounded-md border-2 border-[#4db6ac]/50 shadow-lg"
+                  className="absolute cursor-move select-none bg-black/70 backdrop-blur-md px-4 py-2 rounded-md shadow-lg"
                   style={{
                     left: `${storyEditorFiles[storyEditorActiveIndex].locationData!.x}%`,
                     top: `${storyEditorFiles[storyEditorActiveIndex].locationData!.y}%`,
@@ -2104,7 +2083,7 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 py-3 border-t border-white/10 space-y-3" style={{ pointerEvents: 'auto', position: 'relative', zIndex: 20 }}>
+          <div className="px-4 py-3 border-t border-white/10 space-y-3" style={{ flexShrink: 0 }}>
             {/* Caption input */}
             <div>
               <input
@@ -2116,6 +2095,18 @@ export default function CommunityFeed() {
                 className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
               />
             </div>
+            
+            {/* Location button */}
+            {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+              <button
+                type="button"
+                onClick={() => setShowLocationInput(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm w-full justify-center"
+              >
+                <i className="fa-solid fa-location-dot" />
+                <span>Add Location</span>
+              </button>
+            )}
             
             {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
               <p className="text-xs text-white/40 text-center">
