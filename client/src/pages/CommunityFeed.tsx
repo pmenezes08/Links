@@ -2011,7 +2011,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex items-center justify-center overflow-hidden" style={{ flex: '1 1 0%', minHeight: 0, paddingBottom: 'calc(180px + env(safe-area-inset-bottom, 0px))' }}>
+          <div className="flex items-center justify-center overflow-hidden" style={{ flex: '1 1 0%', minHeight: 0, paddingBottom: 'calc(180px + env(safe-area-inset-bottom, 0px))', pointerEvents: 'none' }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
@@ -2092,7 +2092,7 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 border-t border-white/10 space-y-3 absolute bottom-0 left-0 right-0 bg-black" style={{ zIndex: 100, paddingTop: '12px', paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))' }}>
+          <div className="px-4 border-t border-white/10 space-y-3 absolute bottom-0 left-0 right-0 bg-black" style={{ zIndex: 9999, paddingTop: '12px', paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
             {/* Caption input */}
             <div>
               <input
@@ -2109,8 +2109,22 @@ export default function CommunityFeed() {
             {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
               <button
                 type="button"
-                onClick={() => setShowLocationInput(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm w-full justify-center"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowLocationInput(true)
+                }}
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setShowLocationInput(true)
+                }}
+                style={{ 
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'rgba(75, 182, 172, 0.2)',
+                  position: 'relative',
+                  zIndex: 1
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm w-full justify-center active:bg-white/15"
               >
                 <i className="fa-solid fa-location-dot" />
                 <span>Add Location</span>
