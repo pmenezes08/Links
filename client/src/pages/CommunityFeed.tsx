@@ -2102,7 +2102,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '24px', paddingBottom: keyboardHeight ? '20px' : (storyEditorFiles.length > 1 ? '210px' : '120px') }}>
+          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '24px', paddingBottom: keyboardHeight ? '20px' : (storyEditorFiles.length > 1 ? '195px' : '120px') }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
@@ -2171,7 +2171,7 @@ export default function CommunityFeed() {
           
           {/* Thumbnails strip for multiple files */}
           {storyEditorFiles.length > 1 && (
-            <div className="px-4 border-b border-white/10 bg-black absolute left-0 right-0" style={{ bottom: keyboardHeight ? `calc(${keyboardHeight}px + 130px)` : '130px', zIndex: 9998, paddingTop: '6px', paddingBottom: '6px' }}>
+            <div className="px-4 bg-black absolute left-0 right-0" style={{ bottom: keyboardHeight ? `calc(${keyboardHeight}px + 118px)` : '118px', zIndex: 9998, paddingTop: '6px', paddingBottom: '6px' }}>
               <div className="flex gap-2 overflow-x-auto no-scrollbar" style={{ margin: 0, padding: 0 }}>
                 {storyEditorFiles.map((file, idx) => (
                   <div key={idx} className="relative flex-shrink-0">
