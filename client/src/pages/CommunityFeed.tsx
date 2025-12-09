@@ -2085,7 +2085,7 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 py-3 border-t border-white/10 space-y-3 bg-red-500" style={{ pointerEvents: 'auto', position: 'relative', zIndex: 20 }}>
+          <div className="px-4 py-3 border-t border-white/10 space-y-3 bg-red-500 fixed bottom-0 left-0 right-0" style={{ pointerEvents: 'auto', zIndex: 9999 }}>
             {/* Caption input */}
             <div>
               <input
