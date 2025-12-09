@@ -20129,10 +20129,12 @@ def create_community_story():
                     (community_id, username)
                 )
                 members = [row[0] for row in c.fetchall()]
+                logger.info(f"Sending story notifications to {len(members)} members: {members}")
                 
                 # Create notifications and send push for each member
                 story_count = len(created_stories)
                 message = f"{username} shared {story_count} new {'story' if story_count == 1 else 'stories'} in {comm_name}"
+                logger.info(f"Story notification message: {message}")
                 
                 for member_username in members:
                     try:
