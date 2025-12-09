@@ -2085,7 +2085,7 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 py-3 border-t border-white/10 space-y-3">
+          <div className="px-4 py-3 border-t border-white/10 space-y-3" style={{ pointerEvents: 'auto', position: 'relative', zIndex: 20 }}>
             {/* Caption input */}
             <div>
               <input
@@ -2100,23 +2100,15 @@ export default function CommunityFeed() {
             
             {/* Tool buttons */}
             {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3" style={{ position: 'relative', zIndex: 30 }}>
                 {/* Add location button */}
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
+                  onClick={() => {
                     console.log('Add Location button clicked!')
                     setShowLocationInput(true)
                   }}
-                  onTouchEnd={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    console.log('Add Location button touched!')
-                    setShowLocationInput(true)
-                  }}
-                  style={{ touchAction: 'manipulation', pointerEvents: 'auto', zIndex: 10 }}
+                  style={{ touchAction: 'auto', pointerEvents: 'auto', position: 'relative', zIndex: 50 }}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm cursor-pointer active:bg-white/15"
                 >
                   <i className="fa-solid fa-location-dot" />
