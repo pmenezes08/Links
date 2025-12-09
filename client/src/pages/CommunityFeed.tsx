@@ -905,6 +905,27 @@ export default function CommunityFeed() {
     ))
   }, [storyEditorActiveIndex])
 
+  const removeStoryEditorFile = useCallback((index: number) => {
+    setStoryEditorFiles(prev => {
+      const newFiles = prev.filter((_, i) => i !== index)
+      // If removed the last file, close the editor
+      if (newFiles.length === 0) {
+        URL.revokeObjectURL(prev[index].preview)
+        setStoryEditorOpen(false)
+        return []
+      }
+      // Revoke the URL for the removed file
+      URL.revokeObjectURL(prev[index].preview)
+      // Adjust active index if needed
+      if (index === storyEditorActiveIndex) {
+        setStoryEditorActiveIndex(Math.max(0, index - 1))
+      } else if (index < storyEditorActiveIndex) {
+        setStoryEditorActiveIndex(storyEditorActiveIndex - 1)
+      }
+      return newFiles
+    })
+  }, [storyEditorActiveIndex])
+
   // Text overlay functions removed - feature disabled
   /* const addTextOverlay = useCallback(() => {
     if (!storyEditorNewText.trim()) return
@@ -2081,7 +2102,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '48px', paddingBottom: keyboardHeight ? '20px' : (storyEditorFiles.length > 1 ? '100px' : '120px') }}>
+          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '48px', paddingBottom: keyboardHeight ? '20px' : (storyEditorFiles.length > 1 ? '200px' : '120px') }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
@@ -2150,27 +2171,38 @@ export default function CommunityFeed() {
           
           {/* Thumbnails strip for multiple files */}
           {storyEditorFiles.length > 1 && (
-            <div className="px-4 py-2 border-t border-white/10 bg-black" style={{ flexShrink: 0 }}>
+            <div className="px-4 py-3 border-t border-white/10 bg-black" style={{ flexShrink: 0 }}>
               <div className="flex gap-2 overflow-x-auto no-scrollbar">
                 {storyEditorFiles.map((file, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setStoryEditorActiveIndex(idx)}
-                    className={`relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border-2 ${
-                      idx === storyEditorActiveIndex ? 'border-[#4db6ac]' : 'border-white/20'
-                    }`}
-                  >
-                    {file.type === 'video' ? (
-                      <video src={file.preview} className="w-full h-full object-cover" muted />
-                    ) : (
-                      <img src={file.preview} alt="" className="w-full h-full object-cover" />
-                    )}
-                    {file.type === 'video' && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                        <i className="fa-solid fa-play text-white text-xs" />
-                      </div>
-                    )}
-                  </button>
+                  <div key={idx} className="relative flex-shrink-0">
+                    <button
+                      onClick={() => setStoryEditorActiveIndex(idx)}
+                      className={`relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border-2 ${
+                        idx === storyEditorActiveIndex ? 'border-[#4db6ac]' : 'border-white/20'
+                      }`}
+                    >
+                      {file.type === 'video' ? (
+                        <video src={file.preview} className="w-full h-full object-cover" muted />
+                      ) : (
+                        <img src={file.preview} alt="" className="w-full h-full object-cover" />
+                      )}
+                      {file.type === 'video' && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+                          <i className="fa-solid fa-play text-white text-xs" />
+                        </div>
+                      )}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        removeStoryEditorFile(idx)
+                      }}
+                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center hover:bg-red-600 border border-black"
+                      style={{ zIndex: 10 }}
+                    >
+                      <i className="fa-solid fa-xmark" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>
