@@ -1781,7 +1781,7 @@ export default function CommunityFeed() {
                 </div>
               </div>
               <div
-                className="group relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center mt-6"
+                className="group relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center mt-8"
                 onPointerDown={handleStoryPointerDown}
                 onPointerUp={handleStoryPointerUp}
                 onPointerLeave={handleStoryPointerCancel}
