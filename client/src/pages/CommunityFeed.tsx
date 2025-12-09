@@ -1961,25 +1961,25 @@ export default function CommunityFeed() {
 
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
-        <div className="fixed top-0 bottom-0 left-0 right-0 z-[1100] bg-black flex flex-col" style={{ paddingTop: '56px' }}>
-          {/* Header - MUCH taller for visibility */}
+        <div className="fixed top-0 bottom-0 left-0 right-0 z-[1100] bg-black flex flex-col" style={{ paddingTop: '68px' }}>
+          {/* Header - sleek and properly positioned */}
           <div 
-            className="w-full bg-[#1a1a1a] px-6 flex items-center justify-between flex-shrink-0 border-b-4 border-[#4db6ac]/50"
-            style={{ height: '140px' }}
+            className="w-full bg-[#1a1a1a] px-4 flex items-center justify-between flex-shrink-0 border-b border-white/20"
+            style={{ height: '56px' }}
           >
             <button
               onClick={handleStoryEditorClose}
-              className="text-white font-bold text-2xl px-6 py-4 bg-white/10 hover:bg-white/20 rounded-xl transition-colors"
+              className="text-white font-medium text-sm"
             >
               Cancel
             </button>
-            <div className="text-white font-bold text-2xl">
+            <div className="text-white font-semibold text-sm">
               {storyEditorFiles.length > 1 ? `${storyEditorActiveIndex + 1} / ${storyEditorFiles.length}` : 'New Story'}
             </div>
             <button
               onClick={handleStoryEditorPublish}
               disabled={storyUploading}
-              className="px-8 py-4 rounded-full bg-[#4db6ac] text-black font-bold text-2xl hover:brightness-110 disabled:opacity-50 shadow-2xl"
+              className="px-5 py-2 rounded-full bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50"
             >
               {storyUploading ? 'Posting...' : 'Share'}
             </button>
