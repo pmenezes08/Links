@@ -1961,7 +1961,7 @@ export default function CommunityFeed() {
 
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
-        <div className="fixed inset-0 z-[140] bg-black flex flex-col">
+        <div className="fixed inset-0 z-[1100] bg-black flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-6 border-b border-white/10 min-h-[80px] mb-6">
             <button
