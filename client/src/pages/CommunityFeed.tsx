@@ -1961,7 +1961,7 @@ export default function CommunityFeed() {
 
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
-        <div className="fixed left-0 right-0 bottom-0 z-[1100] bg-black flex flex-col" style={{ top: '56px' }}>
+        <div className="fixed inset-0 z-[1100] bg-black flex flex-col" style={{ top: 'var(--app-header-height, 56px)' }}>
           {/* Header - sleek and properly positioned */}
           <div 
             className="w-full bg-[#1a1a1a] px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-white/20"
