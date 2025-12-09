@@ -2128,7 +2128,7 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 border-t border-white/10 space-y-3 absolute bottom-0 left-0 right-0 bg-black" style={{ zIndex: 9999, paddingTop: '12px', paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
+          <div className="px-4 border-t border-white/10 space-y-3 absolute left-0 right-0 bg-black" style={{ bottom: keyboardHeight ? `${keyboardHeight}px` : '0', zIndex: 9999, paddingTop: '12px', paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
             {/* Caption input */}
             <div>
               <input
