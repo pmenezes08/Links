@@ -2085,7 +2085,7 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 py-3 border-t border-white/10 space-y-3" style={{ pointerEvents: 'auto', position: 'relative', zIndex: 20 }}>
+          <div className="px-4 py-3 border-t border-white/10 space-y-3 bg-red-500" style={{ pointerEvents: 'auto', position: 'relative', zIndex: 20 }}>
             {/* Caption input */}
             <div>
               <input
@@ -2108,6 +2108,7 @@ export default function CommunityFeed() {
                 {/* Add location button */}
                 <div
                   onClick={() => {
+                    alert('BUTTON CLICKED!')
                     console.log('Add Location DIV clicked!')
                     setShowLocationInput(true)
                   }}
@@ -2118,7 +2119,7 @@ export default function CommunityFeed() {
                   role="button"
                   tabIndex={0}
                   style={{ touchAction: 'auto', pointerEvents: 'auto', position: 'relative', zIndex: 50 }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm cursor-pointer active:bg-white/15"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500 border border-white/10 text-black font-bold hover:bg-green-400 text-sm cursor-pointer active:bg-green-600"
                 >
                   <i className="fa-solid fa-location-dot" />
                   <span>Add Location</span>
