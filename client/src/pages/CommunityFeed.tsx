@@ -1962,24 +1962,24 @@ export default function CommunityFeed() {
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
         <div className="fixed top-0 bottom-0 left-0 right-0 z-[1100] bg-black flex flex-col" style={{ paddingTop: '56px' }}>
-          {/* Header - significantly taller */}
+          {/* Header - MUCH taller for visibility */}
           <div 
-            className="w-full bg-[#1a1a1a] px-6 flex items-center justify-between flex-shrink-0 border-b-2 border-white/30"
-            style={{ height: '88px' }}
+            className="w-full bg-[#1a1a1a] px-6 flex items-center justify-between flex-shrink-0 border-b-4 border-[#4db6ac]/50"
+            style={{ height: '140px' }}
           >
             <button
               onClick={handleStoryEditorClose}
-              className="text-white font-semibold text-lg px-4 py-3 hover:bg-white/10 rounded-lg transition-colors"
+              className="text-white font-bold text-2xl px-6 py-4 bg-white/10 hover:bg-white/20 rounded-xl transition-colors"
             >
               Cancel
             </button>
-            <div className="text-white font-bold text-lg">
+            <div className="text-white font-bold text-2xl">
               {storyEditorFiles.length > 1 ? `${storyEditorActiveIndex + 1} / ${storyEditorFiles.length}` : 'New Story'}
             </div>
             <button
               onClick={handleStoryEditorPublish}
               disabled={storyUploading}
-              className="px-6 py-3 rounded-full bg-[#4db6ac] text-black font-bold text-lg hover:brightness-110 disabled:opacity-50 shadow-lg"
+              className="px-8 py-4 rounded-full bg-[#4db6ac] text-black font-bold text-2xl hover:brightness-110 disabled:opacity-50 shadow-2xl"
             >
               {storyUploading ? 'Posting...' : 'Share'}
             </button>
