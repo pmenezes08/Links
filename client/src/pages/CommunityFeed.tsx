@@ -1990,7 +1990,7 @@ export default function CommunityFeed() {
         >
           {/* Header - compact and black */}
           <div 
-            className="w-full bg-black px-4 py-2 flex items-center justify-between flex-shrink-0 border-b border-white/10"
+            className="w-full bg-black px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-white/10"
           >
             <button
               onClick={handleStoryEditorClose}
@@ -1998,20 +1998,15 @@ export default function CommunityFeed() {
             >
               Cancel
             </button>
-            <div className="flex items-center gap-2">
-              <div className="text-white font-semibold text-sm">
-                {storyEditorFiles.length > 1 ? `${storyEditorActiveIndex + 1} / ${storyEditorFiles.length}` : 'New Story'}
-              </div>
-              {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
-                <button
-                  type="button"
-                  onClick={() => setShowLocationInput(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-white/20 text-white/90 hover:bg-white/15 text-xs"
-                >
-                  <i className="fa-solid fa-location-dot text-sm" />
-                </button>
-              )}
-            </div>
+            {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+              <button
+                type="button"
+                onClick={() => setShowLocationInput(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white/90 hover:bg-white/15 text-xs"
+              >
+                <i className="fa-solid fa-location-dot text-sm" />
+              </button>
+            )}
             <button
               onClick={handleStoryEditorPublish}
               disabled={storyUploading}
@@ -2022,7 +2017,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex items-center justify-center overflow-hidden" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none' }}>
+          <div className="flex items-center justify-center overflow-hidden p-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none' }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
