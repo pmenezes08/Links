@@ -2102,7 +2102,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '48px', paddingBottom: keyboardHeight ? '20px' : (storyEditorFiles.length > 1 ? '200px' : '120px') }}>
+          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '48px', paddingBottom: keyboardHeight ? '20px' : (storyEditorFiles.length > 1 ? '140px' : '120px') }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
@@ -2171,7 +2171,7 @@ export default function CommunityFeed() {
           
           {/* Thumbnails strip for multiple files */}
           {storyEditorFiles.length > 1 && (
-            <div className="px-4 py-3 border-t border-white/10 bg-black" style={{ flexShrink: 0 }}>
+            <div className="px-4 py-2 border-t border-white/10 bg-black" style={{ flexShrink: 0, marginBottom: 'env(safe-area-inset-bottom, 0px)' }}>
               <div className="flex gap-2 overflow-x-auto no-scrollbar">
                 {storyEditorFiles.map((file, idx) => (
                   <div key={idx} className="relative flex-shrink-0">
@@ -2197,7 +2197,7 @@ export default function CommunityFeed() {
                         e.stopPropagation()
                         removeStoryEditorFile(idx)
                       }}
-                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center hover:bg-red-600 border border-black"
+                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-black/80 text-white/90 text-xs flex items-center justify-center hover:bg-black border border-white/30"
                       style={{ zIndex: 10 }}
                     >
                       <i className="fa-solid fa-xmark" />
