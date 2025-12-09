@@ -2114,11 +2114,28 @@ export default function CommunityFeed() {
                   }}
                   onPointerDown={() => console.log('Add Location DIV pointer down!')}
                   onPointerUp={() => console.log('Add Location DIV pointer up!')}
-                  onTouchStart={() => console.log('Add Location DIV touch start!')}
-                  onTouchEnd={() => console.log('Add Location DIV touch end!')}
+                  onTouchStart={(e) => {
+                    console.log('Add Location DIV touch start!')
+                    e.stopPropagation()
+                  }}
+                  onTouchEnd={(e) => {
+                    console.log('Add Location DIV touch end!')
+                    e.preventDefault()
+                    e.stopPropagation()
+                    alert('TOUCH END FIRED!')
+                    setShowLocationInput(true)
+                  }}
                   role="button"
                   tabIndex={0}
-                  style={{ touchAction: 'auto', pointerEvents: 'auto', position: 'relative', zIndex: 50 }}
+                  style={{ 
+                    touchAction: 'manipulation', 
+                    pointerEvents: 'auto', 
+                    position: 'relative', 
+                    zIndex: 50,
+                    WebkitTapHighlightColor: 'rgba(0,0,0,0)',
+                    WebkitUserSelect: 'none',
+                    userSelect: 'none'
+                  }}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500 border border-white/10 text-black font-bold hover:bg-green-400 text-sm cursor-pointer active:bg-green-600"
                 >
                   <i className="fa-solid fa-location-dot" />
