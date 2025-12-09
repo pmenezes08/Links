@@ -2101,13 +2101,16 @@ export default function CommunityFeed() {
               <div className="flex items-center gap-3">
                 {/* Add location button */}
                 <button
-                  onClick={() => {
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
                     const name = window.prompt('Enter location name:')
                     if (name?.trim()) {
                       setLocationData({ name: name.trim(), x: 50, y: 85 })
                     }
                   }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm cursor-pointer"
                 >
                   <i className="fa-solid fa-location-dot" />
                   <span>Add Location</span>
