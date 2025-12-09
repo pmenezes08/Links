@@ -1961,9 +1961,9 @@ export default function CommunityFeed() {
 
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
-        <div className="fixed inset-0 z-[1100] bg-black flex flex-col">
+        <div className="fixed inset-0 z-[1100] bg-black flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-6 border-b border-white/10 min-h-[80px] mb-6">
+          <div className="flex items-center justify-between px-4 py-6 border-b border-white/10 bg-black">
             <button
               onClick={handleStoryEditorClose}
               className="text-white/80 hover:text-white flex items-center gap-2"
@@ -1984,7 +1984,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex-1 flex items-center justify-center p-6 pt-8 overflow-hidden">
+          <div className="flex-1 flex items-center justify-center p-6 pt-12 overflow-hidden">
             <div 
               ref={storyEditorMediaRef}
               className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
