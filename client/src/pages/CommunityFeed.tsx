@@ -2033,7 +2033,7 @@ export default function CommunityFeed() {
               {/* Location overlay */}
               {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
                 <div
-                  className="absolute cursor-move select-none bg-black/70 backdrop-blur-md px-4 py-2 rounded-2xl border-2 border-[#4db6ac]/50 shadow-lg"
+                  className="absolute cursor-move select-none bg-black/70 backdrop-blur-md px-4 py-2 rounded-md border-2 border-[#4db6ac]/50 shadow-lg"
                   style={{
                     left: `${storyEditorFiles[storyEditorActiveIndex].locationData!.x}%`,
                     top: `${storyEditorFiles[storyEditorActiveIndex].locationData!.y}%`,
