@@ -2042,7 +2042,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '48px', paddingBottom: keyboardHeight ? '20px' : '200px' }}>
+          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '48px', paddingBottom: keyboardHeight ? '20px' : '120px' }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
@@ -2128,7 +2128,7 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 border-t border-white/10 space-y-3 absolute left-0 right-0 bg-black" style={{ bottom: keyboardHeight ? `${keyboardHeight}px` : '0', zIndex: 9999, paddingTop: '12px', paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
+          <div className="px-4 border-t border-white/10 space-y-4 absolute left-0 right-0 bg-black" style={{ bottom: keyboardHeight ? `${keyboardHeight}px` : '0', zIndex: 9999, paddingTop: '20px', paddingBottom: 'max(20px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
             {/* Caption input */}
             <div>
               <input
