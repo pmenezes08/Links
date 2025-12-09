@@ -827,6 +827,8 @@ export default function CommunityFeed() {
     setStoryEditorOpen(false)
     setStoryEditorActiveIndex(0)
     setStoryEditorDragging(null)
+    setShowLocationInput(false)
+    setLocationInputValue('')
     // setStoryEditorAddingText(false)
     // setStoryEditorNewText('')
   }, [storyEditorFiles])
@@ -958,10 +960,15 @@ export default function CommunityFeed() {
       setStoryEditorDragging(null)
       window.removeEventListener('pointermove', moveHandler)
       window.removeEventListener('pointerup', upHandler)
+      window.removeEventListener('pointercancel', upHandler)
+      window.removeEventListener('touchmove', moveHandler as any)
+      window.removeEventListener('touchend', upHandler)
+      window.removeEventListener('touchcancel', upHandler)
     }
     
     window.addEventListener('pointermove', moveHandler)
     window.addEventListener('pointerup', upHandler)
+    window.addEventListener('pointercancel', upHandler)
   }, [storyEditorActiveIndex])
 
   const markStoryAsViewed = useCallback((storyId: number) => {
