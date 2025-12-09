@@ -2004,11 +2004,11 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex-1 flex items-center justify-center p-6 pt-16 overflow-hidden">
+          <div className="flex-1 flex items-center justify-center p-6 pt-16 overflow-hidden" style={{ pointerEvents: 'none' }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
-              style={{ touchAction: storyEditorDragging ? 'none' : 'auto' }}
+              style={{ touchAction: storyEditorDragging ? 'none' : 'auto', pointerEvents: 'auto' }}
             >
               {storyEditorFiles[storyEditorActiveIndex]?.type === 'video' ? (
                 <video
