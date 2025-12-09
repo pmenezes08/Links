@@ -2171,7 +2171,7 @@ export default function CommunityFeed() {
           
           {/* Thumbnails strip for multiple files */}
           {storyEditorFiles.length > 1 && (
-            <div className="px-4 py-2 border-t border-white/10 bg-black" style={{ flexShrink: 0, marginBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+            <div className="px-4 py-2 border-t border-white/10 bg-black" style={{ flexShrink: 0, marginBottom: '180px' }}>
               <div className="flex gap-2 overflow-x-auto no-scrollbar">
                 {storyEditorFiles.map((file, idx) => (
                   <div key={idx} className="relative flex-shrink-0">
