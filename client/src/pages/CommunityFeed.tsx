@@ -1904,7 +1904,7 @@ export default function CommunityFeed() {
                       autoPlay
                       playsInline
                       muted
-                      controls
+                      loop
                       preload="auto"
                       onLoadedData={(e) => {
                         const container = e.currentTarget.parentElement
