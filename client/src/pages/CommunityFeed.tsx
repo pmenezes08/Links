@@ -155,8 +155,8 @@ export default function CommunityFeed() {
   const [storyEditorActiveIndex, setStoryEditorActiveIndex] = useState(0)
   const [storyEditorDragging, setStoryEditorDragging] = useState<{ type: 'text' | 'location'; id?: string } | null>(null)
   const storyEditorMediaRef = useRef<HTMLDivElement | null>(null)
-  const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
-  const [storyEditorNewText, setStoryEditorNewText] = useState('')
+  // const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
+  // const [storyEditorNewText, setStoryEditorNewText] = useState('')
 
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
@@ -825,8 +825,8 @@ export default function CommunityFeed() {
     setStoryEditorOpen(false)
     setStoryEditorActiveIndex(0)
     setStoryEditorDragging(null)
-    setStoryEditorAddingText(false)
-    setStoryEditorNewText('')
+    // setStoryEditorAddingText(false)
+    // setStoryEditorNewText('')
   }, [storyEditorFiles])
 
   const handleStoryEditorPublish = useCallback(async () => {
@@ -875,7 +875,8 @@ export default function CommunityFeed() {
     ))
   }, [storyEditorActiveIndex])
 
-  const addTextOverlay = useCallback(() => {
+  // Text overlay functions removed - feature disabled
+  /* const addTextOverlay = useCallback(() => {
     if (!storyEditorNewText.trim()) return
     const newOverlay: TextOverlay = {
       id: `text-${Date.now()}`,
@@ -900,7 +901,7 @@ export default function CommunityFeed() {
     updateActiveStoryEditorFile({
       textOverlays: current.textOverlays.filter(t => t.id !== id)
     })
-  }, [storyEditorFiles, storyEditorActiveIndex, updateActiveStoryEditorFile])
+  }, [storyEditorFiles, storyEditorActiveIndex, updateActiveStoryEditorFile]) */
 
   const setLocationData = useCallback((location: LocationData | null) => {
     updateActiveStoryEditorFile({ locationData: location })
@@ -2024,37 +2025,13 @@ export default function CommunityFeed() {
                 />
               )}
               
-              {/* Text overlays */}
-              {storyEditorFiles[storyEditorActiveIndex]?.textOverlays.map(overlay => (
-                <div
-                  key={overlay.id}
-                  className="absolute cursor-move select-none"
-                  style={{
-                    left: `${overlay.x}%`,
-                    top: `${overlay.y}%`,
-                    transform: `translate(-50%, -50%) rotate(${overlay.rotation}deg)`,
-                    fontSize: `${overlay.fontSize}px`,
-                    color: overlay.color,
-                    fontFamily: overlay.fontFamily,
-                    textShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                    WebkitTextStroke: '0.5px rgba(0,0,0,0.3)',
-                  }}
-                  onPointerDown={(e) => handleOverlayDrag(e, 'text', overlay.id)}
-                >
-                  <span className="whitespace-nowrap">{overlay.text}</span>
-                  <button
-                    className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center"
-                    onClick={(e) => { e.stopPropagation(); removeTextOverlay(overlay.id); }}
-                  >
-                    <i className="fa-solid fa-xmark" />
-                  </button>
-                </div>
-              ))}
+              {/* Text overlays - feature disabled */}
+              {/* {storyEditorFiles[storyEditorActiveIndex]?.textOverlays.map(overlay => (...))} */}
               
               {/* Location overlay */}
               {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
                 <div
-                  className="absolute cursor-move select-none bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/20"
+                  className="absolute cursor-move select-none bg-black/70 backdrop-blur-md px-4 py-2 rounded-2xl border-2 border-[#4db6ac]/50 shadow-lg"
                   style={{
                     left: `${storyEditorFiles[storyEditorActiveIndex].locationData!.x}%`,
                     top: `${storyEditorFiles[storyEditorActiveIndex].locationData!.y}%`,
@@ -2062,12 +2039,12 @@ export default function CommunityFeed() {
                   }}
                   onPointerDown={(e) => handleOverlayDrag(e, 'location')}
                 >
-                  <span className="text-white text-sm flex items-center gap-1.5">
-                    <i className="fa-solid fa-location-dot text-[#4db6ac]" />
+                  <span className="text-white font-medium text-sm flex items-center gap-2">
+                    <i className="fa-solid fa-location-dot text-[#4db6ac] text-base" />
                     {storyEditorFiles[storyEditorActiveIndex].locationData!.name}
                   </span>
                   <button
-                    className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center"
+                    className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-black/80 border border-white/30 text-white/90 text-xs flex items-center justify-center hover:bg-black hover:border-white/50 transition-colors"
                     onClick={(e) => { e.stopPropagation(); setLocationData(null); }}
                   >
                     <i className="fa-solid fa-xmark" />
@@ -2120,18 +2097,9 @@ export default function CommunityFeed() {
             </div>
             
             {/* Tool buttons */}
-            <div className="flex items-center gap-3">
-              {/* Add text button */}
-              <button
-                onClick={() => setStoryEditorAddingText(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm"
-              >
-                <i className="fa-solid fa-font" />
-                <span>Add Text</span>
-              </button>
-              
-              {/* Add location button */}
-              {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+            {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+              <div className="flex items-center gap-3">
+                {/* Add location button */}
                 <button
                   onClick={() => {
                     const name = window.prompt('Enter location name:')
@@ -2144,43 +2112,14 @@ export default function CommunityFeed() {
                   <i className="fa-solid fa-location-dot" />
                   <span>Add Location</span>
                 </button>
-              )}
-            </div>
-            
-            {/* Add text input */}
-            {storyEditorAddingText && (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={storyEditorNewText}
-                  onChange={(e) => setStoryEditorNewText(e.target.value)}
-                  placeholder="Enter text..."
-                  autoFocus
-                  className="flex-1 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') addTextOverlay()
-                    if (e.key === 'Escape') { setStoryEditorAddingText(false); setStoryEditorNewText(''); }
-                  }}
-                />
-                <button
-                  onClick={addTextOverlay}
-                  disabled={!storyEditorNewText.trim()}
-                  className="px-4 py-2 rounded-xl bg-[#4db6ac] text-black font-medium text-sm disabled:opacity-50"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => { setStoryEditorAddingText(false); setStoryEditorNewText(''); }}
-                  className="px-3 py-2 rounded-xl bg-white/10 text-white/70 text-sm"
-                >
-                  <i className="fa-solid fa-xmark" />
-                </button>
               </div>
             )}
             
-            <p className="text-xs text-white/40 text-center">
-              Drag text and location to reposition them on the image
-            </p>
+            {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+              <p className="text-xs text-white/40 text-center">
+                Drag location to reposition it on the image
+              </p>
+            )}
           </div>
         </div>
       )}
