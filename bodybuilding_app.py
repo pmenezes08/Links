@@ -20108,6 +20108,54 @@ def create_community_story():
         
         invalidate_community_cache(community_id)
         
+        # Send notifications to community members
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                
+                # Get community name
+                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
+                comm_row = c.fetchone()
+                comm_name = comm_row[0] if comm_row else 'Community'
+                
+                # Get all members of this community (excluding the story creator)
+                c.execute(
+                    f"""
+                    SELECT DISTINCT username 
+                    FROM community_members 
+                    WHERE community_id = {ph} AND LOWER(username) != LOWER({ph})
+                    """,
+                    (community_id, username)
+                )
+                members = [row[0] for row in c.fetchall()]
+                
+                # Create notifications and send push for each member
+                story_count = len(created_stories)
+                message = f"{username} shared {story_count} new {'story' if story_count == 1 else 'stories'} in {comm_name}"
+                
+                for member_username in members:
+                    try:
+                        create_notification(
+                            member_username,
+                            username,
+                            'new_story',
+                            None,
+                            community_id,
+                            message,
+                            f'/community/{community_id}'
+                        )
+                        send_native_push(
+                            member_username,
+                            f"New Story in {comm_name}",
+                            message,
+                            {'community_id': community_id, 'type': 'new_story'}
+                        )
+                    except Exception as e:
+                        logger.error(f"Error sending story notification to {member_username}: {e}")
+        except Exception as e:
+            logger.error(f"Error sending story notifications: {e}")
+        
         # Return single story for backwards compatibility, plus array of all
         return jsonify({
             'success': True,
