@@ -2022,7 +2022,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex items-center justify-center overflow-hidden" style={{ flex: '1 1 0%', minHeight: 0, paddingBottom: 'calc(180px + env(safe-area-inset-bottom, 0px))', pointerEvents: 'none' }}>
+          <div className="flex items-center justify-center overflow-hidden" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none' }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
