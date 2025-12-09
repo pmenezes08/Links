@@ -1781,7 +1781,7 @@ export default function CommunityFeed() {
                 </div>
               </div>
               <div
-                className="group relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center mt-8"
+                className="group relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center mt-6"
                 onPointerDown={handleStoryPointerDown}
                 onPointerUp={handleStoryPointerUp}
                 onPointerLeave={handleStoryPointerCancel}
@@ -1984,7 +1984,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex-1 flex items-center justify-center p-6 pt-8 overflow-hidden">
+          <div className="flex-1 flex items-center justify-center p-6 pt-16 overflow-hidden">
             <div 
               ref={storyEditorMediaRef}
               className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
