@@ -2081,7 +2081,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '48px', paddingBottom: keyboardHeight ? '20px' : '120px' }}>
+          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '48px', paddingBottom: keyboardHeight ? '20px' : (storyEditorFiles.length > 1 ? '100px' : '120px') }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
@@ -2150,14 +2150,14 @@ export default function CommunityFeed() {
           
           {/* Thumbnails strip for multiple files */}
           {storyEditorFiles.length > 1 && (
-            <div className="px-4 py-2 border-t border-white/10">
+            <div className="px-4 py-2 border-t border-white/10 bg-black" style={{ flexShrink: 0 }}>
               <div className="flex gap-2 overflow-x-auto no-scrollbar">
                 {storyEditorFiles.map((file, idx) => (
                   <button
                     key={idx}
                     onClick={() => setStoryEditorActiveIndex(idx)}
-                    className={`relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border-2 ${
-                      idx === storyEditorActiveIndex ? 'border-[#4db6ac]' : 'border-transparent'
+                    className={`relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border-2 ${
+                      idx === storyEditorActiveIndex ? 'border-[#4db6ac]' : 'border-white/20'
                     }`}
                   >
                     {file.type === 'video' ? (
