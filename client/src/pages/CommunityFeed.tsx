@@ -1961,11 +1961,10 @@ export default function CommunityFeed() {
 
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
-        <div className="fixed top-0 bottom-0 left-0 right-0 z-[1100] bg-black flex flex-col" style={{ paddingTop: '68px' }}>
+        <div className="fixed left-0 right-0 bottom-0 z-[1100] bg-black flex flex-col" style={{ top: '56px' }}>
           {/* Header - sleek and properly positioned */}
           <div 
-            className="w-full bg-[#1a1a1a] px-4 flex items-center justify-between flex-shrink-0 border-b border-white/20"
-            style={{ height: '56px' }}
+            className="w-full bg-[#1a1a1a] px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-white/20"
           >
             <button
               onClick={handleStoryEditorClose}
