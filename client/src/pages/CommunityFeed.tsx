@@ -914,28 +914,44 @@ export default function CommunityFeed() {
     if (!container) return
     
     const rect = container.getBoundingClientRect()
+    let rafId: number | null = null
+    let lastX = 0
+    let lastY = 0
+    
     const moveHandler = (moveE: PointerEvent) => {
       const x = ((moveE.clientX - rect.left) / rect.width) * 100
       const y = ((moveE.clientY - rect.top) / rect.height) * 100
-      const clampedX = Math.max(0, Math.min(100, x))
-      const clampedY = Math.max(0, Math.min(100, y))
+      lastX = Math.max(0, Math.min(100, x))
+      lastY = Math.max(0, Math.min(100, y))
       
-      if (type === 'location') {
-        setStoryEditorFiles(prev => prev.map((f, i) => 
-          i === storyEditorActiveIndex && f.locationData
-            ? { ...f, locationData: { ...f.locationData, x: clampedX, y: clampedY } }
-            : f
-        ))
-      } else if (type === 'text' && id) {
-        setStoryEditorFiles(prev => prev.map((f, i) => 
-          i === storyEditorActiveIndex
-            ? { ...f, textOverlays: f.textOverlays.map(t => t.id === id ? { ...t, x: clampedX, y: clampedY } : t) }
-            : f
-        ))
-      }
+      // Cancel previous frame if not yet executed
+      if (rafId !== null) return
+      
+      // Schedule update for next frame
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        
+        if (type === 'location') {
+          setStoryEditorFiles(prev => prev.map((f, i) => 
+            i === storyEditorActiveIndex && f.locationData
+              ? { ...f, locationData: { ...f.locationData, x: lastX, y: lastY } }
+              : f
+          ))
+        } else if (type === 'text' && id) {
+          setStoryEditorFiles(prev => prev.map((f, i) => 
+            i === storyEditorActiveIndex
+              ? { ...f, textOverlays: f.textOverlays.map(t => t.id === id ? { ...t, x: lastX, y: lastY } : t) }
+              : f
+          ))
+        }
+      })
     }
     
     const upHandler = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+        rafId = null
+      }
       setStoryEditorDragging(null)
       window.removeEventListener('pointermove', moveHandler)
       window.removeEventListener('pointerup', upHandler)
