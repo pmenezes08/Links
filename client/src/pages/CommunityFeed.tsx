@@ -1998,8 +1998,19 @@ export default function CommunityFeed() {
             >
               Cancel
             </button>
-            <div className="text-white font-semibold text-sm">
-              {storyEditorFiles.length > 1 ? `${storyEditorActiveIndex + 1} / ${storyEditorFiles.length}` : 'New Story'}
+            <div className="flex items-center gap-2">
+              <div className="text-white font-semibold text-sm">
+                {storyEditorFiles.length > 1 ? `${storyEditorActiveIndex + 1} / ${storyEditorFiles.length}` : 'New Story'}
+              </div>
+              {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+                <button
+                  type="button"
+                  onClick={() => setShowLocationInput(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 border border-white/20 text-white/90 hover:bg-white/15 text-xs"
+                >
+                  <i className="fa-solid fa-location-dot text-sm" />
+                </button>
+              )}
             </div>
             <button
               onClick={handleStoryEditorPublish}
@@ -2104,32 +2115,6 @@ export default function CommunityFeed() {
                 className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
               />
             </div>
-            
-            {/* Location button */}
-            {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setShowLocationInput(true)
-                }}
-                onTouchEnd={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setShowLocationInput(true)
-                }}
-                style={{ 
-                  touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'rgba(75, 182, 172, 0.2)',
-                  position: 'relative',
-                  zIndex: 1
-                }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm w-full justify-center active:bg-white/15"
-              >
-                <i className="fa-solid fa-location-dot" />
-                <span>Add Location</span>
-              </button>
-            )}
             
             {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
               <p className="text-xs text-white/40 text-center">
