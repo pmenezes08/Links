@@ -2091,7 +2091,11 @@ export default function CommunityFeed() {
               <input
                 type="text"
                 value={storyEditorFiles[storyEditorActiveIndex]?.caption || ''}
-                onChange={(e) => updateActiveStoryEditorFile({ caption: e.target.value })}
+                onChange={(e) => {
+                  console.log('Caption input changed!')
+                  updateActiveStoryEditorFile({ caption: e.target.value })
+                }}
+                onFocus={() => console.log('Caption input focused!')}
                 placeholder="Add a caption..."
                 maxLength={500}
                 className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
@@ -2102,18 +2106,23 @@ export default function CommunityFeed() {
             {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
               <div className="flex items-center gap-3" style={{ position: 'relative', zIndex: 30 }}>
                 {/* Add location button */}
-                <button
-                  type="button"
+                <div
                   onClick={() => {
-                    console.log('Add Location button clicked!')
+                    console.log('Add Location DIV clicked!')
                     setShowLocationInput(true)
                   }}
+                  onPointerDown={() => console.log('Add Location DIV pointer down!')}
+                  onPointerUp={() => console.log('Add Location DIV pointer up!')}
+                  onTouchStart={() => console.log('Add Location DIV touch start!')}
+                  onTouchEnd={() => console.log('Add Location DIV touch end!')}
+                  role="button"
+                  tabIndex={0}
                   style={{ touchAction: 'auto', pointerEvents: 'auto', position: 'relative', zIndex: 50 }}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm cursor-pointer active:bg-white/15"
                 >
                   <i className="fa-solid fa-location-dot" />
                   <span>Add Location</span>
-                </button>
+                </div>
               </div>
             )}
             
