@@ -1,6 +1,7 @@
 import { type ChangeEvent, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { Keyboard } from '@capacitor/keyboard'
+import { Geolocation } from '@capacitor/geolocation'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime } from '../utils/time'
@@ -935,6 +936,44 @@ export default function CommunityFeed() {
   const setLocationData = useCallback((location: LocationData | null) => {
     updateActiveStoryEditorFile({ locationData: location })
   }, [updateActiveStoryEditorFile])
+
+  const fetchDeviceLocation = useCallback(async () => {
+    try {
+      // Request permission and get current position
+      const permission = await Geolocation.requestPermissions()
+      if (permission.location !== 'granted') {
+        alert('Location permission is required to add location to your story')
+        return
+      }
+
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000
+      })
+
+      const { latitude, longitude } = position.coords
+
+      // Use reverse geocoding to get location name
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=14`
+      )
+      const data = await response.json()
+
+      // Extract city, town, or village name
+      const locationName = 
+        data.address?.city || 
+        data.address?.town || 
+        data.address?.village || 
+        data.address?.county ||
+        data.display_name?.split(',')[0] ||
+        `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+
+      setLocationData({ name: locationName, x: 50, y: 85 })
+    } catch (error) {
+      console.error('Error fetching location:', error)
+      alert('Could not get your location. Please try again.')
+    }
+  }, [setLocationData])
 
   const handleOverlayDrag = useCallback((e: React.PointerEvent, type: 'text' | 'location', id?: string) => {
     e.preventDefault()
@@ -2026,7 +2065,7 @@ export default function CommunityFeed() {
             {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
               <button
                 type="button"
-                onClick={() => setShowLocationInput(true)}
+                onClick={fetchDeviceLocation}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white/90 hover:bg-white/15 text-xs"
               >
                 <i className="fa-solid fa-location-dot text-sm" />
