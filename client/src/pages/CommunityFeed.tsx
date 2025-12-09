@@ -2171,8 +2171,8 @@ export default function CommunityFeed() {
           
           {/* Thumbnails strip for multiple files */}
           {storyEditorFiles.length > 1 && (
-            <div className="px-4 border-t border-white/10 bg-black" style={{ flexShrink: 0, marginBottom: '180px', paddingTop: '4px', paddingBottom: '4px' }}>
-              <div className="flex gap-2 overflow-x-auto no-scrollbar items-center" style={{ margin: 0 }}>
+            <div className="px-4 border-t border-white/10 bg-black" style={{ flexShrink: 0, marginBottom: '180px', padding: '6px 16px' }}>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar" style={{ margin: 0, padding: 0 }}>
                 {storyEditorFiles.map((file, idx) => (
                   <div key={idx} className="relative flex-shrink-0">
                     <button
