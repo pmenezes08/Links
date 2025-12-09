@@ -1962,21 +1962,24 @@ export default function CommunityFeed() {
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
         <div className="fixed top-0 bottom-0 left-0 right-0 z-[1100] bg-black flex flex-col" style={{ paddingTop: '56px' }}>
-          {/* Header */}
-          <div className="w-full bg-[#1a1a1a] px-4 py-4 flex items-center justify-between flex-shrink-0 border-b border-white/20">
+          {/* Header - significantly taller */}
+          <div 
+            className="w-full bg-[#1a1a1a] px-6 flex items-center justify-between flex-shrink-0 border-b-2 border-white/30"
+            style={{ height: '88px' }}
+          >
             <button
               onClick={handleStoryEditorClose}
-              className="text-white font-semibold text-sm"
+              className="text-white font-semibold text-lg px-4 py-3 hover:bg-white/10 rounded-lg transition-colors"
             >
               Cancel
             </button>
-            <div className="text-white font-semibold text-base">
+            <div className="text-white font-bold text-lg">
               {storyEditorFiles.length > 1 ? `${storyEditorActiveIndex + 1} / ${storyEditorFiles.length}` : 'New Story'}
             </div>
             <button
               onClick={handleStoryEditorPublish}
               disabled={storyUploading}
-              className="px-5 py-2 rounded-full bg-[#4db6ac] text-black font-bold text-sm hover:brightness-110 disabled:opacity-50"
+              className="px-6 py-3 rounded-full bg-[#4db6ac] text-black font-bold text-lg hover:brightness-110 disabled:opacity-50 shadow-lg"
             >
               {storyUploading ? 'Posting...' : 'Share'}
             </button>
