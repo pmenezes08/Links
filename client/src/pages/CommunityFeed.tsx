@@ -1978,7 +1978,16 @@ export default function CommunityFeed() {
 
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
-        <div className="fixed inset-0 z-[1100] bg-black" style={{ top: 'var(--app-header-height, 56px)', display: 'flex', flexDirection: 'column', height: 'auto' }}>
+        <div 
+          className="fixed left-0 right-0 z-[1100] bg-black" 
+          style={{ 
+            top: 'var(--app-header-height, 56px)', 
+            bottom: 0,
+            display: 'flex', 
+            flexDirection: 'column',
+            paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+          }}
+        >
           {/* Header - compact and black */}
           <div 
             className="w-full bg-black px-4 py-2 flex items-center justify-between flex-shrink-0 border-b border-white/10"
@@ -2002,7 +2011,7 @@ export default function CommunityFeed() {
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex items-center justify-center overflow-hidden" style={{ flex: '1 1 0%', minHeight: 0 }}>
+          <div className="flex items-center justify-center overflow-hidden" style={{ flex: '1 1 0%', minHeight: 0, paddingBottom: 'calc(180px + env(safe-area-inset-bottom, 0px))' }}>
             <div 
               ref={storyEditorMediaRef}
               className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
@@ -2083,7 +2092,7 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 py-3 border-t border-white/10 space-y-3 absolute bottom-0 left-0 right-0 bg-black" style={{ zIndex: 100 }}>
+          <div className="px-4 border-t border-white/10 space-y-3 absolute bottom-0 left-0 right-0 bg-black" style={{ zIndex: 100, paddingTop: '12px', paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))' }}>
             {/* Caption input */}
             <div>
               <input
