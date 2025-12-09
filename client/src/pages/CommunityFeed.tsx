@@ -1978,7 +1978,7 @@ export default function CommunityFeed() {
             <button
               onClick={handleStoryEditorPublish}
               disabled={storyUploading}
-              className="px-5 py-2 rounded-full bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50"
+              className="px-4 py-1.5 rounded-xl bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50"
             >
               {storyUploading ? 'Posting...' : 'Share'}
             </button>
