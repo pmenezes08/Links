@@ -2083,7 +2083,7 @@ export default function CommunityFeed() {
           )}
           
           {/* Tools panel */}
-          <div className="px-4 py-3 border-t border-white/10 space-y-3" style={{ flexShrink: 0 }}>
+          <div className="px-4 py-3 border-t border-white/10 space-y-3 absolute bottom-0 left-0 right-0 bg-black" style={{ zIndex: 100 }}>
             {/* Caption input */}
             <div>
               <input
