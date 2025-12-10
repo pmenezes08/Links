@@ -9322,11 +9322,24 @@ def get_messages():
             
             # Clear message notification from notifications table
             try:
+                # First check if there are any message notifications to delete
                 c.execute(
-                    "DELETE FROM notifications WHERE user_id = ? AND from_user = ? AND type = 'message'",
+                    "SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND from_user = ? AND type = 'message'",
                     (username, other_username)
                 )
-                conn.commit()
+                row = c.fetchone()
+                msg_notif_count = row['count'] if (row and hasattr(row, 'keys')) else (row[0] if row else 0)
+                
+                if msg_notif_count > 0:
+                    c.execute(
+                        "DELETE FROM notifications WHERE user_id = ? AND from_user = ? AND type = 'message'",
+                        (username, other_username)
+                    )
+                    deleted = c.rowcount
+                    conn.commit()
+                    logger.info(f"Deleted {deleted} message notification(s) from {other_username} to {username}")
+                else:
+                    logger.info(f"No message notifications to delete from {other_username} to {username}")
                 
                 # Send badge update with new unread count
                 try:

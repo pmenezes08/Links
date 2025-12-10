@@ -252,11 +252,15 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
             return 0
         
         # Calculate unread count for badge with fresh connection
+        # Exclude message-type notifications since they're not shown in Notifications page
         try:
             from backend.services.database import get_db_connection
             with get_db_connection() as badge_conn:
                 badge_cursor = badge_conn.cursor()
-                badge_cursor.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0", (username,))
+                badge_cursor.execute(
+                    "SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0 AND type != 'message'", 
+                    (username,)
+                )
                 row = badge_cursor.fetchone()
                 if row:
                     # Handle both dict-like and tuple-like results
@@ -264,7 +268,7 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
                 else:
                     unread_count = 0
                 badge_cursor.close()
-            logger.info(f"📱 User {username} has {unread_count} unread notifications")
+            logger.info(f"📱 User {username} has {unread_count} unread notifications (excluding messages)")
         except Exception as e:
             logger.error(f"Error calculating unread count for {username}: {type(e).__name__}: {e}")
             unread_count = 1  # Fallback to 1 if query fails
