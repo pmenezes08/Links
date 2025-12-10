@@ -109,17 +109,33 @@ export default function Notifications(){
     if (!confirm('Clear all notifications? This cannot be undone.')) return
     try{
       setClearing(true)
+      
+      // Clear local state immediately for instant feedback
+      setItems([])
+      
       // Mark all as read first
-      await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
+      const markResp = await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
+      const markData = await markResp.json()
+      console.log('Mark all read response:', markData)
+      
       // Delete all read notifications
-      await fetch('/api/notifications/delete-read', { method:'POST', credentials:'include' })
-      // Small delay to ensure database operations complete
-      await new Promise(resolve => setTimeout(resolve, 100))
+      const deleteResp = await fetch('/api/notifications/delete-read', { method:'POST', credentials:'include' })
+      const deleteData = await deleteResp.json()
+      console.log('Delete read response:', deleteData)
+      
+      // Wait for database operations to propagate
+      await new Promise(resolve => setTimeout(resolve, 200))
+      
       // Clear iOS notification center and reset badge to 0
       await clearIOSNotifications()
-      // Clear local state immediately
-      setItems([])
-      // Reload from server with cache busting
+      
+      // Force reload from server with aggressive cache busting
+      await load()
+      
+      console.log('Clear all completed')
+    } catch (error) {
+      console.error('Error clearing notifications:', error)
+      // Reload anyway to show current state
       await load()
     } finally {
       setClearing(false)
