@@ -12300,6 +12300,7 @@ def post_status():
                 notif_link = f"/community_feed_react/{community_id}"
 
                 for member in members:
+                    logger.info(f"Attempting to notify member: {member}")
                     # In-app notification row (dedupe by unique key if present)
                     try:
                         if 'USE_MYSQL' in globals() and USE_MYSQL:
@@ -20106,9 +20107,11 @@ def create_community_story():
         if not created_stories:
             return jsonify({'success': False, 'error': 'No valid media files were uploaded'}), 400
         
+        logger.info(f"Successfully created {len(created_stories)} stories for community {community_id}")
         invalidate_community_cache(community_id)
         
         # Send notifications to community members (matching post notification pattern)
+        logger.info(f"Starting story notification process for community {community_id}")
         try:
             with get_db_connection() as conn:
                 c = conn.cursor()
@@ -20165,6 +20168,7 @@ def create_community_story():
                 logger.info(f"Story notification message: {notif_message}")
 
                 for member in members:
+                    logger.info(f"Attempting to notify member: {member}")
                     # In-app notification row (dedupe by unique key if present)
                     try:
                         if USE_MYSQL:
