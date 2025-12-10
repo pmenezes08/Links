@@ -1087,7 +1087,10 @@ export default function ChatThread(){
       }> = []
       let useSignalProtocol = false
       
-      if (username && signalService.isInitialized()) {
+      // Check if Signal Protocol is disabled (can be set via localStorage for debugging)
+      const signalDisabled = localStorage.getItem('signal_protocol_disabled') === 'true'
+      
+      if (username && signalService.isInitialized() && !signalDisabled) {
         try {
           // Use Signal Protocol for multi-device encryption
           console.log('🔐 Encrypting with Signal Protocol for:', username)
