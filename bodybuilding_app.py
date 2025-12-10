@@ -9195,6 +9195,11 @@ def get_messages():
     if cache_key:
         cached_messages = cache.get(cache_key)
         if cached_messages:
+            # Ensure signal_protocol flag is set for cached messages
+            # This handles messages cached before the signal_protocol logic was added
+            for msg in cached_messages:
+                if msg.get('is_encrypted') and not msg.get('encrypted_body'):
+                    msg['signal_protocol'] = True
             return jsonify({'success': True, 'messages': cached_messages})
     
     try:
