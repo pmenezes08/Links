@@ -265,8 +265,10 @@ def mark_all_notifications_read():
                 """,
                 (username,),
             )
+            updated_count = c.rowcount
             conn.commit()
-        return jsonify({"success": True})
+            current_app.logger.info(f"Marked {updated_count} notifications as read for {username}")
+        return jsonify({"success": True, "updated": updated_count})
     except Exception as exc:
         current_app.logger.error("Error marking all notifications as read: %s", exc)
         return jsonify({"success": False, "error": "Server error"}), 500
@@ -280,6 +282,17 @@ def delete_read_notifications():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            # First check how many will be deleted
+            c.execute(
+                """
+                SELECT COUNT(*) FROM notifications
+                WHERE user_id = ? AND is_read = 1
+                """,
+                (username,),
+            )
+            count_before = c.fetchone()[0]
+            current_app.logger.info(f"About to delete {count_before} read notifications for {username}")
+            
             c.execute(
                 """
                 DELETE FROM notifications
@@ -287,8 +300,9 @@ def delete_read_notifications():
                 """,
                 (username,),
             )
-            conn.commit()
             deleted_count = c.rowcount
+            conn.commit()
+            current_app.logger.info(f"Successfully deleted {deleted_count} read notifications for {username}")
         return jsonify({"success": True, "deleted": deleted_count})
     except Exception as exc:
         current_app.logger.error("Error deleting read notifications: %s", exc)
