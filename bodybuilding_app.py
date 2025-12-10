@@ -9424,14 +9424,23 @@ def send_message():
             
             # Create or update notification for the recipient (truly atomic)
             try:
-                c.execute("""
-                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
-                    VALUES (?, ?, 'message', ?, NOW(), 0)
-                    ON DUPLICATE KEY UPDATE
-                        created_at = NOW(),
-                        message = VALUES(message),
-                        is_read = 0
-                """, (recipient_username, username, f"You have new messages from {username}"))
+                if USE_MYSQL:
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, NOW(), 0, ?)
+                        ON DUPLICATE KEY UPDATE
+                            created_at = NOW(),
+                            message = VALUES(message),
+                            is_read = 0,
+                            link = VALUES(link)
+                    """, (recipient_username, username, f"You have new messages from {username}", f"/user_chat/chat/{username}"))
+                else:
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, datetime('now'), 0, ?)
+                        ON CONFLICT(user_id, from_user, type, post_id, community_id)
+                        DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
+                    """, (recipient_username, username, f"You have new messages from {username}", f"/user_chat/chat/{username}"))
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update message notification: {notif_e}")
