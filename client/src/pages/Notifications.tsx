@@ -60,6 +60,15 @@ export default function Notifications(){
 
   useEffect(() => { setTitle('Notifications') }, [setTitle])
 
+  // Clear iOS notification center on mount
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      PushNotifications.removeAllDeliveredNotifications()
+        .then(() => console.log('Cleared iOS notification center on mount'))
+        .catch(e => console.warn('Could not clear on mount:', e))
+    }
+  }, [])
+
   async function load(){
     try{
       setLoading(true)
@@ -89,9 +98,10 @@ export default function Notifications(){
         console.warn('Could not clear iOS notifications:', e)
       }
     }
-    // Also tell server to reset badge count via silent push
+    // Tell server to reset badge count via silent push (works for both FCM and APNs)
     try {
       await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
+      console.log('✅ Sent badge reset request to server')
     } catch (e) {
       console.warn('Could not clear badge via server:', e)
     }
