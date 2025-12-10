@@ -328,7 +328,6 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
       }
 
       let senderUsernameFromResponse: string | null = null
-      let senderDeviceIdFromResponse: number | null = null
 
       try {
         let data: any
@@ -349,7 +348,6 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
         }
 
         senderUsernameFromResponse = data.senderUsername
-        senderDeviceIdFromResponse = data.senderDeviceId
 
         console.log('🔐 Got ciphertext data:', {
           messageId: message.id,
@@ -397,19 +395,22 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
           /no session for device/i.test(errorMsg) ||
           /invalid ciphertext/i.test(errorMsg)
 
-        // Session errors are permanent - the message was encrypted with a key/session
-        // that no longer matches. Re-trying won't help.
+        // Session errors - clear ALL sessions with sender and allow retry
+        // Next message from sender will establish fresh session
         if (isSessionError) {
-          const displayError = '[🔒 Message cannot be decrypted - session mismatch]'
-          recordDecryptionFailure(message.id, displayError, true) // permanent
+          const displayError = '[🔒 Re-establishing secure session…]'
+          recordDecryptionFailure(message.id, displayError, false) // Allow retry!
           
-          // Try to clear the corrupted session for future messages
-          if (senderUsernameFromResponse && senderDeviceIdFromResponse) {
+          // Clear ALL sessions with this sender (all devices) for clean slate
+          if (senderUsernameFromResponse) {
             try {
-              await signalService.clearSessionForDevice(senderUsernameFromResponse, senderDeviceIdFromResponse)
-              console.log('🔐 Cleared corrupted session for future messages')
-            } catch {
-              // Ignore - best effort
+              await signalService.clearAllSessionsWith(senderUsernameFromResponse)
+              console.log(`🔐 Cleared ALL sessions with ${senderUsernameFromResponse} - fresh session will be established`)
+              
+              // Delete cached ciphertext to force re-fetch on retry
+              decryptionCache.current.delete(normalizeCacheMessageId(message.id))
+            } catch (err) {
+              console.warn('Failed to clear sessions:', err)
             }
           }
           

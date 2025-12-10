@@ -642,6 +642,17 @@ class SignalService {
     const addressKey = this.buildAddressKey(username, deviceId)
     await signalStore.removeSession(addressKey)
   }
+
+  /**
+   * Clear ALL sessions with a user (all their devices)
+   * Use when session mismatch occurs to force fresh session establishment
+   */
+  async clearAllSessionsWith(username?: string | null): Promise<void> {
+    if (!username) return
+    const normalized = this.normalizePeer(username)
+    await signalStore.removeAllSessions(normalized)
+    console.log(`🔐 Cleared all sessions with ${username}`)
+  }
 }
 
 // Singleton instance
