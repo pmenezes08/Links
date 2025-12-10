@@ -105,7 +105,7 @@ def send_native_push(username: str, title: str, body: str, data: dict = None):
 
 
 def send_apns_badge_only(device_token: str, badge_count: int = 0):
-    """Send silent APNs notification to update badge only."""
+    """Send APNs notification to update badge only (with invisible alert)."""
     
     if not APNS_AVAILABLE:
         logger.debug("APNs dependencies not available")
@@ -119,10 +119,11 @@ def send_apns_badge_only(device_token: str, badge_count: int = 0):
         return
     
     try:
-        # Silent badge-only payload
+        # Badge update with empty alert (iOS requires alert type for badge updates)
         payload = {
             "aps": {
                 "badge": badge_count,
+                "sound": "",  # Empty sound to make it silent
                 "content-available": 1
             }
         }
@@ -136,9 +137,9 @@ def send_apns_badge_only(device_token: str, badge_count: int = 0):
         
         headers = {
             "authorization": f"bearer {auth_token}",
-            "apns-push-type": "background",
+            "apns-push-type": "alert",  # Use alert type for badge updates
             "apns-topic": APNS_BUNDLE_ID,
-            "apns-priority": "5"
+            "apns-priority": "10"  # Higher priority for immediate delivery
         }
         
         with httpx.Client(http2=True, timeout=10.0) as client:
