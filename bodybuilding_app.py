@@ -20113,7 +20113,10 @@ def create_community_story():
             with get_db_connection() as conn:
                 c = conn.cursor()
                 
-                # Get all members of the community (excluding author)
+                # Debug: Check all tables that might contain membership data
+                logger.info(f"Story posted by {username} in community {community_id}")
+                
+                # Try user_communities first
                 c.execute(
                     """
                     SELECT DISTINCT u.username
@@ -20123,7 +20126,23 @@ def create_community_story():
                     """,
                     (community_id, username)
                 )
-                members = [row['username'] if hasattr(row, 'keys') else row[0] for row in c.fetchall()]
+                members_uc = [row['username'] if hasattr(row, 'keys') else row[0] for row in c.fetchall()]
+                logger.info(f"Members from user_communities: {members_uc}")
+                
+                # Also try community_members table
+                c.execute(
+                    """
+                    SELECT DISTINCT username
+                    FROM community_members
+                    WHERE community_id = ? AND username != ?
+                    """,
+                    (community_id, username)
+                )
+                members_cm = [row['username'] if hasattr(row, 'keys') else row[0] for row in c.fetchall()]
+                logger.info(f"Members from community_members: {members_cm}")
+                
+                # Use whichever has members
+                members = members_uc if members_uc else members_cm
                 logger.info(f"Sending story notifications to {len(members)} members: {members}")
 
                 # Resolve community name for nicer message
