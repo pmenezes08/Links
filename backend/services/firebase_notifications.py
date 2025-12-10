@@ -79,7 +79,8 @@ def send_fcm_notification(
     token: str,
     title: str,
     body: str,
-    data: Optional[dict] = None
+    data: Optional[dict] = None,
+    badge_count: Optional[int] = None
 ) -> bool:
     """
     Send push notification via Firebase Cloud Messaging.
@@ -89,6 +90,7 @@ def send_fcm_notification(
         title: Notification title
         body: Notification body
         data: Optional custom data dictionary
+        badge_count: Optional badge count (if None, will be calculated from unread notifications)
     
     Returns:
         True if sent successfully, False otherwise
@@ -103,6 +105,23 @@ def send_fcm_notification(
             return False
     
     try:
+        # Calculate badge count if not provided
+        if badge_count is None:
+            # Extract username from data if available, otherwise use default
+            username = data.get('username') if data else None
+            if username:
+                from backend.services.database import get_db_connection
+                try:
+                    with get_db_connection() as conn:
+                        c = conn.cursor()
+                        c.execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0", (username,))
+                        row = c.fetchone()
+                        badge_count = row[0] if row else 1
+                except Exception:
+                    badge_count = 1
+            else:
+                badge_count = 1
+        
         # Build notification
         notification = messaging.Notification(
             title=title,
@@ -118,7 +137,7 @@ def send_fcm_notification(
                 payload=messaging.APNSPayload(
                     aps=messaging.Aps(
                         sound='default',
-                        badge=1
+                        badge=badge_count
                     )
                 )
             )
@@ -235,6 +254,14 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
         
         logger.info(f"📱 Sending push to {username}: {len(all_tokens)} token(s)")
         
+        # Calculate unread count for badge
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0", (username,))
+        row = cursor.fetchone()
+        unread_count = row[0] if row else 0
+        cursor.close()
+        conn.close()
+        
         # Send to each token
         for token, platform in all_tokens.items():
             token_preview = token[:16] + "..." if len(token) > 16 else token
@@ -250,7 +277,9 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
             else:
                 # Send via FCM (handles APNs internally for iOS)
                 logger.info(f"📱 Token {token_preview} is FCM format, sending via Firebase")
-                if send_fcm_notification(token, title, body, data):
+                # Add username to data for badge calculation
+                data_with_username = {**(data or {}), 'username': username}
+                if send_fcm_notification(token, title, body, data_with_username, badge_count=unread_count):
                     sent_count += 1
                 else:
                     logger.warning(f"FCM send failed for {token_preview}")
