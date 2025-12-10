@@ -119,16 +119,13 @@ def send_apns_badge_only(device_token: str, badge_count: int = 0):
         return
     
     try:
-        # Send actual notification with badge update (more reliable than silent)
-        # The notification will briefly appear but ensures badge updates immediately
+        # Send notification with badge update
+        # Use minimal alert to ensure iOS processes it
         payload = {
             "aps": {
-                "alert": {
-                    "title": "",  # Empty title
-                    "body": "Badge updated"  # Minimal body
-                },
                 "badge": badge_count,
-                "sound": ""  # Silent
+                "sound": "",
+                "alert": ""  # Empty alert string for invisible notification
             }
         }
         
