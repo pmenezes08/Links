@@ -347,11 +347,14 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
         } catch (fetchError) {
           const status = (fetchError as any)?.status
           if (status === 404) {
-            const pendingText = '[🔒 Ciphertext not yet available for this device — retrying…]'
-            recordDecryptionFailure(message.id, pendingText)
+            // 404 means no ciphertext exists for this device
+            // This is PERMANENT - the sender encrypted for a different device
+            // The ciphertext won't magically appear, so don't keep retrying
+            const errorText = '[🔒 Message not encrypted for this device]'
+            recordDecryptionFailure(message.id, errorText, true) // Mark as PERMANENT
             return {
               ...message,
-              text: pendingText,
+              text: errorText,
               decryption_error: true,
             }
           }
