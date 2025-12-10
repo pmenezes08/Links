@@ -867,10 +867,19 @@ def register_signal_endpoints(app, get_db_connection, logger):
                 
                 # Check if current user's current device has a ciphertext
                 device_id = request.args.get('deviceId', type=int)
+                username_lower = username.lower() if username else ''
                 has_ciphertext_for_me = any(
-                    ct['targetUsername'] == username and ct['targetDeviceId'] == device_id
+                    (ct['targetUsername'] or '').lower() == username_lower and ct['targetDeviceId'] == device_id
                     for ct in ciphertexts
                 )
+                
+                # Also get the user's registered devices for comparison
+                c.execute("""
+                    SELECT device_id, device_name FROM user_devices WHERE LOWER(username) = LOWER(?)
+                """, (username,))
+                my_devices = [{'deviceId': r[0], 'deviceName': r[1]} if isinstance(r, tuple) 
+                              else {'deviceId': r['device_id'], 'deviceName': r['device_name']} 
+                              for r in c.fetchall()]
                 
                 return jsonify({
                     'success': True,
@@ -878,8 +887,10 @@ def register_signal_endpoints(app, get_db_connection, logger):
                     'ciphertextCount': len(ciphertexts),
                     'ciphertexts': ciphertexts,
                     'currentUser': username,
+                    'currentUserLower': username_lower,
                     'currentDeviceId': device_id,
                     'hasCiphertextForCurrentDevice': has_ciphertext_for_me,
+                    'myRegisteredDevices': my_devices,
                 })
 
         except Exception as e:
