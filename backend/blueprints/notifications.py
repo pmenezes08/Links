@@ -324,6 +324,15 @@ def clear_notification_badge():
             c.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0", (username,))
             row = c.fetchone()
             actual_unread = row['count'] if (row and hasattr(row, 'keys')) else (row[0] if row else 0)
+            
+            # Debug: Show breakdown by type
+            c.execute(
+                "SELECT type, COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0 GROUP BY type",
+                (username,)
+            )
+            type_breakdown = c.fetchall()
+            breakdown_dict = {(r['type'] if hasattr(r, 'keys') else r[0]): (r['count'] if hasattr(r, 'keys') else r[1]) for r in type_breakdown}
+            current_app.logger.info(f"Badge clear request for {username}: actual unread = {actual_unread}, breakdown: {breakdown_dict}")
         
         current_app.logger.info(f"Badge clear request for {username}: actual unread count = {actual_unread}")
         
