@@ -965,6 +965,7 @@ export default function ChatThread(){
                   is_encrypted: m.is_encrypted,
                   encrypted_body: m.encrypted_body,
                   encrypted_body_for_sender: m.encrypted_body_for_sender,
+                  signal_protocol: m.signal_protocol, // CRITICAL: Preserve Signal Protocol flag!
                   decryption_error: finalDecryptionError
                 })
               })
@@ -1167,7 +1168,8 @@ export default function ChatThread(){
         isOptimistic: true,
         is_encrypted: isEncrypted,
         encrypted_body: isEncrypted ? encryptedBodyForRecipient : undefined,
-        encrypted_body_for_sender: isEncrypted ? encryptedBodyForSender : undefined
+        encrypted_body_for_sender: isEncrypted ? encryptedBodyForSender : undefined,
+        signal_protocol: useSignalProtocol, // CRITICAL: Mark as Signal Protocol message
       }
       
       // Add optimistic message immediately
@@ -1271,7 +1273,8 @@ export default function ChatThread(){
                     // Keep encryption flags from optimistic message
                     is_encrypted: m.is_encrypted,
                     encrypted_body: m.encrypted_body,
-                    encrypted_body_for_sender: m.encrypted_body_for_sender
+                    encrypted_body_for_sender: m.encrypted_body_for_sender,
+                    signal_protocol: m.signal_protocol, // CRITICAL: Preserve Signal Protocol flag
                   }
                 }
                 return m
