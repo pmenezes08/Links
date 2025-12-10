@@ -38,6 +38,9 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
   const decryptionCache = useRef<Map<string, CacheEntry>>(new Map())
   const decryptionFailures = useRef<Map<string, { lastAttempt: number; errorText: string; permanent?: boolean }>>(new Map())
   const pendingCiphertextRequests = useRef<Map<string, Promise<any>>>(new Map())
+  // Track which sessions have been cleared recently to avoid clearing multiple times
+  const clearedSessionsRef = useRef<Map<string, number>>(new Map())
+  const SESSION_CLEAR_COOLDOWN_MS = 30000 // 30 seconds
   const messagesRef = useRef<ChatMessage[]>([])
   const decryptionCacheStorageKeyRef = useRef(
     buildDecryptionCacheKey(initialUsernameRef.current, initialSignalDeviceIdRef.current)
@@ -227,7 +230,7 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
   }, [ensureSignalInitialized])
 
   const cacheDecryptedMessage = useCallback(
-    (messageId: number | string, value: CacheEntry) => {
+    (messageId: number | string, value: CacheEntry, immediate = false) => {
       const cacheKey = normalizeCacheMessageId(messageId)
       const cache = decryptionCache.current
       if (cache.has(cacheKey)) {
@@ -239,9 +242,16 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
         if (typeof oldestKey === 'undefined') break
         cache.delete(oldestKey)
       }
-      scheduleDecryptionCacheSave()
+      
+      // For sent messages (immediate=true), persist immediately to localStorage
+      // This ensures the plaintext survives page reloads
+      if (immediate) {
+        persistDecryptionCache()
+      } else {
+        scheduleDecryptionCacheSave()
+      }
     },
-    [scheduleDecryptionCacheSave]
+    [scheduleDecryptionCacheSave, persistDecryptionCache]
   )
 
   const recordDecryptionFailure = useCallback((messageId: number | string, errorText: string, permanent = false) => {
@@ -404,12 +414,22 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
           recordDecryptionFailure(message.id, displayError, true) // permanent
           
           // Try to clear the corrupted session for future messages
+          // Use cooldown to prevent clearing the same session multiple times
           if (senderUsernameFromResponse && senderDeviceIdFromResponse) {
-            try {
-              await signalService.clearSessionForDevice(senderUsernameFromResponse, senderDeviceIdFromResponse)
-              console.log('🔐 Cleared corrupted session for future messages')
-            } catch {
-              // Ignore - best effort
+            const sessionKey = `${senderUsernameFromResponse.toLowerCase()}.${senderDeviceIdFromResponse}`
+            const lastCleared = clearedSessionsRef.current.get(sessionKey)
+            const now = Date.now()
+            
+            if (!lastCleared || (now - lastCleared) > SESSION_CLEAR_COOLDOWN_MS) {
+              try {
+                await signalService.clearSessionForDevice(senderUsernameFromResponse, senderDeviceIdFromResponse)
+                clearedSessionsRef.current.set(sessionKey, now)
+                console.log('🔐 Cleared corrupted session for future messages:', sessionKey)
+              } catch {
+                // Ignore - best effort
+              }
+            } else {
+              console.log('🔐 Session already cleared recently, skipping:', sessionKey)
             }
           }
           
@@ -489,6 +509,61 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
       }
 
       if (message.signal_protocol) {
+        // CRITICAL: For SENT messages, the current device cannot decrypt its own ciphertext!
+        // Signal sessions are asymmetric - you can't decrypt what you encrypted.
+        // The sender's current device must use cached plaintext.
+        if (message.sent) {
+          // For sent messages, check cache first - this is the only source of truth for the sender
+          const cached = decryptionCache.current.get(cacheKeyString)
+          if (cached && !cached.error) {
+            console.log('🔐 Using cached plaintext for SENT Signal message:', message.id)
+            clearDecryptionFailure(cacheKeyString)
+            return {
+              ...message,
+              text: cached.text,
+              decryption_error: false,
+            }
+          }
+          
+          // If no cache, this is a sent message we don't have plaintext for
+          // This can happen if: page reloaded, cache cleared, or this is from another device
+          // Try to see if there's a ciphertext for this device (only works if sent from another device)
+          console.log('🔐 Sent Signal message without cached plaintext, checking if decryptable:', message.id)
+          
+          // If we sent this message ourselves (on this device), we should have the plaintext cached
+          // If not, it means the cache was cleared - mark as unrecoverable for this device
+          const deviceId = signalService.getDeviceId()
+          if (deviceId) {
+            try {
+              // Check if there's a ciphertext entry for our device (meaning another device sent it)
+              const response = await fetch(`/api/signal/get-ciphertext/${message.id}?deviceId=${deviceId}`, {
+                credentials: 'include',
+              })
+              if (response.ok) {
+                // There's a ciphertext for us - try to decrypt (this means another device sent it)
+                console.log('🔐 Found ciphertext for sent message - was sent from another device')
+                const decryptedSignal = await decryptSignalMessage(message)
+                if (!decryptedSignal.decryption_error) {
+                  clearDecryptionFailure(cacheKeyString)
+                }
+                return decryptedSignal
+              }
+            } catch {
+              // No ciphertext available - this was sent from THIS device, cache is lost
+            }
+          }
+          
+          // No ciphertext for this device - message was sent from here but cache cleared
+          const errorText = '[🔒 Sent message - plaintext cache cleared]'
+          recordDecryptionFailure(message.id, errorText, true) // permanent
+          return {
+            ...message,
+            text: errorText,
+            decryption_error: true,
+          }
+        }
+        
+        // For RECEIVED messages, proceed with normal decryption
         const decryptedSignal = await decryptSignalMessage(message)
         // Only clear failure if decryption succeeded
         if (!decryptedSignal.decryption_error) {

@@ -1244,9 +1244,10 @@ export default function ChatThread(){
                   })
                   console.log('🔐 Signal: Stored ciphertexts for message', j.message_id)
                   
-                  // IMPORTANT: Cache the plaintext for this message
+                  // IMPORTANT: Cache the plaintext for this message IMMEDIATELY
                   // So when we reload/poll, we can show sent messages correctly
-                  cacheDecryptedMessage(j.message_id, { text: messageText, error: false })
+                  // Use immediate=true to persist to localStorage right away (survives page reload)
+                  cacheDecryptedMessage(j.message_id, { text: messageText, error: false }, true)
                 } catch (cipherError) {
                   console.error('🔐 Signal: Failed to store ciphertexts:', cipherError)
                 }

@@ -328,16 +328,17 @@ class SignalService {
       }
     }
 
-    // Also encrypt for sender's ALL devices (including current) so they can read their own sent messages
-    // This is important because:
-    // 1. The plaintext cache might be cleared (page refresh, storage cleared)
-    // 2. Other devices of the sender need to decrypt the message
-    // 3. Having a ciphertext for own device ensures the message is always readable
+    // Also encrypt for sender's OTHER devices (NOT current) so they can read their own sent messages
+    // IMPORTANT: Do NOT encrypt for the current device - Signal sessions are asymmetric
+    // The current device cannot decrypt a message it encrypted for itself!
+    // The current device should use the cached plaintext instead.
     if (recipientUsername !== this.currentUsername) {
       const myDevices = await this.getUserDevices(this.currentUsername)
-      console.log(`🔐 Encrypting for own ${myDevices.length} device(s), including current device: ${this.currentDeviceId}`)
+      // Filter out the current device - it will use cached plaintext
+      const otherDevices = myDevices.filter(d => d.deviceId !== this.currentDeviceId)
+      console.log(`🔐 Encrypting for own ${otherDevices.length} OTHER device(s) (excluding current device: ${this.currentDeviceId})`)
       
-      for (const device of myDevices) {
+      for (const device of otherDevices) {
         try {
           console.log(`🔐 Encrypting for own device ${device.deviceId} (${device.deviceName})...`)
           const ciphertext = await this.encryptForDevice(
