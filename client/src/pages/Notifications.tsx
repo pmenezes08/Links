@@ -63,7 +63,11 @@ export default function Notifications(){
   async function load(){
     try{
       setLoading(true)
-      const r = await fetch('/api/notifications?all=true', { credentials:'include' })
+      // Add cache busting to ensure fresh data
+      const r = await fetch(`/api/notifications?all=true&_t=${Date.now()}`, { 
+        credentials:'include',
+        cache: 'no-store'
+      })
       const j = await r.json()
       if (j?.success){
         const filtered = (j.notifications as Notif[]).filter(n => n?.type !== 'message')
@@ -105,10 +109,17 @@ export default function Notifications(){
     if (!confirm('Clear all notifications? This cannot be undone.')) return
     try{
       setClearing(true)
+      // Mark all as read first
       await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
+      // Delete all read notifications
       await fetch('/api/notifications/delete-read', { method:'POST', credentials:'include' })
-      // Clear iOS notification center when clearing all
+      // Small delay to ensure database operations complete
+      await new Promise(resolve => setTimeout(resolve, 100))
+      // Clear iOS notification center and reset badge to 0
       await clearIOSNotifications()
+      // Clear local state immediately
+      setItems([])
+      // Reload from server with cache busting
       await load()
     } finally {
       setClearing(false)
