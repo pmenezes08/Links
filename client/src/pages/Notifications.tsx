@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
+import { App } from '@capacitor/app'
 import { useHeader } from '../contexts/HeaderContext'
 
 type Notif = {
@@ -87,23 +88,35 @@ export default function Notifications(){
 
   useEffect(() => { load() }, [])
 
-  // Clear iOS notification center and badge
+  // Clear iOS notification center and badge  
   async function clearIOSNotifications() {
     if (Capacitor.isNativePlatform()) {
       try {
         // Remove all delivered notifications from iOS Notification Center
         await PushNotifications.removeAllDeliveredNotifications()
         console.log('✅ Cleared iOS notification center')
+        
+        // Force badge reset by sending server request multiple times
+        // This ensures at least one gets through and is processed by iOS
+        for (let i = 0; i < 3; i++) {
+          try {
+            await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
+            await new Promise(r => setTimeout(r, 100)) // Small delay between attempts
+          } catch (e) {
+            console.warn(`Badge reset attempt ${i+1} failed:`, e)
+          }
+        }
+        console.log('✅ Sent 3 badge reset requests to server')
       } catch (e) {
         console.warn('Could not clear iOS notifications:', e)
       }
-    }
-    // Tell server to reset badge count via silent push (works for both FCM and APNs)
-    try {
-      await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
-      console.log('✅ Sent badge reset request to server')
-    } catch (e) {
-      console.warn('Could not clear badge via server:', e)
+    } else {
+      // For web, just send one badge reset
+      try {
+        await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
+      } catch (e) {
+        console.warn('Could not clear badge via server:', e)
+      }
     }
   }
 
