@@ -395,9 +395,27 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
           /no session for device/i.test(errorMsg) ||
           /invalid ciphertext/i.test(errorMsg)
 
-        // Session errors - clear ALL sessions with sender and allow retry
-        // Next message from sender will establish fresh session
+        // Session errors - check if message is too old to recover
         if (isSessionError) {
+          // Check message age - if older than 7 days, mark as permanent
+          const messageTimestamp = message.time ? new Date(message.time).getTime() : Date.now()
+          const messageAge = Date.now() - messageTimestamp
+          const MAX_RECOVERABLE_AGE = 7 * 24 * 60 * 60 * 1000 // 7 days
+          
+          if (messageAge > MAX_RECOVERABLE_AGE) {
+            // Too old - mark as permanently undecryptable
+            const displayError = '[🔒 Message too old to decrypt - session expired]'
+            recordDecryptionFailure(message.id, displayError, true)
+            console.log(`🔐 Message ${message.id} is ${Math.floor(messageAge / 86400000)} days old - marking as permanent failure`)
+            
+            return {
+              ...message,
+              text: displayError,
+              decryption_error: true,
+            }
+          }
+          
+          // Recent message - try session recovery
           const displayError = '[🔒 Re-establishing secure session…]'
           recordDecryptionFailure(message.id, displayError, false) // Allow retry!
           
