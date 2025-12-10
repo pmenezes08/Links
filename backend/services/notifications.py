@@ -104,6 +104,55 @@ def send_native_push(username: str, title: str, body: str, data: dict = None):
         logger.error(f"Error sending native push to {username}: {e}")
 
 
+def send_apns_badge_only(device_token: str, badge_count: int = 0):
+    """Send silent APNs notification to update badge only."""
+    
+    if not APNS_AVAILABLE:
+        logger.debug("APNs dependencies not available")
+        return
+    
+    token = (device_token or "").strip().replace(" ", "")
+    if not token or not all([APNS_KEY_PATH, APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID]):
+        return
+    
+    if not os.path.exists(APNS_KEY_PATH):
+        return
+    
+    try:
+        # Silent badge-only payload
+        payload = {
+            "aps": {
+                "badge": badge_count,
+                "content-available": 1
+            }
+        }
+        
+        auth_token = _get_apns_jwt_token()
+        if not auth_token:
+            return
+        
+        apns_server = "api.sandbox.push.apple.com" if APNS_USE_SANDBOX else "api.push.apple.com"
+        url = f"https://{apns_server}/3/device/{token}"
+        
+        headers = {
+            "authorization": f"bearer {auth_token}",
+            "apns-push-type": "background",
+            "apns-topic": APNS_BUNDLE_ID,
+            "apns-priority": "5"
+        }
+        
+        with httpx.Client(http2=True, timeout=10.0) as client:
+            response = client.post(url, json=payload, headers=headers)
+        
+        if response.status_code == 200:
+            logger.info(f"✅ APNs badge reset to {badge_count} for token {token[:8]}…")
+        else:
+            logger.warning(f"APNs badge reset failed: {response.status_code} - {response.text}")
+            
+    except Exception as exc:
+        logger.error(f"APNs badge reset error: {exc}")
+
+
 def send_apns_notification(device_token: str, title: str, body: str, data: dict = None, badge_count: int = 1):
     """Send iOS push notification via APNs using HTTP/2 (Apple's 2025 recommendation)."""
     

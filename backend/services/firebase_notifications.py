@@ -341,14 +341,28 @@ def send_fcm_to_user_badge_only(username: str, badge_count: int = 0) -> int:
             (username,)
         )
         fcm_tokens = cursor.fetchall()
+        
+        # Also get APNs tokens
+        try:
+            cursor.execute(
+                f"SELECT token, platform FROM native_push_tokens WHERE username = {ph} AND is_active = 1",
+                (username,)
+            )
+            apns_tokens = cursor.fetchall()
+        except Exception:
+            apns_tokens = []
+        
         cursor.close()
         conn.close()
         
-        if not fcm_tokens:
-            logger.debug(f"No FCM tokens for user {username}")
+        # Combine all tokens
+        all_tokens = list(fcm_tokens) + list(apns_tokens)
+        
+        if not all_tokens:
+            logger.debug(f"No push tokens for user {username}")
             return 0
         
-        for row in fcm_tokens:
+        for row in all_tokens:
             if hasattr(row, 'keys'):
                 token = row['token']
                 platform = row['platform']
@@ -361,26 +375,37 @@ def send_fcm_to_user_badge_only(username: str, badge_count: int = 0) -> int:
                 continue
             
             try:
-                # Silent push with badge update only (no notification payload)
-                message = messaging.Message(
-                    token=token,
-                    apns=messaging.APNSConfig(
-                        headers={
-                            'apns-push-type': 'background',
-                            'apns-priority': '5',  # Lower priority for background push
-                        },
-                        payload=messaging.APNSPayload(
-                            aps=messaging.Aps(
-                                badge=badge_count,
-                                content_available=True  # Silent push
+                # Check if this is a native APNs token
+                if is_apns_token(token):
+                    # Send via APNs HTTP/2 with badge update
+                    from backend.services.notifications import send_apns_badge_only
+                    try:
+                        send_apns_badge_only(token, badge_count)
+                        logger.info(f"✅ APNs badge reset sent to {token[:16]}...")
+                        sent_count += 1
+                    except Exception as e:
+                        logger.warning(f"APNs badge reset failed for {token[:16]}...: {e}")
+                else:
+                    # Send via FCM with silent push
+                    message = messaging.Message(
+                        token=token,
+                        apns=messaging.APNSConfig(
+                            headers={
+                                'apns-push-type': 'background',
+                                'apns-priority': '5',  # Lower priority for background push
+                            },
+                            payload=messaging.APNSPayload(
+                                aps=messaging.Aps(
+                                    badge=badge_count,
+                                    content_available=True  # Silent push
+                                )
                             )
                         )
                     )
-                )
-                
-                response = messaging.send(message)
-                logger.info(f"✅ Badge reset sent to {token[:16]}...: {response}")
-                sent_count += 1
+                    
+                    response = messaging.send(message)
+                    logger.info(f"✅ Badge reset sent to {token[:16]}...: {response}")
+                    sent_count += 1
                 
             except messaging.UnregisteredError:
                 logger.warning(f"FCM token no longer valid: {token[:16]}...")
