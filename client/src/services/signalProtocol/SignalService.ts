@@ -284,9 +284,13 @@ class SignalService {
   /**
    * Check if we have a valid session for a device by comparing registration IDs.
    * Returns false if session doesn't exist or registration ID doesn't match.
+   * 
+   * NOTE: Currently unused - kept for potential future use
    */
-  private async isSessionValid(username: string, deviceId: number, expectedRegId: number): Promise<boolean> {
-    const addressString = this.buildAddressKey(username, deviceId)
+  // @ts-ignore - Unused but kept for future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async isSessionValid(_username: string, _deviceId: number, _expectedRegId: number): Promise<boolean> {
+    const addressString = this.buildAddressKey(_username, _deviceId)
     const hasSession = await signalStore.hasSession(addressString)
     if (!hasSession) return false
     

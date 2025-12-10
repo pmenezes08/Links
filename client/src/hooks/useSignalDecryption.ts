@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { encryptionService } from '../services/simpleEncryption'
+// import { encryptionService } from '../services/simpleEncryption' // E2E disabled
 import { signalService } from '../services/signalProtocol'
 import type { ChatMessage } from '../types/chat'
 import { safeLocalStorageGet } from '../utils/storage'

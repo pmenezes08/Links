@@ -17,8 +17,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import ZoomableImage from '../components/ZoomableImage'
-import { encryptionService } from '../services/simpleEncryption'
-import { signalService } from '../services/signalProtocol'
+// E2E encryption disabled - these imports kept for future re-enablement
+// import { encryptionService } from '../services/simpleEncryption'
+import { signalService } from '../services/signalProtocol' // Still needed for device ID in disabled code path
 import { useSignalDecryption, DECRYPTION_RETRY_DELAY_MS } from '../hooks/useSignalDecryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
