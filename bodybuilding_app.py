@@ -9313,6 +9313,29 @@ def get_messages():
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
             conn.commit()
             
+            # Clear message notification from notifications table
+            try:
+                c.execute(
+                    "DELETE FROM notifications WHERE user_id = ? AND from_user = ? AND type = 'message'",
+                    (username, other_username)
+                )
+                conn.commit()
+                
+                # Send badge update with new unread count
+                try:
+                    from backend.services.firebase_notifications import send_fcm_to_user_badge_only
+                    # Get updated unread count
+                    c.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0", (username,))
+                    row = c.fetchone()
+                    new_unread_count = row['count'] if (row and hasattr(row, 'keys')) else (row[0] if row else 0)
+                    # Send badge update
+                    send_fcm_to_user_badge_only(username, new_unread_count)
+                    logger.info(f"Updated badge for {username} after reading messages from {other_username}: {new_unread_count} unread")
+                except Exception as badge_err:
+                    logger.warning(f"Could not update badge after reading messages: {badge_err}")
+            except Exception as notif_err:
+                logger.warning(f"Could not clear message notification: {notif_err}")
+            
             # Write-through cache for fast subsequent polls
             try:
                 from redis_cache import MESSAGE_CACHE_TTL
