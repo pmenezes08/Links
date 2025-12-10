@@ -245,22 +245,22 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
             except Exception:
                 pass
         
-        cursor.close()
-        conn.close()
-        
         if not all_tokens:
+            cursor.close()
+            conn.close()
             logger.debug(f"No push tokens for user {username}")
             return 0
         
-        logger.info(f"📱 Sending push to {username}: {len(all_tokens)} token(s)")
-        
-        # Calculate unread count for badge
-        cursor = conn.cursor()
+        # Calculate unread count for badge BEFORE closing connection
         cursor.execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0", (username,))
         row = cursor.fetchone()
         unread_count = row[0] if row else 0
+        logger.info(f"📱 User {username} has {unread_count} unread notifications")
+        
         cursor.close()
         conn.close()
+        
+        logger.info(f"📱 Sending push to {username}: {len(all_tokens)} token(s) with badge={unread_count}")
         
         # Send to each token
         for token, platform in all_tokens.items():
