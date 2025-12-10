@@ -256,9 +256,13 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
             from backend.services.database import get_db_connection
             with get_db_connection() as badge_conn:
                 badge_cursor = badge_conn.cursor()
-                badge_cursor.execute("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0", (username,))
+                badge_cursor.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0", (username,))
                 row = badge_cursor.fetchone()
-                unread_count = row[0] if row else 0
+                if row:
+                    # Handle both dict-like and tuple-like results
+                    unread_count = row['count'] if hasattr(row, 'keys') else row[0]
+                else:
+                    unread_count = 0
                 badge_cursor.close()
             logger.info(f"📱 User {username} has {unread_count} unread notifications")
         except Exception as e:
