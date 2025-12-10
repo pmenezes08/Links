@@ -71,6 +71,9 @@ export class SignalStore implements StorageType {
     }
     
     console.log('🔐 SignalStore initialized for:', username, `(found ${count} existing keys in localStorage)`)
+    
+    // Prune old sessions on init to prevent cache bloat
+    await this.pruneOldSessions()
   }
 
   /**
@@ -313,6 +316,70 @@ export class SignalStore implements StorageType {
       if (address.startsWith(identifier + '.')) {
         localStorage.removeItem(key)
       }
+    }
+  }
+
+  /**
+   * Prune old sessions to prevent cache bloat and session mismatches
+   * - Removes sessions older than 30 days
+   * - Keeps only the 5 most recent sessions per user
+   */
+  async pruneOldSessions(): Promise<number> {
+    try {
+      const keys = this.getAllKeysForStore(KEYS.SESSIONS)
+      const now = Date.now()
+      const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+      const MAX_SESSIONS_PER_USER = 5
+      
+      const sessions: Array<{ key: string; address: string; updatedAt: number }> = []
+      
+      // Collect all sessions with their timestamps
+      for (const key of keys) {
+        const stored = this.get<StoredSession>(KEYS.SESSIONS, key.split('_').pop()!)
+        if (stored) {
+          sessions.push({
+            key,
+            address: stored.address,
+            updatedAt: stored.updatedAt || 0
+          })
+        }
+      }
+      
+      // Group by username (extract from address before the dot)
+      const byUser = new Map<string, typeof sessions>()
+      for (const session of sessions) {
+        const username = session.address.split('.')[0]
+        if (!byUser.has(username)) byUser.set(username, [])
+        byUser.get(username)!.push(session)
+      }
+      
+      let pruned = 0
+      
+      // For each user, prune old sessions
+      for (const [_, userSessions] of byUser) {
+        // Sort by updatedAt descending (newest first)
+        userSessions.sort((a, b) => b.updatedAt - a.updatedAt)
+        
+        for (let i = 0; i < userSessions.length; i++) {
+          const session = userSessions[i]
+          const age = now - session.updatedAt
+          
+          // Delete if too old OR exceeds max sessions limit
+          if (age > MAX_AGE_MS || i >= MAX_SESSIONS_PER_USER) {
+            localStorage.removeItem(session.key)
+            pruned++
+          }
+        }
+      }
+      
+      if (pruned > 0) {
+        console.log(`🔐 Pruned ${pruned} old Signal sessions`)
+      }
+      
+      return pruned
+    } catch (e) {
+      console.error('Error pruning sessions:', e)
+      return 0
     }
   }
 
