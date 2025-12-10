@@ -318,10 +318,21 @@ def clear_notification_badge():
     try:
         from backend.services.firebase_notifications import send_fcm_to_user_badge_only
         
-        # Send silent push with badge: 0 to all user's devices
-        sent = send_fcm_to_user_badge_only(username, badge_count=0)
-        current_app.logger.info(f"Cleared badge for {username}, sent to {sent} device(s)")
-        return jsonify({"success": True, "devices_cleared": sent})
+        # Get actual unread count to verify
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0", (username,))
+            row = c.fetchone()
+            actual_unread = row['count'] if (row and hasattr(row, 'keys')) else (row[0] if row else 0)
+        
+        current_app.logger.info(f"Badge clear request for {username}: actual unread count = {actual_unread}")
+        
+        # Send silent push with badge: actual count (or 0 if forced)
+        force_zero = request.args.get('force') == 'true'
+        badge_value = 0 if force_zero else actual_unread
+        sent = send_fcm_to_user_badge_only(username, badge_count=badge_value)
+        current_app.logger.info(f"Cleared badge for {username} to {badge_value}, sent to {sent} device(s)")
+        return jsonify({"success": True, "devices_cleared": sent, "badge_set_to": badge_value, "actual_unread": actual_unread})
     except ImportError:
         # Function not available, just acknowledge the request
         current_app.logger.debug("Badge clearing not available (function not implemented)")
