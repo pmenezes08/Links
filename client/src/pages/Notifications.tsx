@@ -212,10 +212,22 @@ export default function Notifications(){
     )
   }
 
+  async function forceResetBadge(){
+    try {
+      const resp = await fetch('/api/notifications/clear-badge?force=true', { method: 'POST', credentials: 'include' })
+      const data = await resp.json()
+      console.log('Force badge reset result:', data)
+      alert(`Badge reset sent! Server says: ${data.actual_unread} actual unread, badge set to ${data.badge_set_to}`)
+    } catch (e) {
+      console.error('Force badge reset failed:', e)
+      alert('Failed to reset badge')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
       <div className="app-content max-w-xl mx-auto px-3 pb-20">
-        <div className="flex items-center justify-center gap-3 mb-3 border-b border-white/10 pb-2">
+        <div className="flex items-center justify-center gap-2 mb-3 border-b border-white/10 pb-2 flex-wrap">
           <button
             onClick={markAll}
             className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#4db6ac]"
@@ -228,6 +240,12 @@ export default function Notifications(){
             className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#e53935] disabled:opacity-50"
           >
             Clear all
+          </button>
+          <button
+            onClick={forceResetBadge}
+            className="px-3 py-1.5 rounded-full text-xs border border-[#4db6ac]/30 hover:border-[#4db6ac] bg-[#4db6ac]/10"
+          >
+            Force Reset Badge
           </button>
         </div>
         {items.length === 0 ? (
