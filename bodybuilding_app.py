@@ -9313,6 +9313,13 @@ def get_messages():
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
             conn.commit()
             
+            # Invalidate chat threads cache so unread count updates
+            try:
+                cache.delete(f"chat_threads:{username}")
+                logger.info(f"Invalidated chat_threads cache for {username}")
+            except Exception:
+                pass
+            
             # Clear message notification from notifications table
             try:
                 c.execute(
