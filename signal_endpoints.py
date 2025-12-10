@@ -96,18 +96,50 @@ def register_signal_endpoints(app, get_db_connection, logger):
                 c = conn.cursor()
                 now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-                # First, clean up old devices to prevent proliferation
-                # Keep only the 2 most recent devices before adding new one
+                # First, clean up old/stale devices to prevent proliferation
+                # Delete devices not seen in 30+ days
+                try:
+                    if USE_MYSQL:
+                        c.execute("""
+                            DELETE FROM device_prekeys 
+                            WHERE username = ? AND device_id IN (
+                                SELECT device_id FROM user_devices 
+                                WHERE username = ? AND last_seen_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
+                            )
+                        """, (username, username))
+                        c.execute("""
+                            DELETE FROM user_devices 
+                            WHERE username = ? AND last_seen_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
+                        """, (username,))
+                    else:
+                        c.execute("""
+                            DELETE FROM device_prekeys 
+                            WHERE username = ? AND device_id IN (
+                                SELECT device_id FROM user_devices 
+                                WHERE username = ? AND datetime(last_seen_at) < datetime('now', '-30 day')
+                            )
+                        """, (username, username))
+                        c.execute("""
+                            DELETE FROM user_devices 
+                            WHERE username = ? AND datetime(last_seen_at) < datetime('now', '-30 day')
+                        """, (username,))
+                    stale_deleted = c.rowcount
+                    if stale_deleted > 0:
+                        logger.info(f"Signal: Deleted {stale_deleted} stale devices (30+ days old) for {username}")
+                except Exception:
+                    pass
+                
+                # Then keep only the 3 most recent devices
                 c.execute("""
                     SELECT device_id FROM user_devices
                     WHERE username = ?
-                    ORDER BY created_at DESC
+                    ORDER BY COALESCE(last_seen_at, created_at) DESC
                 """, (username,))
                 existing_devices = c.fetchall()
                 
-                # If user has 3+ devices, delete the oldest ones (keep 2)
-                if len(existing_devices) >= 3:
-                    devices_to_keep = 2
+                # If user has 4+ devices, delete the oldest ones (keep 3)
+                if len(existing_devices) >= 4:
+                    devices_to_keep = 3
                     for i, device_row in enumerate(existing_devices):
                         if i >= devices_to_keep:
                             old_device_id = device_row[0] if isinstance(device_row, tuple) else device_row['device_id']
