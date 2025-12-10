@@ -459,6 +459,28 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
 
   const decryptMessageIfNeeded = useCallback(
     async (message: ChatMessage): Promise<ChatMessage> => {
+      // E2E Encryption disabled - return messages as-is
+      // For old encrypted messages, show a notice
+      if (message.is_encrypted) {
+        // Check if we have cached decryption from before
+        const cacheKeyString = normalizeCacheMessageId(message.id)
+        const cached = decryptionCache.current.get(cacheKeyString)
+        if (cached && !cached.error) {
+          return { ...message, text: cached.text, decryption_error: false }
+        }
+        
+        // Old encrypted message that we can't decrypt
+        if (!message.text || message.text.startsWith('[🔒')) {
+          return {
+            ...message,
+            text: '[🔒 Older encrypted message]',
+            decryption_error: true,
+          }
+        }
+      }
+      return message
+      
+      /* ORIGINAL ENCRYPTION CODE - DISABLED
       if (!message.is_encrypted) {
         return message
       }
@@ -625,6 +647,7 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
           decryption_error: true,
         }
       }
+      END ORIGINAL ENCRYPTION CODE */
     },
     [cacheDecryptedMessage, clearDecryptionFailure, decryptSignalMessage, recordDecryptionFailure]
   )

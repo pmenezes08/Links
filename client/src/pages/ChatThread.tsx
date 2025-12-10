@@ -1074,90 +1074,19 @@ export default function ChatThread(){
         formattedMessage = `[REPLY:${replySender}:${replySnapshot.text.slice(0,90)}]\n${messageText}`
       }
       
-      // Try to encrypt message using Signal Protocol (multi-device)
-      let isEncrypted = false
-      let encryptedBodyForRecipient = ''
-      let encryptedBodyForSender = ''
-      let signalCiphertexts: Array<{
+      // E2E Encryption disabled - send plaintext messages
+      // The server stores messages securely, and HTTPS protects in-transit
+      const isEncrypted = false
+      const encryptedBodyForRecipient = ''
+      const encryptedBodyForSender = ''
+      const signalCiphertexts: Array<{
         targetUsername: string
         targetDeviceId: number
         senderDeviceId: number
         ciphertext: string
         messageType: number
       }> = []
-      let useSignalProtocol = false
-      
-      // Check if Signal Protocol is disabled (can be set via localStorage for debugging)
-      const signalDisabled = localStorage.getItem('signal_protocol_disabled') === 'true'
-      
-      if (username && signalService.isInitialized() && !signalDisabled) {
-        try {
-          // Use Signal Protocol for multi-device encryption
-          console.log('🔐 Encrypting with Signal Protocol for:', username)
-          
-          const encryptPromise = signalService.encryptMessage(username, formattedMessage)
-          const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Signal encryption timeout')), 5000)
-          )
-          
-          const result = await Promise.race([encryptPromise, timeoutPromise])
-          
-          if (result.deviceCiphertexts.length > 0) {
-            signalCiphertexts = result.deviceCiphertexts
-            isEncrypted = true
-            useSignalProtocol = true
-            console.log(`🔐 Signal: Encrypted for ${signalCiphertexts.length} devices`)
-            
-            if (result.failedDevices.length > 0) {
-              console.warn('🔐 Signal: Some devices failed:', result.failedDevices)
-            }
-          } else if (result.failedDevices.length > 0) {
-            console.warn('🔐 Signal: All devices failed, falling back to simple encryption')
-            throw new Error('All devices failed')
-          }
-        } catch (signalError) {
-          console.warn('🔐 Signal encryption failed, trying simple encryption:', signalError)
-          
-          // Fallback to simple encryption
-          try {
-            const encryptForRecipientPromise = encryptionService.encryptMessage(username, formattedMessage)
-            const timeoutPromise1 = new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error('Encryption timeout (recipient)')), 3000)
-            )
-            encryptedBodyForRecipient = await Promise.race([encryptForRecipientPromise, timeoutPromise1])
-            
-            const encryptForSenderPromise = encryptionService.encryptMessageForSender(formattedMessage)
-            const timeoutPromise2 = new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error('Encryption timeout (sender)')), 3000)
-            )
-            encryptedBodyForSender = await Promise.race([encryptForSenderPromise, timeoutPromise2])
-            
-            isEncrypted = true
-          } catch (simpleError) {
-            console.warn('🔐 ⚠️ All encryption failed, sending unencrypted:', simpleError)
-          }
-        }
-      } else if (username) {
-        // Signal not initialized, use simple encryption
-        try {
-          const encryptForRecipientPromise = encryptionService.encryptMessage(username, formattedMessage)
-          const timeoutPromise1 = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Encryption timeout (recipient)')), 3000)
-          )
-          encryptedBodyForRecipient = await Promise.race([encryptForRecipientPromise, timeoutPromise1])
-          
-          const encryptForSenderPromise = encryptionService.encryptMessageForSender(formattedMessage)
-          const timeoutPromise2 = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Encryption timeout (sender)')), 3000)
-          )
-          encryptedBodyForSender = await Promise.race([encryptForSenderPromise, timeoutPromise2])
-          
-          isEncrypted = true
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-          console.warn('🔐 ⚠️ Encryption failed, sending unencrypted:', errorMsg)
-        }
-      }
+      const useSignalProtocol = false
       
       // Create optimistic message WITH encryption flags
       // Use messageText (not formattedMessage) for display - formattedMessage contains [REPLY:...] prefix
