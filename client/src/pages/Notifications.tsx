@@ -90,25 +90,30 @@ export default function Notifications(){
   // Clear iOS notification center and badge  
   async function clearIOSNotifications() {
     if (Capacitor.isNativePlatform()) {
+      // Try to remove delivered notifications (might fail if not registered)
       try {
-        // Remove all delivered notifications from iOS Notification Center
         await PushNotifications.removeAllDeliveredNotifications()
         console.log('✅ Cleared iOS notification center')
-        
-        // Force badge reset by sending server request multiple times
-        // This ensures at least one gets through and is processed by iOS
-        for (let i = 0; i < 3; i++) {
-          try {
-            await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
-            await new Promise(r => setTimeout(r, 100)) // Small delay between attempts
-          } catch (e) {
-            console.warn(`Badge reset attempt ${i+1} failed:`, e)
-          }
+      } catch (e: any) {
+        // If not registered, that's okay - just log and continue
+        if (e?.errorMessage?.includes('capacitorDidRegisterForRemoteNotifications')) {
+          console.log('Push notifications not registered yet, skipping notification center clear')
+        } else {
+          console.warn('Could not clear iOS notification center:', e)
         }
-        console.log('✅ Sent 3 badge reset requests to server')
-      } catch (e) {
-        console.warn('Could not clear iOS notifications:', e)
       }
+      
+      // Force badge reset by sending server request multiple times
+      // This ensures at least one gets through and is processed by iOS
+      for (let i = 0; i < 3; i++) {
+        try {
+          await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
+          await new Promise(r => setTimeout(r, 200)) // Small delay between attempts
+        } catch (e) {
+          console.warn(`Badge reset attempt ${i+1} failed:`, e)
+        }
+      }
+      console.log('✅ Sent 3 badge reset requests to server')
     } else {
       // For web, just send one badge reset
       try {
