@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
-import { App } from '@capacitor/app'
 import { useHeader } from '../contexts/HeaderContext'
 
 type Notif = {
