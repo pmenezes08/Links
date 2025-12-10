@@ -305,7 +305,7 @@ def delete_read_notifications():
             current_app.logger.info(f"Successfully deleted {deleted_count} read notifications for {username}")
         return jsonify({"success": True, "deleted": deleted_count})
     except Exception as exc:
-        current_app.logger.error("Error deleting read notifications: %s", exc)
+        current_app.logger.error(f"Error deleting read notifications for {username}: {exc}")
         return jsonify({"success": False, "error": str(exc)}), 500
 
 
