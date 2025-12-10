@@ -9424,14 +9424,23 @@ def send_message():
             
             # Create or update notification for the recipient (truly atomic)
             try:
-                c.execute("""
-                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
-                    VALUES (?, ?, 'message', ?, NOW(), 0)
-                    ON DUPLICATE KEY UPDATE
-                        created_at = NOW(),
-                        message = VALUES(message),
-                        is_read = 0
-                """, (recipient_username, username, f"You have new messages from {username}"))
+                if USE_MYSQL:
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, NOW(), 0, ?)
+                        ON DUPLICATE KEY UPDATE
+                            created_at = NOW(),
+                            message = VALUES(message),
+                            is_read = 0,
+                            link = VALUES(link)
+                    """, (recipient_username, username, f"You have new messages from {username}", f"/user_chat/chat/{username}"))
+                else:
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                        VALUES (?, ?, 'message', NULL, NULL, ?, datetime('now'), 0, ?)
+                        ON CONFLICT(user_id, from_user, type, post_id, community_id)
+                        DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
+                    """, (recipient_username, username, f"You have new messages from {username}", f"/user_chat/chat/{username}"))
                 conn.commit()
             except Exception as notif_e:
                 logger.warning(f"Could not create/update message notification: {notif_e}")
@@ -12300,6 +12309,7 @@ def post_status():
                 notif_link = f"/community_feed_react/{community_id}"
 
                 for member in members:
+                    logger.info(f"Attempting to notify member: {member}")
                     # In-app notification row (dedupe by unique key if present)
                     try:
                         if 'USE_MYSQL' in globals() and USE_MYSQL:
@@ -20106,7 +20116,94 @@ def create_community_story():
         if not created_stories:
             return jsonify({'success': False, 'error': 'No valid media files were uploaded'}), 400
         
+        logger.info(f"Successfully created {len(created_stories)} stories for community {community_id}")
         invalidate_community_cache(community_id)
+        
+        # Send notifications to community members (matching post notification pattern)
+        logger.info(f"Starting story notification process for community {community_id}")
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                
+                # Get all members of the community (excluding author)
+                logger.info(f"Story posted by {username} in community {community_id}")
+                c.execute(
+                    """
+                    SELECT DISTINCT u.username
+                    FROM users u
+                    JOIN user_communities uc ON u.id = uc.user_id
+                    WHERE uc.community_id = ? AND u.username != ?
+                    """,
+                    (community_id, username)
+                )
+                members = [row['username'] if hasattr(row, 'keys') else row[0] for row in c.fetchall()]
+                logger.info(f"Sending story notifications to {len(members)} members: {members}")
+
+                # Resolve community name for nicer message
+                community_name = None
+                try:
+                    c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                    r = c.fetchone()
+                    if r:
+                        community_name = r['name'] if hasattr(r, 'keys') else r[0]
+                except Exception:
+                    pass
+
+                story_count = len(created_stories)
+                notif_message = (
+                    f"{username} shared {story_count} new {'story' if story_count == 1 else 'stories'}" 
+                    + (f" in {community_name}" if community_name else "")
+                )
+                notif_link = f"/community_feed_react/{community_id}"
+                first_story_id = created_stories[0]['id'] if created_stories else None
+                logger.info(f"Story notification message: {notif_message}")
+
+                for member in members:
+                    logger.info(f"Attempting to notify member: {member}")
+                    # In-app notification row (dedupe by unique key if present)
+                    try:
+                        if USE_MYSQL:
+                            c.execute(
+                                """
+                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                                VALUES (?, ?, 'new_story', ?, ?, ?, NOW(), 0, ?)
+                                ON DUPLICATE KEY UPDATE
+                                  created_at = NOW(),
+                                  message = VALUES(message),
+                                  is_read = 0,
+                                  link = VALUES(link)
+                                """,
+                                (member, username, first_story_id, community_id, notif_message, notif_link),
+                            )
+                        else:
+                            c.execute(
+                                """
+                                INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                                VALUES (?, ?, 'new_story', ?, ?, ?, datetime('now'), 0, ?)
+                                ON CONFLICT(user_id, from_user, type, post_id, community_id)
+                                DO UPDATE SET created_at = datetime('now'), is_read = 0, message = excluded.message, link = excluded.link
+                                """,
+                                (member, username, first_story_id, community_id, notif_message, notif_link),
+                            )
+                        conn.commit()
+                    except Exception as ne:
+                        logger.warning(f"Story notification db error for {member}: {ne}")
+
+                    # Push notification (non-blocking)
+                    try:
+                        send_push_to_user(
+                            member,
+                            {
+                                'title': f'New story in {community_name}' if community_name else 'New story',
+                                'body': notif_message,
+                                'url': notif_link,
+                                'tag': f"community-story-{community_id}",
+                            },
+                        )
+                    except Exception as pe:
+                        logger.warning(f"Push notify story error for {member}: {pe}")
+        except Exception as notify_err:
+            logger.warning(f"Story notification block error: {notify_err}")
         
         # Return single story for backwards compatibility, plus array of all
         return jsonify({

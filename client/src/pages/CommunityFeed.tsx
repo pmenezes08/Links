@@ -1,5 +1,7 @@
 import { type ChangeEvent, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
+import { Keyboard } from '@capacitor/keyboard'
+import { Geolocation } from '@capacitor/geolocation'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime } from '../utils/time'
@@ -155,8 +157,11 @@ export default function CommunityFeed() {
   const [storyEditorActiveIndex, setStoryEditorActiveIndex] = useState(0)
   const [storyEditorDragging, setStoryEditorDragging] = useState<{ type: 'text' | 'location'; id?: string } | null>(null)
   const storyEditorMediaRef = useRef<HTMLDivElement | null>(null)
-  const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
-  const [storyEditorNewText, setStoryEditorNewText] = useState('')
+  const [showLocationInput, setShowLocationInput] = useState(false)
+  const [locationInputValue, setLocationInputValue] = useState('')
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
+  // const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
+  // const [storyEditorNewText, setStoryEditorNewText] = useState('')
 
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
@@ -812,11 +817,17 @@ export default function CommunityFeed() {
       return
     }
     
-    setStoryEditorFiles(validFiles)
-    setStoryEditorActiveIndex(0)
-    setStoryEditorOpen(true)
+    // If editor is already open, append to existing files
+    if (storyEditorOpen) {
+      setStoryEditorFiles(prev => [...prev, ...validFiles])
+      setStoryEditorActiveIndex(storyEditorFiles.length) // Switch to first newly added file
+    } else {
+      setStoryEditorFiles(validFiles)
+      setStoryEditorActiveIndex(0)
+      setStoryEditorOpen(true)
+    }
     event.target.value = ''
-  }, [community_id])
+  }, [community_id, storyEditorOpen, storyEditorFiles.length])
 
   const handleStoryEditorClose = useCallback(() => {
     // Revoke object URLs to free memory
@@ -825,9 +836,34 @@ export default function CommunityFeed() {
     setStoryEditorOpen(false)
     setStoryEditorActiveIndex(0)
     setStoryEditorDragging(null)
-    setStoryEditorAddingText(false)
-    setStoryEditorNewText('')
+    setShowLocationInput(false)
+    setLocationInputValue('')
+    setKeyboardHeight(0)
+    // setStoryEditorAddingText(false)
+    // setStoryEditorNewText('')
   }, [storyEditorFiles])
+
+  // Keyboard event listeners for story editor
+  useEffect(() => {
+    if (!storyEditorOpen) return
+
+    const handleKeyboardShow = (info: any) => {
+      setKeyboardHeight(info.keyboardHeight || 0)
+    }
+
+    const handleKeyboardHide = () => {
+      setKeyboardHeight(0)
+    }
+
+    Keyboard.addListener('keyboardWillShow', handleKeyboardShow)
+    Keyboard.addListener('keyboardDidShow', handleKeyboardShow)
+    Keyboard.addListener('keyboardWillHide', handleKeyboardHide)
+    Keyboard.addListener('keyboardDidHide', handleKeyboardHide)
+
+    return () => {
+      Keyboard.removeAllListeners()
+    }
+  }, [storyEditorOpen])
 
   const handleStoryEditorPublish = useCallback(async () => {
     if (!community_id || storyEditorFiles.length === 0) return
@@ -875,7 +911,29 @@ export default function CommunityFeed() {
     ))
   }, [storyEditorActiveIndex])
 
-  const addTextOverlay = useCallback(() => {
+  const removeStoryEditorFile = useCallback((index: number) => {
+    setStoryEditorFiles(prev => {
+      const newFiles = prev.filter((_, i) => i !== index)
+      // If removed the last file, close the editor
+      if (newFiles.length === 0) {
+        URL.revokeObjectURL(prev[index].preview)
+        setStoryEditorOpen(false)
+        return []
+      }
+      // Revoke the URL for the removed file
+      URL.revokeObjectURL(prev[index].preview)
+      // Adjust active index if needed
+      if (index === storyEditorActiveIndex) {
+        setStoryEditorActiveIndex(Math.max(0, index - 1))
+      } else if (index < storyEditorActiveIndex) {
+        setStoryEditorActiveIndex(storyEditorActiveIndex - 1)
+      }
+      return newFiles
+    })
+  }, [storyEditorActiveIndex])
+
+  // Text overlay functions removed - feature disabled
+  /* const addTextOverlay = useCallback(() => {
     if (!storyEditorNewText.trim()) return
     const newOverlay: TextOverlay = {
       id: `text-${Date.now()}`,
@@ -900,11 +958,49 @@ export default function CommunityFeed() {
     updateActiveStoryEditorFile({
       textOverlays: current.textOverlays.filter(t => t.id !== id)
     })
-  }, [storyEditorFiles, storyEditorActiveIndex, updateActiveStoryEditorFile])
+  }, [storyEditorFiles, storyEditorActiveIndex, updateActiveStoryEditorFile]) */
 
   const setLocationData = useCallback((location: LocationData | null) => {
     updateActiveStoryEditorFile({ locationData: location })
   }, [updateActiveStoryEditorFile])
+
+  const fetchDeviceLocation = useCallback(async () => {
+    try {
+      // Request permission and get current position
+      const permission = await Geolocation.requestPermissions()
+      if (permission.location !== 'granted') {
+        alert('Location permission is required to add location to your story')
+        return
+      }
+
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000
+      })
+
+      const { latitude, longitude } = position.coords
+
+      // Use reverse geocoding to get location name
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=14`
+      )
+      const data = await response.json()
+
+      // Extract city, town, or village name
+      const locationName = 
+        data.address?.city || 
+        data.address?.town || 
+        data.address?.village || 
+        data.address?.county ||
+        data.display_name?.split(',')[0] ||
+        `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+
+      setLocationData({ name: locationName, x: 50, y: 85 })
+    } catch (error) {
+      console.error('Error fetching location:', error)
+      alert('Could not get your location. Please try again.')
+    }
+  }, [setLocationData])
 
   const handleOverlayDrag = useCallback((e: React.PointerEvent, type: 'text' | 'location', id?: string) => {
     e.preventDefault()
@@ -913,36 +1009,48 @@ export default function CommunityFeed() {
     const container = storyEditorMediaRef.current
     if (!container) return
     
+    const overlay = e.currentTarget as HTMLElement
     const rect = container.getBoundingClientRect()
+    let lastX = 0
+    let lastY = 0
+    
     const moveHandler = (moveE: PointerEvent) => {
       const x = ((moveE.clientX - rect.left) / rect.width) * 100
       const y = ((moveE.clientY - rect.top) / rect.height) * 100
-      const clampedX = Math.max(0, Math.min(100, x))
-      const clampedY = Math.max(0, Math.min(100, y))
+      lastX = Math.max(0, Math.min(100, x))
+      lastY = Math.max(0, Math.min(100, y))
       
+      // Update DOM directly for smooth dragging
+      overlay.style.left = `${lastX}%`
+      overlay.style.top = `${lastY}%`
+    }
+    
+    const upHandler = () => {
+      setStoryEditorDragging(null)
+      
+      // Update React state only when drag ends
       if (type === 'location') {
         setStoryEditorFiles(prev => prev.map((f, i) => 
           i === storyEditorActiveIndex && f.locationData
-            ? { ...f, locationData: { ...f.locationData, x: clampedX, y: clampedY } }
+            ? { ...f, locationData: { ...f.locationData, x: lastX, y: lastY } }
             : f
         ))
       } else if (type === 'text' && id) {
         setStoryEditorFiles(prev => prev.map((f, i) => 
           i === storyEditorActiveIndex
-            ? { ...f, textOverlays: f.textOverlays.map(t => t.id === id ? { ...t, x: clampedX, y: clampedY } : t) }
+            ? { ...f, textOverlays: f.textOverlays.map(t => t.id === id ? { ...t, x: lastX, y: lastY } : t) }
             : f
         ))
       }
-    }
-    
-    const upHandler = () => {
-      setStoryEditorDragging(null)
+      
       window.removeEventListener('pointermove', moveHandler)
       window.removeEventListener('pointerup', upHandler)
+      window.removeEventListener('pointercancel', upHandler)
     }
     
     window.addEventListener('pointermove', moveHandler)
     window.addEventListener('pointerup', upHandler)
+    window.addEventListener('pointercancel', upHandler)
   }, [storyEditorActiveIndex])
 
   const markStoryAsViewed = useCallback((storyId: number) => {
@@ -1796,7 +1904,7 @@ export default function CommunityFeed() {
                       autoPlay
                       playsInline
                       muted
-                      controls
+                      loop
                       preload="auto"
                       onLoadedData={(e) => {
                         const container = e.currentTarget.parentElement
@@ -1961,34 +2069,55 @@ export default function CommunityFeed() {
 
       {/* Story Editor Modal */}
       {storyEditorOpen && storyEditorFiles.length > 0 && (
-        <div className="fixed inset-0 z-[140] bg-black flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
+        <div 
+          className="fixed left-0 right-0 z-[1100] bg-black" 
+          style={{ 
+            top: 'var(--app-header-height, 56px)', 
+            bottom: 0,
+            display: 'flex', 
+            flexDirection: 'column',
+            paddingBottom: keyboardHeight ? `${keyboardHeight}px` : 'env(safe-area-inset-bottom, 0px)'
+          }}
+        >
+          {/* Header - compact and black */}
+          <div 
+            className="w-full bg-black px-4 py-3 flex items-center justify-between flex-shrink-0 border-b border-white/10"
+          >
             <button
               onClick={handleStoryEditorClose}
-              className="text-white/80 hover:text-white flex items-center gap-2"
+              className="text-white font-medium text-sm"
             >
-              <i className="fa-solid fa-xmark text-lg" />
-              <span className="text-sm">Cancel</span>
+              Cancel
             </button>
-            <div className="text-white font-semibold">
-              {storyEditorFiles.length > 1 ? `${storyEditorActiveIndex + 1} / ${storyEditorFiles.length}` : 'New Story'}
-            </div>
+            {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+              <button
+                type="button"
+                onClick={fetchDeviceLocation}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white/90 hover:bg-white/15 text-xs"
+              >
+                <i className="fa-solid fa-location-dot text-sm" />
+              </button>
+            )}
             <button
               onClick={handleStoryEditorPublish}
               disabled={storyUploading}
-              className="px-5 py-2 rounded-full bg-[#4db6ac] text-black font-bold text-base hover:brightness-110 disabled:opacity-50 shadow-lg"
+              className="px-4 py-1.5 rounded-xl bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50"
             >
               {storyUploading ? 'Posting...' : 'Share'}
             </button>
           </div>
           
           {/* Media preview with overlays */}
-          <div className="flex-1 flex items-center justify-center p-6 pt-8 overflow-hidden">
+          <div className="flex items-center justify-center overflow-hidden px-6" style={{ flex: '1 1 0%', minHeight: 0, pointerEvents: 'none', paddingTop: '24px', paddingBottom: keyboardHeight ? '20px' : (storyEditorFiles.length > 1 ? '195px' : '120px') }}>
             <div 
               ref={storyEditorMediaRef}
-              className="relative w-full max-w-md aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
-              style={{ touchAction: storyEditorDragging ? 'none' : 'auto' }}
+              className="relative aspect-[9/16] bg-black/50 rounded-2xl overflow-hidden border border-white/10"
+              style={{ 
+                touchAction: storyEditorDragging ? 'none' : 'auto', 
+                pointerEvents: 'auto',
+                width: 'min(100%, 500px)',
+                maxHeight: '100%'
+              }}
             >
               {storyEditorFiles[storyEditorActiveIndex]?.type === 'video' ? (
                 <video
@@ -2007,37 +2136,13 @@ export default function CommunityFeed() {
                 />
               )}
               
-              {/* Text overlays */}
-              {storyEditorFiles[storyEditorActiveIndex]?.textOverlays.map(overlay => (
-                <div
-                  key={overlay.id}
-                  className="absolute cursor-move select-none"
-                  style={{
-                    left: `${overlay.x}%`,
-                    top: `${overlay.y}%`,
-                    transform: `translate(-50%, -50%) rotate(${overlay.rotation}deg)`,
-                    fontSize: `${overlay.fontSize}px`,
-                    color: overlay.color,
-                    fontFamily: overlay.fontFamily,
-                    textShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                    WebkitTextStroke: '0.5px rgba(0,0,0,0.3)',
-                  }}
-                  onPointerDown={(e) => handleOverlayDrag(e, 'text', overlay.id)}
-                >
-                  <span className="whitespace-nowrap">{overlay.text}</span>
-                  <button
-                    className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center"
-                    onClick={(e) => { e.stopPropagation(); removeTextOverlay(overlay.id); }}
-                  >
-                    <i className="fa-solid fa-xmark" />
-                  </button>
-                </div>
-              ))}
+              {/* Text overlays - feature disabled */}
+              {/* {storyEditorFiles[storyEditorActiveIndex]?.textOverlays.map(overlay => (...))} */}
               
               {/* Location overlay */}
               {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
                 <div
-                  className="absolute cursor-move select-none bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/20"
+                  className="absolute cursor-move select-none bg-black/70 backdrop-blur-md px-4 py-2 rounded-md shadow-lg"
                   style={{
                     left: `${storyEditorFiles[storyEditorActiveIndex].locationData!.x}%`,
                     top: `${storyEditorFiles[storyEditorActiveIndex].locationData!.y}%`,
@@ -2045,12 +2150,22 @@ export default function CommunityFeed() {
                   }}
                   onPointerDown={(e) => handleOverlayDrag(e, 'location')}
                 >
-                  <span className="text-white text-sm flex items-center gap-1.5">
-                    <i className="fa-solid fa-location-dot text-[#4db6ac]" />
+                  <span className="text-white font-medium text-sm flex items-center gap-2">
+                    <i className="fa-solid fa-location-dot text-[#4db6ac] text-base" />
                     {storyEditorFiles[storyEditorActiveIndex].locationData!.name}
                   </span>
                   <button
-                    className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center"
+                    className="absolute -top-2 -right-8 w-6 h-6 rounded-full bg-black/80 border border-white/30 text-white/90 text-xs flex items-center justify-center hover:bg-black hover:border-white/50 transition-colors"
+                    onClick={(e) => { 
+                      e.stopPropagation()
+                      setLocationInputValue(storyEditorFiles[storyEditorActiveIndex].locationData!.name)
+                      setShowLocationInput(true)
+                    }}
+                  >
+                    <i className="fa-solid fa-pencil" />
+                  </button>
+                  <button
+                    className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-black/80 border border-white/30 text-white/90 text-xs flex items-center justify-center hover:bg-black hover:border-white/50 transition-colors"
                     onClick={(e) => { e.stopPropagation(); setLocationData(null); }}
                   >
                     <i className="fa-solid fa-xmark" />
@@ -2062,34 +2177,51 @@ export default function CommunityFeed() {
           
           {/* Thumbnails strip for multiple files */}
           {storyEditorFiles.length > 1 && (
-            <div className="px-4 py-2 border-t border-white/10">
-              <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            <div className="px-4 bg-black absolute left-0 right-0" style={{ bottom: keyboardHeight ? `calc(${keyboardHeight}px + 118px)` : '118px', zIndex: 9998, paddingTop: '6px', paddingBottom: '6px' }}>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar" style={{ margin: 0, padding: 0 }}>
                 {storyEditorFiles.map((file, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setStoryEditorActiveIndex(idx)}
-                    className={`relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border-2 ${
-                      idx === storyEditorActiveIndex ? 'border-[#4db6ac]' : 'border-transparent'
-                    }`}
-                  >
-                    {file.type === 'video' ? (
-                      <video src={file.preview} className="w-full h-full object-cover" muted />
-                    ) : (
-                      <img src={file.preview} alt="" className="w-full h-full object-cover" />
-                    )}
-                    {file.type === 'video' && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                        <i className="fa-solid fa-play text-white text-xs" />
-                      </div>
-                    )}
-                  </button>
+                  <div key={idx} className="relative flex-shrink-0">
+                    <button
+                      onClick={() => setStoryEditorActiveIndex(idx)}
+                      className={`relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border-2 ${
+                        idx === storyEditorActiveIndex ? 'border-[#4db6ac]' : 'border-white/20'
+                      }`}
+                    >
+                      {file.type === 'video' ? (
+                        <video src={file.preview} className="w-full h-full object-cover" muted />
+                      ) : (
+                        <img src={file.preview} alt="" className="w-full h-full object-cover" />
+                      )}
+                      {file.type === 'video' && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+                          <i className="fa-solid fa-play text-white text-xs" />
+                        </div>
+                      )}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        removeStoryEditorFile(idx)
+                      }}
+                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-black/80 text-white/90 text-xs flex items-center justify-center hover:bg-black border border-white/30"
+                      style={{ zIndex: 10 }}
+                    >
+                      <i className="fa-solid fa-xmark" />
+                    </button>
+                  </div>
                 ))}
+                <button
+                  onClick={() => storyFileInputRef.current?.click()}
+                  className="w-16 h-16 rounded-lg flex-shrink-0 border-2 border-dashed border-white/30 bg-white/5 hover:bg-white/10 flex items-center justify-center"
+                >
+                  <i className="fa-solid fa-plus text-white/70 text-xl" />
+                </button>
               </div>
             </div>
           )}
           
           {/* Tools panel */}
-          <div className="px-4 py-3 border-t border-white/10 space-y-3">
+          <div className="px-4 border-t border-white/10 space-y-4 absolute left-0 right-0 bg-black" style={{ bottom: keyboardHeight ? `${keyboardHeight}px` : '0', zIndex: 9999, paddingTop: '20px', paddingBottom: keyboardHeight ? '8px' : 'max(20px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
             {/* Caption input */}
             <div>
               <input
@@ -2102,69 +2234,64 @@ export default function CommunityFeed() {
               />
             </div>
             
-            {/* Tool buttons */}
-            <div className="flex items-center gap-3">
-              {/* Add text button */}
-              <button
-                onClick={() => setStoryEditorAddingText(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm"
-              >
-                <i className="fa-solid fa-font" />
-                <span>Add Text</span>
-              </button>
-              
-              {/* Add location button */}
-              {!storyEditorFiles[storyEditorActiveIndex]?.locationData && (
-                <button
-                  onClick={() => {
-                    const name = window.prompt('Enter location name:')
-                    if (name?.trim()) {
-                      setLocationData({ name: name.trim(), x: 50, y: 85 })
-                    }
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm"
-                >
-                  <i className="fa-solid fa-location-dot" />
-                  <span>Add Location</span>
-                </button>
-              )}
-            </div>
-            
-            {/* Add text input */}
-            {storyEditorAddingText && (
-              <div className="flex gap-2">
+            {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
+              <p className="text-xs text-white/40 text-center">
+                Drag location to reposition it on the image
+              </p>
+            )}
+          </div>
+
+          {/* Location Input Modal */}
+          {showLocationInput && (
+            <div className="fixed inset-0 z-[1200] bg-black/80 backdrop-blur-sm flex items-center justify-center px-4">
+              <div className="bg-[#1a1a1a] rounded-2xl border border-white/10 p-6 w-full max-w-sm">
+                <h3 className="text-white font-semibold text-lg mb-4">Add Location</h3>
                 <input
                   type="text"
-                  value={storyEditorNewText}
-                  onChange={(e) => setStoryEditorNewText(e.target.value)}
-                  placeholder="Enter text..."
+                  value={locationInputValue}
+                  onChange={(e) => setLocationInputValue(e.target.value)}
+                  placeholder="Enter location name..."
                   autoFocus
-                  className="flex-1 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
+                  className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/20 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50 mb-4"
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') addTextOverlay()
-                    if (e.key === 'Escape') { setStoryEditorAddingText(false); setStoryEditorNewText(''); }
+                    if (e.key === 'Enter' && locationInputValue.trim()) {
+                      setLocationData({ name: locationInputValue.trim(), x: 50, y: 85 })
+                      setLocationInputValue('')
+                      setShowLocationInput(false)
+                    }
+                    if (e.key === 'Escape') {
+                      setLocationInputValue('')
+                      setShowLocationInput(false)
+                    }
                   }}
                 />
-                <button
-                  onClick={addTextOverlay}
-                  disabled={!storyEditorNewText.trim()}
-                  className="px-4 py-2 rounded-xl bg-[#4db6ac] text-black font-medium text-sm disabled:opacity-50"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => { setStoryEditorAddingText(false); setStoryEditorNewText(''); }}
-                  className="px-3 py-2 rounded-xl bg-white/10 text-white/70 text-sm"
-                >
-                  <i className="fa-solid fa-xmark" />
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setLocationInputValue('')
+                      setShowLocationInput(false)
+                    }}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (locationInputValue.trim()) {
+                        setLocationData({ name: locationInputValue.trim(), x: 50, y: 85 })
+                        setLocationInputValue('')
+                        setShowLocationInput(false)
+                      }
+                    }}
+                    disabled={!locationInputValue.trim()}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-[#4db6ac] text-black font-semibold text-sm hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
-            )}
-            
-            <p className="text-xs text-white/40 text-center">
-              Drag text and location to reposition them on the image
-            </p>
-          </div>
+            </div>
+          )}
         </div>
       )}
 
