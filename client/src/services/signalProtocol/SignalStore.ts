@@ -2,7 +2,8 @@
  * Signal Protocol Store
  * 
  * Implements the StorageType interface required by libsignal.
- * Uses localStorage for persistence (more reliable than IndexedDB on iOS).
+ * Uses localStorage for persistence with Capacitor Preferences (iOS Keychain)
+ * backup to survive app updates and iOS storage cleanup.
  */
 
 import type { 
@@ -11,6 +12,8 @@ import type {
   Direction,
   SessionRecordType 
 } from '@privacyresearch/libsignal-protocol-typescript'
+import { Preferences } from '@capacitor/preferences'
+import { Capacitor } from '@capacitor/core'
 import type { 
   StoredSession, 
   StoredIdentity, 
@@ -21,6 +24,7 @@ import type {
 
 // Storage key prefixes
 const PREFIX = 'signal'
+const KEYCHAIN_PREFIX = 'signal_registration_'
 const KEYS = {
   IDENTITY_KEY: 'identityKey',
   REGISTRATION: 'registration',
@@ -155,21 +159,92 @@ export class SignalStore implements StorageType {
 
   /**
    * Get local device registration
+   * Checks localStorage first, falls back to Keychain if localStorage is empty
+   * (handles iOS clearing localStorage on app updates)
    */
   async getLocalRegistration(): Promise<DeviceRegistration | null> {
     if (!this.currentUsername) return null
+    
+    // First check localStorage
     const reg = this.get<DeviceRegistration>(KEYS.REGISTRATION, 'data')
-    console.log('🔐 getLocalRegistration:', reg ? `deviceId=${reg.deviceId}` : 'null')
-    return reg
+    if (reg) {
+      console.log('🔐 getLocalRegistration from localStorage:', `deviceId=${reg.deviceId}`)
+      return reg
+    }
+    
+    // If not in localStorage, try Keychain (iOS persists this across app updates)
+    try {
+      const keychainKey = `${KEYCHAIN_PREFIX}${this.currentUsername.toLowerCase()}`
+      const result = await Preferences.get({ key: keychainKey })
+      
+      if (result.value) {
+        const keychainReg: DeviceRegistration = JSON.parse(result.value)
+        console.log('🔐 getLocalRegistration from Keychain (restoring):', `deviceId=${keychainReg.deviceId}`)
+        
+        // Restore to localStorage for faster access
+        this.put(KEYS.REGISTRATION, 'data', keychainReg)
+        
+        // Also restore identity key pair
+        if (keychainReg.identityKeyPair) {
+          this.put(KEYS.IDENTITY_KEY, 'pair', keychainReg.identityKeyPair)
+        }
+        
+        // Restore signed prekey
+        if (keychainReg.signedPreKey) {
+          this.put(KEYS.SIGNED_PREKEYS, keychainReg.signedPreKey.keyId, {
+            keyId: keychainReg.signedPreKey.keyId,
+            publicKey: keychainReg.signedPreKey.publicKey,
+            privateKey: keychainReg.signedPreKey.privateKey,
+            signature: keychainReg.signedPreKey.signature,
+            timestamp: keychainReg.signedPreKey.timestamp,
+          })
+        }
+        
+        // Restore prekeys
+        if (keychainReg.preKeys) {
+          for (const pk of keychainReg.preKeys) {
+            this.put(KEYS.PREKEYS, pk.keyId, {
+              keyId: pk.keyId,
+              publicKey: pk.publicKey,
+              privateKey: pk.privateKey,
+            })
+          }
+        }
+        
+        console.log('🔐 ✅ Signal registration restored from Keychain to localStorage')
+        return keychainReg
+      }
+    } catch (error) {
+      console.warn('🔐 Failed to check Keychain for registration:', error)
+    }
+    
+    console.log('🔐 getLocalRegistration: null (not found in localStorage or Keychain)')
+    return null
   }
 
   /**
    * Store local device registration
+   * Saves to both localStorage (fast access) and Keychain (persistence)
    */
   async storeLocalRegistration(registration: DeviceRegistration): Promise<void> {
     if (!this.currentUsername) throw new Error('User not initialized')
+    
+    // Store in localStorage for fast access
     this.put(KEYS.REGISTRATION, 'data', registration)
-    console.log('🔐 storeLocalRegistration: deviceId=', registration.deviceId)
+    console.log('🔐 storeLocalRegistration to localStorage: deviceId=', registration.deviceId)
+    
+    // Also backup to Keychain (persists across iOS app updates)
+    try {
+      const keychainKey = `${KEYCHAIN_PREFIX}${this.currentUsername.toLowerCase()}`
+      await Preferences.set({
+        key: keychainKey,
+        value: JSON.stringify(registration)
+      })
+      console.log(`🔐 ✅ Signal registration backed up to ${Capacitor.isNativePlatform() ? 'iOS Keychain' : 'Preferences'}`)
+    } catch (error) {
+      console.warn('🔐 Failed to backup registration to Keychain:', error)
+      // Don't throw - localStorage save succeeded, Keychain is just a backup
+    }
   }
 
   // ============ Identity Keys (Remote) ============
