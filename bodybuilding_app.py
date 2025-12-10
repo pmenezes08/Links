@@ -9348,8 +9348,19 @@ def get_messages():
                     c.execute("SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0", (username,))
                     row = c.fetchone()
                     new_unread_count = row['count'] if (row and hasattr(row, 'keys')) else (row[0] if row else 0)
-                    # Send badge update
-                    send_fcm_to_user_badge_only(username, new_unread_count)
+                    
+                    # If count is 0, send badge reset multiple times for reliability (like Clear All does)
+                    if new_unread_count == 0:
+                        logger.info(f"All notifications read for {username}, sending aggressive badge reset")
+                        # Send 3 times to ensure iOS processes it
+                        for i in range(3):
+                            send_fcm_to_user_badge_only(username, 0)
+                            import time
+                            time.sleep(0.1)  # Small delay between sends
+                    else:
+                        # Just send once if there are still unread notifications
+                        send_fcm_to_user_badge_only(username, new_unread_count)
+                    
                     logger.info(f"Updated badge for {username} after reading messages from {other_username}: {new_unread_count} unread")
                 except Exception as badge_err:
                     logger.warning(f"Could not update badge after reading messages: {badge_err}")
