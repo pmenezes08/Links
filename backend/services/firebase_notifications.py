@@ -268,9 +268,9 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
             
             # Check if this is a native APNs token (64 hex chars)
             if is_apns_token(token):
-                logger.info(f"📱 Token {token_preview} is APNs format, sending via APNs HTTP/2")
+                logger.info(f"📱 Token {token_preview} is APNs format, sending via APNs HTTP/2 with badge={unread_count}")
                 try:
-                    send_apns_notification(token, title, body, data)
+                    send_apns_notification(token, title, body, data, badge_count=unread_count)
                     sent_count += 1
                 except Exception as e:
                     logger.error(f"APNs send failed for {token_preview}: {e}")

@@ -104,7 +104,7 @@ def send_native_push(username: str, title: str, body: str, data: dict = None):
         logger.error(f"Error sending native push to {username}: {e}")
 
 
-def send_apns_notification(device_token: str, title: str, body: str, data: dict = None):
+def send_apns_notification(device_token: str, title: str, body: str, data: dict = None, badge_count: int = 1):
     """Send iOS push notification via APNs using HTTP/2 (Apple's 2025 recommendation)."""
     
     if not APNS_AVAILABLE:
@@ -133,7 +133,7 @@ def send_apns_notification(device_token: str, title: str, body: str, data: dict 
                     "title": title,
                     "body": body
                 },
-                "badge": 1,
+                "badge": badge_count,
                 "sound": "default"
             }
         }
