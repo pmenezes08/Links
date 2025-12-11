@@ -10093,25 +10093,30 @@ def api_chat_threads():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
             
             # Ensure archived_chats table exists and get archived usernames
             ensure_archived_chats_table(c)
-            c.execute("SELECT other_username FROM archived_chats WHERE username = ?", (username,))
-            archived_set = set(
-                r['other_username'] if hasattr(r, 'keys') else r[0] 
-                for r in c.fetchall()
-            )
+            try:
+                c.execute(f"SELECT other_username FROM archived_chats WHERE username = {ph}", (username,))
+                archived_set = set(
+                    r['other_username'] if hasattr(r, 'keys') else r[0] 
+                    for r in c.fetchall()
+                )
+            except Exception:
+                # Table might not exist yet or other issue - proceed with empty set
+                archived_set = set()
 
             # Gather all counterpart usernames the user has messages with (either direction)
             c.execute(
-                """
+                f"""
                 SELECT DISTINCT receiver AS other_username
                 FROM messages
-                WHERE sender = ?
+                WHERE sender = {ph}
                 UNION
                 SELECT DISTINCT sender AS other_username
                 FROM messages
-                WHERE receiver = ?
+                WHERE receiver = {ph}
                 ORDER BY other_username
                 """,
                 (username, username),
@@ -10356,15 +10361,29 @@ def delete_chat_thread():
 def ensure_archived_chats_table(cursor):
     """Create archived_chats table if it doesn't exist"""
     try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS archived_chats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                other_username TEXT NOT NULL,
-                archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(username, other_username)
-            )
-        """)
+        if USE_MYSQL:
+            # Check if table exists first
+            cursor.execute("SHOW TABLES LIKE 'archived_chats'")
+            if not cursor.fetchone():
+                cursor.execute("""
+                    CREATE TABLE archived_chats (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        username VARCHAR(255) NOT NULL,
+                        other_username VARCHAR(255) NOT NULL,
+                        archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE KEY unique_archive (username, other_username)
+                    )
+                """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS archived_chats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    other_username TEXT NOT NULL,
+                    archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(username, other_username)
+                )
+            """)
     except Exception as e:
         logger.warning(f"Could not create archived_chats table: {e}")
 
