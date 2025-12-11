@@ -71,7 +71,7 @@ export default function ChatThread(){
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
   const [draft, setDraft] = useState('')
-  const [replyTo, setReplyTo] = useState<{ text:string; sender?:string }|null>(null)
+  const [replyTo, setReplyTo] = useState<{ text:string; sender?:string; image_path?:string; video_path?:string; audio_path?:string }|null>(null)
   const [sending, setSendingState] = useState(false)
   // Check if encryption keys need to be synced from another device
   const [encryptionNeedsSync] = useState(() => 
@@ -1082,7 +1082,20 @@ export default function ChatThread(){
       skipNextPollsUntil.current = Date.now() + 800
       const now = new Date().toISOString()
       const tempId = `temp_${Date.now()}_${Math.random()}`
-      const replySnippet = replySnapshot ? (replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text) : undefined
+      
+      // Generate reply snippet - handle media messages
+      let replySnippet: string | undefined
+      if (replySnapshot) {
+        if (replySnapshot.image_path) {
+          replySnippet = replySnapshot.text ? `📷 ${replySnapshot.text.slice(0,80)}` : '📷 Photo'
+        } else if (replySnapshot.video_path) {
+          replySnippet = replySnapshot.text ? `🎥 ${replySnapshot.text.slice(0,80)}` : '🎥 Video'
+        } else if (replySnapshot.audio_path) {
+          replySnippet = '🎤 Voice message'
+        } else {
+          replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text
+        }
+      }
       const replySender = replySnapshot?.sender
       
       // Format message with reply if needed
@@ -1090,7 +1103,7 @@ export default function ChatThread(){
       if (replySnapshot) {
         // Add a special format that we can parse later
         // Using a format that won't interfere with normal messages
-        formattedMessage = `[REPLY:${replySender}:${replySnapshot.text.slice(0,90)}]\n${messageText}`
+        formattedMessage = `[REPLY:${replySender}:${replySnippet}]\n${messageText}`
       }
       
       // E2E Encryption disabled - send plaintext messages
@@ -1833,7 +1846,10 @@ export default function ChatThread(){
                   onReply={() => {
                     setReplyTo({
                       text: m.text,
-                      sender: m.sent ? 'You' : (otherProfile?.display_name || username || 'User')
+                      sender: m.sent ? 'You' : (otherProfile?.display_name || username || 'User'),
+                      image_path: m.image_path,
+                      video_path: m.video_path,
+                      audio_path: m.audio_path,
                     })
                     focusTextarea()
                   }}
@@ -1992,12 +2008,52 @@ export default function ChatThread(){
             <div className="mb-2 flex items-stretch gap-0 bg-white/5 rounded-lg overflow-hidden">
               {/* WhatsApp-style left accent bar */}
               <div className="w-1 bg-[#4db6ac] flex-shrink-0" />
-              <div className="flex-1 px-3 py-2 min-w-0">
-                <div className="text-[12px] text-[#4db6ac] font-medium truncate">
-                  {replyTo.sender === 'You' ? 'You' : (otherProfile?.display_name || username || 'User')}
-                </div>
-                <div className="text-[13px] text-white/70 line-clamp-1 mt-0.5">
-                  {replyTo.text.length > 80 ? replyTo.text.slice(0, 80) + '…' : replyTo.text}
+              <div className="flex-1 px-3 py-2 min-w-0 flex items-center gap-2">
+                {/* Media thumbnail preview */}
+                {replyTo.image_path && (
+                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+                    <img 
+                      src={replyTo.image_path.startsWith('blob:') ? replyTo.image_path : (replyTo.image_path.startsWith('/') ? replyTo.image_path : `/${replyTo.image_path}`)} 
+                      alt="Photo" 
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                {replyTo.video_path && !replyTo.image_path && (
+                  <div className="w-10 h-10 rounded bg-black/30 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-video text-white/60 text-sm" />
+                  </div>
+                )}
+                {replyTo.audio_path && !replyTo.image_path && !replyTo.video_path && (
+                  <div className="w-10 h-10 rounded bg-black/30 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-microphone text-white/60 text-sm" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] text-[#4db6ac] font-medium truncate">
+                    {replyTo.sender === 'You' ? 'You' : (otherProfile?.display_name || username || 'User')}
+                  </div>
+                  <div className="text-[13px] text-white/70 line-clamp-1 mt-0.5 flex items-center gap-1">
+                    {/* Show media type icon + label for media messages */}
+                    {replyTo.image_path ? (
+                      <>
+                        <i className="fa-solid fa-camera text-[11px] text-white/50" />
+                        <span>{replyTo.text || 'Photo'}</span>
+                      </>
+                    ) : replyTo.video_path ? (
+                      <>
+                        <i className="fa-solid fa-video text-[11px] text-white/50" />
+                        <span>{replyTo.text || 'Video'}</span>
+                      </>
+                    ) : replyTo.audio_path ? (
+                      <>
+                        <i className="fa-solid fa-microphone text-[11px] text-white/50" />
+                        <span>Voice message</span>
+                      </>
+                    ) : (
+                      <span>{replyTo.text.length > 80 ? replyTo.text.slice(0, 80) + '…' : replyTo.text}</span>
+                    )}
+                  </div>
                 </div>
               </div>
               <button 
