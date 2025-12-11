@@ -52,6 +52,10 @@ export interface MessageBubbleProps {
   onCancelEdit: () => void
   /** Handler for image preview */
   onImageClick: (imagePath: string) => void
+  /** Handler for story reply click - navigates to story */
+  onStoryReplyClick?: (storyId: string, username: string) => void
+  /** Username of the other person in the chat (for story navigation) */
+  otherUsername?: string
   /** Function to render linkified text */
   linkifyText: (text: string) => React.ReactNode[]
 }
@@ -71,6 +75,8 @@ export default function MessageBubble({
   onCommitEdit,
   onCancelEdit,
   onImageClick,
+  onStoryReplyClick,
+  otherUsername,
   linkifyText,
 }: MessageBubbleProps) {
   return (
@@ -95,9 +101,21 @@ export default function MessageBubble({
           {m.storyReply ? (() => {
             const isVideo = m.storyReply.mediaType === '🎥'
             const mediaPath = m.storyReply.mediaPath
+            const storyId = m.storyReply.id
+            // Determine who owns the story - if sent by me, it's the other person's story
+            const storyOwner = m.sent ? otherUsername : undefined
             
             return (
-              <div className="mb-2 flex items-stretch gap-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-lg overflow-hidden border border-white/10">
+              <button
+                type="button"
+                className="mb-2 w-full flex items-stretch gap-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-lg overflow-hidden border border-white/10 hover:from-purple-500/30 hover:to-pink-500/30 transition-colors cursor-pointer text-left"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (onStoryReplyClick && storyOwner) {
+                    onStoryReplyClick(storyId, storyOwner)
+                  }
+                }}
+              >
                 {/* Story indicator accent bar with gradient */}
                 <div className="w-1 flex-shrink-0 bg-gradient-to-b from-purple-400 to-pink-400" />
                 <div className="flex-1 px-2.5 py-1.5 min-w-0 flex items-center gap-2">
@@ -144,8 +162,12 @@ export default function MessageBubble({
                       )}
                     </div>
                   </div>
+                  {/* Tap indicator */}
+                  <div className="flex-shrink-0 text-white/30">
+                    <i className="fa-solid fa-chevron-right text-xs" />
+                  </div>
                 </div>
-              </div>
+              </button>
             )
           })() : null}
 

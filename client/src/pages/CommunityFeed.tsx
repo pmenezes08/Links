@@ -778,6 +778,9 @@ export default function CommunityFeed() {
     return () => { active = false }
   }, [community_id, refreshKey, storyRefreshKey, normalizeStoryGroups])
 
+  // Ref for handling story open from navigation state
+  const openStoryIdHandledRef = useRef(false)
+
   const handleStoryUploadClick = useCallback(() => {
     if (!community_id){
       alert('Select a community before sharing a story.')
@@ -847,9 +850,10 @@ export default function CommunityFeed() {
     // setStoryEditorNewText('')
   }, [storyEditorFiles])
 
-  // Keyboard event listeners for story editor
+  // Keyboard event listeners for story editor and story viewer
   useEffect(() => {
-    if (!storyEditorOpen) return
+    // Listen for keyboard when story editor or story viewer (with reply input) is open
+    if (!storyEditorOpen && !activeStoryPointer) return
 
     const handleKeyboardShow = (info: any) => {
       setKeyboardHeight(info.keyboardHeight || 0)
@@ -867,7 +871,7 @@ export default function CommunityFeed() {
     return () => {
       Keyboard.removeAllListeners()
     }
-  }, [storyEditorOpen])
+  }, [storyEditorOpen, activeStoryPointer])
 
   const handleStoryEditorPublish = useCallback(async () => {
     if (!community_id || storyEditorFiles.length === 0) return
@@ -1096,6 +1100,36 @@ export default function CommunityFeed() {
     setActiveStoryPointer({ groupIndex, storyIndex })
     markStoryAsViewed(targetStory.id)
   }, [storyGroups, markStoryAsViewed])
+
+  // Handle opening a story from navigation state (e.g., clicking story reply in chat)
+  useEffect(() => {
+    if (openStoryIdHandledRef.current) return
+    const state = routerLocation.state as { openStoryId?: string | number } | null
+    if (!state?.openStoryId) return
+    if (!storyGroups.length || storiesLoading) return
+    
+    const targetStoryId = Number(state.openStoryId)
+    if (isNaN(targetStoryId)) return
+    
+    // Find the story in the groups
+    for (let groupIndex = 0; groupIndex < storyGroups.length; groupIndex++) {
+      const group = storyGroups[groupIndex]
+      for (let storyIndex = 0; storyIndex < group.stories.length; storyIndex++) {
+        if (group.stories[storyIndex].id === targetStoryId) {
+          openStoryIdHandledRef.current = true
+          // Clear the state to prevent re-triggering
+          navigate(routerLocation.pathname, { replace: true, state: {} })
+          // Open the story
+          openStory(groupIndex, storyIndex)
+          return
+        }
+      }
+    }
+    
+    // Story not found - maybe it expired, clear the state
+    openStoryIdHandledRef.current = true
+    navigate(routerLocation.pathname, { replace: true, state: {} })
+  }, [storyGroups, storiesLoading, routerLocation.state, routerLocation.pathname, navigate, openStory])
 
   const closeStoryViewer = useCallback(() => {
     storySwipeRef.current = null
@@ -1901,6 +1935,10 @@ export default function CommunityFeed() {
         <div
           className="fixed inset-0 z-[120] bg-black/95 flex flex-col"
           onClick={handleStoryBackdropClick}
+          style={{
+            paddingBottom: keyboardHeight ? `${keyboardHeight}px` : undefined,
+            transition: 'padding-bottom 0.25s ease-out',
+          }}
         >
           <button
             className="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 flex items-center justify-center z-[130]"
@@ -1909,7 +1947,7 @@ export default function CommunityFeed() {
           >
             <i className="fa-solid fa-xmark text-lg" />
           </button>
-          <div className="flex-1 flex items-center justify-center p-4 pt-16 pb-6">
+          <div className="flex-1 flex items-center justify-center p-4 pt-16 pb-6 overflow-y-auto">
             <div ref={storyContentRef} className="w-full max-w-md">
               <div className="flex gap-1 mb-3">
                 {(currentStoryGroup?.stories || []).map((story, idx) => (

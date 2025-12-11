@@ -10093,6 +10093,14 @@ def api_chat_threads():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            
+            # Ensure archived_chats table exists and get archived usernames
+            ensure_archived_chats_table(c)
+            c.execute("SELECT other_username FROM archived_chats WHERE username = ?", (username,))
+            archived_set = set(
+                r['other_username'] if hasattr(r, 'keys') else r[0] 
+                for r in c.fetchall()
+            )
 
             # Gather all counterpart usernames the user has messages with (either direction)
             c.execute(
@@ -10114,6 +10122,10 @@ def api_chat_threads():
             for row in counterpart_rows:
                 try:
                     other_username = row['other_username'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0]
+                    
+                    # Skip archived chats
+                    if other_username in archived_set:
+                        continue
 
                     # Last message in either direction (preview)
                     # Include is_encrypted to handle encrypted messages
@@ -10339,6 +10351,164 @@ def delete_chat_thread():
     except Exception as e:
         logger.error(f"delete_chat_thread error for {username} with {other_username}: {e}")
         return jsonify({'success': False, 'error': 'Failed to delete chat'}), 500
+
+
+def ensure_archived_chats_table(cursor):
+    """Create archived_chats table if it doesn't exist"""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS archived_chats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                other_username TEXT NOT NULL,
+                archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(username, other_username)
+            )
+        """)
+    except Exception as e:
+        logger.warning(f"Could not create archived_chats table: {e}")
+
+
+@app.route('/api/archive_chat', methods=['POST'])
+@login_required
+def archive_chat():
+    """Archive a chat thread (hide from main list)"""
+    username = session['username']
+    other_username = request.form.get('other_username')
+    if not other_username:
+        return jsonify({'success': False, 'error': 'Other username required'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_archived_chats_table(c)
+            ph = get_sql_placeholder()
+            try:
+                c.execute(
+                    f"INSERT INTO archived_chats (username, other_username) VALUES ({ph}, {ph})",
+                    (username, other_username)
+                )
+            except Exception:
+                # Already archived, ignore
+                pass
+            conn.commit()
+            # Invalidate chat threads cache
+            try:
+                cache.delete(f"chat_threads:{username}")
+            except Exception:
+                pass
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"archive_chat error for {username} with {other_username}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to archive chat'}), 500
+
+
+@app.route('/api/unarchive_chat', methods=['POST'])
+@login_required
+def unarchive_chat():
+    """Unarchive a chat thread (show in main list again)"""
+    username = session['username']
+    other_username = request.form.get('other_username')
+    if not other_username:
+        return jsonify({'success': False, 'error': 'Other username required'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_archived_chats_table(c)
+            ph = get_sql_placeholder()
+            c.execute(
+                f"DELETE FROM archived_chats WHERE username = {ph} AND other_username = {ph}",
+                (username, other_username)
+            )
+            conn.commit()
+            # Invalidate chat threads cache
+            try:
+                cache.delete(f"chat_threads:{username}")
+            except Exception:
+                pass
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"unarchive_chat error for {username} with {other_username}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to unarchive chat'}), 500
+
+
+@app.route('/api/archived_chats')
+@login_required
+def api_archived_chats():
+    """Return list of archived chat threads for the current user"""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_archived_chats_table(c)
+            ph = get_sql_placeholder()
+            
+            # Get list of archived usernames
+            c.execute(f"SELECT other_username FROM archived_chats WHERE username = {ph}", (username,))
+            archived_rows = c.fetchall()
+            if not archived_rows:
+                return jsonify({'success': True, 'threads': []})
+            
+            archived_usernames = [
+                r['other_username'] if hasattr(r, 'keys') else r[0]
+                for r in archived_rows
+            ]
+            
+            # Build threads for archived chats similar to main chat_threads
+            threads = []
+            for other_username in archived_usernames:
+                # Get user info
+                c.execute(
+                    f"SELECT username, display_name, profile_picture FROM users WHERE username = {ph}",
+                    (other_username,)
+                )
+                user_row = c.fetchone()
+                if not user_row:
+                    continue
+                
+                if hasattr(user_row, 'keys'):
+                    display_name = user_row.get('display_name') or user_row.get('username', other_username)
+                    profile_picture = user_row.get('profile_picture')
+                else:
+                    display_name = user_row[1] or user_row[0] or other_username
+                    profile_picture = user_row[2] if len(user_row) > 2 else None
+                
+                # Get last message
+                c.execute(
+                    f"""
+                    SELECT message, timestamp 
+                    FROM messages 
+                    WHERE (sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph})
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                    """,
+                    (username, other_username, other_username, username)
+                )
+                msg_row = c.fetchone()
+                last_message_text = None
+                last_activity_time = None
+                if msg_row:
+                    if hasattr(msg_row, 'keys'):
+                        last_message_text = msg_row.get('message', '')
+                        last_activity_time = msg_row.get('timestamp')
+                    else:
+                        last_message_text = msg_row[0]
+                        last_activity_time = msg_row[1] if len(msg_row) > 1 else None
+                
+                threads.append({
+                    'other_username': other_username,
+                    'display_name': display_name,
+                    'profile_picture_url': _public_url(profile_picture) if profile_picture else None,
+                    'last_message_text': last_message_text,
+                    'last_activity_time': last_activity_time,
+                    'is_archived': True,
+                })
+            
+            # Sort by last activity
+            threads.sort(key=lambda t: (t.get('last_activity_time') or ''), reverse=True)
+            return jsonify({'success': True, 'threads': threads})
+    except Exception as e:
+        logger.error(f"Error building archived chats for {username}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to load archived chats'}), 500
 
 # Community membership/admin routes now reside in backend.blueprints.communities.
 
@@ -20340,6 +20510,61 @@ def api_get_story_viewers(story_id: int):
             return jsonify({'success': True, 'story_id': story_id, 'viewers': viewers})
     except Exception as e:
         logger.error(f"Error fetching viewers for story {story_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community_stories/<int:story_id>', methods=['GET'])
+@login_required
+def get_community_story(story_id: int):
+    """Get details of a specific story including its community_id."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+            
+            c.execute(
+                f"""
+                SELECT cs.id, cs.username, cs.community_id, cs.media_type, cs.media_url, 
+                       cs.media_path, cs.caption, cs.created_at, cs.expires_at
+                FROM community_stories cs
+                WHERE cs.id = {ph}
+                """,
+                (story_id,),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Story not found'}), 404
+            
+            if hasattr(row, "keys"):
+                story = {
+                    'id': row['id'],
+                    'username': row['username'],
+                    'community_id': row['community_id'],
+                    'media_type': row['media_type'],
+                    'media_url': _public_url(row['media_url']),
+                    'media_path': _public_url(row['media_path']),
+                    'caption': row['caption'],
+                    'created_at': row['created_at'],
+                    'expires_at': row['expires_at'],
+                }
+            else:
+                story = {
+                    'id': row[0],
+                    'username': row[1],
+                    'community_id': row[2],
+                    'media_type': row[3],
+                    'media_url': _public_url(row[4]),
+                    'media_path': _public_url(row[5]),
+                    'caption': row[6],
+                    'created_at': row[7],
+                    'expires_at': row[8],
+                }
+            
+            return jsonify({'success': True, 'story': story})
+            
+    except Exception as e:
+        logger.error(f"Error fetching story {story_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 

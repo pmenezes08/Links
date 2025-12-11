@@ -1929,6 +1929,20 @@ export default function ChatThread(){
                     setEditText('')
                   }}
                   onImageClick={(imagePath) => setPreviewImage(imagePath)}
+                  onStoryReplyClick={async (storyId) => {
+                    // Fetch the story to get its community_id, then navigate
+                    try {
+                      const res = await fetch(`/api/community_stories/${storyId}`, { credentials: 'include' })
+                      const json = await res.json()
+                      if (json?.success && json.story?.community_id) {
+                        // Navigate to community feed with the story ID to open
+                        navigate(`/timeline/${json.story.community_id}`, { state: { openStoryId: storyId } })
+                      }
+                    } catch (err) {
+                      console.error('Failed to fetch story:', err)
+                    }
+                  }}
+                  otherUsername={username}
                   linkifyText={linkifyText}
                 />
               </div>

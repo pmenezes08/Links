@@ -13,6 +13,7 @@ type Thread = {
   last_activity_time: string | null
   last_sender?: string | null
   unread_count?: number
+  is_archived?: boolean
 }
 
 type CommunityNode = {
@@ -84,6 +85,11 @@ export default function Messages(){
   const [subCommunityFilter, setSubCommunityFilter] = useState<number | null>(null)
   const [communityError, setCommunityError] = useState<string | null>(null)
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null)
+  
+  // Archived chats
+  const [showArchived, setShowArchived] = useState(false)
+  const [archivedThreads, setArchivedThreads] = useState<Thread[]>([])
+  const [archivedLoading, setArchivedLoading] = useState(false)
 
   // Fetch threads with caching
   const loadThreads = useCallback((silent: boolean = false) => {
@@ -113,6 +119,58 @@ export default function Messages(){
         if (!silent) setLoading(false)
       })
   }, [])
+
+  // Load archived threads
+  const loadArchivedThreads = useCallback(() => {
+    setArchivedLoading(true)
+    fetch('/api/archived_chats', { credentials: 'include' })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success && Array.isArray(j.threads)) {
+          setArchivedThreads(j.threads)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setArchivedLoading(false))
+  }, [])
+
+  // Archive a chat
+  const archiveChat = useCallback((otherUsername: string) => {
+    const fd = new URLSearchParams({ other_username: otherUsername })
+    fetch('/api/archive_chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success) {
+          // Move from threads to archived
+          const archivedThread = threads.find(t => t.other_username === otherUsername)
+          if (archivedThread) {
+            setArchivedThreads(prev => [{ ...archivedThread, is_archived: true }, ...prev])
+          }
+          setThreads(prev => prev.filter(t => t.other_username !== otherUsername))
+          setSwipeId(null)
+          // Refresh threads
+          loadThreads(true)
+        }
+      })
+      .catch(() => {})
+  }, [threads, loadThreads])
+
+  // Unarchive a chat
+  const unarchiveChat = useCallback((otherUsername: string) => {
+    const fd = new URLSearchParams({ other_username: otherUsername })
+    fetch('/api/unarchive_chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success) {
+          // Remove from archived
+          setArchivedThreads(prev => prev.filter(t => t.other_username !== otherUsername))
+          setSwipeId(null)
+          // Refresh threads
+          loadThreads(true)
+        }
+      })
+      .catch(() => {})
+  }, [loadThreads])
 
   useEffect(() => {
     // Fetch fresh data (will update cache)
@@ -486,13 +544,21 @@ export default function Messages(){
               ) : (
                 visibleThreads.map((t) => {
               const isDragging = draggingIdRef.current === t.other_username
-              const tx = isDragging ? Math.min(0, dragX) : (swipeId === t.other_username ? -72 : 0)
+              const tx = isDragging ? Math.min(0, dragX) : (swipeId === t.other_username ? -116 : 0)
               const transition = isDragging ? 'none' : 'transform 150ms ease-out'
-              const showActions = isDragging ? (dragX < -10) : (swipeId === t.other_username)
+              const showActions = isDragging ? (dragX < -20) : (swipeId === t.other_username)
               return (
                 <div key={t.other_username} className="relative w-full overflow-hidden">
                   {/* Actions (revealed on swipe) */}
-                  <div className="absolute inset-y-0 right-0 flex items-stretch pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
+                  <div className="absolute inset-y-0 right-0 flex items-stretch gap-1 pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
+                    <button
+                      type="button"
+                      onClick={() => archiveChat(t.other_username)}
+                      className="my-1 h-[44px] w-[52px] rounded-md bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 flex items-center justify-center"
+                      aria-label="Archive chat"
+                    >
+                      <i className="fa-solid fa-box-archive" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -519,7 +585,7 @@ export default function Messages(){
                             }
                           }).catch(()=>{})
                       }}
-                      className="my-1 h-[44px] w-[64px] rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
+                      className="my-1 h-[44px] w-[52px] rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
                       aria-label="Delete chat"
                     >
                       <i className="fa-solid fa-trash" />
@@ -541,7 +607,7 @@ export default function Messages(){
                     onTouchStart={(e) => {
                       startXRef.current = e.touches[0].clientX
                       draggingIdRef.current = t.other_username
-                      setDragX(swipeId === t.other_username ? -72 : 0)
+                      setDragX(swipeId === t.other_username ? -116 : 0)
                     }}
                     onTouchMove={(e) => {
                       if (draggingIdRef.current !== t.other_username) return
@@ -550,7 +616,7 @@ export default function Messages(){
                     }}
                     onTouchEnd={() => {
                       if (draggingIdRef.current !== t.other_username) return
-                      const shouldOpen = dragX <= -60
+                      const shouldOpen = dragX <= -80
                       setSwipeId(shouldOpen ? t.other_username : null)
                       setDragX(0)
                       draggingIdRef.current = null
@@ -590,6 +656,111 @@ export default function Messages(){
             </div>
               )
             })()}
+            
+            {/* Archived chats section */}
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!showArchived) {
+                    loadArchivedThreads()
+                  }
+                  setShowArchived(!showArchived)
+                }}
+                className="w-full px-4 py-3 flex items-center justify-between text-left border-t border-white/10"
+              >
+                <div className="flex items-center gap-2 text-[#9fb0b5]">
+                  <i className="fa-solid fa-box-archive text-sm" />
+                  <span className="text-sm font-medium">Archived Chats</span>
+                  {archivedThreads.length > 0 && (
+                    <span className="text-xs text-white/50">({archivedThreads.length})</span>
+                  )}
+                </div>
+                <i className={`fa-solid fa-chevron-${showArchived ? 'up' : 'down'} text-xs text-white/40`} />
+              </button>
+              
+              {showArchived && (
+                <div className="border-t border-white/5">
+                  {archivedLoading ? (
+                    <div className="px-4 py-6 flex items-center justify-center text-[#9fb0b5]">
+                      <i className="fa-solid fa-spinner fa-spin mr-2" />
+                      Loading archived chats...
+                    </div>
+                  ) : archivedThreads.length === 0 ? (
+                    <div className="px-4 py-4 text-sm text-[#9fb0b5]">
+                      No archived chats
+                    </div>
+                  ) : (
+                    archivedThreads.map((t) => {
+                      const isDragging = draggingIdRef.current === `archived-${t.other_username}`
+                      const tx = isDragging ? Math.min(0, dragX) : (swipeId === `archived-${t.other_username}` ? -60 : 0)
+                      const transition = isDragging ? 'none' : 'transform 150ms ease-out'
+                      const showActions = isDragging ? (dragX < -20) : (swipeId === `archived-${t.other_username}`)
+                      return (
+                        <div key={`archived-${t.other_username}`} className="relative w-full overflow-hidden bg-white/5">
+                          {/* Unarchive action */}
+                          <div className="absolute inset-y-0 right-0 flex items-stretch pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
+                            <button
+                              type="button"
+                              onClick={() => unarchiveChat(t.other_username)}
+                              className="my-1 h-[44px] w-[52px] rounded-md bg-green-500/20 text-green-300 hover:bg-green-500/30 flex items-center justify-center"
+                              aria-label="Unarchive chat"
+                            >
+                              <i className="fa-solid fa-arrow-up-from-bracket" />
+                            </button>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}`)
+                            }}
+                            onTouchStart={(e) => {
+                              startXRef.current = e.touches[0].clientX
+                              draggingIdRef.current = `archived-${t.other_username}`
+                              setDragX(swipeId === `archived-${t.other_username}` ? -60 : 0)
+                            }}
+                            onTouchMove={(e) => {
+                              if (draggingIdRef.current !== `archived-${t.other_username}`) return
+                              const dx = e.touches[0].clientX - startXRef.current
+                              setDragX(dx)
+                            }}
+                            onTouchEnd={() => {
+                              if (draggingIdRef.current !== `archived-${t.other_username}`) return
+                              const shouldOpen = dragX <= -40
+                              setSwipeId(shouldOpen ? `archived-${t.other_username}` : null)
+                              setDragX(0)
+                              draggingIdRef.current = null
+                            }}
+                            onTouchCancel={() => {
+                              if (draggingIdRef.current !== `archived-${t.other_username}`) return
+                              setDragX(0)
+                              draggingIdRef.current = null
+                            }}
+                            className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
+                            style={{ transform: `translateX(${tx}px)`, transition }}
+                          >
+                            <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={44} displayName={t.display_name} />
+                            <div className="flex-1 min-w-0 text-left">
+                              <div className="flex items-center justify-between">
+                                <div className="font-medium truncate text-white/70">{t.display_name}</div>
+                                {t.last_activity_time && (
+                                  <div className="ml-3 flex-shrink-0 text-[11px] text-[#9fb0b5]">
+                                    {new Date(t.last_activity_time).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-[13px] text-[#9fb0b5] truncate">
+                                {formatLastMessagePreview(t.last_message_text)}
+                              </div>
+                            </div>
+                          </button>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <NewMessageInline />
