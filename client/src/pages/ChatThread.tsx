@@ -1085,14 +1085,18 @@ export default function ChatThread(){
       const tempId = `temp_${Date.now()}_${Math.random()}`
       
       // Generate reply snippet - handle media messages
+      // Format: text for regular, or "📷|path|caption" for images, "🎥|path|caption" for video, "🎤|" for audio
       let replySnippet: string | undefined
       if (replySnapshot) {
         if (replySnapshot.image_path) {
-          replySnippet = replySnapshot.text ? `📷 ${replySnapshot.text.slice(0,80)}` : '📷 Photo'
+          // Encode image path in snippet for thumbnail display: 📷|image_path|caption
+          const caption = replySnapshot.text || 'Photo'
+          replySnippet = `📷|${replySnapshot.image_path}|${caption.slice(0,60)}`
         } else if (replySnapshot.video_path) {
-          replySnippet = replySnapshot.text ? `🎥 ${replySnapshot.text.slice(0,80)}` : '🎥 Video'
+          const caption = replySnapshot.text || 'Video'
+          replySnippet = `🎥|${replySnapshot.video_path}|${caption.slice(0,60)}`
         } else if (replySnapshot.audio_path) {
-          replySnippet = '🎤 Voice message'
+          replySnippet = '🎤|Voice message'
         } else {
           replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text
         }

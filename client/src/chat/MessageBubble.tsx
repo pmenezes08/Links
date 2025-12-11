@@ -87,20 +87,64 @@ export default function MessageBubble({
           } as React.CSSProperties}
         >
           {/* Reply snippet */}
-          {m.replySnippet ? (
-            <div className="mb-2 flex items-stretch gap-0 bg-black/20 rounded-lg overflow-hidden">
-              {/* WhatsApp-style left accent bar */}
-              <div className={`w-1 flex-shrink-0 ${m.sent ? 'bg-white/40' : 'bg-[#4db6ac]'}`} />
-              <div className="flex-1 px-2.5 py-1.5 min-w-0">
-                <div className={`text-[11px] font-medium truncate ${m.sent ? 'text-white/70' : 'text-[#4db6ac]'}`}>
-                  {m.sent ? otherDisplayName : 'You'}
-                </div>
-                <div className="text-[12px] text-white/60 line-clamp-1 mt-0.5">
-                  {m.replySnippet}
+          {m.replySnippet ? (() => {
+            // Parse media reply format: "📷|path|caption" or "🎥|path|caption" or "🎤|text" or plain text
+            const isImageReply = m.replySnippet.startsWith('📷|')
+            const isVideoReply = m.replySnippet.startsWith('🎥|')
+            const isAudioReply = m.replySnippet.startsWith('🎤|')
+            
+            let mediaPath: string | null = null
+            let displayText = m.replySnippet
+            
+            if (isImageReply || isVideoReply) {
+              const parts = m.replySnippet.split('|')
+              if (parts.length >= 3) {
+                mediaPath = parts[1]
+                displayText = parts.slice(2).join('|') || (isImageReply ? 'Photo' : 'Video')
+              }
+            } else if (isAudioReply) {
+              displayText = m.replySnippet.substring(2) || 'Voice message'
+            }
+            
+            return (
+              <div className="mb-2 flex items-stretch gap-0 bg-black/20 rounded-lg overflow-hidden">
+                {/* WhatsApp-style left accent bar */}
+                <div className={`w-1 flex-shrink-0 ${m.sent ? 'bg-white/40' : 'bg-[#4db6ac]'}`} />
+                <div className="flex-1 px-2.5 py-1.5 min-w-0 flex items-center gap-2">
+                  {/* Media thumbnail for image/video replies */}
+                  {mediaPath && isImageReply && (
+                    <div className="w-9 h-9 rounded overflow-hidden flex-shrink-0 bg-black/30">
+                      <img 
+                        src={normalizeMediaPath(mediaPath)} 
+                        alt="" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  {mediaPath && isVideoReply && (
+                    <div className="w-9 h-9 rounded bg-black/40 flex items-center justify-center flex-shrink-0">
+                      <i className="fa-solid fa-play text-white/60 text-xs" />
+                    </div>
+                  )}
+                  {isAudioReply && (
+                    <div className="w-7 h-7 rounded-full bg-black/30 flex items-center justify-center flex-shrink-0">
+                      <i className="fa-solid fa-microphone text-white/50 text-[10px]" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-[11px] font-medium truncate ${m.sent ? 'text-white/70' : 'text-[#4db6ac]'}`}>
+                      {m.sent ? otherDisplayName : 'You'}
+                    </div>
+                    <div className="text-[12px] text-white/60 line-clamp-1 mt-0.5 flex items-center gap-1">
+                      {isImageReply && <i className="fa-solid fa-camera text-[10px] text-white/40" />}
+                      {isVideoReply && <i className="fa-solid fa-video text-[10px] text-white/40" />}
+                      <span className="truncate">{displayText}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : null}
+            )
+          })() : null}
 
           {/* Audio message */}
           {m.audio_path && !m.image_path ? (
