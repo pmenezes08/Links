@@ -10574,25 +10574,25 @@ def api_archived_chats():
             threads = []
             for other_username in archived_usernames:
                 try:
-                    # Get user info
+                    # Get profile info from user_profiles table (same as api_chat_threads)
                     c.execute(
-                        f"SELECT username, display_name, profile_picture FROM users WHERE username = {ph}",
+                        f"SELECT display_name, profile_picture FROM user_profiles WHERE username = {ph}",
                         (other_username,)
                     )
-                    user_row = c.fetchone()
-                    if not user_row:
-                        logger.warning(f"📦 User not found: {other_username}")
-                        continue
+                    profile_row = c.fetchone()
+                    display_name = other_username
+                    profile_picture = None
                     
-                    if hasattr(user_row, 'get'):
-                        display_name = user_row.get('display_name') or user_row.get('username', other_username)
-                        profile_picture = user_row.get('profile_picture')
-                    elif hasattr(user_row, 'keys'):
-                        display_name = user_row['display_name'] or user_row['username'] or other_username
-                        profile_picture = user_row.get('profile_picture') if hasattr(user_row, 'get') else user_row['profile_picture']
-                    else:
-                        display_name = user_row[1] or user_row[0] or other_username
-                        profile_picture = user_row[2] if len(user_row) > 2 else None
+                    if profile_row:
+                        if hasattr(profile_row, 'get'):
+                            display_name = profile_row.get('display_name') or other_username
+                            profile_picture = profile_row.get('profile_picture')
+                        elif hasattr(profile_row, 'keys'):
+                            display_name = profile_row['display_name'] or other_username
+                            profile_picture = profile_row['profile_picture'] if 'profile_picture' in profile_row.keys() else None
+                        else:
+                            display_name = profile_row[0] or other_username
+                            profile_picture = profile_row[1] if len(profile_row) > 1 else None
                     
                     # Get last message
                     c.execute(
@@ -10619,10 +10619,13 @@ def api_archived_chats():
                             last_message_text = msg_row[0]
                             last_activity_time = msg_row[1] if len(msg_row) > 1 else None
                     
+                    # Build profile picture URL same way as api_chat_threads
+                    profile_picture_url = url_for('static', filename=profile_picture) if profile_picture else None
+                    
                     threads.append({
                         'other_username': other_username,
                         'display_name': display_name,
-                        'profile_picture_url': _public_url(profile_picture) if profile_picture else None,
+                        'profile_picture_url': profile_picture_url,
                         'last_message_text': last_message_text,
                         'last_activity_time': str(last_activity_time) if last_activity_time else None,
                         'is_archived': True,
