@@ -1932,11 +1932,18 @@ export default function ChatThread(){
                   onStoryReplyClick={async (storyId) => {
                     // Fetch the story to get its community_id, then navigate
                     try {
+                      console.log('🎬 Fetching story:', storyId)
                       const res = await fetch(`/api/community_stories/${storyId}`, { credentials: 'include' })
                       const json = await res.json()
+                      console.log('🎬 Story response:', json)
                       if (json?.success && json.story?.community_id) {
                         // Navigate to community feed with the story ID to open
                         navigate(`/timeline/${json.story.community_id}`, { state: { openStoryId: storyId } })
+                      } else if (json?.error === 'Story not found') {
+                        // Story might have expired
+                        alert('This story is no longer available')
+                      } else {
+                        console.error('Failed to get story details:', json)
                       }
                     } catch (err) {
                       console.error('Failed to fetch story:', err)

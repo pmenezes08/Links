@@ -102,17 +102,20 @@ export default function MessageBubble({
             const isVideo = m.storyReply.mediaType === '🎥'
             const mediaPath = m.storyReply.mediaPath
             const storyId = m.storyReply.id
-            // Determine who owns the story - if sent by me, it's the other person's story
-            const storyOwner = m.sent ? otherUsername : undefined
             
             return (
               <button
                 type="button"
-                className="mb-2 w-full flex items-stretch gap-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-lg overflow-hidden border border-white/10 hover:from-purple-500/30 hover:to-pink-500/30 transition-colors cursor-pointer text-left"
+                className="mb-2 w-full flex items-stretch gap-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-lg overflow-hidden border border-white/10 hover:from-purple-500/30 hover:to-pink-500/30 active:from-purple-500/40 active:to-pink-500/40 transition-colors cursor-pointer text-left"
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation()
-                  if (onStoryReplyClick && storyOwner) {
-                    onStoryReplyClick(storyId, storyOwner)
+                  e.preventDefault()
+                  console.log('🎬 Story reply clicked, storyId:', storyId)
+                  if (onStoryReplyClick) {
+                    onStoryReplyClick(storyId, otherUsername || '')
                   }
                 }}
               >
