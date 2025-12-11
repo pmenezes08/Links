@@ -5,6 +5,82 @@
 
 export type MessageMeta = { reaction?: string; replySnippet?: string }
 
+// ===== ID-based Reaction Storage (more reliable than time-based) =====
+const REACTIONS_CACHE_KEY_PREFIX = 'chat-reactions:'
+const REACTIONS_CACHE_VERSION = 'v1'
+
+type ReactionCache = {
+  version: string
+  reactions: Record<string, string> // messageId -> emoji
+}
+
+function getReactionsStorage() {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+function getReactionsCacheKey(chatUsername: string): string {
+  return `${REACTIONS_CACHE_KEY_PREFIX}${chatUsername.toLowerCase()}`
+}
+
+function loadReactionsCache(chatUsername: string): ReactionCache {
+  const storage = getReactionsStorage()
+  if (!storage) return { version: REACTIONS_CACHE_VERSION, reactions: {} }
+  
+  try {
+    const raw = storage.getItem(getReactionsCacheKey(chatUsername))
+    if (!raw) return { version: REACTIONS_CACHE_VERSION, reactions: {} }
+    
+    const parsed = JSON.parse(raw) as ReactionCache
+    if (parsed.version !== REACTIONS_CACHE_VERSION) {
+      return { version: REACTIONS_CACHE_VERSION, reactions: {} }
+    }
+    return parsed
+  } catch {
+    return { version: REACTIONS_CACHE_VERSION, reactions: {} }
+  }
+}
+
+function saveReactionsCache(chatUsername: string, cache: ReactionCache) {
+  const storage = getReactionsStorage()
+  if (!storage) return
+  
+  try {
+    storage.setItem(getReactionsCacheKey(chatUsername), JSON.stringify(cache))
+  } catch {
+    // Storage full or unavailable
+  }
+}
+
+/**
+ * Get reaction for a message by ID
+ */
+export function getMessageReaction(chatUsername: string, messageId: string | number): string | undefined {
+  const cache = loadReactionsCache(chatUsername)
+  return cache.reactions[String(messageId)]
+}
+
+/**
+ * Set reaction for a message by ID
+ */
+export function setMessageReaction(chatUsername: string, messageId: string | number, emoji: string) {
+  const cache = loadReactionsCache(chatUsername)
+  cache.reactions[String(messageId)] = emoji
+  saveReactionsCache(chatUsername, cache)
+}
+
+/**
+ * Get all reactions for a chat (for batch loading)
+ */
+export function getAllMessageReactions(chatUsername: string): Record<string, string> {
+  const cache = loadReactionsCache(chatUsername)
+  return cache.reactions
+}
+
 /**
  * Normalize timestamp to ISO format with timezone
  */

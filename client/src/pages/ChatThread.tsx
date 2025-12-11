@@ -39,6 +39,8 @@ import {
   formatDateLabel,
   getDateKey,
   normalizeMediaPath,
+  setMessageReaction,
+  getAllMessageReactions,
   CHAT_CACHE_TTL_MS,
   CHAT_CACHE_VERSION,
   MessageBubble,
@@ -618,6 +620,9 @@ export default function ChatThread(){
       rawMessages.map(async (m: any) => await decryptMessageIfNeeded(m))
     )
     
+    // Load all reactions from ID-based storage (more reliable than time-based)
+    const storedReactions = username ? getAllMessageReactions(username) : {}
+    
     return decryptedMessages.map((m: any) => {
       // Parse reply information from message text
       let messageText = m.text
@@ -630,18 +635,22 @@ export default function ChatThread(){
 
       const normalizedTime = ensureNormalizedTime(m.time)
       const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, Boolean(m.sent))
+      
+      // Use ID-based reaction storage (primary) or fall back to time-based (legacy)
+      const idBasedReaction = m.id ? storedReactions[String(m.id)] : undefined
+      
       return {
         ...m,
         text: messageText,
         time: normalizedTime,
         video_path: m.video_path,
-        reaction: meta.reaction,
+        reaction: idBasedReaction || meta.reaction,
         replySnippet: replySnippet || meta.replySnippet,
         isOptimistic: false,
         edited_at: m.edited_at || null,
       }
     })
-  }, [decryptMessageIfNeeded])
+  }, [decryptMessageIfNeeded, username])
 
   // Load cached profile immediately
   useEffect(() => {
@@ -823,6 +832,9 @@ export default function ChatThread(){
               j.messages.map(async (m: any) => await decryptMessageIfNeeded(m))
             )
             
+            // Load all reactions from ID-based storage (more reliable)
+            const storedReactions = username ? getAllMessageReactions(username) : {}
+            
             setMessages(prev => {
               // Build map of existing messages by their stable key (clientKey or id)
               const messagesByKey = new Map()
@@ -858,6 +870,9 @@ export default function ChatThread(){
                 // Determine 'sent' strictly from server sender match
                 const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
                 const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, isSentByMe)
+                
+                // Check ID-based reaction storage (primary, more reliable)
+                const idBasedReaction = m.id ? storedReactions[String(m.id)] : undefined
                 
                 // Check if we have a bridge mapping or matching optimistic message
                 let stableKey = idBridgeRef.current.serverToTemp.get(m.id)
@@ -968,7 +983,7 @@ export default function ChatThread(){
                   audio_duration_seconds: m.audio_duration_seconds,
                   sent: isSentByMe,
                   time: existing?.time ?? normalizedTime,
-                  reaction: existing?.reaction ?? meta.reaction,
+                  reaction: existing?.reaction ?? idBasedReaction ?? meta.reaction,
                   replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
                   isOptimistic: false, // No longer optimistic
                   edited_at: m.edited_at || null,
@@ -1745,6 +1760,7 @@ export default function ChatThread(){
               url={otherProfile?.profile_picture || undefined} 
               size={36}
               linkToProfile
+              displayName={otherProfile?.display_name}
             />
           <div className="flex-1 min-w-0">
             <div className="font-semibold truncate text-white text-sm">
@@ -1845,6 +1861,11 @@ export default function ChatThread(){
                   onDelete={() => handleDeleteMessage(m.id, m)}
                   onReact={(emoji) => {
                     setMessages(msgs => msgs.map(x => x.id === m.id ? { ...x, reaction: emoji } : x))
+                    // Save using ID-based storage (primary, more reliable)
+                    if (username && m.id) {
+                      setMessageReaction(username, m.id, emoji)
+                    }
+                    // Also save to legacy time-based storage for backwards compatibility
                     writeMessageMeta(metaRef.current, m.time, m.text, Boolean(m.sent), { reaction: emoji })
                     try { localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) } catch {}
                   }}

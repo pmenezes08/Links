@@ -9,6 +9,8 @@ type AvatarProps = {
   className?: string
   linkToProfile?: boolean
   onClick?: (event: MouseEvent<HTMLDivElement | HTMLAnchorElement>) => void
+  /** Display name to use for initials fallback (if not provided, uses username) */
+  displayName?: string | null
 }
 
 // Global cache of loaded images to prevent re-fetching during session
@@ -87,7 +89,7 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
   )
 }
 
-export default function Avatar({ username, url, size = 40, className = '', linkToProfile = false, onClick }: AvatarProps){
+export default function Avatar({ username, url, size = 40, className = '', linkToProfile = false, onClick, displayName }: AvatarProps){
   const navigate = useNavigate()
   
   // Resolve the URL and check cache
@@ -116,7 +118,9 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
     return resolvedUrl
   })()
   
-  const initials = (username || '?').slice(0, 1).toUpperCase()
+  // Use display name for initials if provided, otherwise fall back to username
+  const nameForInitials = (displayName || username || '?').trim()
+  const initials = nameForInitials.slice(0, 1).toUpperCase()
   const profileHref = linkToProfile ? `/profile/${encodeURIComponent(username)}` : null
   const interactive = linkToProfile || typeof onClick === 'function'
 

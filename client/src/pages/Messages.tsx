@@ -543,7 +543,7 @@ export default function Messages(){
                     className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
                     style={{ transform: `translateX(${tx}px)`, transition }}
                   >
-                    <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={48} linkToProfile />
+                    <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={48} linkToProfile displayName={t.display_name} />
                     <div className="flex-1 min-w-0 text-left">
                       <div className="flex items-center justify-between">
                         <div className="font-medium truncate">{t.display_name}</div>
