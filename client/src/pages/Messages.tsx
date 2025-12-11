@@ -143,11 +143,14 @@ export default function Messages(){
 
   // Archive a chat
   const archiveChat = useCallback((otherUsername: string) => {
+    console.log('📦 Archiving chat with:', otherUsername)
     const fd = new URLSearchParams({ other_username: otherUsername })
     fetch('/api/archive_chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
       .then(r => r.json())
       .then(j => {
+        console.log('📦 Archive response:', j)
         if (j?.success) {
+          console.log('📦 Archive successful, updating UI')
           // Move from threads to archived
           const archivedThread = threads.find(t => t.other_username === otherUsername)
           if (archivedThread) {
@@ -155,12 +158,19 @@ export default function Messages(){
           }
           setThreads(prev => prev.filter(t => t.other_username !== otherUsername))
           setSwipeId(null)
-          // Refresh threads
+          // Refresh threads and archived
           loadThreads(true)
+          loadArchivedThreads()
+        } else {
+          console.error('📦 Archive failed:', j)
+          alert('Failed to archive chat: ' + (j?.error || 'Unknown error'))
         }
       })
-      .catch(() => {})
-  }, [threads, loadThreads])
+      .catch((err) => {
+        console.error('📦 Archive error:', err)
+        alert('Failed to archive chat')
+      })
+  }, [threads, loadThreads, loadArchivedThreads])
 
   // Unarchive a chat
   const unarchiveChat = useCallback((otherUsername: string) => {

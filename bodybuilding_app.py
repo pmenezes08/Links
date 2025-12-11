@@ -10465,6 +10465,15 @@ def api_archived_chats_debug():
         with get_db_connection() as conn:
             c = conn.cursor()
             
+            # Force create table first
+            debug_info['table_creation_attempt'] = True
+            try:
+                ensure_archived_chats_table(c)
+                conn.commit()
+                debug_info['table_creation_result'] = 'success'
+            except Exception as create_err:
+                debug_info['table_creation_result'] = f'error: {str(create_err)}'
+            
             # Check if table exists
             if USE_MYSQL:
                 c.execute("SHOW TABLES LIKE 'archived_chats'")
@@ -10478,26 +10487,37 @@ def api_archived_chats_debug():
             if table_exists:
                 # Count all rows
                 c.execute("SELECT COUNT(*) FROM archived_chats")
-                total_count = c.fetchone()[0]
+                row = c.fetchone()
+                total_count = row[0] if row else 0
                 debug_info['total_archived_count'] = total_count
                 
-                # Count for this user
+                # Count for this user (case-insensitive)
                 ph = get_sql_placeholder()
-                c.execute(f"SELECT COUNT(*) FROM archived_chats WHERE username = {ph}", (username,))
-                user_count = c.fetchone()[0]
+                if USE_MYSQL:
+                    c.execute(f"SELECT COUNT(*) FROM archived_chats WHERE LOWER(username) = LOWER({ph})", (username,))
+                else:
+                    c.execute(f"SELECT COUNT(*) FROM archived_chats WHERE LOWER(username) = LOWER({ph})", (username,))
+                row = c.fetchone()
+                user_count = row[0] if row else 0
                 debug_info['user_archived_count'] = user_count
                 
-                # Get actual usernames for this user
-                c.execute(f"SELECT other_username, archived_at FROM archived_chats WHERE username = {ph}", (username,))
-                rows = c.fetchall()
-                debug_info['archived_users'] = [
-                    {'other_username': r['other_username'] if hasattr(r, 'keys') else r[0],
-                     'archived_at': str(r['archived_at'] if hasattr(r, 'keys') else r[1])}
-                    for r in rows
+                # Get ALL rows to see what's in the table
+                c.execute("SELECT username, other_username, archived_at FROM archived_chats LIMIT 20")
+                all_rows = c.fetchall()
+                debug_info['all_archived_entries'] = [
+                    {'username': r['username'] if hasattr(r, 'keys') else r[0],
+                     'other_username': r['other_username'] if hasattr(r, 'keys') else r[1],
+                     'archived_at': str(r['archived_at'] if hasattr(r, 'keys') else r[2])}
+                    for r in all_rows
                 ]
+            else:
+                debug_info['all_archived_entries'] = []
             
             return jsonify({'success': True, 'debug': debug_info})
     except Exception as e:
+        import traceback
+        debug_info['error'] = str(e)
+        debug_info['traceback'] = traceback.format_exc()
         logger.error(f"Debug archived_chats error: {e}")
         return jsonify({'success': False, 'error': str(e), 'debug': debug_info})
 
