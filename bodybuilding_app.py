@@ -10454,6 +10454,54 @@ def unarchive_chat():
         return jsonify({'success': False, 'error': 'Failed to unarchive chat'}), 500
 
 
+@app.route('/api/archived_chats/debug')
+@login_required
+def api_archived_chats_debug():
+    """Debug endpoint to check archived_chats table status"""
+    username = session.get('username')
+    debug_info = {'username': username, 'use_mysql': USE_MYSQL}
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if table exists
+            if USE_MYSQL:
+                c.execute("SHOW TABLES LIKE 'archived_chats'")
+                table_exists = bool(c.fetchone())
+            else:
+                c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archived_chats'")
+                table_exists = bool(c.fetchone())
+            
+            debug_info['table_exists'] = table_exists
+            
+            if table_exists:
+                # Count all rows
+                c.execute("SELECT COUNT(*) FROM archived_chats")
+                total_count = c.fetchone()[0]
+                debug_info['total_archived_count'] = total_count
+                
+                # Count for this user
+                ph = get_sql_placeholder()
+                c.execute(f"SELECT COUNT(*) FROM archived_chats WHERE username = {ph}", (username,))
+                user_count = c.fetchone()[0]
+                debug_info['user_archived_count'] = user_count
+                
+                # Get actual usernames for this user
+                c.execute(f"SELECT other_username, archived_at FROM archived_chats WHERE username = {ph}", (username,))
+                rows = c.fetchall()
+                debug_info['archived_users'] = [
+                    {'other_username': r['other_username'] if hasattr(r, 'keys') else r[0],
+                     'archived_at': str(r['archived_at'] if hasattr(r, 'keys') else r[1])}
+                    for r in rows
+                ]
+            
+            return jsonify({'success': True, 'debug': debug_info})
+    except Exception as e:
+        logger.error(f"Debug archived_chats error: {e}")
+        return jsonify({'success': False, 'error': str(e), 'debug': debug_info})
+
+
 @app.route('/api/archived_chats')
 @login_required
 def api_archived_chats():

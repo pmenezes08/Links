@@ -122,15 +122,22 @@ export default function Messages(){
 
   // Load archived threads
   const loadArchivedThreads = useCallback(() => {
+    console.log('📦 Loading archived chats...')
     setArchivedLoading(true)
     fetch('/api/archived_chats', { credentials: 'include' })
       .then(r => r.json())
       .then(j => {
+        console.log('📦 Archived chats response:', j)
         if (j?.success && Array.isArray(j.threads)) {
+          console.log('📦 Found', j.threads.length, 'archived chats')
           setArchivedThreads(j.threads)
+        } else {
+          console.warn('📦 No archived chats or error:', j)
         }
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.error('📦 Error loading archived chats:', err)
+      })
       .finally(() => setArchivedLoading(false))
   }, [])
 
@@ -176,6 +183,9 @@ export default function Messages(){
     // Fetch fresh data (will update cache)
     loadThreads(threads.length > 0) // Silent if we have cached data
     
+    // Also load archived chats count on mount
+    loadArchivedThreads()
+    
     const onVis = () => {
       if (!document.hidden) loadThreads(true)
     }
@@ -188,7 +198,7 @@ export default function Messages(){
       document.removeEventListener('visibilitychange', onVis)
       clearInterval(t)
     }
-  }, [loadThreads])
+  }, [loadThreads, loadArchivedThreads])
 
   useEffect(() => {
     let cancelled = false
