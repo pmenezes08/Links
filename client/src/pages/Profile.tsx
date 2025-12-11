@@ -3,6 +3,7 @@ import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
 import Avatar from '../components/Avatar'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useNavigate } from 'react-router-dom'
+import { clearAvatarCache } from '../utils/avatarCache'
 
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
@@ -762,6 +763,10 @@ export default function Profile() {
       const response = await fetch('/upload_profile_picture', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success && payload.profile_picture) {
+        // Clear avatar cache so the new image loads fresh
+        if (summary?.username) {
+          clearAvatarCache(summary.username)
+        }
         // Add cache-busting timestamp to force avatar refresh across the app
         const cacheBustedUrl = `${payload.profile_picture}?v=${Date.now()}`
         setSummary(prev => prev ? { ...prev, profile_picture: cacheBustedUrl } : prev)

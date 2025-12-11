@@ -9171,31 +9171,51 @@ def delete_chat():
 @app.route('/get_messages', methods=['POST'])
 @login_required
 def get_messages():
-    """Get messages between current user and another user"""
+    """Get messages between current user and another user
+    
+    PERFORMANCE: Supports delta fetching via since_id parameter.
+    When since_id is provided, only returns messages with id > since_id.
+    This reduces data transfer on polling for faster message delivery.
+    """
     username = session.get('username')
     other_user_id = request.form.get('other_user_id')
+    # PERFORMANCE: Delta fetching - only get messages newer than this ID
+    since_id = request.form.get('since_id')
+    since_id_int = None
+    if since_id:
+        try:
+            since_id_int = int(since_id)
+        except (ValueError, TypeError):
+            pass
     
     if not other_user_id:
         return jsonify({'success': False, 'error': 'Other user ID required'})
     
     # Short-lived cache to reduce DB latency (viewer-specific; invalidated on write)
+    # PERFORMANCE: Skip cache for delta fetches - they need fresh data
     cache_key = None
-    try:
-        # Resolve other username for stable key
-        with get_db_connection() as _conn:
-            _c = _conn.cursor()
-            _c.execute("SELECT username FROM users WHERE id = ?", (other_user_id,))
-            _row = _c.fetchone()
-            if _row:
-                other_username_for_key = _row['username'] if hasattr(_row, 'keys') else _row[0]
-                from redis_cache import messages_view_cache_key
-                cache_key = messages_view_cache_key(username, other_username_for_key)
-    except Exception:
-        cache_key = None
-    if cache_key:
-        cached_messages = cache.get(cache_key)
-        if cached_messages:
-            return jsonify({'success': True, 'messages': cached_messages})
+    if not since_id_int:  # Only use cache for full fetches
+        try:
+            # Resolve other username for stable key
+            with get_db_connection() as _conn:
+                _c = _conn.cursor()
+                _c.execute("SELECT username FROM users WHERE id = ?", (other_user_id,))
+                _row = _c.fetchone()
+                if _row:
+                    other_username_for_key = _row['username'] if hasattr(_row, 'keys') else _row[0]
+                    from redis_cache import messages_view_cache_key
+                    cache_key = messages_view_cache_key(username, other_username_for_key)
+        except Exception:
+            cache_key = None
+        if cache_key:
+            cached_messages = cache.get(cache_key)
+            if cached_messages:
+                # Ensure signal_protocol flag is set for cached messages
+                # This handles messages cached before the signal_protocol logic was added
+                for msg in cached_messages:
+                    if msg.get('is_encrypted') and not msg.get('encrypted_body'):
+                        msg['signal_protocol'] = True
+                return jsonify({'success': True, 'messages': cached_messages})
     
     try:
         with get_db_connection() as conn:
@@ -9218,45 +9238,50 @@ def get_messages():
             other_username = other_user['username'] if hasattr(other_user, 'keys') else other_user[0]
             
             # Get messages between users (compat: edited_at and encryption fields may not exist yet)
+            # PERFORMANCE: Delta fetch support - only get messages newer than since_id
             with_edited = True
             with_encryption = True
+            since_clause = " AND id > ?" if since_id_int else ""
+            base_params = (username, other_username, other_username, username)
+            query_params = base_params + (since_id_int,) if since_id_int else base_params
+            
             try:
                 c.execute(
-                    """
+                    f"""
                     SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
                            is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at
                     FROM messages
-                    WHERE (sender = ? AND receiver = ?)
-                       OR (sender = ? AND receiver = ?)
+                    WHERE ((sender = ? AND receiver = ?)
+                       OR (sender = ? AND receiver = ?)){since_clause}
                     ORDER BY timestamp ASC
                     """,
-                    (username, other_username, other_username, username),
+                    query_params,
                 )
             except Exception:
                 # Fallback without encryption fields
                 with_encryption = False
                 try:
                     c.execute(
-                        """
+                        f"""
                         SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
                         FROM messages
-                        WHERE (sender = ? AND receiver = ?)
-                           OR (sender = ? AND receiver = ?)
+                        WHERE ((sender = ? AND receiver = ?)
+                           OR (sender = ? AND receiver = ?)){since_clause}
                         ORDER BY timestamp ASC
                         """,
-                        (username, other_username, other_username, username),
+                        query_params,
                     )
                 except Exception:
                     with_edited = False
                     c.execute(
-                        """
+                        f"""
                         SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp
                         FROM messages
-                        WHERE (sender = ? AND receiver = ?)
-                           OR (sender = ? AND receiver = ?)
+                        WHERE ((sender = ? AND receiver = ?)
+                           OR (sender = ? AND receiver = ?)){since_clause}
                         ORDER BY timestamp ASC
                         """,
-                        (username, other_username, other_username, username),
+                        query_params,
                     )
             
             messages = []
@@ -9314,14 +9339,16 @@ def get_messages():
             conn.commit()
             
             # Write-through cache for fast subsequent polls
+            # PERFORMANCE: Only cache full fetches, not delta fetches
             try:
                 from redis_cache import MESSAGE_CACHE_TTL
-                if cache_key:
+                if cache_key and not since_id_int:
                     cache.set(cache_key, messages, MESSAGE_CACHE_TTL)
             except Exception:
                 pass
             
-            return jsonify({'success': True, 'messages': messages})
+            # Include delta indicator in response for client-side optimization
+            return jsonify({'success': True, 'messages': messages, 'is_delta': bool(since_id_int)})
             
     except Exception as e:
         logger.error(f"Error fetching messages: {str(e)}")
@@ -10066,17 +10093,30 @@ def api_chat_threads():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Ensure archived_chats table exists and get archived usernames
+            ensure_archived_chats_table(c)
+            try:
+                c.execute(f"SELECT other_username FROM archived_chats WHERE username = {ph}", (username,))
+                archived_set = set(
+                    r['other_username'] if hasattr(r, 'keys') else r[0] 
+                    for r in c.fetchall()
+                )
+            except Exception:
+                # Table might not exist yet or other issue - proceed with empty set
+                archived_set = set()
 
             # Gather all counterpart usernames the user has messages with (either direction)
             c.execute(
-                """
+                f"""
                 SELECT DISTINCT receiver AS other_username
                 FROM messages
-                WHERE sender = ?
+                WHERE sender = {ph}
                 UNION
                 SELECT DISTINCT sender AS other_username
                 FROM messages
-                WHERE receiver = ?
+                WHERE receiver = {ph}
                 ORDER BY other_username
                 """,
                 (username, username),
@@ -10087,6 +10127,10 @@ def api_chat_threads():
             for row in counterpart_rows:
                 try:
                     other_username = row['other_username'] if isinstance(row, dict) or hasattr(row, 'keys') else row[0]
+                    
+                    # Skip archived chats
+                    if other_username in archived_set:
+                        continue
 
                     # Last message in either direction (preview)
                     # Include is_encrypted to handle encrypted messages
@@ -10312,6 +10356,238 @@ def delete_chat_thread():
     except Exception as e:
         logger.error(f"delete_chat_thread error for {username} with {other_username}: {e}")
         return jsonify({'success': False, 'error': 'Failed to delete chat'}), 500
+
+
+def ensure_archived_chats_table(cursor):
+    """Create archived_chats table if it doesn't exist"""
+    try:
+        if USE_MYSQL:
+            # Check if table exists first
+            cursor.execute("SHOW TABLES LIKE 'archived_chats'")
+            if not cursor.fetchone():
+                cursor.execute("""
+                    CREATE TABLE archived_chats (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        username VARCHAR(255) NOT NULL,
+                        other_username VARCHAR(255) NOT NULL,
+                        archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE KEY unique_archive (username, other_username)
+                    )
+                """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS archived_chats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    other_username TEXT NOT NULL,
+                    archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(username, other_username)
+                )
+            """)
+    except Exception as e:
+        logger.warning(f"Could not create archived_chats table: {e}")
+
+
+@app.route('/api/archive_chat', methods=['POST'])
+@login_required
+def archive_chat():
+    """Archive a chat thread (hide from main list)"""
+    username = session['username']
+    other_username = request.form.get('other_username')
+    logger.info(f"Archiving chat: {username} -> {other_username}")
+    if not other_username:
+        return jsonify({'success': False, 'error': 'Other username required'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_archived_chats_table(c)
+            conn.commit()  # Ensure table is created first
+            ph = get_sql_placeholder()
+            try:
+                c.execute(
+                    f"INSERT INTO archived_chats (username, other_username) VALUES ({ph}, {ph})",
+                    (username, other_username)
+                )
+                logger.info(f"Successfully archived chat: {username} -> {other_username}")
+            except Exception as insert_err:
+                logger.warning(f"Archive insert error (might already exist): {insert_err}")
+                # Already archived, ignore
+                pass
+            conn.commit()
+            # Invalidate chat threads cache
+            try:
+                cache.delete(f"chat_threads:{username}")
+            except Exception:
+                pass
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"archive_chat error for {username} with {other_username}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to archive chat'}), 500
+
+
+@app.route('/api/unarchive_chat', methods=['POST'])
+@login_required
+def unarchive_chat():
+    """Unarchive a chat thread (show in main list again)"""
+    username = session['username']
+    other_username = request.form.get('other_username')
+    if not other_username:
+        return jsonify({'success': False, 'error': 'Other username required'})
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_archived_chats_table(c)
+            ph = get_sql_placeholder()
+            c.execute(
+                f"DELETE FROM archived_chats WHERE username = {ph} AND other_username = {ph}",
+                (username, other_username)
+            )
+            conn.commit()
+            # Invalidate chat threads cache
+            try:
+                cache.delete(f"chat_threads:{username}")
+            except Exception:
+                pass
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"unarchive_chat error for {username} with {other_username}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to unarchive chat'}), 500
+
+
+@app.route('/api/archived_chats/debug')
+@login_required
+def api_archived_chats_debug():
+    """Debug endpoint to check archived_chats table status"""
+    username = session.get('username')
+    debug_info = {'username': username, 'use_mysql': USE_MYSQL}
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Check if table exists
+            if USE_MYSQL:
+                c.execute("SHOW TABLES LIKE 'archived_chats'")
+                table_exists = bool(c.fetchone())
+            else:
+                c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archived_chats'")
+                table_exists = bool(c.fetchone())
+            
+            debug_info['table_exists'] = table_exists
+            
+            if table_exists:
+                # Count all rows
+                c.execute("SELECT COUNT(*) FROM archived_chats")
+                total_count = c.fetchone()[0]
+                debug_info['total_archived_count'] = total_count
+                
+                # Count for this user
+                ph = get_sql_placeholder()
+                c.execute(f"SELECT COUNT(*) FROM archived_chats WHERE username = {ph}", (username,))
+                user_count = c.fetchone()[0]
+                debug_info['user_archived_count'] = user_count
+                
+                # Get actual usernames for this user
+                c.execute(f"SELECT other_username, archived_at FROM archived_chats WHERE username = {ph}", (username,))
+                rows = c.fetchall()
+                debug_info['archived_users'] = [
+                    {'other_username': r['other_username'] if hasattr(r, 'keys') else r[0],
+                     'archived_at': str(r['archived_at'] if hasattr(r, 'keys') else r[1])}
+                    for r in rows
+                ]
+            
+            return jsonify({'success': True, 'debug': debug_info})
+    except Exception as e:
+        logger.error(f"Debug archived_chats error: {e}")
+        return jsonify({'success': False, 'error': str(e), 'debug': debug_info})
+
+
+@app.route('/api/archived_chats')
+@login_required
+def api_archived_chats():
+    """Return list of archived chat threads for the current user"""
+    username = session.get('username')
+    logger.info(f"Fetching archived chats for {username}")
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_archived_chats_table(c)
+            conn.commit()  # Ensure table is created
+            ph = get_sql_placeholder()
+            
+            # Get list of archived usernames
+            try:
+                c.execute(f"SELECT other_username FROM archived_chats WHERE username = {ph}", (username,))
+                archived_rows = c.fetchall()
+                logger.info(f"Found {len(archived_rows) if archived_rows else 0} archived chats for {username}")
+            except Exception as query_err:
+                logger.error(f"Error querying archived_chats: {query_err}")
+                archived_rows = []
+            
+            if not archived_rows:
+                return jsonify({'success': True, 'threads': []})
+            
+            archived_usernames = [
+                r['other_username'] if hasattr(r, 'keys') else r[0]
+                for r in archived_rows
+            ]
+            
+            # Build threads for archived chats similar to main chat_threads
+            threads = []
+            for other_username in archived_usernames:
+                # Get user info
+                c.execute(
+                    f"SELECT username, display_name, profile_picture FROM users WHERE username = {ph}",
+                    (other_username,)
+                )
+                user_row = c.fetchone()
+                if not user_row:
+                    continue
+                
+                if hasattr(user_row, 'keys'):
+                    display_name = user_row.get('display_name') or user_row.get('username', other_username)
+                    profile_picture = user_row.get('profile_picture')
+                else:
+                    display_name = user_row[1] or user_row[0] or other_username
+                    profile_picture = user_row[2] if len(user_row) > 2 else None
+                
+                # Get last message
+                c.execute(
+                    f"""
+                    SELECT message, timestamp 
+                    FROM messages 
+                    WHERE (sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph})
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                    """,
+                    (username, other_username, other_username, username)
+                )
+                msg_row = c.fetchone()
+                last_message_text = None
+                last_activity_time = None
+                if msg_row:
+                    if hasattr(msg_row, 'keys'):
+                        last_message_text = msg_row.get('message', '')
+                        last_activity_time = msg_row.get('timestamp')
+                    else:
+                        last_message_text = msg_row[0]
+                        last_activity_time = msg_row[1] if len(msg_row) > 1 else None
+                
+                threads.append({
+                    'other_username': other_username,
+                    'display_name': display_name,
+                    'profile_picture_url': _public_url(profile_picture) if profile_picture else None,
+                    'last_message_text': last_message_text,
+                    'last_activity_time': last_activity_time,
+                    'is_archived': True,
+                })
+            
+            # Sort by last activity
+            threads.sort(key=lambda t: (t.get('last_activity_time') or ''), reverse=True)
+            return jsonify({'success': True, 'threads': threads})
+    except Exception as e:
+        logger.error(f"Error building archived chats for {username}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to load archived chats'}), 500
 
 # Community membership/admin routes now reside in backend.blueprints.communities.
 
@@ -20313,6 +20589,61 @@ def api_get_story_viewers(story_id: int):
             return jsonify({'success': True, 'story_id': story_id, 'viewers': viewers})
     except Exception as e:
         logger.error(f"Error fetching viewers for story {story_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community_stories/<int:story_id>', methods=['GET'])
+@login_required
+def get_community_story(story_id: int):
+    """Get details of a specific story including its community_id."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+            
+            c.execute(
+                f"""
+                SELECT cs.id, cs.username, cs.community_id, cs.media_type, cs.media_url, 
+                       cs.media_path, cs.caption, cs.created_at, cs.expires_at
+                FROM community_stories cs
+                WHERE cs.id = {ph}
+                """,
+                (story_id,),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Story not found'}), 404
+            
+            if hasattr(row, "keys"):
+                story = {
+                    'id': row['id'],
+                    'username': row['username'],
+                    'community_id': row['community_id'],
+                    'media_type': row['media_type'],
+                    'media_url': _public_url(row['media_url']),
+                    'media_path': _public_url(row['media_path']),
+                    'caption': row['caption'],
+                    'created_at': row['created_at'],
+                    'expires_at': row['expires_at'],
+                }
+            else:
+                story = {
+                    'id': row[0],
+                    'username': row[1],
+                    'community_id': row[2],
+                    'media_type': row[3],
+                    'media_url': _public_url(row[4]),
+                    'media_path': _public_url(row[5]),
+                    'caption': row[6],
+                    'created_at': row[7],
+                    'expires_at': row[8],
+                }
+            
+            return jsonify({'success': True, 'story': story})
+            
+    except Exception as e:
+        logger.error(f"Error fetching story {story_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 

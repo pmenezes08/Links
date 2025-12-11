@@ -10,6 +10,7 @@ import {
 } from '../utils/dashboardCache'
 import type { DashboardCachePayload } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
+import { clearAvatarCache } from '../utils/avatarCache'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
@@ -742,6 +743,8 @@ export default function PremiumDashboard() {
                   if (picPreview && picPreview.startsWith('blob:')){
                     try { URL.revokeObjectURL(picPreview) } catch {}
                   }
+                  // Clear avatar cache so new image loads fresh
+                  if (username) clearAvatarCache(username)
                   const uploadedPath = resolveAvatar(j?.profile_picture || j?.path || j?.url || '')
                   if (uploadedPath){
                     // Add cache-busting timestamp to force avatar refresh across the app

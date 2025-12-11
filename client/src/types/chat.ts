@@ -9,6 +9,11 @@ export interface ChatMessage {
   time: string
   reaction?: string
   replySnippet?: string
+  storyReply?: {
+    id: string
+    mediaType: string
+    mediaPath: string
+  }
   isOptimistic?: boolean
   edited_at?: string | null
   clientKey?: string | number

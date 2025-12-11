@@ -17,8 +17,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import ZoomableImage from '../components/ZoomableImage'
-import { encryptionService } from '../services/simpleEncryption'
-import { signalService } from '../services/signalProtocol'
+// E2E encryption disabled - these imports kept for future re-enablement
+// import { encryptionService } from '../services/simpleEncryption'
+import { signalService } from '../services/signalProtocol' // Still needed for device ID in disabled code path
 import { useSignalDecryption, DECRYPTION_RETRY_DELAY_MS } from '../hooks/useSignalDecryption'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
@@ -37,6 +38,9 @@ import {
   writeMessageMeta,
   formatDateLabel,
   getDateKey,
+  normalizeMediaPath,
+  setMessageReaction,
+  getAllMessageReactions,
   CHAT_CACHE_TTL_MS,
   CHAT_CACHE_VERSION,
   MessageBubble,
@@ -70,7 +74,7 @@ export default function ChatThread(){
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
   const [draft, setDraft] = useState('')
-  const [replyTo, setReplyTo] = useState<{ text:string; sender?:string }|null>(null)
+  const [replyTo, setReplyTo] = useState<{ text:string; sender?:string; image_path?:string; video_path?:string; audio_path?:string }|null>(null)
   const [sending, setSendingState] = useState(false)
   // Check if encryption keys need to be synced from another device
   const [encryptionNeedsSync] = useState(() => 
@@ -89,6 +93,10 @@ export default function ChatThread(){
   const pollTimer = useRef<any>(null)
   const pollInFlight = useRef(false)
   const sendingLockRef = useRef(false)
+  // Optimize polling - track poll count for debouncing auxiliary calls
+  const pollCountRef = useRef(0)
+  // Track last known message ID for faster incremental polling
+  const lastKnownMessageIdRef = useRef<number>(0)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
@@ -185,23 +193,17 @@ export default function ChatThread(){
     const el = listRef.current
     if (!el) return
     
-    const doScroll = () => {
-      // Method 1: Set scrollTop directly
+    // Use single RAF for smooth, efficient scrolling
+    requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight
-      
-      // Method 2: Find scroll anchor and scroll into view
-      const anchor = el.querySelector('.scroll-anchor')
-      if (anchor) {
-        anchor.scrollIntoView({ behavior: 'instant', block: 'end' })
+      // Only use scroll anchor if initial scroll didn't work
+      if (el.scrollTop < el.scrollHeight - el.clientHeight - 10) {
+        const anchor = el.querySelector('.scroll-anchor')
+        if (anchor) {
+          anchor.scrollIntoView({ behavior: 'instant', block: 'end' })
+        }
       }
-    }
-    
-    // Execute immediately and with delays
-    doScroll()
-    requestAnimationFrame(doScroll)
-    setTimeout(doScroll, 50)
-    setTimeout(doScroll, 100)
-    setTimeout(doScroll, 200)
+    })
   }, [])
 
   useEffect(() => {
@@ -618,30 +620,52 @@ export default function ChatThread(){
       rawMessages.map(async (m: any) => await decryptMessageIfNeeded(m))
     )
     
+    // Load all reactions from ID-based storage (more reliable than time-based)
+    const storedReactions = username ? getAllMessageReactions(username) : {}
+    
     return decryptedMessages.map((m: any) => {
       // Parse reply information from message text
       let messageText = m.text
       let replySnippet: string | undefined
-      const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
-      if (replyMatch) {
-        replySnippet = replyMatch[2]
-        messageText = replyMatch[3]
+      let storyReply: { id: string; mediaType: string; mediaPath: string } | undefined
+      
+      // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]
+      const storyReplyMatch = messageText.match(/^\[STORY_REPLY:([^:]+):([^:]+):([^\]]*)\]\n(.*)$/s)
+      if (storyReplyMatch) {
+        storyReply = {
+          id: storyReplyMatch[1],
+          mediaType: storyReplyMatch[2],
+          mediaPath: storyReplyMatch[3]
+        }
+        messageText = storyReplyMatch[4]
+      } else {
+        // Check for regular reply format
+        const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+        if (replyMatch) {
+          replySnippet = replyMatch[2]
+          messageText = replyMatch[3]
+        }
       }
 
       const normalizedTime = ensureNormalizedTime(m.time)
       const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, Boolean(m.sent))
+      
+      // Use ID-based reaction storage (primary) or fall back to time-based (legacy)
+      const idBasedReaction = m.id ? storedReactions[String(m.id)] : undefined
+      
       return {
         ...m,
         text: messageText,
         time: normalizedTime,
         video_path: m.video_path,
-        reaction: meta.reaction,
+        reaction: idBasedReaction || meta.reaction,
         replySnippet: replySnippet || meta.replySnippet,
+        storyReply,
         isOptimistic: false,
         edited_at: m.edited_at || null,
       }
     })
-  }, [decryptMessageIfNeeded])
+  }, [decryptMessageIfNeeded, username])
 
   // Load cached profile immediately
   useEffect(() => {
@@ -744,17 +768,14 @@ export default function ChatThread(){
     if (!el) return
     
     if (!didInitialAutoScrollRef.current && messages.length > 0) {
-      // Initial load - scroll to bottom with multiple attempts
-      // Use longer delays to ensure content is fully rendered
+      // Initial load - scroll to bottom with RAF chain for reliability
       scrollToBottom()
-      setTimeout(scrollToBottom, 100)
-      setTimeout(scrollToBottom, 300)
-      setTimeout(scrollToBottom, 500)
-      setTimeout(() => {
+      // Second attempt after DOM settles
+      requestAnimationFrame(() => {
         scrollToBottom()
         didInitialAutoScrollRef.current = true
         lastCountRef.current = messages.length
-      }, 700)
+      })
       return
     }
     
@@ -763,7 +784,6 @@ export default function ChatThread(){
       const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
       if (near) {
         scrollToBottom()
-        setTimeout(scrollToBottom, 100)
         setShowScrollDown(false)
       } else {
         setShowScrollDown(true)
@@ -781,6 +801,8 @@ export default function ChatThread(){
   }, [storageKey])
 
   // Polling for new messages and typing status
+  // PERFORMANCE: Reduced interval from 2500ms to 1500ms for faster message delivery
+  // Auxiliary calls (typing, active_chat) debounced to reduce network overhead
   useEffect(() => {
     if (!username || !otherUserId) return
     
@@ -793,10 +815,16 @@ export default function ChatThread(){
         return
       }
       pollInFlight.current = true
+      pollCountRef.current++
       
       try{
         try{
+          // Build request params - include since_id for delta fetching if supported
           const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
+          if (lastKnownMessageIdRef.current > 0) {
+            fd.append('since_id', String(lastKnownMessageIdRef.current))
+          }
+          
           const r = await fetch('/get_messages', { 
             method:'POST', 
             credentials:'include', 
@@ -806,10 +834,21 @@ export default function ChatThread(){
           const j = await r.json()
           
           if (j?.success && Array.isArray(j.messages)){
-            // Decrypt encrypted messages before processing
+            // Track highest message ID for delta fetching
+            let maxId = lastKnownMessageIdRef.current
+            j.messages.forEach((m: any) => {
+              const msgId = typeof m.id === 'number' ? m.id : parseInt(m.id, 10)
+              if (!isNaN(msgId) && msgId > maxId) maxId = msgId
+            })
+            lastKnownMessageIdRef.current = maxId
+            
+            // Process encrypted messages (mostly no-op since E2E disabled)
             const decryptedMessages = await Promise.all(
               j.messages.map(async (m: any) => await decryptMessageIfNeeded(m))
             )
+            
+            // Load all reactions from ID-based storage (more reliable)
+            const storedReactions = username ? getAllMessageReactions(username) : {}
             
             setMessages(prev => {
               // Build map of existing messages by their stable key (clientKey or id)
@@ -836,16 +875,33 @@ export default function ChatThread(){
                 // Parse reply information from message text
                 let messageText = m.text
                 let replySnippet = undefined
-                const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
-                if (replyMatch) {
-                  replySnippet = replyMatch[2]
-                  messageText = replyMatch[3]
+                let storyReply: { id: string; mediaType: string; mediaPath: string } | undefined = undefined
+                
+                // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]
+                const storyReplyMatch = messageText.match(/^\[STORY_REPLY:([^:]+):([^:]+):([^\]]*)\]\n(.*)$/s)
+                if (storyReplyMatch) {
+                  storyReply = {
+                    id: storyReplyMatch[1],
+                    mediaType: storyReplyMatch[2],
+                    mediaPath: storyReplyMatch[3]
+                  }
+                  messageText = storyReplyMatch[4]
+                } else {
+                  // Check for regular reply format
+                  const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+                  if (replyMatch) {
+                    replySnippet = replyMatch[2]
+                    messageText = replyMatch[3]
+                  }
                 }
                 
                 const normalizedTime = ensureNormalizedTime(m.time)
                 // Determine 'sent' strictly from server sender match
                 const isSentByMe = m.sender === undefined ? (m.sent === true) : (m.sender === username)
                 const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, isSentByMe)
+                
+                // Check ID-based reaction storage (primary, more reliable)
+                const idBasedReaction = m.id ? storedReactions[String(m.id)] : undefined
                 
                 // Check if we have a bridge mapping or matching optimistic message
                 let stableKey = idBridgeRef.current.serverToTemp.get(m.id)
@@ -956,8 +1012,9 @@ export default function ChatThread(){
                   audio_duration_seconds: m.audio_duration_seconds,
                   sent: isSentByMe,
                   time: existing?.time ?? normalizedTime,
-                  reaction: existing?.reaction ?? meta.reaction,
+                  reaction: existing?.reaction ?? idBasedReaction ?? meta.reaction,
                   replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
+                  storyReply: storyReply || existing?.storyReply,
                   isOptimistic: false, // No longer optimistic
                   edited_at: m.edited_at || null,
                   clientKey: finalKey, // Keep stable key
@@ -965,6 +1022,7 @@ export default function ChatThread(){
                   is_encrypted: m.is_encrypted,
                   encrypted_body: m.encrypted_body,
                   encrypted_body_for_sender: m.encrypted_body_for_sender,
+                  signal_protocol: m.signal_protocol, // CRITICAL: Preserve Signal Protocol flag!
                   decryption_error: finalDecryptionError
                 })
               })
@@ -1003,32 +1061,39 @@ export default function ChatThread(){
           console.error('Polling error:', e)
         }
         
-        // Check typing status
-        try{
-          const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
-          const tj = await t.json().catch(()=>null)
-          setTyping(!!tj?.is_typing)
-        }catch{}
+        // PERFORMANCE: Debounce typing status to every 5th poll (~7.5s)
+        // This reduces network calls while still providing reasonable feedback
+        if (pollCountRef.current % 5 === 0) {
+          try{
+            const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
+            const tj = await t.json().catch(()=>null)
+            setTyping(!!tj?.is_typing)
+          }catch{}
+        }
       
-        // Presence: tell server I'm actively viewing this chat (used to suppress pushes)
-        try{
-          await fetch('/api/active_chat', {
-            method:'POST',
-            credentials:'include',
-            headers:{ 'Content-Type':'application/json' },
-            body: JSON.stringify({ peer: username })
-          })
-        }catch{}
+        // PERFORMANCE: Debounce active_chat ping to every 4th poll (~6s)
+        // This reduces server load while maintaining presence
+        if (pollCountRef.current % 4 === 0) {
+          try{
+            await fetch('/api/active_chat', {
+              method:'POST',
+              credentials:'include',
+              headers:{ 'Content-Type':'application/json' },
+              body: JSON.stringify({ peer: username })
+            })
+          }catch{}
+        }
       } finally {
         pollInFlight.current = false
       }
     }
     
-    // Initial poll after a short delay to let optimistic messages show
-    setTimeout(poll, 500)
+    // PERFORMANCE: Faster initial poll (200ms vs 500ms) for quicker first load
+    setTimeout(poll, 200)
     
-    // Poll for updates, but not too aggressively to avoid race conditions
-    pollTimer.current = setInterval(poll, 2500)
+    // PERFORMANCE: Faster polling interval (1500ms vs 2500ms) for snappier message delivery
+    // This makes receiving messages feel more real-time
+    pollTimer.current = setInterval(poll, 1500)
     
     return () => { 
       if (pollTimer.current) clearInterval(pollTimer.current) 
@@ -1058,11 +1123,29 @@ export default function ChatThread(){
     
     try {
       setSending(true)
-      // Pause polling for 2 seconds to avoid race condition with server confirmation
-      skipNextPollsUntil.current = Date.now() + 2000
+      // PERFORMANCE: Reduced pause from 2000ms to 800ms for faster message confirmation
+      // This still prevents race conditions while allowing quicker poll resumption
+      skipNextPollsUntil.current = Date.now() + 800
       const now = new Date().toISOString()
       const tempId = `temp_${Date.now()}_${Math.random()}`
-      const replySnippet = replySnapshot ? (replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text) : undefined
+      
+      // Generate reply snippet - handle media messages
+      // Format: text for regular, or "📷|path|caption" for images, "🎥|path|caption" for video, "🎤|" for audio
+      let replySnippet: string | undefined
+      if (replySnapshot) {
+        if (replySnapshot.image_path) {
+          // Encode image path in snippet for thumbnail display: 📷|image_path|caption
+          const caption = replySnapshot.text || 'Photo'
+          replySnippet = `📷|${replySnapshot.image_path}|${caption.slice(0,60)}`
+        } else if (replySnapshot.video_path) {
+          const caption = replySnapshot.text || 'Video'
+          replySnippet = `🎥|${replySnapshot.video_path}|${caption.slice(0,60)}`
+        } else if (replySnapshot.audio_path) {
+          replySnippet = '🎤|Voice message'
+        } else {
+          replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text
+        }
+      }
       const replySender = replySnapshot?.sender
       
       // Format message with reply if needed
@@ -1070,90 +1153,22 @@ export default function ChatThread(){
       if (replySnapshot) {
         // Add a special format that we can parse later
         // Using a format that won't interfere with normal messages
-        formattedMessage = `[REPLY:${replySender}:${replySnapshot.text.slice(0,90)}]\n${messageText}`
+        formattedMessage = `[REPLY:${replySender}:${replySnippet}]\n${messageText}`
       }
       
-      // Try to encrypt message using Signal Protocol (multi-device)
-      let isEncrypted = false
-      let encryptedBodyForRecipient = ''
-      let encryptedBodyForSender = ''
-      let signalCiphertexts: Array<{
+      // E2E Encryption disabled - send plaintext messages
+      // The server stores messages securely, and HTTPS protects in-transit
+      const isEncrypted = false
+      const encryptedBodyForRecipient = ''
+      const encryptedBodyForSender = ''
+      const signalCiphertexts: Array<{
         targetUsername: string
         targetDeviceId: number
         senderDeviceId: number
         ciphertext: string
         messageType: number
       }> = []
-      let useSignalProtocol = false
-      
-      if (username && signalService.isInitialized()) {
-        try {
-          // Use Signal Protocol for multi-device encryption
-          console.log('🔐 Encrypting with Signal Protocol for:', username)
-          
-          const encryptPromise = signalService.encryptMessage(username, formattedMessage)
-          const timeoutPromise = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Signal encryption timeout')), 5000)
-          )
-          
-          const result = await Promise.race([encryptPromise, timeoutPromise])
-          
-          if (result.deviceCiphertexts.length > 0) {
-            signalCiphertexts = result.deviceCiphertexts
-            isEncrypted = true
-            useSignalProtocol = true
-            console.log(`🔐 Signal: Encrypted for ${signalCiphertexts.length} devices`)
-            
-            if (result.failedDevices.length > 0) {
-              console.warn('🔐 Signal: Some devices failed:', result.failedDevices)
-            }
-          } else if (result.failedDevices.length > 0) {
-            console.warn('🔐 Signal: All devices failed, falling back to simple encryption')
-            throw new Error('All devices failed')
-          }
-        } catch (signalError) {
-          console.warn('🔐 Signal encryption failed, trying simple encryption:', signalError)
-          
-          // Fallback to simple encryption
-          try {
-            const encryptForRecipientPromise = encryptionService.encryptMessage(username, formattedMessage)
-            const timeoutPromise1 = new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error('Encryption timeout (recipient)')), 3000)
-            )
-            encryptedBodyForRecipient = await Promise.race([encryptForRecipientPromise, timeoutPromise1])
-            
-            const encryptForSenderPromise = encryptionService.encryptMessageForSender(formattedMessage)
-            const timeoutPromise2 = new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error('Encryption timeout (sender)')), 3000)
-            )
-            encryptedBodyForSender = await Promise.race([encryptForSenderPromise, timeoutPromise2])
-            
-            isEncrypted = true
-          } catch (simpleError) {
-            console.warn('🔐 ⚠️ All encryption failed, sending unencrypted:', simpleError)
-          }
-        }
-      } else if (username) {
-        // Signal not initialized, use simple encryption
-        try {
-          const encryptForRecipientPromise = encryptionService.encryptMessage(username, formattedMessage)
-          const timeoutPromise1 = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Encryption timeout (recipient)')), 3000)
-          )
-          encryptedBodyForRecipient = await Promise.race([encryptForRecipientPromise, timeoutPromise1])
-          
-          const encryptForSenderPromise = encryptionService.encryptMessageForSender(formattedMessage)
-          const timeoutPromise2 = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Encryption timeout (sender)')), 3000)
-          )
-          encryptedBodyForSender = await Promise.race([encryptForSenderPromise, timeoutPromise2])
-          
-          isEncrypted = true
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-          console.warn('🔐 ⚠️ Encryption failed, sending unencrypted:', errorMsg)
-        }
-      }
+      const useSignalProtocol = false
       
       // Create optimistic message WITH encryption flags
       // Use messageText (not formattedMessage) for display - formattedMessage contains [REPLY:...] prefix
@@ -1167,7 +1182,8 @@ export default function ChatThread(){
         isOptimistic: true,
         is_encrypted: isEncrypted,
         encrypted_body: isEncrypted ? encryptedBodyForRecipient : undefined,
-        encrypted_body_for_sender: isEncrypted ? encryptedBodyForSender : undefined
+        encrypted_body_for_sender: isEncrypted ? encryptedBodyForSender : undefined,
+        signal_protocol: useSignalProtocol, // CRITICAL: Mark as Signal Protocol message
       }
       
       // Add optimistic message immediately
@@ -1180,8 +1196,8 @@ export default function ChatThread(){
         timestamp: Date.now()
       })
       
-      // Force scroll to bottom for sent messages
-      setTimeout(scrollToBottom, 50)
+      // Force scroll to bottom for sent messages - use RAF for smooth, immediate scroll
+      requestAnimationFrame(scrollToBottom)
       
       // Store reply snippet in metadata if needed
       if (replySnippet){
@@ -1244,9 +1260,10 @@ export default function ChatThread(){
                   })
                   console.log('🔐 Signal: Stored ciphertexts for message', j.message_id)
                   
-                  // IMPORTANT: Cache the plaintext for this message
+                  // IMPORTANT: Cache the plaintext for this message IMMEDIATELY
                   // So when we reload/poll, we can show sent messages correctly
-                  cacheDecryptedMessage(j.message_id, { text: messageText, error: false })
+                  // Use immediate=true to persist to localStorage right away (survives page reload)
+                  cacheDecryptedMessage(j.message_id, { text: messageText, error: false }, true)
                 } catch (cipherError) {
                   console.error('🔐 Signal: Failed to store ciphertexts:', cipherError)
                 }
@@ -1270,7 +1287,8 @@ export default function ChatThread(){
                     // Keep encryption flags from optimistic message
                     is_encrypted: m.is_encrypted,
                     encrypted_body: m.encrypted_body,
-                    encrypted_body_for_sender: m.encrypted_body_for_sender
+                    encrypted_body_for_sender: m.encrypted_body_for_sender,
+                    signal_protocol: m.signal_protocol, // CRITICAL: Preserve Signal Protocol flag
                   }
                 }
                 return m
@@ -1772,6 +1790,7 @@ export default function ChatThread(){
               url={otherProfile?.profile_picture || undefined} 
               size={36}
               linkToProfile
+              displayName={otherProfile?.display_name}
             />
           <div className="flex-1 min-w-0">
             <div className="font-semibold truncate text-white text-sm">
@@ -1872,13 +1891,21 @@ export default function ChatThread(){
                   onDelete={() => handleDeleteMessage(m.id, m)}
                   onReact={(emoji) => {
                     setMessages(msgs => msgs.map(x => x.id === m.id ? { ...x, reaction: emoji } : x))
+                    // Save using ID-based storage (primary, more reliable)
+                    if (username && m.id) {
+                      setMessageReaction(username, m.id, emoji)
+                    }
+                    // Also save to legacy time-based storage for backwards compatibility
                     writeMessageMeta(metaRef.current, m.time, m.text, Boolean(m.sent), { reaction: emoji })
                     try { localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) } catch {}
                   }}
                   onReply={() => {
                     setReplyTo({
                       text: m.text,
-                      sender: m.sent ? 'You' : (otherProfile?.display_name || username || 'User')
+                      sender: m.sent ? 'You' : (otherProfile?.display_name || username || 'User'),
+                      image_path: m.image_path,
+                      video_path: m.video_path,
+                      audio_path: m.audio_path,
                     })
                     focusTextarea()
                   }}
@@ -1902,6 +1929,27 @@ export default function ChatThread(){
                     setEditText('')
                   }}
                   onImageClick={(imagePath) => setPreviewImage(imagePath)}
+                  onStoryReplyClick={async (storyId) => {
+                    // Fetch the story to get its community_id, then navigate
+                    try {
+                      console.log('🎬 Fetching story:', storyId)
+                      const res = await fetch(`/api/community_stories/${storyId}`, { credentials: 'include' })
+                      const json = await res.json()
+                      console.log('🎬 Story response:', json)
+                      if (json?.success && json.story?.community_id) {
+                        // Navigate to community feed with the story ID to open
+                        navigate(`/timeline/${json.story.community_id}`, { state: { openStoryId: storyId } })
+                      } else if (json?.error === 'Story not found') {
+                        // Story might have expired
+                        alert('This story is no longer available')
+                      } else {
+                        console.error('Failed to get story details:', json)
+                      }
+                    } catch (err) {
+                      console.error('Failed to fetch story:', err)
+                    }
+                  }}
+                  otherUsername={username}
                   linkifyText={linkifyText}
                 />
               </div>
@@ -2037,12 +2085,52 @@ export default function ChatThread(){
             <div className="mb-2 flex items-stretch gap-0 bg-white/5 rounded-lg overflow-hidden">
               {/* WhatsApp-style left accent bar */}
               <div className="w-1 bg-[#4db6ac] flex-shrink-0" />
-              <div className="flex-1 px-3 py-2 min-w-0">
-                <div className="text-[12px] text-[#4db6ac] font-medium truncate">
-                  {replyTo.sender === 'You' ? 'You' : (otherProfile?.display_name || username || 'User')}
-                </div>
-                <div className="text-[13px] text-white/70 line-clamp-1 mt-0.5">
-                  {replyTo.text.length > 80 ? replyTo.text.slice(0, 80) + '…' : replyTo.text}
+              <div className="flex-1 px-3 py-2 min-w-0 flex items-center gap-2">
+                {/* Media thumbnail preview */}
+                {replyTo.image_path && (
+                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
+                    <img 
+                      src={normalizeMediaPath(replyTo.image_path)} 
+                      alt="Photo" 
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                {replyTo.video_path && !replyTo.image_path && (
+                  <div className="w-10 h-10 rounded bg-black/30 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-video text-white/60 text-sm" />
+                  </div>
+                )}
+                {replyTo.audio_path && !replyTo.image_path && !replyTo.video_path && (
+                  <div className="w-10 h-10 rounded bg-black/30 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-microphone text-white/60 text-sm" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] text-[#4db6ac] font-medium truncate">
+                    {replyTo.sender === 'You' ? 'You' : (otherProfile?.display_name || username || 'User')}
+                  </div>
+                  <div className="text-[13px] text-white/70 line-clamp-1 mt-0.5 flex items-center gap-1">
+                    {/* Show media type icon + label for media messages */}
+                    {replyTo.image_path ? (
+                      <>
+                        <i className="fa-solid fa-camera text-[11px] text-white/50" />
+                        <span>{replyTo.text || 'Photo'}</span>
+                      </>
+                    ) : replyTo.video_path ? (
+                      <>
+                        <i className="fa-solid fa-video text-[11px] text-white/50" />
+                        <span>{replyTo.text || 'Video'}</span>
+                      </>
+                    ) : replyTo.audio_path ? (
+                      <>
+                        <i className="fa-solid fa-microphone text-[11px] text-white/50" />
+                        <span>Voice message</span>
+                      </>
+                    ) : (
+                      <span>{replyTo.text.length > 80 ? replyTo.text.slice(0, 80) + '…' : replyTo.text}</span>
+                    )}
+                  </div>
                 </div>
               </div>
               <button 

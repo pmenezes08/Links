@@ -160,6 +160,10 @@ export default function CommunityFeed() {
   const [showLocationInput, setShowLocationInput] = useState(false)
   const [locationInputValue, setLocationInputValue] = useState('')
   const [keyboardHeight, setKeyboardHeight] = useState(0)
+  // Story reply state
+  const [storyReplyText, setStoryReplyText] = useState('')
+  const [storyReplySending, setStoryReplySending] = useState(false)
+  const storyReplyInputRef = useRef<HTMLInputElement | null>(null)
   // const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
   // const [storyEditorNewText, setStoryEditorNewText] = useState('')
 
@@ -774,6 +778,9 @@ export default function CommunityFeed() {
     return () => { active = false }
   }, [community_id, refreshKey, storyRefreshKey, normalizeStoryGroups])
 
+  // Ref for handling story open from navigation state
+  const openStoryIdHandledRef = useRef(false)
+
   const handleStoryUploadClick = useCallback(() => {
     if (!community_id){
       alert('Select a community before sharing a story.')
@@ -843,9 +850,10 @@ export default function CommunityFeed() {
     // setStoryEditorNewText('')
   }, [storyEditorFiles])
 
-  // Keyboard event listeners for story editor
+  // Keyboard event listeners for story editor and story viewer
   useEffect(() => {
-    if (!storyEditorOpen) return
+    // Listen for keyboard when story editor or story viewer (with reply input) is open
+    if (!storyEditorOpen && !activeStoryPointer) return
 
     const handleKeyboardShow = (info: any) => {
       setKeyboardHeight(info.keyboardHeight || 0)
@@ -863,7 +871,7 @@ export default function CommunityFeed() {
     return () => {
       Keyboard.removeAllListeners()
     }
-  }, [storyEditorOpen])
+  }, [storyEditorOpen, activeStoryPointer])
 
   const handleStoryEditorPublish = useCallback(async () => {
     if (!community_id || storyEditorFiles.length === 0) return
@@ -1093,11 +1101,102 @@ export default function CommunityFeed() {
     markStoryAsViewed(targetStory.id)
   }, [storyGroups, markStoryAsViewed])
 
+  // Handle opening a story from navigation state (e.g., clicking story reply in chat)
+  useEffect(() => {
+    if (openStoryIdHandledRef.current) return
+    const state = routerLocation.state as { openStoryId?: string | number } | null
+    if (!state?.openStoryId) return
+    if (!storyGroups.length || storiesLoading) return
+    
+    const targetStoryId = Number(state.openStoryId)
+    if (isNaN(targetStoryId)) return
+    
+    // Find the story in the groups
+    for (let groupIndex = 0; groupIndex < storyGroups.length; groupIndex++) {
+      const group = storyGroups[groupIndex]
+      for (let storyIndex = 0; storyIndex < group.stories.length; storyIndex++) {
+        if (group.stories[storyIndex].id === targetStoryId) {
+          openStoryIdHandledRef.current = true
+          // Clear the state to prevent re-triggering
+          navigate(routerLocation.pathname, { replace: true, state: {} })
+          // Open the story
+          openStory(groupIndex, storyIndex)
+          return
+        }
+      }
+    }
+    
+    // Story not found - maybe it expired, clear the state
+    openStoryIdHandledRef.current = true
+    navigate(routerLocation.pathname, { replace: true, state: {} })
+  }, [storyGroups, storiesLoading, routerLocation.state, routerLocation.pathname, navigate, openStory])
+
   const closeStoryViewer = useCallback(() => {
     storySwipeRef.current = null
     setActiveStoryPointer(null)
     setStoryViewersState(prev => ({ ...prev, open: false }))
+    setStoryReplyText('')
   }, [])
+
+  // Handle story reply - sends message to story creator's 1:1 chat
+  const handleStoryReply = useCallback(async (story: Story) => {
+    if (!story?.username || !storyReplyText.trim() || storyReplySending) return
+    
+    // Don't allow replying to your own story
+    if (story.username.toLowerCase() === data?.username?.toLowerCase()) {
+      return
+    }
+    
+    setStoryReplySending(true)
+    try {
+      // First, get the recipient's user ID
+      const userIdRes = await fetch('/api/get_user_id_by_username', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ username: story.username })
+      })
+      const userIdJson = await userIdRes.json()
+      
+      if (!userIdJson?.success || !userIdJson.user_id) {
+        console.error('Failed to get user ID for story reply')
+        setStoryReplySending(false)
+        return
+      }
+      
+      // Format message with story reference
+      // Include story media info in a special format that the chat can recognize
+      const storyMediaUrl = story.media_url || story.media_path
+      const storyMediaType = story.media_type === 'video' ? '🎥' : '📷'
+      const storyRef = `[STORY_REPLY:${story.id}:${storyMediaType}:${normalizeMediaPath(storyMediaUrl)}]`
+      const messageText = `${storyRef}\n${storyReplyText.trim()}`
+      
+      // Send the message
+      const fd = new URLSearchParams({
+        recipient_id: String(userIdJson.user_id),
+        message: messageText
+      })
+      
+      const sendRes = await fetch('/send_message', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: fd
+      })
+      const sendJson = await sendRes.json()
+      
+      if (sendJson?.success) {
+        setStoryReplyText('')
+        // Optionally show a toast or feedback
+      } else {
+        console.error('Failed to send story reply:', sendJson?.error)
+      }
+    } catch (err) {
+      console.error('Error sending story reply:', err)
+    } finally {
+      setStoryReplySending(false)
+    }
+  }, [storyReplyText, storyReplySending, data?.username])
 
   const goToNextStory = useCallback(() => {
     if (!activeStoryPointer) return
@@ -1836,6 +1935,10 @@ export default function CommunityFeed() {
         <div
           className="fixed inset-0 z-[120] bg-black/95 flex flex-col"
           onClick={handleStoryBackdropClick}
+          style={{
+            paddingBottom: keyboardHeight ? `${keyboardHeight}px` : undefined,
+            transition: 'padding-bottom 0.25s ease-out',
+          }}
         >
           <button
             className="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 flex items-center justify-center z-[130]"
@@ -1844,7 +1947,7 @@ export default function CommunityFeed() {
           >
             <i className="fa-solid fa-xmark text-lg" />
           </button>
-          <div className="flex-1 flex items-center justify-center p-4 pt-16 pb-6">
+          <div className="flex-1 flex items-center justify-center p-4 pt-16 pb-6 overflow-y-auto">
             <div ref={storyContentRef} className="w-full max-w-md">
               <div className="flex gap-1 mb-3">
                 {(currentStoryGroup?.stories || []).map((story, idx) => (
@@ -2018,6 +2121,44 @@ export default function CommunityFeed() {
                   })}
                 </div>
               </div>
+              {/* Story reply input - only show if not own story */}
+              {currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() && (
+                <form
+                  className="mt-4"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleStoryReply(currentStory)
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={storyReplyInputRef}
+                      type="text"
+                      value={storyReplyText}
+                      onChange={(e) => setStoryReplyText(e.target.value)}
+                      placeholder={`Reply to ${currentStory.username}...`}
+                      className="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-white/40 focus:bg-white/15 transition-colors"
+                      disabled={storyReplySending}
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    />
+                    <button
+                      type="submit"
+                      disabled={!storyReplyText.trim() || storyReplySending}
+                      className="w-10 h-10 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#5ec4ba] transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {storyReplySending ? (
+                        <i className="fa-solid fa-spinner fa-spin text-sm" />
+                      ) : (
+                        <i className="fa-solid fa-paper-plane text-sm" />
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>

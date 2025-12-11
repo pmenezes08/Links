@@ -272,6 +272,34 @@ class SignalService {
   }
 
   /**
+   * Clear all sessions for a user.
+   * Call this when we detect device changes or persistent session errors.
+   */
+  async clearAllSessionsForUser(username: string): Promise<void> {
+    const normalizedUser = this.normalizePeer(username)
+    await signalStore.removeAllSessions(normalizedUser)
+    console.log(`🔐 Signal: Cleared all sessions for ${username}`)
+  }
+
+  /**
+   * Check if we have a valid session for a device by comparing registration IDs.
+   * Returns false if session doesn't exist or registration ID doesn't match.
+   * 
+   * NOTE: Currently unused - kept for potential future use
+   */
+  // @ts-ignore - Unused but kept for future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async isSessionValid(_username: string, _deviceId: number, _expectedRegId: number): Promise<boolean> {
+    const addressString = this.buildAddressKey(_username, _deviceId)
+    const hasSession = await signalStore.hasSession(addressString)
+    if (!hasSession) return false
+    
+    // For now, we can't easily check registration ID from stored session
+    // So we'll return true if session exists - staleness handled by forceNewSession
+    return true
+  }
+
+  /**
    * Get prekey bundle for a specific device
    */
   async getPreKeyBundle(username: string, deviceId: number): Promise<PreKeyBundle | null> {
@@ -287,6 +315,46 @@ class SignalService {
 
     const result = await response.json()
     return result.bundle || null
+  }
+
+  /**
+   * Get the last known device IDs for a user (from localStorage cache)
+   */
+  private getLastKnownDevices(username: string): number[] {
+    try {
+      const key = `signal_known_devices_${this.normalizePeer(username)}`
+      const stored = localStorage.getItem(key)
+      return stored ? JSON.parse(stored) : []
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Store the last known device IDs for a user
+   */
+  private setLastKnownDevices(username: string, deviceIds: number[]): void {
+    try {
+      const key = `signal_known_devices_${this.normalizePeer(username)}`
+      localStorage.setItem(key, JSON.stringify(deviceIds))
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  /**
+   * Check if device list has changed (new devices or removed devices)
+   */
+  private hasDeviceListChanged(username: string, currentDevices: DeviceInfo[]): boolean {
+    const lastKnown = this.getLastKnownDevices(username)
+    const currentIds = currentDevices.map(d => d.deviceId).sort()
+    const lastKnownIds = [...lastKnown].sort()
+    
+    if (currentIds.length !== lastKnownIds.length) return true
+    for (let i = 0; i < currentIds.length; i++) {
+      if (currentIds[i] !== lastKnownIds[i]) return true
+    }
+    return false
   }
 
   /**
@@ -307,6 +375,17 @@ class SignalService {
       }
     }
 
+    // Check if device list has changed - if so, clear all sessions and rebuild
+    // This handles the case where recipient reinstalled app / registered new device
+    const devicesChanged = this.hasDeviceListChanged(recipientUsername, devices)
+    if (devicesChanged) {
+      console.log(`🔐 Signal: Device list changed for ${recipientUsername}, clearing stale sessions`)
+      await this.clearAllSessionsForUser(recipientUsername)
+    }
+    
+    // Update the known devices cache
+    this.setLastKnownDevices(recipientUsername, devices.map(d => d.deviceId))
+
     const deviceCiphertexts: DeviceCiphertext[] = []
     const failedDevices: Array<{ deviceId: number; error: string }> = []
 
@@ -316,7 +395,8 @@ class SignalService {
         const ciphertext = await this.encryptForDevice(
           recipientUsername,
           device.deviceId,
-          plaintext
+          plaintext,
+          devicesChanged // Force new session if devices changed
         )
         deviceCiphertexts.push(ciphertext)
       } catch (error) {
@@ -328,22 +408,33 @@ class SignalService {
       }
     }
 
-    // Also encrypt for sender's ALL devices (including current) so they can read their own sent messages
-    // This is important because:
-    // 1. The plaintext cache might be cleared (page refresh, storage cleared)
-    // 2. Other devices of the sender need to decrypt the message
-    // 3. Having a ciphertext for own device ensures the message is always readable
+    // Also encrypt for sender's OTHER devices (NOT current) so they can read their own sent messages
+    // IMPORTANT: Do NOT encrypt for the current device - Signal sessions are asymmetric
+    // The current device cannot decrypt a message it encrypted for itself!
+    // The current device should use the cached plaintext instead.
     if (recipientUsername !== this.currentUsername) {
       const myDevices = await this.getUserDevices(this.currentUsername)
-      console.log(`🔐 Encrypting for own ${myDevices.length} device(s), including current device: ${this.currentDeviceId}`)
+      // Filter out the current device - it will use cached plaintext
+      const otherDevices = myDevices.filter(d => d.deviceId !== this.currentDeviceId)
       
-      for (const device of myDevices) {
+      // Check if our own device list has changed
+      const myDevicesChanged = this.hasDeviceListChanged(this.currentUsername, myDevices)
+      if (myDevicesChanged) {
+        console.log(`🔐 Signal: Own device list changed, clearing stale sessions to self`)
+        await this.clearAllSessionsForUser(this.currentUsername)
+        this.setLastKnownDevices(this.currentUsername, myDevices.map(d => d.deviceId))
+      }
+      
+      console.log(`🔐 Encrypting for own ${otherDevices.length} OTHER device(s) (excluding current device: ${this.currentDeviceId})`)
+      
+      for (const device of otherDevices) {
         try {
           console.log(`🔐 Encrypting for own device ${device.deviceId} (${device.deviceName})...`)
           const ciphertext = await this.encryptForDevice(
             this.currentUsername,
             device.deviceId,
-            plaintext
+            plaintext,
+            myDevicesChanged // Force new session if own devices changed
           )
           deviceCiphertexts.push(ciphertext)
           console.log(`🔐 ✅ Encrypted for own device ${device.deviceId}`)
@@ -364,11 +455,13 @@ class SignalService {
 
   /**
    * Encrypt for a specific device
+   * @param forceNewSession - If true, always build a fresh session (clears any existing one)
    */
   private async encryptForDevice(
     username: string,
     deviceId: number,
-    plaintext: string
+    plaintext: string,
+    forceNewSession = false
   ): Promise<DeviceCiphertext> {
     const address = this.buildAddress(username, deviceId)
     const addressString = this.buildAddressKey(username, deviceId)
@@ -376,9 +469,13 @@ class SignalService {
     // Check if we have a session
     const hasSession = await signalStore.hasSession(addressString)
 
-    if (!hasSession) {
+    if (!hasSession || forceNewSession) {
       // Need to establish session using prekey bundle
-      console.log(`🔐 Signal: Building session with ${addressString}`)
+      if (forceNewSession && hasSession) {
+        console.log(`🔐 Signal: Clearing stale session with ${addressString}`)
+        await signalStore.removeSession(addressString)
+      }
+      console.log(`🔐 Signal: Building fresh session with ${addressString}`)
       await this.buildSession(username, deviceId)
     }
 

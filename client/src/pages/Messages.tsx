@@ -3,6 +3,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ParentCommunityPicker from '../components/ParentCommunityPicker'
+import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 
 type Thread = {
   other_username: string
@@ -12,6 +13,7 @@ type Thread = {
   last_activity_time: string | null
   last_sender?: string | null
   unread_count?: number
+  is_archived?: boolean
 }
 
 type CommunityNode = {
@@ -19,6 +21,32 @@ type CommunityNode = {
   name: string
   members: string[]
   children: CommunityNode[]
+}
+
+// Cache keys and settings
+const THREADS_CACHE_KEY = 'chat-threads-list'
+const COMMUNITIES_CACHE_KEY = 'chat-communities-tree'
+const CACHE_VERSION = 'v1'
+const CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
+// Format last message for preview - handles story replies and regular replies
+function formatLastMessagePreview(text: string | null): string {
+  if (!text) return 'Say hello'
+  
+  // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]\n<message>
+  const storyReplyMatch = text.match(/^\[STORY_REPLY:[^\]]+\]\n(.*)$/s)
+  if (storyReplyMatch) {
+    const actualMessage = storyReplyMatch[1]?.trim()
+    return actualMessage ? `Replied to story: ${actualMessage}` : 'Replied to a story'
+  }
+  
+  // Check for regular reply format: [REPLY:sender:snippet]\n<message>
+  const replyMatch = text.match(/^\[REPLY:[^\]]+\]\n(.*)$/s)
+  if (replyMatch) {
+    return replyMatch[1]?.trim() || text
+  }
+  
+  return text
 }
 
 export default function Messages(){
@@ -29,117 +57,230 @@ export default function Messages(){
     return () => setTitle('')
   }, [setTitle])
 
-  const [threads, setThreads] = useState<Thread[]>([])
-  const [loading, setLoading] = useState(true)
+  // Load cached threads immediately for instant display
+  const [threads, setThreads] = useState<Thread[]>(() => {
+    const cached = readDeviceCache<Thread[]>(THREADS_CACHE_KEY, CACHE_VERSION)
+    return cached || []
+  })
+  // Only show loading if no cached data
+  const [loading, setLoading] = useState(() => {
+    const cached = readDeviceCache<Thread[]>(THREADS_CACHE_KEY, CACHE_VERSION)
+    return !cached || cached.length === 0
+  })
   const [activeTab, setActiveTab] = useState<'chats'|'new'>('chats')
   const [swipeId, setSwipeId] = useState<string|null>(null)
   const [dragX, setDragX] = useState(0)
   const startXRef = useRef(0)
   const draggingIdRef = useRef<string|null>(null)
-  const [communityTree, setCommunityTree] = useState<CommunityNode[]>([])
-  const [communitiesLoading, setCommunitiesLoading] = useState(true)
+  // Load cached communities immediately
+  const [communityTree, setCommunityTree] = useState<CommunityNode[]>(() => {
+    const cached = readDeviceCache<CommunityNode[]>(COMMUNITIES_CACHE_KEY, CACHE_VERSION)
+    return cached || []
+  })
+  const [communitiesLoading, setCommunitiesLoading] = useState(() => {
+    const cached = readDeviceCache<CommunityNode[]>(COMMUNITIES_CACHE_KEY, CACHE_VERSION)
+    return !cached
+  })
   const [communityFilter, setCommunityFilter] = useState<'all' | number>('all')
   const [subCommunityFilter, setSubCommunityFilter] = useState<number | null>(null)
   const [communityError, setCommunityError] = useState<string | null>(null)
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null)
+  
+  // Archived chats
+  const [showArchived, setShowArchived] = useState(false)
+  const [archivedThreads, setArchivedThreads] = useState<Thread[]>([])
+  const [archivedLoading, setArchivedLoading] = useState(false)
 
-  function load(silent:boolean=false){
+  // Fetch threads with caching
+  const loadThreads = useCallback((silent: boolean = false) => {
     if (!silent) setLoading(true)
-    fetch('/api/chat_threads', { credentials:'include' })
-      .then(r=>r.json()).then(j=>{
-        if (j?.success && Array.isArray(j.threads)){
+    fetch('/api/chat_threads', { credentials: 'include' })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success && Array.isArray(j.threads)) {
+          const newThreads = j.threads as Thread[]
+          // Cache the fresh data
+          writeDeviceCache(THREADS_CACHE_KEY, newThreads, CACHE_TTL_MS, CACHE_VERSION)
+          
           setThreads(prev => {
             const a = prev
-            const b = j.threads as Thread[]
+            const b = newThreads
             if (a.length !== b.length) return b
             const changed = a.some((x, idx) => {
               const y = b[idx]
-              return !y || x.other_username !== y.other_username || x.last_message_text !== y.last_message_text || x.last_activity_time !== y.last_activity_time || (x.unread_count||0) !== (y.unread_count||0)
+              return !y || x.other_username !== y.other_username || x.last_message_text !== y.last_message_text || x.last_activity_time !== y.last_activity_time || (x.unread_count || 0) !== (y.unread_count || 0)
             })
             return changed ? b : a
           })
         }
-      }).catch(()=>{})
-      .finally(()=> { if (!silent) setLoading(false) })
-  }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!silent) setLoading(false)
+      })
+  }, [])
+
+  // Load archived threads
+  const loadArchivedThreads = useCallback(() => {
+    console.log('📦 Loading archived chats...')
+    setArchivedLoading(true)
+    fetch('/api/archived_chats', { credentials: 'include' })
+      .then(r => r.json())
+      .then(j => {
+        console.log('📦 Archived chats response:', j)
+        if (j?.success && Array.isArray(j.threads)) {
+          console.log('📦 Found', j.threads.length, 'archived chats')
+          setArchivedThreads(j.threads)
+        } else {
+          console.warn('📦 No archived chats or error:', j)
+        }
+      })
+      .catch((err) => {
+        console.error('📦 Error loading archived chats:', err)
+      })
+      .finally(() => setArchivedLoading(false))
+  }, [])
+
+  // Archive a chat
+  const archiveChat = useCallback((otherUsername: string) => {
+    const fd = new URLSearchParams({ other_username: otherUsername })
+    fetch('/api/archive_chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success) {
+          // Move from threads to archived
+          const archivedThread = threads.find(t => t.other_username === otherUsername)
+          if (archivedThread) {
+            setArchivedThreads(prev => [{ ...archivedThread, is_archived: true }, ...prev])
+          }
+          setThreads(prev => prev.filter(t => t.other_username !== otherUsername))
+          setSwipeId(null)
+          // Refresh threads
+          loadThreads(true)
+        }
+      })
+      .catch(() => {})
+  }, [threads, loadThreads])
+
+  // Unarchive a chat
+  const unarchiveChat = useCallback((otherUsername: string) => {
+    const fd = new URLSearchParams({ other_username: otherUsername })
+    fetch('/api/unarchive_chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success) {
+          // Remove from archived
+          setArchivedThreads(prev => prev.filter(t => t.other_username !== otherUsername))
+          setSwipeId(null)
+          // Refresh threads
+          loadThreads(true)
+        }
+      })
+      .catch(() => {})
+  }, [loadThreads])
 
   useEffect(() => {
-    load(false)
-    const onVis = () => { if (!document.hidden) load(true) }
+    // Fetch fresh data (will update cache)
+    loadThreads(threads.length > 0) // Silent if we have cached data
+    
+    // Also load archived chats count on mount
+    loadArchivedThreads()
+    
+    const onVis = () => {
+      if (!document.hidden) loadThreads(true)
+    }
     document.addEventListener('visibilitychange', onVis)
-    const t = setInterval(() => load(true), 5000)
-    return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(t) }
-  }, [])
+    
+    // Poll every 3 seconds for faster updates (was 5s)
+    const t = setInterval(() => loadThreads(true), 3000)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      clearInterval(t)
+    }
+  }, [loadThreads, loadArchivedThreads])
 
   useEffect(() => {
     let cancelled = false
-    setCommunitiesLoading(true)
+    // Only show loading if no cached data
+    const hasCachedCommunities = communityTree.length > 0
+    if (!hasCachedCommunities) {
+      setCommunitiesLoading(true)
+    }
     setCommunityError(null)
 
-      async function fetchCommunities(){
-      try{
+    async function fetchCommunities() {
+      try {
         const [membersRes, hierarchyRes] = await Promise.all([
           fetch('/get_user_communities_with_members', { credentials: 'include' }).then(r => r.json()).catch(() => null),
           fetch('/api/user_communities_hierarchical', { credentials: 'include' }).then(r => r.json()).catch(() => null),
         ])
         if (cancelled) return
 
-          if (membersRes?.success && Array.isArray(membersRes.communities)) {
-            const membership = new Map<number, { name: string; members: string[] }>()
-            membersRes.communities.forEach((c:any) => {
-              const id = Number(c.id)
-              const name = String(c.name || '')
-              const members = Array.isArray(c.members) ? c.members.map((m:any) => String(m.username || '')).filter(Boolean) : []
-              membership.set(id, { name, members })
+        if (membersRes?.success && Array.isArray(membersRes.communities)) {
+          const membership = new Map<number, { name: string; members: string[] }>()
+          membersRes.communities.forEach((c: any) => {
+            const id = Number(c.id)
+            const name = String(c.name || '')
+            const members = Array.isArray(c.members) ? c.members.map((m: any) => String(m.username || '')).filter(Boolean) : []
+            membership.set(id, { name, members })
+          })
+
+          const buildNodes = (nodes: any[]): CommunityNode[] =>
+            nodes.map((node: any) => {
+              const id = Number(node.id)
+              const info = membership.get(id) || { name: String(node.name || node.title || ''), members: [] }
+              const children = Array.isArray(node.children) ? buildNodes(node.children) : []
+              return { id, name: info.name, members: info.members, children }
             })
 
-            const buildNodes = (nodes:any[]): CommunityNode[] =>
-              nodes.map((node:any) => {
-                const id = Number(node.id)
-                const info = membership.get(id) || { name: String(node.name || node.title || ''), members: [] }
-                const children = Array.isArray(node.children) ? buildNodes(node.children) : []
-                return { id, name: info.name, members: info.members, children }
-              })
-
-            let tree: CommunityNode[] = []
-            if (hierarchyRes?.success && Array.isArray(hierarchyRes.communities)) {
-              tree = buildNodes(hierarchyRes.communities)
-            } else {
-              tree = Array.from(membership.entries()).map(([id, info]) => ({
-                id,
-                name: info.name,
-                members: info.members,
-                children: [],
-              }))
-            }
-
-            const existingIds = new Set<number>()
-            const collectIds = (nodes: CommunityNode[]) => {
-              nodes.forEach(node => {
-                existingIds.add(node.id)
-                if (node.children.length) collectIds(node.children)
-              })
-            }
-            collectIds(tree)
-
-            membership.forEach((info, id) => {
-              if (!existingIds.has(id)) {
-                tree.push({ id, name: info.name, members: info.members, children: [] })
-              }
-            })
-
-            setCommunityTree(tree)
+          let tree: CommunityNode[] = []
+          if (hierarchyRes?.success && Array.isArray(hierarchyRes.communities)) {
+            tree = buildNodes(hierarchyRes.communities)
           } else {
-            setCommunityTree([])
-            setCommunityError(membersRes?.error || 'Failed to load communities')
+            tree = Array.from(membership.entries()).map(([id, info]) => ({
+              id,
+              name: info.name,
+              members: info.members,
+              children: [],
+            }))
           }
-      }catch{
+
+          const existingIds = new Set<number>()
+          const collectIds = (nodes: CommunityNode[]) => {
+            nodes.forEach(node => {
+              existingIds.add(node.id)
+              if (node.children.length) collectIds(node.children)
+            })
+          }
+          collectIds(tree)
+
+          membership.forEach((info, id) => {
+            if (!existingIds.has(id)) {
+              tree.push({ id, name: info.name, members: info.members, children: [] })
+            }
+          })
+
+          // Cache the community tree
+          writeDeviceCache(COMMUNITIES_CACHE_KEY, tree, CACHE_TTL_MS, CACHE_VERSION)
+          setCommunityTree(tree)
+        } else {
+          // Only clear if we don't have cached data
+          if (!hasCachedCommunities) {
+            setCommunityTree([])
+          }
+          setCommunityError(membersRes?.error || 'Failed to load communities')
+        }
+      } catch {
         if (cancelled) {
           return
         }
-        setCommunityTree([])
+        // Only clear if we don't have cached data
+        if (!hasCachedCommunities) {
+          setCommunityTree([])
+        }
         setCommunityError('Failed to load communities')
-      }finally{
+      } finally {
         if (!cancelled) {
           setCommunitiesLoading(false)
         }
@@ -148,7 +289,7 @@ export default function Messages(){
 
     fetchCommunities()
     return () => { cancelled = true }
-    }, [])
+  }, [])
 
   const nodeById = useMemo(() => {
     const map = new Map<number, CommunityNode>()
@@ -413,13 +554,21 @@ export default function Messages(){
               ) : (
                 visibleThreads.map((t) => {
               const isDragging = draggingIdRef.current === t.other_username
-              const tx = isDragging ? Math.min(0, dragX) : (swipeId === t.other_username ? -72 : 0)
+              const tx = isDragging ? Math.min(0, dragX) : (swipeId === t.other_username ? -116 : 0)
               const transition = isDragging ? 'none' : 'transform 150ms ease-out'
-              const showActions = isDragging ? (dragX < -10) : (swipeId === t.other_username)
+              const showActions = isDragging ? (dragX < -20) : (swipeId === t.other_username)
               return (
                 <div key={t.other_username} className="relative w-full overflow-hidden">
                   {/* Actions (revealed on swipe) */}
-                  <div className="absolute inset-y-0 right-0 flex items-stretch pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
+                  <div className="absolute inset-y-0 right-0 flex items-stretch gap-1 pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
+                    <button
+                      type="button"
+                      onClick={() => archiveChat(t.other_username)}
+                      className="my-1 h-[44px] w-[52px] rounded-md bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 flex items-center justify-center"
+                      aria-label="Archive chat"
+                    >
+                      <i className="fa-solid fa-box-archive" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -446,7 +595,7 @@ export default function Messages(){
                             }
                           }).catch(()=>{})
                       }}
-                      className="my-1 h-[44px] w-[64px] rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
+                      className="my-1 h-[44px] w-[52px] rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
                       aria-label="Delete chat"
                     >
                       <i className="fa-solid fa-trash" />
@@ -468,7 +617,7 @@ export default function Messages(){
                     onTouchStart={(e) => {
                       startXRef.current = e.touches[0].clientX
                       draggingIdRef.current = t.other_username
-                      setDragX(swipeId === t.other_username ? -72 : 0)
+                      setDragX(swipeId === t.other_username ? -116 : 0)
                     }}
                     onTouchMove={(e) => {
                       if (draggingIdRef.current !== t.other_username) return
@@ -477,7 +626,7 @@ export default function Messages(){
                     }}
                     onTouchEnd={() => {
                       if (draggingIdRef.current !== t.other_username) return
-                      const shouldOpen = dragX <= -60
+                      const shouldOpen = dragX <= -80
                       setSwipeId(shouldOpen ? t.other_username : null)
                       setDragX(0)
                       draggingIdRef.current = null
@@ -490,7 +639,7 @@ export default function Messages(){
                     className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
                     style={{ transform: `translateX(${tx}px)`, transition }}
                   >
-                    <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={48} linkToProfile />
+                    <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={48} linkToProfile displayName={t.display_name} />
                     <div className="flex-1 min-w-0 text-left">
                       <div className="flex items-center justify-between">
                         <div className="font-medium truncate">{t.display_name}</div>
@@ -501,7 +650,7 @@ export default function Messages(){
                         )}
                       </div>
                       <div className="text-[13px] text-[#9fb0b5] truncate">
-                        {t.last_message_text ? t.last_message_text : 'Say hello'}
+                        {formatLastMessagePreview(t.last_message_text)}
                       </div>
                     </div>
                     {t.unread_count && t.unread_count > 0 ? (
@@ -517,6 +666,111 @@ export default function Messages(){
             </div>
               )
             })()}
+            
+            {/* Archived chats section */}
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!showArchived) {
+                    loadArchivedThreads()
+                  }
+                  setShowArchived(!showArchived)
+                }}
+                className="w-full px-4 py-3 flex items-center justify-between text-left border-t border-white/10"
+              >
+                <div className="flex items-center gap-2 text-[#9fb0b5]">
+                  <i className="fa-solid fa-box-archive text-sm" />
+                  <span className="text-sm font-medium">Archived Chats</span>
+                  {archivedThreads.length > 0 && (
+                    <span className="text-xs text-white/50">({archivedThreads.length})</span>
+                  )}
+                </div>
+                <i className={`fa-solid fa-chevron-${showArchived ? 'up' : 'down'} text-xs text-white/40`} />
+              </button>
+              
+              {showArchived && (
+                <div className="border-t border-white/5">
+                  {archivedLoading ? (
+                    <div className="px-4 py-6 flex items-center justify-center text-[#9fb0b5]">
+                      <i className="fa-solid fa-spinner fa-spin mr-2" />
+                      Loading archived chats...
+                    </div>
+                  ) : archivedThreads.length === 0 ? (
+                    <div className="px-4 py-4 text-sm text-[#9fb0b5]">
+                      No archived chats
+                    </div>
+                  ) : (
+                    archivedThreads.map((t) => {
+                      const isDragging = draggingIdRef.current === `archived-${t.other_username}`
+                      const tx = isDragging ? Math.min(0, dragX) : (swipeId === `archived-${t.other_username}` ? -60 : 0)
+                      const transition = isDragging ? 'none' : 'transform 150ms ease-out'
+                      const showActions = isDragging ? (dragX < -20) : (swipeId === `archived-${t.other_username}`)
+                      return (
+                        <div key={`archived-${t.other_username}`} className="relative w-full overflow-hidden bg-white/5">
+                          {/* Unarchive action */}
+                          <div className="absolute inset-y-0 right-0 flex items-stretch pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
+                            <button
+                              type="button"
+                              onClick={() => unarchiveChat(t.other_username)}
+                              className="my-1 h-[44px] w-[52px] rounded-md bg-green-500/20 text-green-300 hover:bg-green-500/30 flex items-center justify-center"
+                              aria-label="Unarchive chat"
+                            >
+                              <i className="fa-solid fa-arrow-up-from-bracket" />
+                            </button>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}`)
+                            }}
+                            onTouchStart={(e) => {
+                              startXRef.current = e.touches[0].clientX
+                              draggingIdRef.current = `archived-${t.other_username}`
+                              setDragX(swipeId === `archived-${t.other_username}` ? -60 : 0)
+                            }}
+                            onTouchMove={(e) => {
+                              if (draggingIdRef.current !== `archived-${t.other_username}`) return
+                              const dx = e.touches[0].clientX - startXRef.current
+                              setDragX(dx)
+                            }}
+                            onTouchEnd={() => {
+                              if (draggingIdRef.current !== `archived-${t.other_username}`) return
+                              const shouldOpen = dragX <= -40
+                              setSwipeId(shouldOpen ? `archived-${t.other_username}` : null)
+                              setDragX(0)
+                              draggingIdRef.current = null
+                            }}
+                            onTouchCancel={() => {
+                              if (draggingIdRef.current !== `archived-${t.other_username}`) return
+                              setDragX(0)
+                              draggingIdRef.current = null
+                            }}
+                            className="w-full px-3 py-2 flex items-center gap-3 bg-transparent"
+                            style={{ transform: `translateX(${tx}px)`, transition }}
+                          >
+                            <Avatar username={t.other_username} url={t.profile_picture_url || undefined} size={44} displayName={t.display_name} />
+                            <div className="flex-1 min-w-0 text-left">
+                              <div className="flex items-center justify-between">
+                                <div className="font-medium truncate text-white/70">{t.display_name}</div>
+                                {t.last_activity_time && (
+                                  <div className="ml-3 flex-shrink-0 text-[11px] text-[#9fb0b5]">
+                                    {new Date(t.last_activity_time).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-[13px] text-[#9fb0b5] truncate">
+                                {formatLastMessagePreview(t.last_message_text)}
+                              </div>
+                            </div>
+                          </button>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <NewMessageInline />

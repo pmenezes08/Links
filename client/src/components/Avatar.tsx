@@ -1,5 +1,6 @@
-import { useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useState, useEffect, useRef, type KeyboardEvent, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { cacheAvatarUrl, isAvatarCached } from '../utils/avatarCache'
 
 type AvatarProps = {
   username: string
@@ -8,18 +9,38 @@ type AvatarProps = {
   className?: string
   linkToProfile?: boolean
   onClick?: (event: MouseEvent<HTMLDivElement | HTMLAnchorElement>) => void
+  /** Display name to use for initials fallback (if not provided, uses username) */
+  displayName?: string | null
 }
 
-function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[], initials?: string }) {
-  const [loading, setLoading] = useState(true)
+// Global cache of loaded images to prevent re-fetching during session
+const imageCache = new Map<string, boolean>()
+
+function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials, username, fontSize }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[], initials?: string, username?: string, fontSize?: number }) {
+  // Check if already loaded this session
+  const alreadyLoaded = imageCache.has(src)
+  const [loading, setLoading] = useState(!alreadyLoaded)
   const [error, setError] = useState(false)
   const [currentSrc, setCurrentSrc] = useState<string>(src)
+  const imgRef = useRef<HTMLImageElement>(null)
+
+  // Check if image is already in browser cache (complete and has dimensions)
+  useEffect(() => {
+    const img = imgRef.current
+    if (img && img.complete && img.naturalWidth > 0) {
+      setLoading(false)
+      imageCache.set(src, true)
+      if (username) {
+        cacheAvatarUrl(username, src)
+      }
+    }
+  }, [src, username])
 
   // If error, show initials fallback (same as when no image URL provided)
   if (error) {
     return (
       <div className="w-full h-full flex items-center justify-center">
-        <span className="text-white/80" style={{ fontSize: 'inherit' }}>
+        <span className="text-white/80 font-medium" style={{ fontSize: fontSize || 16 }}>
           {initials || '?'}
         </span>
       </div>
@@ -28,8 +49,8 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
 
   return (
     <div className="relative w-full h-full">
-      {/* Loading state */}
-      {loading && (
+      {/* Loading state - only show if not already cached */}
+      {loading && !alreadyLoaded && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-4 h-4 border border-white/20 border-t-white/60 rounded-full animate-spin"></div>
         </div>
@@ -37,11 +58,18 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
 
       {/* Image */}
       <img
+        ref={imgRef}
         src={currentSrc}
         alt={alt}
         style={style}
-        className={`transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
-        onLoad={() => setLoading(false)}
+        className={`transition-opacity duration-200 ${loading && !alreadyLoaded ? 'opacity-0' : 'opacity-100'}`}
+        onLoad={() => {
+          setLoading(false)
+          imageCache.set(currentSrc, true)
+          if (username) {
+            cacheAvatarUrl(username, currentSrc)
+          }
+        }}
         onError={() => {
           setLoading(false)
           // Try next fallback if available
@@ -61,19 +89,38 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
   )
 }
 
-export default function Avatar({ username, url, size = 40, className = '', linkToProfile = false, onClick }: AvatarProps){
+export default function Avatar({ username, url, size = 40, className = '', linkToProfile = false, onClick, displayName }: AvatarProps){
   const navigate = useNavigate()
+  
+  // Resolve the URL and check cache
   const resolved = (() => {
     const p = (url || '').trim()
     if (!p) return null
     
-    if (p.startsWith('http')) return p
-    if (p.startsWith('/uploads') || p.startsWith('uploads/')) return p.startsWith('/') ? p : `/${p}`
-    if (p.startsWith('/static') || p.startsWith('static/')) return p.startsWith('/') ? p : `/${p}`
-    // Fallback: assume legacy stored filename in uploads
-    return `/uploads/${p}`
+    let resolvedUrl: string
+    if (p.startsWith('http')) {
+      resolvedUrl = p
+    } else if (p.startsWith('/uploads') || p.startsWith('uploads/')) {
+      resolvedUrl = p.startsWith('/') ? p : `/${p}`
+    } else if (p.startsWith('/static') || p.startsWith('static/')) {
+      resolvedUrl = p.startsWith('/') ? p : `/${p}`
+    } else {
+      // Fallback: assume legacy stored filename in uploads
+      resolvedUrl = `/uploads/${p}`
+    }
+    
+    // If this URL is already cached for this user, browser will use its cache
+    // This prevents the "constant server request" issue
+    if (isAvatarCached(username, resolvedUrl)) {
+      return resolvedUrl
+    }
+    
+    return resolvedUrl
   })()
-  const initials = (username || '?').slice(0, 1).toUpperCase()
+  
+  // Use display name for initials if provided, otherwise fall back to username
+  const nameForInitials = (displayName || username || '?').trim()
+  const initials = nameForInitials.slice(0, 1).toUpperCase()
   const profileHref = linkToProfile ? `/profile/${encodeURIComponent(username)}` : null
   const interactive = linkToProfile || typeof onClick === 'function'
 
@@ -83,7 +130,7 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
       <ImageWithLoader
         src={resolved}
         alt=""
-        style={{ width: '100%', height: '100%', objectFit: 'cover', fontSize }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         fallbacks={(() => {
           const p = (url || '').trim()
           const opts: string[] = []
@@ -98,9 +145,11 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
           return opts
         })()}
         initials={initials}
+        username={username}
+        fontSize={fontSize}
       />
     ) : (
-      <span style={{ fontSize }} className="text-white/80">
+      <span style={{ fontSize }} className="text-white/80 font-medium">
         {initials}
       </span>
     )

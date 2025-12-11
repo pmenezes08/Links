@@ -580,6 +580,10 @@ def register_signal_endpoints(app, get_db_connection, logger):
                 now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
                 for ct in ciphertexts:
+                    # Normalize usernames to lowercase for consistent lookups
+                    target_username_lower = ct['targetUsername'].lower() if ct.get('targetUsername') else ''
+                    sender_username_lower = username.lower() if username else ''
+                    
                     c.execute("""
                         INSERT INTO message_ciphertexts
                         (message_id, target_username, target_device_id,
@@ -587,9 +591,9 @@ def register_signal_endpoints(app, get_db_connection, logger):
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         message_id,
-                        ct['targetUsername'],
+                        target_username_lower,
                         ct['targetDeviceId'],
-                        username,
+                        sender_username_lower,
                         sender_device_id,
                         ct['ciphertext'],
                         ct['messageType'],
@@ -621,10 +625,12 @@ def register_signal_endpoints(app, get_db_connection, logger):
             with get_db_connection() as conn:
                 c = conn.cursor()
 
+                # Use LOWER() for case-insensitive username matching
+                # Client normalizes usernames to lowercase, but session may have original case
                 c.execute("""
                     SELECT ciphertext, message_type, sender_username, sender_device_id
                     FROM message_ciphertexts
-                    WHERE message_id = ? AND target_username = ? AND target_device_id = ?
+                    WHERE message_id = ? AND LOWER(target_username) = LOWER(?) AND target_device_id = ?
                 """, (message_id, username, device_id))
 
                 row = c.fetchone()
@@ -861,10 +867,19 @@ def register_signal_endpoints(app, get_db_connection, logger):
                 
                 # Check if current user's current device has a ciphertext
                 device_id = request.args.get('deviceId', type=int)
+                username_lower = username.lower() if username else ''
                 has_ciphertext_for_me = any(
-                    ct['targetUsername'] == username and ct['targetDeviceId'] == device_id
+                    (ct['targetUsername'] or '').lower() == username_lower and ct['targetDeviceId'] == device_id
                     for ct in ciphertexts
                 )
+                
+                # Also get the user's registered devices for comparison
+                c.execute("""
+                    SELECT device_id, device_name FROM user_devices WHERE LOWER(username) = LOWER(?)
+                """, (username,))
+                my_devices = [{'deviceId': r[0], 'deviceName': r[1]} if isinstance(r, tuple) 
+                              else {'deviceId': r['device_id'], 'deviceName': r['device_name']} 
+                              for r in c.fetchall()]
                 
                 return jsonify({
                     'success': True,
@@ -872,8 +887,10 @@ def register_signal_endpoints(app, get_db_connection, logger):
                     'ciphertextCount': len(ciphertexts),
                     'ciphertexts': ciphertexts,
                     'currentUser': username,
+                    'currentUserLower': username_lower,
                     'currentDeviceId': device_id,
                     'hasCiphertextForCurrentDevice': has_ciphertext_for_me,
+                    'myRegisteredDevices': my_devices,
                 })
 
         except Exception as e:

@@ -5,6 +5,82 @@
 
 export type MessageMeta = { reaction?: string; replySnippet?: string }
 
+// ===== ID-based Reaction Storage (more reliable than time-based) =====
+const REACTIONS_CACHE_KEY_PREFIX = 'chat-reactions:'
+const REACTIONS_CACHE_VERSION = 'v1'
+
+type ReactionCache = {
+  version: string
+  reactions: Record<string, string> // messageId -> emoji
+}
+
+function getReactionsStorage() {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+function getReactionsCacheKey(chatUsername: string): string {
+  return `${REACTIONS_CACHE_KEY_PREFIX}${chatUsername.toLowerCase()}`
+}
+
+function loadReactionsCache(chatUsername: string): ReactionCache {
+  const storage = getReactionsStorage()
+  if (!storage) return { version: REACTIONS_CACHE_VERSION, reactions: {} }
+  
+  try {
+    const raw = storage.getItem(getReactionsCacheKey(chatUsername))
+    if (!raw) return { version: REACTIONS_CACHE_VERSION, reactions: {} }
+    
+    const parsed = JSON.parse(raw) as ReactionCache
+    if (parsed.version !== REACTIONS_CACHE_VERSION) {
+      return { version: REACTIONS_CACHE_VERSION, reactions: {} }
+    }
+    return parsed
+  } catch {
+    return { version: REACTIONS_CACHE_VERSION, reactions: {} }
+  }
+}
+
+function saveReactionsCache(chatUsername: string, cache: ReactionCache) {
+  const storage = getReactionsStorage()
+  if (!storage) return
+  
+  try {
+    storage.setItem(getReactionsCacheKey(chatUsername), JSON.stringify(cache))
+  } catch {
+    // Storage full or unavailable
+  }
+}
+
+/**
+ * Get reaction for a message by ID
+ */
+export function getMessageReaction(chatUsername: string, messageId: string | number): string | undefined {
+  const cache = loadReactionsCache(chatUsername)
+  return cache.reactions[String(messageId)]
+}
+
+/**
+ * Set reaction for a message by ID
+ */
+export function setMessageReaction(chatUsername: string, messageId: string | number, emoji: string) {
+  const cache = loadReactionsCache(chatUsername)
+  cache.reactions[String(messageId)] = emoji
+  saveReactionsCache(chatUsername, cache)
+}
+
+/**
+ * Get all reactions for a chat (for batch loading)
+ */
+export function getAllMessageReactions(chatUsername: string): Record<string, string> {
+  const cache = loadReactionsCache(chatUsername)
+  return cache.reactions
+}
+
 /**
  * Normalize timestamp to ISO format with timezone
  */
@@ -48,18 +124,41 @@ export function parseMessageTime(raw?: string): Date | null {
 
 /**
  * Ensure a timestamp is normalized to ISO format
+ * Preserves original timestamp string if parsing fails (better than using current time)
  */
 export function ensureNormalizedTime(raw?: string): string {
+  if (!raw) return new Date().toISOString()
+  
   const parsed = parseMessageTime(raw)
   if (parsed) return parsed.toISOString()
-  if (raw) {
-    const normalized = normalizeTimestamp(raw)
-    if (normalized) {
-      const reparsed = new Date(normalized)
-      if (!isNaN(reparsed.getTime())) return reparsed.toISOString()
+  
+  const normalized = normalizeTimestamp(raw)
+  if (normalized) {
+    const reparsed = new Date(normalized)
+    if (!isNaN(reparsed.getTime())) return reparsed.toISOString()
+  }
+  
+  // Try additional formats that MySQL might return
+  // MySQL can return: "2024-01-15 10:30:45" or "2024-01-15T10:30:45"
+  const mysqlFormats = [
+    raw.replace(' ', 'T') + 'Z',  // "2024-01-15 10:30:45" -> "2024-01-15T10:30:45Z"
+    raw + 'Z',                      // Add Z suffix
+    raw.replace(' ', 'T'),          // Just replace space with T
+  ]
+  
+  for (const fmt of mysqlFormats) {
+    try {
+      const d = new Date(fmt)
+      if (!isNaN(d.getTime())) return d.toISOString()
+    } catch {
+      continue
     }
   }
-  return new Date().toISOString()
+  
+  // Last resort: return original string so at least we can display something
+  // rather than showing current time for all messages
+  console.warn('Failed to parse timestamp:', raw)
+  return raw
 }
 
 /**
