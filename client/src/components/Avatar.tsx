@@ -16,7 +16,7 @@ type AvatarProps = {
 // Global cache of loaded images to prevent re-fetching during session
 const imageCache = new Map<string, boolean>()
 
-function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials, username }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[], initials?: string, username?: string }) {
+function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials, username, fontSize }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[], initials?: string, username?: string, fontSize?: number }) {
   // Check if already loaded this session
   const alreadyLoaded = imageCache.has(src)
   const [loading, setLoading] = useState(!alreadyLoaded)
@@ -40,7 +40,7 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
   if (error) {
     return (
       <div className="w-full h-full flex items-center justify-center">
-        <span className="text-white/80" style={{ fontSize: 'inherit' }}>
+        <span className="text-white/80 font-medium" style={{ fontSize: fontSize || 16 }}>
           {initials || '?'}
         </span>
       </div>
@@ -130,7 +130,7 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
       <ImageWithLoader
         src={resolved}
         alt=""
-        style={{ width: '100%', height: '100%', objectFit: 'cover', fontSize }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         fallbacks={(() => {
           const p = (url || '').trim()
           const opts: string[] = []
@@ -146,9 +146,10 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
         })()}
         initials={initials}
         username={username}
+        fontSize={fontSize}
       />
     ) : (
-      <span style={{ fontSize }} className="text-white/80">
+      <span style={{ fontSize }} className="text-white/80 font-medium">
         {initials}
       </span>
     )
