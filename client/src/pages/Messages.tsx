@@ -28,6 +28,26 @@ const COMMUNITIES_CACHE_KEY = 'chat-communities-tree'
 const CACHE_VERSION = 'v1'
 const CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
+// Format last message for preview - handles story replies and regular replies
+function formatLastMessagePreview(text: string | null): string {
+  if (!text) return 'Say hello'
+  
+  // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]\n<message>
+  const storyReplyMatch = text.match(/^\[STORY_REPLY:[^\]]+\]\n(.*)$/s)
+  if (storyReplyMatch) {
+    const actualMessage = storyReplyMatch[1]?.trim()
+    return actualMessage ? `Replied to story: ${actualMessage}` : 'Replied to a story'
+  }
+  
+  // Check for regular reply format: [REPLY:sender:snippet]\n<message>
+  const replyMatch = text.match(/^\[REPLY:[^\]]+\]\n(.*)$/s)
+  if (replyMatch) {
+    return replyMatch[1]?.trim() || text
+  }
+  
+  return text
+}
+
 export default function Messages(){
   const { setTitle } = useHeader()
   const navigate = useNavigate()
@@ -554,7 +574,7 @@ export default function Messages(){
                         )}
                       </div>
                       <div className="text-[13px] text-[#9fb0b5] truncate">
-                        {t.last_message_text ? t.last_message_text : 'Say hello'}
+                        {formatLastMessagePreview(t.last_message_text)}
                       </div>
                     </div>
                     {t.unread_count && t.unread_count > 0 ? (

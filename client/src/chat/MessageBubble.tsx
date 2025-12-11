@@ -17,6 +17,11 @@ export interface MessageBubbleProps {
   message: ChatMessage & {
     reaction?: string
     replySnippet?: string
+    storyReply?: {
+      id: string
+      mediaType: string
+      mediaPath: string
+    }
     isOptimistic?: boolean
     edited_at?: string | null
     decryption_error?: boolean
@@ -86,6 +91,64 @@ export default function MessageBubble({
             position: 'relative',
           } as React.CSSProperties}
         >
+          {/* Story reply - shows a preview of the story being replied to */}
+          {m.storyReply ? (() => {
+            const isVideo = m.storyReply.mediaType === '🎥'
+            const mediaPath = m.storyReply.mediaPath
+            
+            return (
+              <div className="mb-2 flex items-stretch gap-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-lg overflow-hidden border border-white/10">
+                {/* Story indicator accent bar with gradient */}
+                <div className="w-1 flex-shrink-0 bg-gradient-to-b from-purple-400 to-pink-400" />
+                <div className="flex-1 px-2.5 py-1.5 min-w-0 flex items-center gap-2">
+                  {/* Story thumbnail */}
+                  {mediaPath && !isVideo && (
+                    <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
+                      <img 
+                        src={normalizeMediaPath(mediaPath)} 
+                        alt="Story" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  {mediaPath && isVideo && (
+                    <div className="w-10 h-10 rounded bg-black/40 flex items-center justify-center flex-shrink-0 relative overflow-hidden">
+                      <video 
+                        src={normalizeMediaPath(mediaPath)} 
+                        className="absolute inset-0 w-full h-full object-cover"
+                        muted
+                        playsInline
+                      />
+                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                        <i className="fa-solid fa-play text-white/80 text-xs" />
+                      </div>
+                    </div>
+                  )}
+                  {!mediaPath && (
+                    <div className="w-10 h-10 rounded bg-gradient-to-br from-purple-500/30 to-pink-500/30 flex items-center justify-center flex-shrink-0">
+                      <i className="fa-solid fa-circle-play text-white/50 text-sm" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1">
+                      <i className="fa-solid fa-circle-play text-[10px] text-purple-400" />
+                      <span className={`text-[11px] font-medium ${m.sent ? 'text-white/70' : 'text-purple-400'}`}>
+                        Replied to {m.sent ? 'their' : 'your'} story
+                      </span>
+                    </div>
+                    <div className="text-[12px] text-white/50 mt-0.5 flex items-center gap-1">
+                      {isVideo ? (
+                        <><i className="fa-solid fa-video text-[10px]" /> Video</>
+                      ) : (
+                        <><i className="fa-solid fa-image text-[10px]" /> Photo</>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })() : null}
+
           {/* Reply snippet */}
           {m.replySnippet ? (() => {
             // Parse media reply format: "📷|path|caption" or "🎥|path|caption" or "🎤|text" or plain text

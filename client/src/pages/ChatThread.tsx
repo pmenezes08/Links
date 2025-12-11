@@ -627,10 +627,24 @@ export default function ChatThread(){
       // Parse reply information from message text
       let messageText = m.text
       let replySnippet: string | undefined
-      const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
-      if (replyMatch) {
-        replySnippet = replyMatch[2]
-        messageText = replyMatch[3]
+      let storyReply: { id: string; mediaType: string; mediaPath: string } | undefined
+      
+      // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]
+      const storyReplyMatch = messageText.match(/^\[STORY_REPLY:([^:]+):([^:]+):([^\]]*)\]\n(.*)$/s)
+      if (storyReplyMatch) {
+        storyReply = {
+          id: storyReplyMatch[1],
+          mediaType: storyReplyMatch[2],
+          mediaPath: storyReplyMatch[3]
+        }
+        messageText = storyReplyMatch[4]
+      } else {
+        // Check for regular reply format
+        const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+        if (replyMatch) {
+          replySnippet = replyMatch[2]
+          messageText = replyMatch[3]
+        }
       }
 
       const normalizedTime = ensureNormalizedTime(m.time)
@@ -646,6 +660,7 @@ export default function ChatThread(){
         video_path: m.video_path,
         reaction: idBasedReaction || meta.reaction,
         replySnippet: replySnippet || meta.replySnippet,
+        storyReply,
         isOptimistic: false,
         edited_at: m.edited_at || null,
       }
@@ -860,10 +875,24 @@ export default function ChatThread(){
                 // Parse reply information from message text
                 let messageText = m.text
                 let replySnippet = undefined
-                const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
-                if (replyMatch) {
-                  replySnippet = replyMatch[2]
-                  messageText = replyMatch[3]
+                let storyReply: { id: string; mediaType: string; mediaPath: string } | undefined = undefined
+                
+                // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]
+                const storyReplyMatch = messageText.match(/^\[STORY_REPLY:([^:]+):([^:]+):([^\]]*)\]\n(.*)$/s)
+                if (storyReplyMatch) {
+                  storyReply = {
+                    id: storyReplyMatch[1],
+                    mediaType: storyReplyMatch[2],
+                    mediaPath: storyReplyMatch[3]
+                  }
+                  messageText = storyReplyMatch[4]
+                } else {
+                  // Check for regular reply format
+                  const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+                  if (replyMatch) {
+                    replySnippet = replyMatch[2]
+                    messageText = replyMatch[3]
+                  }
                 }
                 
                 const normalizedTime = ensureNormalizedTime(m.time)
@@ -985,6 +1014,7 @@ export default function ChatThread(){
                   time: existing?.time ?? normalizedTime,
                   reaction: existing?.reaction ?? idBasedReaction ?? meta.reaction,
                   replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
+                  storyReply: storyReply || existing?.storyReply,
                   isOptimistic: false, // No longer optimistic
                   edited_at: m.edited_at || null,
                   clientKey: finalKey, // Keep stable key
