@@ -90,6 +90,10 @@ export default function ChatThread(){
   const pollTimer = useRef<any>(null)
   const pollInFlight = useRef(false)
   const sendingLockRef = useRef(false)
+  // Optimize polling - track poll count for debouncing auxiliary calls
+  const pollCountRef = useRef(0)
+  // Track last known message ID for faster incremental polling
+  const lastKnownMessageIdRef = useRef<number>(0)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
@@ -186,23 +190,17 @@ export default function ChatThread(){
     const el = listRef.current
     if (!el) return
     
-    const doScroll = () => {
-      // Method 1: Set scrollTop directly
+    // Use single RAF for smooth, efficient scrolling
+    requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight
-      
-      // Method 2: Find scroll anchor and scroll into view
-      const anchor = el.querySelector('.scroll-anchor')
-      if (anchor) {
-        anchor.scrollIntoView({ behavior: 'instant', block: 'end' })
+      // Only use scroll anchor if initial scroll didn't work
+      if (el.scrollTop < el.scrollHeight - el.clientHeight - 10) {
+        const anchor = el.querySelector('.scroll-anchor')
+        if (anchor) {
+          anchor.scrollIntoView({ behavior: 'instant', block: 'end' })
+        }
       }
-    }
-    
-    // Execute immediately and with delays
-    doScroll()
-    requestAnimationFrame(doScroll)
-    setTimeout(doScroll, 50)
-    setTimeout(doScroll, 100)
-    setTimeout(doScroll, 200)
+    })
   }, [])
 
   useEffect(() => {
@@ -745,17 +743,14 @@ export default function ChatThread(){
     if (!el) return
     
     if (!didInitialAutoScrollRef.current && messages.length > 0) {
-      // Initial load - scroll to bottom with multiple attempts
-      // Use longer delays to ensure content is fully rendered
+      // Initial load - scroll to bottom with RAF chain for reliability
       scrollToBottom()
-      setTimeout(scrollToBottom, 100)
-      setTimeout(scrollToBottom, 300)
-      setTimeout(scrollToBottom, 500)
-      setTimeout(() => {
+      // Second attempt after DOM settles
+      requestAnimationFrame(() => {
         scrollToBottom()
         didInitialAutoScrollRef.current = true
         lastCountRef.current = messages.length
-      }, 700)
+      })
       return
     }
     
@@ -764,7 +759,6 @@ export default function ChatThread(){
       const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
       if (near) {
         scrollToBottom()
-        setTimeout(scrollToBottom, 100)
         setShowScrollDown(false)
       } else {
         setShowScrollDown(true)
@@ -782,6 +776,8 @@ export default function ChatThread(){
   }, [storageKey])
 
   // Polling for new messages and typing status
+  // PERFORMANCE: Reduced interval from 2500ms to 1500ms for faster message delivery
+  // Auxiliary calls (typing, active_chat) debounced to reduce network overhead
   useEffect(() => {
     if (!username || !otherUserId) return
     
@@ -794,10 +790,16 @@ export default function ChatThread(){
         return
       }
       pollInFlight.current = true
+      pollCountRef.current++
       
       try{
         try{
+          // Build request params - include since_id for delta fetching if supported
           const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
+          if (lastKnownMessageIdRef.current > 0) {
+            fd.append('since_id', String(lastKnownMessageIdRef.current))
+          }
+          
           const r = await fetch('/get_messages', { 
             method:'POST', 
             credentials:'include', 
@@ -807,7 +809,15 @@ export default function ChatThread(){
           const j = await r.json()
           
           if (j?.success && Array.isArray(j.messages)){
-            // Decrypt encrypted messages before processing
+            // Track highest message ID for delta fetching
+            let maxId = lastKnownMessageIdRef.current
+            j.messages.forEach((m: any) => {
+              const msgId = typeof m.id === 'number' ? m.id : parseInt(m.id, 10)
+              if (!isNaN(msgId) && msgId > maxId) maxId = msgId
+            })
+            lastKnownMessageIdRef.current = maxId
+            
+            // Process encrypted messages (mostly no-op since E2E disabled)
             const decryptedMessages = await Promise.all(
               j.messages.map(async (m: any) => await decryptMessageIfNeeded(m))
             )
@@ -1005,32 +1015,39 @@ export default function ChatThread(){
           console.error('Polling error:', e)
         }
         
-        // Check typing status
-        try{
-          const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
-          const tj = await t.json().catch(()=>null)
-          setTyping(!!tj?.is_typing)
-        }catch{}
+        // PERFORMANCE: Debounce typing status to every 5th poll (~7.5s)
+        // This reduces network calls while still providing reasonable feedback
+        if (pollCountRef.current % 5 === 0) {
+          try{
+            const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
+            const tj = await t.json().catch(()=>null)
+            setTyping(!!tj?.is_typing)
+          }catch{}
+        }
       
-        // Presence: tell server I'm actively viewing this chat (used to suppress pushes)
-        try{
-          await fetch('/api/active_chat', {
-            method:'POST',
-            credentials:'include',
-            headers:{ 'Content-Type':'application/json' },
-            body: JSON.stringify({ peer: username })
-          })
-        }catch{}
+        // PERFORMANCE: Debounce active_chat ping to every 4th poll (~6s)
+        // This reduces server load while maintaining presence
+        if (pollCountRef.current % 4 === 0) {
+          try{
+            await fetch('/api/active_chat', {
+              method:'POST',
+              credentials:'include',
+              headers:{ 'Content-Type':'application/json' },
+              body: JSON.stringify({ peer: username })
+            })
+          }catch{}
+        }
       } finally {
         pollInFlight.current = false
       }
     }
     
-    // Initial poll after a short delay to let optimistic messages show
-    setTimeout(poll, 500)
+    // PERFORMANCE: Faster initial poll (200ms vs 500ms) for quicker first load
+    setTimeout(poll, 200)
     
-    // Poll for updates, but not too aggressively to avoid race conditions
-    pollTimer.current = setInterval(poll, 2500)
+    // PERFORMANCE: Faster polling interval (1500ms vs 2500ms) for snappier message delivery
+    // This makes receiving messages feel more real-time
+    pollTimer.current = setInterval(poll, 1500)
     
     return () => { 
       if (pollTimer.current) clearInterval(pollTimer.current) 
@@ -1060,8 +1077,9 @@ export default function ChatThread(){
     
     try {
       setSending(true)
-      // Pause polling for 2 seconds to avoid race condition with server confirmation
-      skipNextPollsUntil.current = Date.now() + 2000
+      // PERFORMANCE: Reduced pause from 2000ms to 800ms for faster message confirmation
+      // This still prevents race conditions while allowing quicker poll resumption
+      skipNextPollsUntil.current = Date.now() + 800
       const now = new Date().toISOString()
       const tempId = `temp_${Date.now()}_${Math.random()}`
       const replySnippet = replySnapshot ? (replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text) : undefined
@@ -1115,8 +1133,8 @@ export default function ChatThread(){
         timestamp: Date.now()
       })
       
-      // Force scroll to bottom for sent messages
-      setTimeout(scrollToBottom, 50)
+      // Force scroll to bottom for sent messages - use RAF for smooth, immediate scroll
+      requestAnimationFrame(scrollToBottom)
       
       // Store reply snippet in metadata if needed
       if (replySnippet){

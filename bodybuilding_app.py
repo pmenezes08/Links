@@ -9171,36 +9171,51 @@ def delete_chat():
 @app.route('/get_messages', methods=['POST'])
 @login_required
 def get_messages():
-    """Get messages between current user and another user"""
+    """Get messages between current user and another user
+    
+    PERFORMANCE: Supports delta fetching via since_id parameter.
+    When since_id is provided, only returns messages with id > since_id.
+    This reduces data transfer on polling for faster message delivery.
+    """
     username = session.get('username')
     other_user_id = request.form.get('other_user_id')
+    # PERFORMANCE: Delta fetching - only get messages newer than this ID
+    since_id = request.form.get('since_id')
+    since_id_int = None
+    if since_id:
+        try:
+            since_id_int = int(since_id)
+        except (ValueError, TypeError):
+            pass
     
     if not other_user_id:
         return jsonify({'success': False, 'error': 'Other user ID required'})
     
     # Short-lived cache to reduce DB latency (viewer-specific; invalidated on write)
+    # PERFORMANCE: Skip cache for delta fetches - they need fresh data
     cache_key = None
-    try:
-        # Resolve other username for stable key
-        with get_db_connection() as _conn:
-            _c = _conn.cursor()
-            _c.execute("SELECT username FROM users WHERE id = ?", (other_user_id,))
-            _row = _c.fetchone()
-            if _row:
-                other_username_for_key = _row['username'] if hasattr(_row, 'keys') else _row[0]
-                from redis_cache import messages_view_cache_key
-                cache_key = messages_view_cache_key(username, other_username_for_key)
-    except Exception:
-        cache_key = None
-    if cache_key:
-        cached_messages = cache.get(cache_key)
-        if cached_messages:
-            # Ensure signal_protocol flag is set for cached messages
-            # This handles messages cached before the signal_protocol logic was added
-            for msg in cached_messages:
-                if msg.get('is_encrypted') and not msg.get('encrypted_body'):
-                    msg['signal_protocol'] = True
-            return jsonify({'success': True, 'messages': cached_messages})
+    if not since_id_int:  # Only use cache for full fetches
+        try:
+            # Resolve other username for stable key
+            with get_db_connection() as _conn:
+                _c = _conn.cursor()
+                _c.execute("SELECT username FROM users WHERE id = ?", (other_user_id,))
+                _row = _c.fetchone()
+                if _row:
+                    other_username_for_key = _row['username'] if hasattr(_row, 'keys') else _row[0]
+                    from redis_cache import messages_view_cache_key
+                    cache_key = messages_view_cache_key(username, other_username_for_key)
+        except Exception:
+            cache_key = None
+        if cache_key:
+            cached_messages = cache.get(cache_key)
+            if cached_messages:
+                # Ensure signal_protocol flag is set for cached messages
+                # This handles messages cached before the signal_protocol logic was added
+                for msg in cached_messages:
+                    if msg.get('is_encrypted') and not msg.get('encrypted_body'):
+                        msg['signal_protocol'] = True
+                return jsonify({'success': True, 'messages': cached_messages})
     
     try:
         with get_db_connection() as conn:
@@ -9223,45 +9238,50 @@ def get_messages():
             other_username = other_user['username'] if hasattr(other_user, 'keys') else other_user[0]
             
             # Get messages between users (compat: edited_at and encryption fields may not exist yet)
+            # PERFORMANCE: Delta fetch support - only get messages newer than since_id
             with_edited = True
             with_encryption = True
+            since_clause = " AND id > ?" if since_id_int else ""
+            base_params = (username, other_username, other_username, username)
+            query_params = base_params + (since_id_int,) if since_id_int else base_params
+            
             try:
                 c.execute(
-                    """
+                    f"""
                     SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
                            is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at
                     FROM messages
-                    WHERE (sender = ? AND receiver = ?)
-                       OR (sender = ? AND receiver = ?)
+                    WHERE ((sender = ? AND receiver = ?)
+                       OR (sender = ? AND receiver = ?)){since_clause}
                     ORDER BY timestamp ASC
                     """,
-                    (username, other_username, other_username, username),
+                    query_params,
                 )
             except Exception:
                 # Fallback without encryption fields
                 with_encryption = False
                 try:
                     c.execute(
-                        """
+                        f"""
                         SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
                         FROM messages
-                        WHERE (sender = ? AND receiver = ?)
-                           OR (sender = ? AND receiver = ?)
+                        WHERE ((sender = ? AND receiver = ?)
+                           OR (sender = ? AND receiver = ?)){since_clause}
                         ORDER BY timestamp ASC
                         """,
-                        (username, other_username, other_username, username),
+                        query_params,
                     )
                 except Exception:
                     with_edited = False
                     c.execute(
-                        """
+                        f"""
                         SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp
                         FROM messages
-                        WHERE (sender = ? AND receiver = ?)
-                           OR (sender = ? AND receiver = ?)
+                        WHERE ((sender = ? AND receiver = ?)
+                           OR (sender = ? AND receiver = ?)){since_clause}
                         ORDER BY timestamp ASC
                         """,
-                        (username, other_username, other_username, username),
+                        query_params,
                     )
             
             messages = []
@@ -9319,14 +9339,16 @@ def get_messages():
             conn.commit()
             
             # Write-through cache for fast subsequent polls
+            # PERFORMANCE: Only cache full fetches, not delta fetches
             try:
                 from redis_cache import MESSAGE_CACHE_TTL
-                if cache_key:
+                if cache_key and not since_id_int:
                     cache.set(cache_key, messages, MESSAGE_CACHE_TTL)
             except Exception:
                 pass
             
-            return jsonify({'success': True, 'messages': messages})
+            # Include delta indicator in response for client-side optimization
+            return jsonify({'success': True, 'messages': messages, 'is_delta': bool(since_id_int)})
             
     except Exception as e:
         logger.error(f"Error fetching messages: {str(e)}")
