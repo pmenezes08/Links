@@ -84,7 +84,6 @@ export default function MessageBubble({
           } ${m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
           style={{
             position: 'relative',
-            ...(m.reaction ? { paddingRight: '1.75rem', paddingBottom: '1.25rem' } : {}),
           } as React.CSSProperties}
         >
           {/* Reply snippet */}
@@ -213,19 +212,24 @@ export default function MessageBubble({
               <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
                 {formatMessageTime(m.time)}
               </span>
+              {/* Reaction emoji - inline with timestamp */}
+              {m.reaction ? (
+                <span className="text-sm ml-1 select-none align-middle">
+                  {m.reaction}
+                </span>
+              ) : null}
             </div>
           ) : (
             <span className={`text-[10px] ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
               {formatMessageTime(m.time)}
+              {/* Reaction emoji - inline with timestamp */}
+              {m.reaction ? (
+                <span className="text-sm ml-1 select-none align-middle">
+                  {m.reaction}
+                </span>
+              ) : null}
             </span>
           )}
-
-          {/* Reaction emoji */}
-          {m.reaction ? (
-            <span className="absolute bottom-0.5 right-1 text-base leading-none select-none z-10">
-              {m.reaction}
-            </span>
-          ) : null}
         </div>
       </div>
     </LongPressActionable>
