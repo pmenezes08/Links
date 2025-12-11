@@ -1,5 +1,6 @@
-import { useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useState, useEffect, useRef, type KeyboardEvent, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { cacheAvatarUrl, isAvatarCached } from '../utils/avatarCache'
 
 type AvatarProps = {
   username: string
@@ -10,10 +11,28 @@ type AvatarProps = {
   onClick?: (event: MouseEvent<HTMLDivElement | HTMLAnchorElement>) => void
 }
 
-function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[], initials?: string }) {
-  const [loading, setLoading] = useState(true)
+// Global cache of loaded images to prevent re-fetching during session
+const imageCache = new Map<string, boolean>()
+
+function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials, username }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[], initials?: string, username?: string }) {
+  // Check if already loaded this session
+  const alreadyLoaded = imageCache.has(src)
+  const [loading, setLoading] = useState(!alreadyLoaded)
   const [error, setError] = useState(false)
   const [currentSrc, setCurrentSrc] = useState<string>(src)
+  const imgRef = useRef<HTMLImageElement>(null)
+
+  // Check if image is already in browser cache (complete and has dimensions)
+  useEffect(() => {
+    const img = imgRef.current
+    if (img && img.complete && img.naturalWidth > 0) {
+      setLoading(false)
+      imageCache.set(src, true)
+      if (username) {
+        cacheAvatarUrl(username, src)
+      }
+    }
+  }, [src, username])
 
   // If error, show initials fallback (same as when no image URL provided)
   if (error) {
@@ -28,8 +47,8 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
 
   return (
     <div className="relative w-full h-full">
-      {/* Loading state */}
-      {loading && (
+      {/* Loading state - only show if not already cached */}
+      {loading && !alreadyLoaded && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-4 h-4 border border-white/20 border-t-white/60 rounded-full animate-spin"></div>
         </div>
@@ -37,11 +56,18 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
 
       {/* Image */}
       <img
+        ref={imgRef}
         src={currentSrc}
         alt={alt}
         style={style}
-        className={`transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
-        onLoad={() => setLoading(false)}
+        className={`transition-opacity duration-200 ${loading && !alreadyLoaded ? 'opacity-0' : 'opacity-100'}`}
+        onLoad={() => {
+          setLoading(false)
+          imageCache.set(currentSrc, true)
+          if (username) {
+            cacheAvatarUrl(username, currentSrc)
+          }
+        }}
         onError={() => {
           setLoading(false)
           // Try next fallback if available
@@ -63,16 +89,33 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
 
 export default function Avatar({ username, url, size = 40, className = '', linkToProfile = false, onClick }: AvatarProps){
   const navigate = useNavigate()
+  
+  // Resolve the URL and check cache
   const resolved = (() => {
     const p = (url || '').trim()
     if (!p) return null
     
-    if (p.startsWith('http')) return p
-    if (p.startsWith('/uploads') || p.startsWith('uploads/')) return p.startsWith('/') ? p : `/${p}`
-    if (p.startsWith('/static') || p.startsWith('static/')) return p.startsWith('/') ? p : `/${p}`
-    // Fallback: assume legacy stored filename in uploads
-    return `/uploads/${p}`
+    let resolvedUrl: string
+    if (p.startsWith('http')) {
+      resolvedUrl = p
+    } else if (p.startsWith('/uploads') || p.startsWith('uploads/')) {
+      resolvedUrl = p.startsWith('/') ? p : `/${p}`
+    } else if (p.startsWith('/static') || p.startsWith('static/')) {
+      resolvedUrl = p.startsWith('/') ? p : `/${p}`
+    } else {
+      // Fallback: assume legacy stored filename in uploads
+      resolvedUrl = `/uploads/${p}`
+    }
+    
+    // If this URL is already cached for this user, browser will use its cache
+    // This prevents the "constant server request" issue
+    if (isAvatarCached(username, resolvedUrl)) {
+      return resolvedUrl
+    }
+    
+    return resolvedUrl
   })()
+  
   const initials = (username || '?').slice(0, 1).toUpperCase()
   const profileHref = linkToProfile ? `/profile/${encodeURIComponent(username)}` : null
   const interactive = linkToProfile || typeof onClick === 'function'
@@ -98,6 +141,7 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
           return opts
         })()}
         initials={initials}
+        username={username}
       />
     ) : (
       <span style={{ fontSize }} className="text-white/80">
