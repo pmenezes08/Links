@@ -946,12 +946,16 @@ function ParentTimeline({ parentId }:{ parentId:number }){
       // Try session cache first to avoid refetch loops on remount
       // Cache TTL: 3 minutes for better UX while keeping data reasonably fresh
       const CACHE_TTL_MS = 3 * 60 * 1000
+      console.log(`[ParentTimeline] Loading for parentId=${parentId}`)
       try{
         const key = `parent_tl_cache:${parentId}`
         const raw = sessionStorage.getItem(key)
         if (raw){
           const cached = JSON.parse(raw)
-          if (cached && Array.isArray(cached.posts) && typeof cached.ts === 'number' && (Date.now() - cached.ts) < CACHE_TTL_MS){
+          const age = Date.now() - (cached?.ts || 0)
+          console.log(`[ParentTimeline] Session cache found: ${cached?.posts?.length} posts, age=${Math.round(age/1000)}s`)
+          if (cached && Array.isArray(cached.posts) && typeof cached.ts === 'number' && age < CACHE_TTL_MS){
+            console.log(`[ParentTimeline] Using session cache (valid)`)
             setPosts(cached.posts)
             setLoading(false)
             setLoadedOnce(true)
@@ -962,6 +966,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
         // Check module-level cache/inflight as well
         const entry = cacheRef.get(parentId)
         if (entry && (Date.now() - entry.ts) < CACHE_TTL_MS){
+          console.log(`[ParentTimeline] Using module cache: ${entry.posts?.length} posts`)
           setPosts(entry.posts || [])
           setLoading(false)
           setLoadedOnce(true)
@@ -970,6 +975,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
         }
         const existing = inflightRef.get(parentId)
         if (existing){
+          console.log(`[ParentTimeline] Waiting for existing inflight request`)
           await existing
           const after = cacheRef.get(parentId)
           if (ok && after){
@@ -980,24 +986,31 @@ function ParentTimeline({ parentId }:{ parentId:number }){
           inflight = false
           return
         }
-      }catch{}
+      }catch(e){ console.warn('[ParentTimeline] Cache check error:', e) }
       setLoading(true)
       try{
+        console.log(`[ParentTimeline] Fetching /api/community_group_feed/${parentId}`)
         const promise = (async () => {
           const r = await fetch(`/api/community_group_feed/${parentId}`, { credentials:'include' })
           return await r.json()
         })()
         inflightRef.set(parentId, promise)
         const j = await promise
+        console.log(`[ParentTimeline] API response: success=${j?.success}, posts=${j?.posts?.length}`)
         if (!ok) return
         if (j?.success){
+          console.log(`[ParentTimeline] Setting ${j.posts?.length || 0} posts`)
           setPosts(j.posts || [])
           if (j.username) setCurrentUser(j.username)
           try{ sessionStorage.setItem(`parent_tl_cache:${parentId}`, JSON.stringify({ ts: Date.now(), posts: j.posts||[] })) }catch{}
           try{ cacheRef.set(parentId, { ts: Date.now(), posts: j.posts||[] }) }catch{}
         }
-        else setError(j?.error || 'Error loading timeline')
-      }catch{
+        else {
+          console.log(`[ParentTimeline] API error: ${j?.error}`)
+          setError(j?.error || 'Error loading timeline')
+        }
+      }catch(e){
+        console.error(`[ParentTimeline] Fetch error:`, e)
         if (ok) setError('Error loading timeline')
       }finally{
         inflightRef.delete(parentId)
