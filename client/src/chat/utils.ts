@@ -124,18 +124,41 @@ export function parseMessageTime(raw?: string): Date | null {
 
 /**
  * Ensure a timestamp is normalized to ISO format
+ * Preserves original timestamp string if parsing fails (better than using current time)
  */
 export function ensureNormalizedTime(raw?: string): string {
+  if (!raw) return new Date().toISOString()
+  
   const parsed = parseMessageTime(raw)
   if (parsed) return parsed.toISOString()
-  if (raw) {
-    const normalized = normalizeTimestamp(raw)
-    if (normalized) {
-      const reparsed = new Date(normalized)
-      if (!isNaN(reparsed.getTime())) return reparsed.toISOString()
+  
+  const normalized = normalizeTimestamp(raw)
+  if (normalized) {
+    const reparsed = new Date(normalized)
+    if (!isNaN(reparsed.getTime())) return reparsed.toISOString()
+  }
+  
+  // Try additional formats that MySQL might return
+  // MySQL can return: "2024-01-15 10:30:45" or "2024-01-15T10:30:45"
+  const mysqlFormats = [
+    raw.replace(' ', 'T') + 'Z',  // "2024-01-15 10:30:45" -> "2024-01-15T10:30:45Z"
+    raw + 'Z',                      // Add Z suffix
+    raw.replace(' ', 'T'),          // Just replace space with T
+  ]
+  
+  for (const fmt of mysqlFormats) {
+    try {
+      const d = new Date(fmt)
+      if (!isNaN(d.getTime())) return d.toISOString()
+    } catch {
+      continue
     }
   }
-  return new Date().toISOString()
+  
+  // Last resort: return original string so at least we can display something
+  // rather than showing current time for all messages
+  console.warn('Failed to parse timestamp:', raw)
+  return raw
 }
 
 /**

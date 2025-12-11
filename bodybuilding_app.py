@@ -10394,19 +10394,23 @@ def archive_chat():
     """Archive a chat thread (hide from main list)"""
     username = session['username']
     other_username = request.form.get('other_username')
+    logger.info(f"Archiving chat: {username} -> {other_username}")
     if not other_username:
         return jsonify({'success': False, 'error': 'Other username required'})
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ensure_archived_chats_table(c)
+            conn.commit()  # Ensure table is created first
             ph = get_sql_placeholder()
             try:
                 c.execute(
                     f"INSERT INTO archived_chats (username, other_username) VALUES ({ph}, {ph})",
                     (username, other_username)
                 )
-            except Exception:
+                logger.info(f"Successfully archived chat: {username} -> {other_username}")
+            except Exception as insert_err:
+                logger.warning(f"Archive insert error (might already exist): {insert_err}")
                 # Already archived, ignore
                 pass
             conn.commit()
@@ -10455,15 +10459,23 @@ def unarchive_chat():
 def api_archived_chats():
     """Return list of archived chat threads for the current user"""
     username = session.get('username')
+    logger.info(f"Fetching archived chats for {username}")
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ensure_archived_chats_table(c)
+            conn.commit()  # Ensure table is created
             ph = get_sql_placeholder()
             
             # Get list of archived usernames
-            c.execute(f"SELECT other_username FROM archived_chats WHERE username = {ph}", (username,))
-            archived_rows = c.fetchall()
+            try:
+                c.execute(f"SELECT other_username FROM archived_chats WHERE username = {ph}", (username,))
+                archived_rows = c.fetchall()
+                logger.info(f"Found {len(archived_rows) if archived_rows else 0} archived chats for {username}")
+            except Exception as query_err:
+                logger.error(f"Error querying archived_chats: {query_err}")
+                archived_rows = []
+            
             if not archived_rows:
                 return jsonify({'success': True, 'threads': []})
             
