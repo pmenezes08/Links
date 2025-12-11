@@ -3,6 +3,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ParentCommunityPicker from '../components/ParentCommunityPicker'
+import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 
 type Thread = {
   other_username: string
@@ -21,6 +22,12 @@ type CommunityNode = {
   children: CommunityNode[]
 }
 
+// Cache keys and settings
+const THREADS_CACHE_KEY = 'chat-threads-list'
+const COMMUNITIES_CACHE_KEY = 'chat-communities-tree'
+const CACHE_VERSION = 'v1'
+const CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
 export default function Messages(){
   const { setTitle } = useHeader()
   const navigate = useNavigate()
@@ -29,117 +36,163 @@ export default function Messages(){
     return () => setTitle('')
   }, [setTitle])
 
-  const [threads, setThreads] = useState<Thread[]>([])
-  const [loading, setLoading] = useState(true)
+  // Load cached threads immediately for instant display
+  const [threads, setThreads] = useState<Thread[]>(() => {
+    const cached = readDeviceCache<Thread[]>(THREADS_CACHE_KEY, CACHE_VERSION)
+    return cached || []
+  })
+  // Only show loading if no cached data
+  const [loading, setLoading] = useState(() => {
+    const cached = readDeviceCache<Thread[]>(THREADS_CACHE_KEY, CACHE_VERSION)
+    return !cached || cached.length === 0
+  })
   const [activeTab, setActiveTab] = useState<'chats'|'new'>('chats')
   const [swipeId, setSwipeId] = useState<string|null>(null)
   const [dragX, setDragX] = useState(0)
   const startXRef = useRef(0)
   const draggingIdRef = useRef<string|null>(null)
-  const [communityTree, setCommunityTree] = useState<CommunityNode[]>([])
-  const [communitiesLoading, setCommunitiesLoading] = useState(true)
+  // Load cached communities immediately
+  const [communityTree, setCommunityTree] = useState<CommunityNode[]>(() => {
+    const cached = readDeviceCache<CommunityNode[]>(COMMUNITIES_CACHE_KEY, CACHE_VERSION)
+    return cached || []
+  })
+  const [communitiesLoading, setCommunitiesLoading] = useState(() => {
+    const cached = readDeviceCache<CommunityNode[]>(COMMUNITIES_CACHE_KEY, CACHE_VERSION)
+    return !cached
+  })
   const [communityFilter, setCommunityFilter] = useState<'all' | number>('all')
   const [subCommunityFilter, setSubCommunityFilter] = useState<number | null>(null)
   const [communityError, setCommunityError] = useState<string | null>(null)
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null)
 
-  function load(silent:boolean=false){
+  // Fetch threads with caching
+  const loadThreads = useCallback((silent: boolean = false) => {
     if (!silent) setLoading(true)
-    fetch('/api/chat_threads', { credentials:'include' })
-      .then(r=>r.json()).then(j=>{
-        if (j?.success && Array.isArray(j.threads)){
+    fetch('/api/chat_threads', { credentials: 'include' })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success && Array.isArray(j.threads)) {
+          const newThreads = j.threads as Thread[]
+          // Cache the fresh data
+          writeDeviceCache(THREADS_CACHE_KEY, newThreads, CACHE_TTL_MS, CACHE_VERSION)
+          
           setThreads(prev => {
             const a = prev
-            const b = j.threads as Thread[]
+            const b = newThreads
             if (a.length !== b.length) return b
             const changed = a.some((x, idx) => {
               const y = b[idx]
-              return !y || x.other_username !== y.other_username || x.last_message_text !== y.last_message_text || x.last_activity_time !== y.last_activity_time || (x.unread_count||0) !== (y.unread_count||0)
+              return !y || x.other_username !== y.other_username || x.last_message_text !== y.last_message_text || x.last_activity_time !== y.last_activity_time || (x.unread_count || 0) !== (y.unread_count || 0)
             })
             return changed ? b : a
           })
         }
-      }).catch(()=>{})
-      .finally(()=> { if (!silent) setLoading(false) })
-  }
-
-  useEffect(() => {
-    load(false)
-    const onVis = () => { if (!document.hidden) load(true) }
-    document.addEventListener('visibilitychange', onVis)
-    const t = setInterval(() => load(true), 5000)
-    return () => { document.removeEventListener('visibilitychange', onVis); clearInterval(t) }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!silent) setLoading(false)
+      })
   }, [])
 
   useEffect(() => {
+    // Fetch fresh data (will update cache)
+    loadThreads(threads.length > 0) // Silent if we have cached data
+    
+    const onVis = () => {
+      if (!document.hidden) loadThreads(true)
+    }
+    document.addEventListener('visibilitychange', onVis)
+    
+    // Poll every 3 seconds for faster updates (was 5s)
+    const t = setInterval(() => loadThreads(true), 3000)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      clearInterval(t)
+    }
+  }, [loadThreads])
+
+  useEffect(() => {
     let cancelled = false
-    setCommunitiesLoading(true)
+    // Only show loading if no cached data
+    const hasCachedCommunities = communityTree.length > 0
+    if (!hasCachedCommunities) {
+      setCommunitiesLoading(true)
+    }
     setCommunityError(null)
 
-      async function fetchCommunities(){
-      try{
+    async function fetchCommunities() {
+      try {
         const [membersRes, hierarchyRes] = await Promise.all([
           fetch('/get_user_communities_with_members', { credentials: 'include' }).then(r => r.json()).catch(() => null),
           fetch('/api/user_communities_hierarchical', { credentials: 'include' }).then(r => r.json()).catch(() => null),
         ])
         if (cancelled) return
 
-          if (membersRes?.success && Array.isArray(membersRes.communities)) {
-            const membership = new Map<number, { name: string; members: string[] }>()
-            membersRes.communities.forEach((c:any) => {
-              const id = Number(c.id)
-              const name = String(c.name || '')
-              const members = Array.isArray(c.members) ? c.members.map((m:any) => String(m.username || '')).filter(Boolean) : []
-              membership.set(id, { name, members })
+        if (membersRes?.success && Array.isArray(membersRes.communities)) {
+          const membership = new Map<number, { name: string; members: string[] }>()
+          membersRes.communities.forEach((c: any) => {
+            const id = Number(c.id)
+            const name = String(c.name || '')
+            const members = Array.isArray(c.members) ? c.members.map((m: any) => String(m.username || '')).filter(Boolean) : []
+            membership.set(id, { name, members })
+          })
+
+          const buildNodes = (nodes: any[]): CommunityNode[] =>
+            nodes.map((node: any) => {
+              const id = Number(node.id)
+              const info = membership.get(id) || { name: String(node.name || node.title || ''), members: [] }
+              const children = Array.isArray(node.children) ? buildNodes(node.children) : []
+              return { id, name: info.name, members: info.members, children }
             })
 
-            const buildNodes = (nodes:any[]): CommunityNode[] =>
-              nodes.map((node:any) => {
-                const id = Number(node.id)
-                const info = membership.get(id) || { name: String(node.name || node.title || ''), members: [] }
-                const children = Array.isArray(node.children) ? buildNodes(node.children) : []
-                return { id, name: info.name, members: info.members, children }
-              })
-
-            let tree: CommunityNode[] = []
-            if (hierarchyRes?.success && Array.isArray(hierarchyRes.communities)) {
-              tree = buildNodes(hierarchyRes.communities)
-            } else {
-              tree = Array.from(membership.entries()).map(([id, info]) => ({
-                id,
-                name: info.name,
-                members: info.members,
-                children: [],
-              }))
-            }
-
-            const existingIds = new Set<number>()
-            const collectIds = (nodes: CommunityNode[]) => {
-              nodes.forEach(node => {
-                existingIds.add(node.id)
-                if (node.children.length) collectIds(node.children)
-              })
-            }
-            collectIds(tree)
-
-            membership.forEach((info, id) => {
-              if (!existingIds.has(id)) {
-                tree.push({ id, name: info.name, members: info.members, children: [] })
-              }
-            })
-
-            setCommunityTree(tree)
+          let tree: CommunityNode[] = []
+          if (hierarchyRes?.success && Array.isArray(hierarchyRes.communities)) {
+            tree = buildNodes(hierarchyRes.communities)
           } else {
-            setCommunityTree([])
-            setCommunityError(membersRes?.error || 'Failed to load communities')
+            tree = Array.from(membership.entries()).map(([id, info]) => ({
+              id,
+              name: info.name,
+              members: info.members,
+              children: [],
+            }))
           }
-      }catch{
+
+          const existingIds = new Set<number>()
+          const collectIds = (nodes: CommunityNode[]) => {
+            nodes.forEach(node => {
+              existingIds.add(node.id)
+              if (node.children.length) collectIds(node.children)
+            })
+          }
+          collectIds(tree)
+
+          membership.forEach((info, id) => {
+            if (!existingIds.has(id)) {
+              tree.push({ id, name: info.name, members: info.members, children: [] })
+            }
+          })
+
+          // Cache the community tree
+          writeDeviceCache(COMMUNITIES_CACHE_KEY, tree, CACHE_TTL_MS, CACHE_VERSION)
+          setCommunityTree(tree)
+        } else {
+          // Only clear if we don't have cached data
+          if (!hasCachedCommunities) {
+            setCommunityTree([])
+          }
+          setCommunityError(membersRes?.error || 'Failed to load communities')
+        }
+      } catch {
         if (cancelled) {
           return
         }
-        setCommunityTree([])
+        // Only clear if we don't have cached data
+        if (!hasCachedCommunities) {
+          setCommunityTree([])
+        }
         setCommunityError('Failed to load communities')
-      }finally{
+      } finally {
         if (!cancelled) {
           setCommunitiesLoading(false)
         }
@@ -148,7 +201,7 @@ export default function Messages(){
 
     fetchCommunities()
     return () => { cancelled = true }
-    }, [])
+  }, [])
 
   const nodeById = useMemo(() => {
     const map = new Map<number, CommunityNode>()
