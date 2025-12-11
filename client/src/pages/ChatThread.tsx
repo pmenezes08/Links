@@ -38,6 +38,7 @@ import {
   writeMessageMeta,
   formatDateLabel,
   getDateKey,
+  normalizeMediaPath,
   CHAT_CACHE_TTL_MS,
   CHAT_CACHE_VERSION,
   MessageBubble,
@@ -2011,9 +2012,9 @@ export default function ChatThread(){
               <div className="flex-1 px-3 py-2 min-w-0 flex items-center gap-2">
                 {/* Media thumbnail preview */}
                 {replyTo.image_path && (
-                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0">
+                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
                     <img 
-                      src={replyTo.image_path.startsWith('blob:') ? replyTo.image_path : (replyTo.image_path.startsWith('/') ? replyTo.image_path : `/${replyTo.image_path}`)} 
+                      src={normalizeMediaPath(replyTo.image_path)} 
                       alt="Photo" 
                       className="w-full h-full object-cover"
                     />
