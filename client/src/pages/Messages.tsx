@@ -122,54 +122,36 @@ export default function Messages(){
 
   // Load archived threads
   const loadArchivedThreads = useCallback(() => {
-    console.log('📦 Loading archived chats...')
     setArchivedLoading(true)
     fetch('/api/archived_chats', { credentials: 'include' })
       .then(r => r.json())
       .then(j => {
-        console.log('📦 Archived chats response:', j)
         if (j?.success && Array.isArray(j.threads)) {
-          console.log('📦 Found', j.threads.length, 'archived chats')
           setArchivedThreads(j.threads)
-        } else {
-          console.warn('📦 No archived chats or error:', j)
         }
       })
-      .catch((err) => {
-        console.error('📦 Error loading archived chats:', err)
-      })
+      .catch(() => {})
       .finally(() => setArchivedLoading(false))
   }, [])
 
   // Archive a chat
   const archiveChat = useCallback((otherUsername: string) => {
-    console.log('📦 Archiving chat with:', otherUsername)
     const fd = new URLSearchParams({ other_username: otherUsername })
     fetch('/api/archive_chat', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
       .then(r => r.json())
       .then(j => {
-        console.log('📦 Archive response:', j)
         if (j?.success) {
-          console.log('📦 Archive successful, updating UI')
-          // Move from threads to archived
           const archivedThread = threads.find(t => t.other_username === otherUsername)
           if (archivedThread) {
             setArchivedThreads(prev => [{ ...archivedThread, is_archived: true }, ...prev])
           }
           setThreads(prev => prev.filter(t => t.other_username !== otherUsername))
           setSwipeId(null)
-          // Refresh threads and archived
           loadThreads(true)
           loadArchivedThreads()
-        } else {
-          console.error('📦 Archive failed:', j)
-          alert('Failed to archive chat: ' + (j?.error || 'Unknown error'))
         }
       })
-      .catch((err) => {
-        console.error('📦 Archive error:', err)
-        alert('Failed to archive chat')
-      })
+      .catch(() => {})
   }, [threads, loadThreads, loadArchivedThreads])
 
   // Unarchive a chat

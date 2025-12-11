@@ -10394,34 +10394,29 @@ def archive_chat():
     """Archive a chat thread (hide from main list)"""
     username = session['username']
     other_username = request.form.get('other_username')
-    logger.info(f"Archiving chat: {username} -> {other_username}")
     if not other_username:
         return jsonify({'success': False, 'error': 'Other username required'})
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ensure_archived_chats_table(c)
-            conn.commit()  # Ensure table is created first
+            conn.commit()
             ph = get_sql_placeholder()
             try:
                 c.execute(
                     f"INSERT INTO archived_chats (username, other_username) VALUES ({ph}, {ph})",
                     (username, other_username)
                 )
-                logger.info(f"Successfully archived chat: {username} -> {other_username}")
-            except Exception as insert_err:
-                logger.warning(f"Archive insert error (might already exist): {insert_err}")
-                # Already archived, ignore
-                pass
+            except Exception:
+                pass  # Already archived
             conn.commit()
-            # Invalidate chat threads cache
             try:
                 cache.delete(f"chat_threads:{username}")
             except Exception:
                 pass
         return jsonify({'success': True})
     except Exception as e:
-        logger.error(f"archive_chat error for {username} with {other_username}: {e}")
+        logger.error(f"archive_chat error: {e}")
         return jsonify({'success': False, 'error': 'Failed to archive chat'}), 500
 
 
@@ -10454,121 +10449,36 @@ def unarchive_chat():
         return jsonify({'success': False, 'error': 'Failed to unarchive chat'}), 500
 
 
-@app.route('/api/archived_chats/debug')
-@login_required
-def api_archived_chats_debug():
-    """Debug endpoint to check archived_chats table status"""
-    username = session.get('username')
-    debug_info = {'username': username, 'use_mysql': USE_MYSQL}
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Force create table first
-            debug_info['table_creation_attempt'] = True
-            try:
-                ensure_archived_chats_table(c)
-                conn.commit()
-                debug_info['table_creation_result'] = 'success'
-            except Exception as create_err:
-                debug_info['table_creation_result'] = f'error: {str(create_err)}'
-            
-            # Check if table exists
-            if USE_MYSQL:
-                c.execute("SHOW TABLES LIKE 'archived_chats'")
-                table_exists = bool(c.fetchone())
-            else:
-                c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archived_chats'")
-                table_exists = bool(c.fetchone())
-            
-            debug_info['table_exists'] = table_exists
-            
-            if table_exists:
-                # Count all rows - handle both dict and tuple results
-                c.execute("SELECT COUNT(*) as cnt FROM archived_chats")
-                row = c.fetchone()
-                if row:
-                    total_count = row.get('cnt', row.get('COUNT(*)', 0)) if hasattr(row, 'get') else row[0]
-                else:
-                    total_count = 0
-                debug_info['total_archived_count'] = total_count
-                
-                # Count for this user (case-insensitive)
-                ph = get_sql_placeholder()
-                c.execute(f"SELECT COUNT(*) as cnt FROM archived_chats WHERE LOWER(username) = LOWER({ph})", (username,))
-                row = c.fetchone()
-                if row:
-                    user_count = row.get('cnt', row.get('COUNT(*)', 0)) if hasattr(row, 'get') else row[0]
-                else:
-                    user_count = 0
-                debug_info['user_archived_count'] = user_count
-                
-                # Get ALL rows to see what's in the table
-                c.execute("SELECT username, other_username, archived_at FROM archived_chats LIMIT 20")
-                all_rows = c.fetchall()
-                debug_info['all_archived_entries'] = [
-                    {'username': r.get('username') if hasattr(r, 'get') else r[0],
-                     'other_username': r.get('other_username') if hasattr(r, 'get') else r[1],
-                     'archived_at': str(r.get('archived_at') if hasattr(r, 'get') else r[2])}
-                    for r in all_rows
-                ]
-            else:
-                debug_info['all_archived_entries'] = []
-            
-            return jsonify({'success': True, 'debug': debug_info})
-    except Exception as e:
-        import traceback
-        debug_info['error'] = str(e)
-        debug_info['traceback'] = traceback.format_exc()
-        logger.error(f"Debug archived_chats error: {e}")
-        return jsonify({'success': False, 'error': str(e), 'debug': debug_info})
-
-
 @app.route('/api/archived_chats')
 @login_required
 def api_archived_chats():
     """Return list of archived chat threads for the current user"""
     username = session.get('username')
-    logger.info(f"📦 Fetching archived chats for {username}")
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ensure_archived_chats_table(c)
-            conn.commit()  # Ensure table is created
+            conn.commit()
             ph = get_sql_placeholder()
             
             # Get list of archived usernames - case insensitive comparison
-            try:
-                c.execute(f"SELECT other_username FROM archived_chats WHERE LOWER(username) = LOWER({ph})", (username,))
-                archived_rows = c.fetchall()
-                logger.info(f"📦 Query returned {len(archived_rows) if archived_rows else 0} rows for {username}")
-            except Exception as query_err:
-                logger.error(f"📦 Error querying archived_chats: {query_err}")
-                import traceback
-                logger.error(traceback.format_exc())
-                archived_rows = []
+            c.execute(f"SELECT other_username FROM archived_chats WHERE LOWER(username) = LOWER({ph})", (username,))
+            archived_rows = c.fetchall()
             
             if not archived_rows:
-                logger.info(f"📦 No archived chats found for {username}")
                 return jsonify({'success': True, 'threads': []})
             
             # Extract usernames - handle both dict and tuple rows
             archived_usernames = []
             for r in archived_rows:
-                try:
-                    if hasattr(r, 'get'):
-                        other_user = r.get('other_username')
-                    elif hasattr(r, 'keys'):
-                        other_user = r['other_username']
-                    else:
-                        other_user = r[0]
-                    if other_user:
-                        archived_usernames.append(other_user)
-                except Exception as row_err:
-                    logger.error(f"📦 Error extracting username from row {r}: {row_err}")
-            
-            logger.info(f"📦 Archived usernames: {archived_usernames}")
+                if hasattr(r, 'get'):
+                    other_user = r.get('other_username')
+                elif hasattr(r, 'keys'):
+                    other_user = r['other_username']
+                else:
+                    other_user = r[0]
+                if other_user:
+                    archived_usernames.append(other_user)
             
             # Build threads for archived chats similar to main chat_threads
             threads = []
@@ -10619,7 +10529,6 @@ def api_archived_chats():
                             last_message_text = msg_row[0]
                             last_activity_time = msg_row[1] if len(msg_row) > 1 else None
                     
-                    # Build profile picture URL same way as api_chat_threads
                     profile_picture_url = url_for('static', filename=profile_picture) if profile_picture else None
                     
                     threads.append({
@@ -10631,18 +10540,12 @@ def api_archived_chats():
                         'is_archived': True,
                     })
                 except Exception as thread_err:
-                    logger.error(f"📦 Error building thread for {other_username}: {thread_err}")
-                    import traceback
-                    logger.error(traceback.format_exc())
+                    logger.warning(f"Failed to build archived thread for {other_username}: {thread_err}")
             
-            logger.info(f"📦 Returning {len(threads)} archived threads")
-            # Sort by last activity
             threads.sort(key=lambda t: (t.get('last_activity_time') or ''), reverse=True)
             return jsonify({'success': True, 'threads': threads})
     except Exception as e:
-        logger.error(f"📦 Error building archived chats for {username}: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
+        logger.error(f"Error loading archived chats for {username}: {e}")
         return jsonify({'success': False, 'error': 'Failed to load archived chats'}), 500
 
 # Community membership/admin routes now reside in backend.blueprints.communities.
