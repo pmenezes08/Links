@@ -10485,29 +10485,32 @@ def api_archived_chats_debug():
             debug_info['table_exists'] = table_exists
             
             if table_exists:
-                # Count all rows
-                c.execute("SELECT COUNT(*) FROM archived_chats")
+                # Count all rows - handle both dict and tuple results
+                c.execute("SELECT COUNT(*) as cnt FROM archived_chats")
                 row = c.fetchone()
-                total_count = row[0] if row else 0
+                if row:
+                    total_count = row.get('cnt', row.get('COUNT(*)', 0)) if hasattr(row, 'get') else row[0]
+                else:
+                    total_count = 0
                 debug_info['total_archived_count'] = total_count
                 
                 # Count for this user (case-insensitive)
                 ph = get_sql_placeholder()
-                if USE_MYSQL:
-                    c.execute(f"SELECT COUNT(*) FROM archived_chats WHERE LOWER(username) = LOWER({ph})", (username,))
-                else:
-                    c.execute(f"SELECT COUNT(*) FROM archived_chats WHERE LOWER(username) = LOWER({ph})", (username,))
+                c.execute(f"SELECT COUNT(*) as cnt FROM archived_chats WHERE LOWER(username) = LOWER({ph})", (username,))
                 row = c.fetchone()
-                user_count = row[0] if row else 0
+                if row:
+                    user_count = row.get('cnt', row.get('COUNT(*)', 0)) if hasattr(row, 'get') else row[0]
+                else:
+                    user_count = 0
                 debug_info['user_archived_count'] = user_count
                 
                 # Get ALL rows to see what's in the table
                 c.execute("SELECT username, other_username, archived_at FROM archived_chats LIMIT 20")
                 all_rows = c.fetchall()
                 debug_info['all_archived_entries'] = [
-                    {'username': r['username'] if hasattr(r, 'keys') else r[0],
-                     'other_username': r['other_username'] if hasattr(r, 'keys') else r[1],
-                     'archived_at': str(r['archived_at'] if hasattr(r, 'keys') else r[2])}
+                    {'username': r.get('username') if hasattr(r, 'get') else r[0],
+                     'other_username': r.get('other_username') if hasattr(r, 'get') else r[1],
+                     'archived_at': str(r.get('archived_at') if hasattr(r, 'get') else r[2])}
                     for r in all_rows
                 ]
             else:
