@@ -4866,17 +4866,17 @@ def api_community_group_feed(parent_id: int):
             
             c.execute(f"""
                 SELECT DISTINCT p.id, p.username, p.content, p.community_id, 
-                       p.created_at, p.timestamp, p.image_path, p.video_path,
+                       p.timestamp, p.image_path, p.video_path,
                        p.audio_path, p.audio_summary
                 FROM posts p
                 JOIN user_communities uc ON uc.community_id = p.community_id
                 JOIN users u ON u.id = uc.user_id
                 WHERE p.community_id IN ({placeholders})
                   AND u.username = {ph}
-                  AND (p.created_at >= {ph} OR p.timestamp >= {ph} OR p.created_at IS NULL)
-                ORDER BY COALESCE(p.created_at, p.timestamp) DESC
+                  AND p.timestamp >= {ph}
+                ORDER BY p.timestamp DESC
                 LIMIT 200
-            """, tuple(community_ids) + (username, cutoff_str, cutoff_str))
+            """, tuple(community_ids) + (username, cutoff_str))
             
             rows = c.fetchall()
             
@@ -5067,7 +5067,7 @@ def api_community_group_feed(parent_id: int):
                         'content': row.get('content'),
                         'community_id': cid,
                         'community_name': name_map.get(cid),
-                        'created_at': row.get('created_at') or row.get('timestamp'),
+                        'timestamp': row.get('timestamp'),
                         'image_path': row.get('image_path'),
                         'video_path': row.get('video_path'),
                         'audio_path': row.get('audio_path'),
@@ -5079,14 +5079,15 @@ def api_community_group_feed(parent_id: int):
                         'poll': poll_map.get(pid)
                     }
                 else:
-                    pid, uname, content, cid, created_at, timestamp, image_path, video_path, audio_path, audio_summary = row[:10]
+                    # Columns: id, username, content, community_id, timestamp, image_path, video_path, audio_path, audio_summary
+                    pid, uname, content, cid, timestamp, image_path, video_path, audio_path, audio_summary = row[:9]
                     post_obj = {
                         'id': pid,
                         'username': uname,
                         'content': content,
                         'community_id': cid,
                         'community_name': name_map.get(cid),
-                        'created_at': created_at or timestamp,
+                        'timestamp': timestamp,
                         'image_path': image_path,
                         'video_path': video_path,
                         'audio_path': audio_path,
@@ -5104,9 +5105,7 @@ def api_community_group_feed(parent_id: int):
             
     except Exception as e:
         logger.error(f"Error in community_group_feed for parent {parent_id}: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': 'Failed to load timeline'}), 500
 
 @app.route('/api/community_photos')
 @login_required
@@ -10394,34 +10393,29 @@ def archive_chat():
     """Archive a chat thread (hide from main list)"""
     username = session['username']
     other_username = request.form.get('other_username')
-    logger.info(f"Archiving chat: {username} -> {other_username}")
     if not other_username:
         return jsonify({'success': False, 'error': 'Other username required'})
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ensure_archived_chats_table(c)
-            conn.commit()  # Ensure table is created first
+            conn.commit()
             ph = get_sql_placeholder()
             try:
                 c.execute(
                     f"INSERT INTO archived_chats (username, other_username) VALUES ({ph}, {ph})",
                     (username, other_username)
                 )
-                logger.info(f"Successfully archived chat: {username} -> {other_username}")
-            except Exception as insert_err:
-                logger.warning(f"Archive insert error (might already exist): {insert_err}")
-                # Already archived, ignore
-                pass
+            except Exception:
+                pass  # Already archived
             conn.commit()
-            # Invalidate chat threads cache
             try:
                 cache.delete(f"chat_threads:{username}")
             except Exception:
                 pass
         return jsonify({'success': True})
     except Exception as e:
-        logger.error(f"archive_chat error for {username} with {other_username}: {e}")
+        logger.error(f"archive_chat error: {e}")
         return jsonify({'success': False, 'error': 'Failed to archive chat'}), 500
 
 
@@ -10454,139 +10448,103 @@ def unarchive_chat():
         return jsonify({'success': False, 'error': 'Failed to unarchive chat'}), 500
 
 
-@app.route('/api/archived_chats/debug')
-@login_required
-def api_archived_chats_debug():
-    """Debug endpoint to check archived_chats table status"""
-    username = session.get('username')
-    debug_info = {'username': username, 'use_mysql': USE_MYSQL}
-    
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            
-            # Check if table exists
-            if USE_MYSQL:
-                c.execute("SHOW TABLES LIKE 'archived_chats'")
-                table_exists = bool(c.fetchone())
-            else:
-                c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='archived_chats'")
-                table_exists = bool(c.fetchone())
-            
-            debug_info['table_exists'] = table_exists
-            
-            if table_exists:
-                # Count all rows
-                c.execute("SELECT COUNT(*) FROM archived_chats")
-                total_count = c.fetchone()[0]
-                debug_info['total_archived_count'] = total_count
-                
-                # Count for this user
-                ph = get_sql_placeholder()
-                c.execute(f"SELECT COUNT(*) FROM archived_chats WHERE username = {ph}", (username,))
-                user_count = c.fetchone()[0]
-                debug_info['user_archived_count'] = user_count
-                
-                # Get actual usernames for this user
-                c.execute(f"SELECT other_username, archived_at FROM archived_chats WHERE username = {ph}", (username,))
-                rows = c.fetchall()
-                debug_info['archived_users'] = [
-                    {'other_username': r['other_username'] if hasattr(r, 'keys') else r[0],
-                     'archived_at': str(r['archived_at'] if hasattr(r, 'keys') else r[1])}
-                    for r in rows
-                ]
-            
-            return jsonify({'success': True, 'debug': debug_info})
-    except Exception as e:
-        logger.error(f"Debug archived_chats error: {e}")
-        return jsonify({'success': False, 'error': str(e), 'debug': debug_info})
-
-
 @app.route('/api/archived_chats')
 @login_required
 def api_archived_chats():
     """Return list of archived chat threads for the current user"""
     username = session.get('username')
-    logger.info(f"Fetching archived chats for {username}")
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ensure_archived_chats_table(c)
-            conn.commit()  # Ensure table is created
+            conn.commit()
             ph = get_sql_placeholder()
             
-            # Get list of archived usernames
-            try:
-                c.execute(f"SELECT other_username FROM archived_chats WHERE username = {ph}", (username,))
-                archived_rows = c.fetchall()
-                logger.info(f"Found {len(archived_rows) if archived_rows else 0} archived chats for {username}")
-            except Exception as query_err:
-                logger.error(f"Error querying archived_chats: {query_err}")
-                archived_rows = []
+            # Get list of archived usernames - case insensitive comparison
+            c.execute(f"SELECT other_username FROM archived_chats WHERE LOWER(username) = LOWER({ph})", (username,))
+            archived_rows = c.fetchall()
             
             if not archived_rows:
                 return jsonify({'success': True, 'threads': []})
             
-            archived_usernames = [
-                r['other_username'] if hasattr(r, 'keys') else r[0]
-                for r in archived_rows
-            ]
+            # Extract usernames - handle both dict and tuple rows
+            archived_usernames = []
+            for r in archived_rows:
+                if hasattr(r, 'get'):
+                    other_user = r.get('other_username')
+                elif hasattr(r, 'keys'):
+                    other_user = r['other_username']
+                else:
+                    other_user = r[0]
+                if other_user:
+                    archived_usernames.append(other_user)
             
             # Build threads for archived chats similar to main chat_threads
             threads = []
             for other_username in archived_usernames:
-                # Get user info
-                c.execute(
-                    f"SELECT username, display_name, profile_picture FROM users WHERE username = {ph}",
-                    (other_username,)
-                )
-                user_row = c.fetchone()
-                if not user_row:
-                    continue
-                
-                if hasattr(user_row, 'keys'):
-                    display_name = user_row.get('display_name') or user_row.get('username', other_username)
-                    profile_picture = user_row.get('profile_picture')
-                else:
-                    display_name = user_row[1] or user_row[0] or other_username
-                    profile_picture = user_row[2] if len(user_row) > 2 else None
-                
-                # Get last message
-                c.execute(
-                    f"""
-                    SELECT message, timestamp 
-                    FROM messages 
-                    WHERE (sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph})
-                    ORDER BY timestamp DESC
-                    LIMIT 1
-                    """,
-                    (username, other_username, other_username, username)
-                )
-                msg_row = c.fetchone()
-                last_message_text = None
-                last_activity_time = None
-                if msg_row:
-                    if hasattr(msg_row, 'keys'):
-                        last_message_text = msg_row.get('message', '')
-                        last_activity_time = msg_row.get('timestamp')
-                    else:
-                        last_message_text = msg_row[0]
-                        last_activity_time = msg_row[1] if len(msg_row) > 1 else None
-                
-                threads.append({
-                    'other_username': other_username,
-                    'display_name': display_name,
-                    'profile_picture_url': _public_url(profile_picture) if profile_picture else None,
-                    'last_message_text': last_message_text,
-                    'last_activity_time': last_activity_time,
-                    'is_archived': True,
-                })
+                try:
+                    # Get profile info from user_profiles table (same as api_chat_threads)
+                    c.execute(
+                        f"SELECT display_name, profile_picture FROM user_profiles WHERE username = {ph}",
+                        (other_username,)
+                    )
+                    profile_row = c.fetchone()
+                    display_name = other_username
+                    profile_picture = None
+                    
+                    if profile_row:
+                        if hasattr(profile_row, 'get'):
+                            display_name = profile_row.get('display_name') or other_username
+                            profile_picture = profile_row.get('profile_picture')
+                        elif hasattr(profile_row, 'keys'):
+                            display_name = profile_row['display_name'] or other_username
+                            profile_picture = profile_row['profile_picture'] if 'profile_picture' in profile_row.keys() else None
+                        else:
+                            display_name = profile_row[0] or other_username
+                            profile_picture = profile_row[1] if len(profile_row) > 1 else None
+                    
+                    # Get last message
+                    c.execute(
+                        f"""
+                        SELECT message, timestamp 
+                        FROM messages 
+                        WHERE (sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph})
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                        """,
+                        (username, other_username, other_username, username)
+                    )
+                    msg_row = c.fetchone()
+                    last_message_text = None
+                    last_activity_time = None
+                    if msg_row:
+                        if hasattr(msg_row, 'get'):
+                            last_message_text = msg_row.get('message', '')
+                            last_activity_time = msg_row.get('timestamp')
+                        elif hasattr(msg_row, 'keys'):
+                            last_message_text = msg_row['message']
+                            last_activity_time = msg_row['timestamp']
+                        else:
+                            last_message_text = msg_row[0]
+                            last_activity_time = msg_row[1] if len(msg_row) > 1 else None
+                    
+                    profile_picture_url = url_for('static', filename=profile_picture) if profile_picture else None
+                    
+                    threads.append({
+                        'other_username': other_username,
+                        'display_name': display_name,
+                        'profile_picture_url': profile_picture_url,
+                        'last_message_text': last_message_text,
+                        'last_activity_time': str(last_activity_time) if last_activity_time else None,
+                        'is_archived': True,
+                    })
+                except Exception as thread_err:
+                    logger.warning(f"Failed to build archived thread for {other_username}: {thread_err}")
             
-            # Sort by last activity
             threads.sort(key=lambda t: (t.get('last_activity_time') or ''), reverse=True)
             return jsonify({'success': True, 'threads': threads})
     except Exception as e:
-        logger.error(f"Error building archived chats for {username}: {e}")
+        logger.error(f"Error loading archived chats for {username}: {e}")
         return jsonify({'success': False, 'error': 'Failed to load archived chats'}), 500
 
 # Community membership/admin routes now reside in backend.blueprints.communities.
