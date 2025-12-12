@@ -5104,12 +5104,8 @@ def api_community_group_feed(parent_id: int):
             return jsonify({'success': True, 'posts': posts, 'username': username})
             
     except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
         logger.error(f"Error in community_group_feed for parent {parent_id}: {e}")
-        logger.error(tb)
-        # Return detailed error for debugging
-        return jsonify({'success': False, 'error': str(e), 'traceback': tb}), 500
+        return jsonify({'success': False, 'error': 'Failed to load timeline'}), 500
 
 @app.route('/api/community_photos')
 @login_required

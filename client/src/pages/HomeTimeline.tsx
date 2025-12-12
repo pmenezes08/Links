@@ -63,48 +63,30 @@ export default function HomeTimeline(){
     // CACHE-FIRST: Show cached data immediately, fetch fresh in background
     const cachedData = readDeviceCache<any>(HOME_TIMELINE_CACHE_KEY, HOME_TIMELINE_CACHE_VERSION)
     if (cachedData?.success) {
-      console.log('[HomeTimeline] Using cached data:', cachedData.posts?.length, 'posts')
       setData(cachedData)
       setLoading(false)
     } else {
-      console.log('[HomeTimeline] No cache, setting loading=true')
       setLoading(true)
     }
     
     async function load(){
       try{
-        console.log('[HomeTimeline] Fetching /api/home_timeline...')
         const r = await fetch('/api/home_timeline', { credentials:'include' })
         const j = await r.json()
-        console.log('[HomeTimeline] API response:', j?.success, 'posts:', j?.posts?.length)
-        if (!mounted) {
-          console.log('[HomeTimeline] Component unmounted, ignoring response')
-          return
-        }
+        if (!mounted) return
         if (j?.success){ 
-          console.log('[HomeTimeline] Setting data with', j.posts?.length, 'posts')
           setData(j)
           writeDeviceCache(HOME_TIMELINE_CACHE_KEY, j, HOME_TIMELINE_CACHE_TTL_MS, HOME_TIMELINE_CACHE_VERSION)
         } else if (!data) { 
-          console.log('[HomeTimeline] API failed, setting error')
           setError(j?.error || 'Error') 
         }
-      }catch(err){ 
-        console.error('[HomeTimeline] Fetch error:', err)
-        if (mounted && !data) setError('Error loading') 
-      } finally { 
-        if (mounted) setLoading(false) 
-      }
+      }catch{ if (mounted && !data) setError('Error loading') } finally { if (mounted) setLoading(false) }
     }
     load()
     return () => { mounted = false }
   }, [refreshKey])
 
-  const posts: Post[] = useMemo(() => {
-    const p = data?.posts || []
-    console.log('[HomeTimeline] useMemo posts:', p.length, 'from data:', !!data)
-    return p
-  }, [data])
+  const posts: Post[] = useMemo(() => data?.posts || [], [data])
   
   const { setTitle } = useHeader()
 
