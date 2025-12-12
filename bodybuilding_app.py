@@ -4866,17 +4866,17 @@ def api_community_group_feed(parent_id: int):
             
             c.execute(f"""
                 SELECT DISTINCT p.id, p.username, p.content, p.community_id, 
-                       p.created_at, p.timestamp, p.image_path, p.video_path,
+                       p.timestamp, p.image_path, p.video_path,
                        p.audio_path, p.audio_summary
                 FROM posts p
                 JOIN user_communities uc ON uc.community_id = p.community_id
                 JOIN users u ON u.id = uc.user_id
                 WHERE p.community_id IN ({placeholders})
                   AND u.username = {ph}
-                  AND (p.created_at >= {ph} OR p.timestamp >= {ph} OR p.created_at IS NULL)
-                ORDER BY COALESCE(p.created_at, p.timestamp) DESC
+                  AND p.timestamp >= {ph}
+                ORDER BY p.timestamp DESC
                 LIMIT 200
-            """, tuple(community_ids) + (username, cutoff_str, cutoff_str))
+            """, tuple(community_ids) + (username, cutoff_str))
             
             rows = c.fetchall()
             
@@ -5067,7 +5067,7 @@ def api_community_group_feed(parent_id: int):
                         'content': row.get('content'),
                         'community_id': cid,
                         'community_name': name_map.get(cid),
-                        'created_at': row.get('created_at') or row.get('timestamp'),
+                        'timestamp': row.get('timestamp'),
                         'image_path': row.get('image_path'),
                         'video_path': row.get('video_path'),
                         'audio_path': row.get('audio_path'),
@@ -5079,14 +5079,15 @@ def api_community_group_feed(parent_id: int):
                         'poll': poll_map.get(pid)
                     }
                 else:
-                    pid, uname, content, cid, created_at, timestamp, image_path, video_path, audio_path, audio_summary = row[:10]
+                    # Columns: id, username, content, community_id, timestamp, image_path, video_path, audio_path, audio_summary
+                    pid, uname, content, cid, timestamp, image_path, video_path, audio_path, audio_summary = row[:9]
                     post_obj = {
                         'id': pid,
                         'username': uname,
                         'content': content,
                         'community_id': cid,
                         'community_name': name_map.get(cid),
-                        'created_at': created_at or timestamp,
+                        'timestamp': timestamp,
                         'image_path': image_path,
                         'video_path': video_path,
                         'audio_path': audio_path,
