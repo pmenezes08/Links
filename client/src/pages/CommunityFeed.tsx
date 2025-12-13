@@ -164,6 +164,9 @@ export default function CommunityFeed() {
   const [storyReplyText, setStoryReplyText] = useState('')
   const [storyReplySending, setStoryReplySending] = useState(false)
   const storyReplyInputRef = useRef<HTMLInputElement | null>(null)
+  // Story video sound state
+  const [storyVideoMuted, setStoryVideoMuted] = useState(true)
+  const storyVideoRef = useRef<HTMLVideoElement | null>(null)
   // const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
   // const [storyEditorNewText, setStoryEditorNewText] = useState('')
 
@@ -1136,6 +1139,7 @@ export default function CommunityFeed() {
     setActiveStoryPointer(null)
     setStoryViewersState(prev => ({ ...prev, open: false }))
     setStoryReplyText('')
+    setStoryVideoMuted(true) // Reset to muted when closing
   }, [])
 
   // Handle story reply - sends message to story creator's 1:1 chat
@@ -2001,12 +2005,13 @@ export default function CommunityFeed() {
                 {currentStory.media_type === 'video' ? (
                   <>
                     <video
+                      ref={storyVideoRef}
                       key={currentStory.id}
                       src={resolveStoryMediaSrc(currentStory)}
                       className="w-full max-h-[50vh] object-contain relative z-[1]"
                       autoPlay
                       playsInline
-                      muted
+                      muted={storyVideoMuted}
                       loop
                       preload="auto"
                       onLoadedData={(e) => {
@@ -2025,6 +2030,22 @@ export default function CommunityFeed() {
                         if (loader) loader.style.display = 'none'
                       }}
                     />
+                    {/* Sound toggle button */}
+                    <button
+                      type="button"
+                      className="absolute bottom-3 right-3 z-[5] w-9 h-9 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white/90 hover:bg-black/80 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setStoryVideoMuted(prev => !prev)
+                        // Also directly set on the video element for immediate effect
+                        if (storyVideoRef.current) {
+                          storyVideoRef.current.muted = !storyVideoMuted
+                        }
+                      }}
+                      aria-label={storyVideoMuted ? 'Unmute video' : 'Mute video'}
+                    >
+                      <i className={`fa-solid ${storyVideoMuted ? 'fa-volume-xmark' : 'fa-volume-high'} text-sm`} />
+                    </button>
                     <div className="video-loader absolute inset-0 flex items-center justify-center bg-black/60 z-[2]">
                       <div className="flex flex-col items-center gap-2">
                         <div className="w-8 h-8 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
