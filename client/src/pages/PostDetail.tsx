@@ -120,6 +120,7 @@ export default function PostDetail(){
   const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview, level } = useAudioRecorder() as any
   const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
+  const [anyInlineReplyOpen, setAnyInlineReplyOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
@@ -804,6 +805,7 @@ export default function PostDetail(){
               inlineSendingFlag={!!inlineSending[r.id]}
               communityId={(post as any)?.community_id}
               postId={post?.id}
+              onComposerToggle={setAnyInlineReplyOpen}
             />
           ))}
         </div>
@@ -821,7 +823,8 @@ export default function PostDetail(){
         </div>
       ) : null}
 
-      {/* Fixed-bottom reply composer */}
+      {/* Fixed-bottom reply composer - hide when inline reply is open */}
+      {!anyInlineReplyOpen && (
       <div
         ref={composerRef}
         className="fixed left-0 right-0 z-[100]"
@@ -991,6 +994,7 @@ export default function PostDetail(){
           }}
         />
       </div>
+      )}
       <GifPicker
         isOpen={gifPickerOpen}
         onClose={()=> setGifPickerOpen(false)}
@@ -1034,7 +1038,7 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   return true
 })
 
-function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number }){
+function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, onComposerToggle }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, onComposerToggle?: (open: boolean) => void }){
   const currentUser = currentUserName
   const [showComposer, setShowComposer] = useState(false)
   const [text, setText] = useState('')
@@ -1056,7 +1060,11 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
       if (inlineFileRef.current) inlineFileRef.current.value = ''
       clearInlinePreview()
     }
-  }, [showComposer, clearInlinePreview])
+    // Notify parent when composer is toggled
+    if (onComposerToggle) {
+      onComposerToggle(showComposer)
+    }
+  }, [showComposer, clearInlinePreview, onComposerToggle])
   return (
     <div data-reply-node className={`relative py-2 ${depth === 0 ? 'border-b border-white/10' : ''}`}>
       <div className="relative flex items-start gap-2 px-3">
@@ -1204,23 +1212,23 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                   <span className="text-[10px] text-white/70">{Math.min(60, Math.round((recMs||0)/1000))}s</span>
                 </div>
               )}
-              {/* Input row */}
+              {/* Input row - wider input */}
               <div className="flex items-end gap-1.5">
-                <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => inlineFileRef.current?.click()}>
-                  <i className="fa-solid fa-image text-xs" style={{ color: img ? '#7fe7df' : '#fff' }} />
-                </button>
-                <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => setShowGifPicker(true)}>
-                  <i className="fa-solid fa-images text-xs" style={{ color: inlineGif ? '#7fe7df' : '#fff' }} />
-                </button>
                 <input ref={inlineFileRef} type="file" accept="image/*" onChange={(e) => { const next = (e.target as HTMLInputElement).files?.[0] || null; setImg(next); setInlineGif(null); setGifFile(null) }} className="hidden" />
                 <div className="flex-1 flex items-center rounded-lg border border-[#4db6ac] bg-white/5 overflow-hidden min-w-0">
+                  <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center hover:bg-white/10" onClick={() => inlineFileRef.current?.click()}>
+                    <i className="fa-solid fa-image text-xs" style={{ color: img ? '#7fe7df' : '#fff' }} />
+                  </button>
+                  <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center hover:bg-white/10" onClick={() => setShowGifPicker(true)}>
+                    <i className="fa-solid fa-images text-xs" style={{ color: inlineGif ? '#7fe7df' : '#fff' }} />
+                  </button>
                   <MentionTextarea
                     value={text}
                     onChange={setText}
                     communityId={communityId}
                     postId={postId}
                     placeholder={`Reply to @${reply.username}`}
-                    className="flex-1 bg-transparent px-2 py-1.5 text-[14px] text-white placeholder-white/50 outline-none resize-none max-h-20 min-h-[32px]"
+                    className="flex-1 bg-transparent px-3 py-2 text-[14px] text-white placeholder-white/50 outline-none resize-none max-h-20 min-h-[36px]"
                     rows={1}
                     autoExpand
                   />
@@ -1293,6 +1301,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               onDelete={onDelete}
               onPreviewImage={onPreviewImage}
               inlineSendingFlag={false}
+              onComposerToggle={onComposerToggle}
               communityId={communityId}
               postId={postId}
             />
