@@ -1174,7 +1174,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             </div>
           </div>
           {showComposer ? (
-            <div className="mt-2 space-y-2 rounded-xl bg-[#0a0a0c] p-2">
+            <div className="mt-2 space-y-2 rounded-xl bg-[#0a0a0c] p-2 -ml-12 -mr-2">
               {/* Attachment previews */}
               {(img || inlineGif || inlinePreview) && (
                 <div className="flex items-center gap-2 flex-wrap mb-1">
