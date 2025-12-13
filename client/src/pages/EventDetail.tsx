@@ -229,42 +229,44 @@ export default function EventDetail(){
 
       {/* Attendees Modal */}
       {showAttendees && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-end justify-center" onClick={(e)=> e.currentTarget===e.target && setShowAttendees(false)}>
-          <div className="w-[96%] max-w-[560px] mb-4 rounded-2xl border border-white/10 bg-black p-3">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold">Attendees</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setShowAttendees(false)}>✕</button>
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-center justify-center px-4" onClick={(e)=> e.currentTarget===e.target && setShowAttendees(false)}>
+          <div className="w-full max-w-[560px] max-h-[85vh] rounded-2xl border border-white/10 bg-black p-4 flex flex-col">
+            <div className="flex items-center justify-between mb-3 flex-shrink-0">
+              <div className="font-semibold text-lg">Who's Coming</div>
+              <button className="w-8 h-8 rounded-full border border-white/20 hover:bg-white/10 flex items-center justify-center" onClick={()=> setShowAttendees(false)}>✕</button>
             </div>
-            {!rsvpDetails ? (
-              <div className="text-[#9fb0b5] text-sm">Loading…</div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <div className="font-medium text-green-400 mb-1">Going ({rsvpDetails.going.length})</div>
-                  <ul className="space-y-1 text-white/90">
-                    {rsvpDetails.going.map((u,idx)=> (<li key={`g-${idx}`}>{u.username}</li>))}
-                  </ul>
+            <div className="overflow-y-auto flex-1 min-h-0">
+              {!rsvpDetails ? (
+                <div className="text-[#9fb0b5] text-sm">Loading…</div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="font-medium text-green-400 mb-2">Going ({rsvpDetails.going.length})</div>
+                    <ul className="space-y-1.5 text-white/90">
+                      {rsvpDetails.going.map((u,idx)=> (<li key={`g-${idx}`}>{u.username}</li>))}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="font-medium text-yellow-400 mb-2">Maybe ({rsvpDetails.maybe.length})</div>
+                    <ul className="space-y-1.5 text-white/90">
+                      {rsvpDetails.maybe.map((u,idx)=> (<li key={`m-${idx}`}>{u.username}</li>))}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="font-medium text-red-400 mb-2">Can't Go ({rsvpDetails.not_going.length})</div>
+                    <ul className="space-y-1.5 text-white/90">
+                      {rsvpDetails.not_going.map((u,idx)=> (<li key={`n-${idx}`}>{u.username}</li>))}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="font-medium text-[#9fb0b5] mb-2">No Response ({rsvpDetails.no_response.length})</div>
+                    <ul className="space-y-1.5 text-white/70">
+                      {rsvpDetails.no_response.map((u,idx)=> (<li key={`r-${idx}`}>{u.username}</li>))}
+                    </ul>
+                  </div>
                 </div>
-                <div>
-                  <div className="font-medium text-yellow-400 mb-1">Maybe ({rsvpDetails.maybe.length})</div>
-                  <ul className="space-y-1 text-white/90">
-                    {rsvpDetails.maybe.map((u,idx)=> (<li key={`m-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium text-red-400 mb-1">Can't Go ({rsvpDetails.not_going.length})</div>
-                  <ul className="space-y-1 text-white/90">
-                    {rsvpDetails.not_going.map((u,idx)=> (<li key={`n-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium text-[#9fb0b5] mb-1">No Response ({rsvpDetails.no_response.length})</div>
-                  <ul className="space-y-1 text-white/70">
-                    {rsvpDetails.no_response.map((u,idx)=> (<li key={`r-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
