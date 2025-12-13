@@ -1163,14 +1163,21 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
             <Reaction icon="fa-regular fa-thumbs-down" count={reply.reactions?.['thumbs-down']||0} active={reply.user_reaction==='thumbs-down'} onClick={()=> onToggle(reply.id, 'thumbs-down')} />
             <div className="ml-auto flex items-center gap-1">
-              <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={(e)=> {
-                setShowComposer(v => !v)
-                // Scroll to show the composer under the reply
-                setTimeout(() => {
-                  const target = e.currentTarget.closest('[data-reply-node]')
-                  target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                }, 100)
-              }}>Reply</button>
+              <button 
+                className={`px-2 py-1 rounded-full transition-colors ${showComposer ? 'text-[#4db6ac] bg-[#4db6ac]/10' : 'text-[#9fb0b5] hover:text-[#4db6ac]'}`}
+                onClick={(e)=> {
+                  setShowComposer(v => !v)
+                  // Scroll to show the composer under the reply
+                  if (!showComposer) {
+                    setTimeout(() => {
+                      const target = e.currentTarget.closest('[data-reply-node]')
+                      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    }, 100)
+                  }
+                }}
+              >
+                Reply
+              </button>
             </div>
           </div>
           {showComposer ? (
