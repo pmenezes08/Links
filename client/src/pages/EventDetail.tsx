@@ -229,13 +229,17 @@ export default function EventDetail(){
 
       {/* Attendees Modal */}
       {showAttendees && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-center justify-center px-4" onClick={(e)=> e.currentTarget===e.target && setShowAttendees(false)}>
-          <div className="w-full max-w-[560px] max-h-[85vh] rounded-2xl border border-white/10 bg-black p-4 flex flex-col">
+        <div 
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-center justify-center p-4"
+          style={{ paddingTop: 'max(16px, env(safe-area-inset-top, 16px))', paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}
+          onClick={(e)=> e.currentTarget===e.target && setShowAttendees(false)}
+        >
+          <div className="w-full max-w-[560px] max-h-full rounded-2xl border border-white/10 bg-black p-4 flex flex-col">
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
               <div className="font-semibold text-lg">Who's Coming</div>
               <button className="w-8 h-8 rounded-full border border-white/20 hover:bg-white/10 flex items-center justify-center" onClick={()=> setShowAttendees(false)}>✕</button>
             </div>
-            <div className="overflow-y-auto flex-1 min-h-0">
+            <div className="overflow-y-auto flex-1 min-h-0 overscroll-contain">
               {!rsvpDetails ? (
                 <div className="text-[#9fb0b5] text-sm">Loading…</div>
               ) : (
