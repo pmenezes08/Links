@@ -1806,7 +1806,7 @@ export default function CommunityFeed() {
             </div>
           ) : null}
           {/* Stories panel - below community header image */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2.5 mb-3">
+          <div className="rounded-xl border border-white/20 bg-white/[0.02] px-3 py-2.5 mb-3">
             <div className="flex gap-4 overflow-x-auto no-scrollbar">
               <button
                 className="flex flex-col items-center gap-1 min-w-[60px] text-white/80"
