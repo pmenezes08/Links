@@ -33,6 +33,7 @@ export default function EventDetail(){
   const [loading, setLoading] = useState(true)
   const [rsvpDetails, setRsvpDetails] = useState<RSVPDetails| null>(null)
   const [showAttendees, setShowAttendees] = useState(false)
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ going: true })
 
   useEffect(() => { setTitle('Event Details') }, [setTitle])
 
@@ -230,7 +231,7 @@ export default function EventDetail(){
       {/* Attendees Modal */}
       {showAttendees && (
         <div 
-          className="fixed z-[100] bg-black/60 backdrop-blur"
+          className="fixed z-[100] bg-black/70 backdrop-blur-sm"
           style={{ 
             top: 0, 
             left: 0, 
@@ -240,48 +241,117 @@ export default function EventDetail(){
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '16px',
-            paddingTop: 'max(16px, env(safe-area-inset-top, 16px))',
-            paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))',
+            padding: '24px 16px',
           }}
           onClick={(e)=> e.currentTarget===e.target && setShowAttendees(false)}
         >
           <div 
-            className="w-full max-w-[560px] rounded-2xl border border-white/10 bg-black p-4 flex flex-col"
-            style={{ maxHeight: 'calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))' }}
+            className="w-full max-w-[400px] rounded-2xl border border-white/10 bg-[#0a0a0a] flex flex-col"
+            style={{ maxHeight: 'min(500px, calc(100dvh - 48px))' }}
           >
-            <div className="flex items-center justify-between mb-3 flex-shrink-0">
-              <div className="font-semibold text-lg">Who's Coming</div>
-              <button className="w-8 h-8 rounded-full border border-white/20 hover:bg-white/10 flex items-center justify-center" onClick={()=> setShowAttendees(false)}>✕</button>
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-white/10 flex-shrink-0">
+              <div className="font-semibold">Who's Coming</div>
+              <button 
+                className="w-8 h-8 rounded-full border border-white/20 hover:bg-white/10 flex items-center justify-center text-white/70 hover:text-white" 
+                onClick={()=> setShowAttendees(false)}
+              >
+                <i className="fa-solid fa-xmark text-sm" />
+              </button>
             </div>
+            
+            {/* Content */}
             <div className="overflow-y-auto flex-1 min-h-0 overscroll-contain">
               {!rsvpDetails ? (
-                <div className="text-[#9fb0b5] text-sm">Loading…</div>
+                <div className="p-4 text-[#9fb0b5] text-sm">Loading…</div>
               ) : (
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="divide-y divide-white/10">
+                  {/* Going Section */}
                   <div>
-                    <div className="font-medium text-green-400 mb-2">Going ({rsvpDetails.going.length})</div>
-                    <ul className="space-y-1.5 text-white/90">
-                      {rsvpDetails.going.map((u,idx)=> (<li key={`g-${idx}`}>{u.username}</li>))}
-                    </ul>
+                    <button 
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors"
+                      onClick={() => setExpandedSections(prev => ({ ...prev, going: !prev.going }))}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-green-400" />
+                        <span className="font-medium text-green-400">Going</span>
+                        <span className="text-white/50 text-sm">({rsvpDetails.going.length})</span>
+                      </div>
+                      <i className={`fa-solid fa-chevron-down text-xs text-white/40 transition-transform ${expandedSections.going ? 'rotate-180' : ''}`} />
+                    </button>
+                    {expandedSections.going && rsvpDetails.going.length > 0 && (
+                      <div className="px-4 pb-3 pl-8">
+                        <ul className="space-y-1 text-sm text-white/80">
+                          {rsvpDetails.going.map((u, idx) => (<li key={`g-${idx}`}>{u.username}</li>))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
+                  
+                  {/* Maybe Section */}
                   <div>
-                    <div className="font-medium text-yellow-400 mb-2">Maybe ({rsvpDetails.maybe.length})</div>
-                    <ul className="space-y-1.5 text-white/90">
-                      {rsvpDetails.maybe.map((u,idx)=> (<li key={`m-${idx}`}>{u.username}</li>))}
-                    </ul>
+                    <button 
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors"
+                      onClick={() => setExpandedSections(prev => ({ ...prev, maybe: !prev.maybe }))}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                        <span className="font-medium text-yellow-400">Maybe</span>
+                        <span className="text-white/50 text-sm">({rsvpDetails.maybe.length})</span>
+                      </div>
+                      <i className={`fa-solid fa-chevron-down text-xs text-white/40 transition-transform ${expandedSections.maybe ? 'rotate-180' : ''}`} />
+                    </button>
+                    {expandedSections.maybe && rsvpDetails.maybe.length > 0 && (
+                      <div className="px-4 pb-3 pl-8">
+                        <ul className="space-y-1 text-sm text-white/80">
+                          {rsvpDetails.maybe.map((u, idx) => (<li key={`m-${idx}`}>{u.username}</li>))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
+                  
+                  {/* Can't Go Section */}
                   <div>
-                    <div className="font-medium text-red-400 mb-2">Can't Go ({rsvpDetails.not_going.length})</div>
-                    <ul className="space-y-1.5 text-white/90">
-                      {rsvpDetails.not_going.map((u,idx)=> (<li key={`n-${idx}`}>{u.username}</li>))}
-                    </ul>
+                    <button 
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors"
+                      onClick={() => setExpandedSections(prev => ({ ...prev, not_going: !prev.not_going }))}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-red-400" />
+                        <span className="font-medium text-red-400">Can't Go</span>
+                        <span className="text-white/50 text-sm">({rsvpDetails.not_going.length})</span>
+                      </div>
+                      <i className={`fa-solid fa-chevron-down text-xs text-white/40 transition-transform ${expandedSections.not_going ? 'rotate-180' : ''}`} />
+                    </button>
+                    {expandedSections.not_going && rsvpDetails.not_going.length > 0 && (
+                      <div className="px-4 pb-3 pl-8">
+                        <ul className="space-y-1 text-sm text-white/80">
+                          {rsvpDetails.not_going.map((u, idx) => (<li key={`n-${idx}`}>{u.username}</li>))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
+                  
+                  {/* No Response Section */}
                   <div>
-                    <div className="font-medium text-[#9fb0b5] mb-2">No Response ({rsvpDetails.no_response.length})</div>
-                    <ul className="space-y-1.5 text-white/70">
-                      {rsvpDetails.no_response.map((u,idx)=> (<li key={`r-${idx}`}>{u.username}</li>))}
-                    </ul>
+                    <button 
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors"
+                      onClick={() => setExpandedSections(prev => ({ ...prev, no_response: !prev.no_response }))}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-white/30" />
+                        <span className="font-medium text-white/50">No Response</span>
+                        <span className="text-white/50 text-sm">({rsvpDetails.no_response.length})</span>
+                      </div>
+                      <i className={`fa-solid fa-chevron-down text-xs text-white/40 transition-transform ${expandedSections.no_response ? 'rotate-180' : ''}`} />
+                    </button>
+                    {expandedSections.no_response && rsvpDetails.no_response.length > 0 && (
+                      <div className="px-4 pb-3 pl-8">
+                        <ul className="space-y-1 text-sm text-white/60">
+                          {rsvpDetails.no_response.map((u, idx) => (<li key={`r-${idx}`}>{u.username}</li>))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
