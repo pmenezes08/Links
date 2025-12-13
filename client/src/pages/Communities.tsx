@@ -101,7 +101,7 @@ export default function Communities(){
     }
   })
   const [expandedParentIds, setExpandedParentIds] = useState<Record<number, boolean>>({})
-  const [expandedNestedParentId, setExpandedNestedParentId] = useState<number | null>(null)
+  const [expandedNestedParentIds, setExpandedNestedParentIds] = useState<Record<number, boolean>>({})
   const [expandedDeepCommunityIds, setExpandedDeepCommunityIds] = useState<Record<number, boolean>>({})
   // Groups modal (list & join)
   const [showGroupsModal, setShowGroupsModal] = useState(false)
@@ -146,15 +146,31 @@ export default function Communities(){
   }, [communityDeviceCacheKey])
   useEffect(() => {
     if (!showNested){
-      setExpandedNestedParentId(null)
+      setExpandedNestedParentIds({})
       setExpandedDeepCommunityIds({})
     }
   }, [showNested])
   useEffect(() => {
-    if (!expandedNestedParentId) return
-    const exists = communities.some(parent => parent.children?.some(child => child.id === expandedNestedParentId))
-    if (!exists) setExpandedNestedParentId(null)
-  }, [communities, expandedNestedParentId])
+    // Clean up expandedNestedParentIds entries for communities that no longer exist
+    const existingIds = new Set<number>()
+    communities.forEach(parent => {
+      parent.children?.forEach(child => existingIds.add(child.id))
+    })
+    setExpandedNestedParentIds(prev => {
+      const keys = Object.keys(prev).map(Number)
+      if (keys.length === 0) return prev
+      const next: Record<number, boolean> = {}
+      let changed = false
+      for (const id of keys) {
+        if (existingIds.has(id)) {
+          next[id] = prev[id]
+        } else {
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [communities])
 
   // Load current user to drive UI permissions for creating sub-communities and groups
   useEffect(() => {
@@ -462,10 +478,20 @@ export default function Communities(){
                                     })
                                     if (currentlyExpanded && c.children){
                                       const descendants = collectDescendantIds(c.children)
-                                      if (expandedNestedParentId && descendants.includes(expandedNestedParentId)){
-                                        setExpandedNestedParentId(null)
-                                      }
                                       if (descendants.length){
+                                        // Clean up nested parent IDs
+                                        setExpandedNestedParentIds(prev => {
+                                          let changed = false
+                                          const next = { ...prev }
+                                          for (const id of descendants){
+                                            if (next[id] !== undefined){
+                                              delete next[id]
+                                              changed = true
+                                            }
+                                          }
+                                          return changed ? next : prev
+                                        })
+                                        // Clean up deep community IDs
                                         setExpandedDeepCommunityIds(prev => {
                                           let changed = false
                                           const next = { ...prev }
@@ -491,8 +517,8 @@ export default function Communities(){
                                     onOpenGroups={openGroups}
                                     navigate={navigate}
                                     showNested={showNested}
-                                    expandedNestedParentId={expandedNestedParentId}
-                                    setExpandedNestedParentId={setExpandedNestedParentId}
+                                    expandedNestedParentIds={expandedNestedParentIds}
+                                    setExpandedNestedParentIds={setExpandedNestedParentIds}
                                     expandedDeepCommunityIds={expandedDeepCommunityIds}
                                     setExpandedDeepCommunityIds={setExpandedDeepCommunityIds}
                                   />
@@ -1505,8 +1531,8 @@ function NestedCommunities({
   onOpenGroups,
   navigate,
   showNested,
-  expandedNestedParentId,
-  setExpandedNestedParentId,
+  expandedNestedParentIds,
+  setExpandedNestedParentIds,
   expandedDeepCommunityIds,
   setExpandedDeepCommunityIds,
 }: { 
@@ -1518,8 +1544,8 @@ function NestedCommunities({
   onOpenGroups: (id: number) => void
   navigate: any
   showNested: boolean
-  expandedNestedParentId: number | null
-  setExpandedNestedParentId: (id: number | null) => void
+  expandedNestedParentIds: Record<number, boolean>
+  setExpandedNestedParentIds: Dispatch<SetStateAction<Record<number, boolean>>>
   expandedDeepCommunityIds: Record<number, boolean>
   setExpandedDeepCommunityIds: Dispatch<SetStateAction<Record<number, boolean>>>
 }) {
@@ -1528,8 +1554,9 @@ function NestedCommunities({
       {communities.map(child => {
         const hasChildren = !!(child.children && child.children.length > 0)
         const isFirstLevelChild = level === 1
+        // All levels now default to expanded (true) when not in the record
         const isExpanded = isFirstLevelChild
-          ? expandedNestedParentId === child.id
+          ? (expandedNestedParentIds[child.id] ?? true)
           : (expandedDeepCommunityIds[child.id] ?? true)
         const shouldRenderChildren = (() => {
           if (!hasChildren) return false
@@ -1540,9 +1567,19 @@ function NestedCommunities({
         const expandDisabled = level >= 1 && !showNested
         const onToggleExpand = hasChildren ? () => {
           if (isFirstLevelChild){
-            const currentlyExpanded = expandedNestedParentId === child.id
-            setExpandedNestedParentId(currentlyExpanded ? null : child.id)
-            if (currentlyExpanded && child.children){
+            // Use same record-based toggle pattern as deep communities
+            const current = expandedNestedParentIds[child.id] ?? true
+            const nextExpanded = !current
+            setExpandedNestedParentIds(prev => {
+              const next = { ...prev }
+              if (nextExpanded){
+                delete next[child.id] // expanded is default, so remove from record
+              } else {
+                next[child.id] = false // explicitly collapse
+              }
+              return next
+            })
+            if (!nextExpanded && child.children){
               const descendants = collectDescendantIds(child.children)
               if (descendants.length){
                 setExpandedDeepCommunityIds(prev => {
@@ -1626,8 +1663,8 @@ function NestedCommunities({
                 onOpenGroups={onOpenGroups}
                 navigate={navigate}
                 showNested={showNested}
-                expandedNestedParentId={expandedNestedParentId}
-                setExpandedNestedParentId={setExpandedNestedParentId}
+                expandedNestedParentIds={expandedNestedParentIds}
+                setExpandedNestedParentIds={setExpandedNestedParentIds}
                 expandedDeepCommunityIds={expandedDeepCommunityIds}
                 setExpandedDeepCommunityIds={setExpandedDeepCommunityIds}
               />
