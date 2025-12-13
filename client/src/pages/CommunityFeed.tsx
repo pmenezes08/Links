@@ -2947,7 +2947,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     }
   }
   return (
-    <div ref={cardRef} id={`post-${post.id}`} className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
+    <div ref={cardRef} id={`post-${post.id}`} className="rounded-2xl border border-white/20 bg-black shadow-sm shadow-black/20" onClick={post.poll ? undefined : onOpen}>
       {!post.poll && (
         <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
           <Avatar username={post.username} url={post.profile_picture || undefined} size={32} linkToProfile />
