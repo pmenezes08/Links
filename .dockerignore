@@ -1,0 +1,88 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.eggs
+*.egg-info
+.pytest_cache
+.mypy_cache
+.coverage
+htmlcov
+
+# Virtual environments
+venv
+.venv
+env
+.env.local
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Node modules (we use pre-built dist)
+client/node_modules
+landing/node_modules
+node_modules
+
+# Source files (not needed in production, we use dist)
+client/src
+client/public
+client/*.json
+client/*.js
+client/*.ts
+client/*.config.*
+client/ios
+landing/src
+landing/node_modules
+
+# Documentation
+*.md
+!README.md
+
+# Development files
+*.log
+*.pid
+.flask.pid
+cookies.txt
+
+# Test files
+test_*.py
+*_test.py
+
+# Migration scripts (not needed in production)
+migrate_*.py
+fix_*.py
+check_*.py
+debug_*.py
+add_*.py
+setup_*.py
+sqlite_to_mysql_migration.py
+comprehensive_database_fix.py
+
+# Shell scripts
+*.sh
+
+# SQLite databases (using MySQL in production)
+*.db
+*.sqlite
+instance/*.db
+
+# Local uploads (use cloud storage in production)
+uploads/*
+!uploads/.gitkeep
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
