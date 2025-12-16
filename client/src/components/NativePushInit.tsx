@@ -1,8 +1,11 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 
 export default function NativePushInit() {
+  const navigate = useNavigate();
+
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) {
       console.log('Not a native platform, skipping push notifications');
@@ -38,6 +41,68 @@ export default function NativePushInit() {
       }
     };
 
+    // Handle navigation based on notification URL
+    const handleNotificationNavigation = (url: string | undefined) => {
+      if (!url) {
+        console.log('📍 No URL in notification, going to notifications page');
+        navigate('/notifications');
+        return;
+      }
+
+      console.log('📍 Navigating to:', url);
+
+      // Map backend URLs to React routes
+      // Message notifications: /user_chat/chat/{username} -> /chat/{username}
+      if (url.startsWith('/user_chat/chat/')) {
+        const username = url.replace('/user_chat/chat/', '');
+        navigate(`/chat/${username}`);
+        return;
+      }
+
+      // Profile URLs: /profile/{username}
+      if (url.startsWith('/profile/')) {
+        navigate(url);
+        return;
+      }
+
+      // Event URLs: /event/{id} or /community/{id}/calendar
+      if (url.startsWith('/event/') || url.includes('/calendar')) {
+        // Convert to React routes if needed
+        const reactUrl = url.replace('/calendar', '/calendar_react');
+        navigate(reactUrl);
+        return;
+      }
+
+      // Poll URLs: /community/{id}/polls_react
+      if (url.includes('/polls')) {
+        const reactUrl = url.includes('_react') ? url : url.replace('/polls', '/polls_react');
+        navigate(reactUrl);
+        return;
+      }
+
+      // Community feed: /community_feed/{id}
+      if (url.startsWith('/community_feed/')) {
+        const id = url.replace('/community_feed/', '');
+        navigate(`/community_feed_react/${id}`);
+        return;
+      }
+
+      // Post detail: /post/{id}
+      if (url.startsWith('/post/')) {
+        navigate(url);
+        return;
+      }
+
+      // Followers/requests
+      if (url.startsWith('/followers')) {
+        navigate(url);
+        return;
+      }
+
+      // Default: try to navigate to the URL directly
+      navigate(url);
+    };
+
     const initializePushNotifications = async () => {
       try {
         // Step 1: Request permissions
@@ -66,14 +131,26 @@ export default function NativePushInit() {
           console.error('❌ Push registration error:', error);
         });
 
-        // Step 5: Listen for notifications received
+        // Step 5: Listen for notifications received while app is in foreground
         await PushNotifications.addListener('pushNotificationReceived', (notification) => {
           console.log('📬 Push notification received:', notification);
+          // Could show an in-app toast/banner here if desired
         });
 
-        // Step 6: Listen for notification actions
-        await PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-          console.log('👆 Push notification action:', notification);
+        // Step 6: Listen for notification taps - NAVIGATE TO RELEVANT PAGE
+        await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+          console.log('👆 Push notification tapped:', action);
+          
+          // Extract URL from notification data
+          // The data can be in different places depending on the notification
+          const data = action.notification?.data || {};
+          const url = data.url || data.link || data.deepLink;
+          
+          console.log('📍 Notification data:', data);
+          console.log('📍 URL from notification:', url);
+          
+          // Navigate to the relevant page
+          handleNotificationNavigation(url);
         });
 
         console.log('✅ Push notification listeners registered');
@@ -89,7 +166,7 @@ export default function NativePushInit() {
     return () => {
       PushNotifications.removeAllListeners();
     };
-  }, []);
+  }, [navigate]);
 
   return null;
 }

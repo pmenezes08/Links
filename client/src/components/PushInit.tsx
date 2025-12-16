@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
 
@@ -13,7 +14,70 @@ function urlBase64ToUint8Array(base64String: string) {
 
 export default function PushInit(){
   const [ready, setReady] = useState(false)
+  const navigate = useNavigate()
+
   useEffect(() => {
+    // Handle navigation based on notification URL
+    const handleNotificationNavigation = (url: string | undefined) => {
+      if (!url) {
+        console.log('📍 No URL in notification, going to notifications page')
+        navigate('/notifications')
+        return
+      }
+
+      console.log('📍 Navigating to:', url)
+
+      // Map backend URLs to React routes
+      // Message notifications: /user_chat/chat/{username} -> /chat/{username}
+      if (url.startsWith('/user_chat/chat/')) {
+        const username = url.replace('/user_chat/chat/', '')
+        navigate(`/chat/${username}`)
+        return
+      }
+
+      // Profile URLs: /profile/{username}
+      if (url.startsWith('/profile/')) {
+        navigate(url)
+        return
+      }
+
+      // Event URLs: /event/{id} or /community/{id}/calendar
+      if (url.startsWith('/event/') || url.includes('/calendar')) {
+        const reactUrl = url.replace('/calendar', '/calendar_react')
+        navigate(reactUrl)
+        return
+      }
+
+      // Poll URLs: /community/{id}/polls_react
+      if (url.includes('/polls')) {
+        const reactUrl = url.includes('_react') ? url : url.replace('/polls', '/polls_react')
+        navigate(reactUrl)
+        return
+      }
+
+      // Community feed: /community_feed/{id}
+      if (url.startsWith('/community_feed/')) {
+        const id = url.replace('/community_feed/', '')
+        navigate(`/community_feed_react/${id}`)
+        return
+      }
+
+      // Post detail: /post/{id}
+      if (url.startsWith('/post/')) {
+        navigate(url)
+        return
+      }
+
+      // Followers/requests
+      if (url.startsWith('/followers')) {
+        navigate(url)
+        return
+      }
+
+      // Default: try to navigate to the URL directly
+      navigate(url)
+    }
+
     async function run(){
       // Native iOS/Android app - use Capacitor Push Notifications
       if (Capacitor.isNativePlatform()) {
@@ -79,10 +143,19 @@ export default function PushInit(){
               // You can show an in-app notification here if desired
             })
             
-            // Listen for notification taps (user clicked notification)
-            PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-              console.log('Push notification action performed:', notification)
-              // Handle navigation based on notification data
+            // Listen for notification taps - NAVIGATE TO RELEVANT PAGE
+            PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+              console.log('👆 Push notification tapped:', action)
+              
+              // Extract URL from notification data
+              const data = action.notification?.data || {}
+              const url = data.url || data.link || data.deepLink
+              
+              console.log('📍 Notification data:', data)
+              console.log('📍 URL from notification:', url)
+              
+              // Navigate to the relevant page
+              handleNotificationNavigation(url)
             })
             
             setReady(true)
@@ -158,6 +231,6 @@ export default function PushInit(){
       }
     }
     run()
-  }, [])
+  }, [navigate])
   return ready ? null : null
 }
