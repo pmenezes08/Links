@@ -27,11 +27,9 @@ export default function PushInit(){
 
       console.log('📍 Navigating to:', url)
 
-      // Map backend URLs to React routes
-      // Message notifications: /user_chat/chat/{username} -> /chat/{username}
+      // Message notifications: /user_chat/chat/{username} - navigate directly
       if (url.startsWith('/user_chat/chat/')) {
-        const username = url.replace('/user_chat/chat/', '')
-        navigate(`/chat/${username}`)
+        navigate(url)
         return
       }
 
