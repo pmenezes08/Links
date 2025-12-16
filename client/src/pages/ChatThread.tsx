@@ -1047,9 +1047,27 @@ export default function ChatThread(){
                 })
               })
               
+              // CRITICAL: Deduplicate by server ID - handles race where poll adds message before confirmation
+              const seenServerIds = new Map<number|string, string>()
+              for (const [key, msg] of messagesByKey.entries()) {
+                const serverId = msg.id
+                if (serverId && !String(serverId).startsWith('temp_')) {
+                  if (seenServerIds.has(serverId)) {
+                    // Duplicate! Keep the one with tempId key (original optimistic)
+                    const existingKey = seenServerIds.get(serverId)!
+                    if (key.startsWith('temp_')) {
+                      messagesByKey.delete(existingKey)
+                      seenServerIds.set(serverId, key)
+                    } else {
+                      messagesByKey.delete(key)
+                    }
+                  } else {
+                    seenServerIds.set(serverId, key)
+                  }
+                }
+              }
+              
               // Clean up very old UNCONFIRMED optimistic messages (30s timeout)
-              // CRITICAL: Never remove confirmed messages (isOptimistic=false) even if server doesn't return them
-              // This handles server-side caching where newly sent messages don't appear in polls immediately
               const now = Date.now()
               for (const [key, msg] of messagesByKey.entries()) {
                 if (msg.isOptimistic) {
@@ -1063,8 +1081,6 @@ export default function ChatThread(){
                     messagesByKey.delete(key)
                   }
                 }
-                // Never remove confirmed messages (isOptimistic=false), even if not in latest server response
-                // The server confirmed it exists via send response, so trust that over stale poll data
               }
               
               // Convert map to array and sort
