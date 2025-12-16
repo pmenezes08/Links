@@ -1048,7 +1048,6 @@ export default function ChatThread(){
               })
               
               // CRITICAL: Deduplicate by server ID - handles race where poll adds message before confirmation
-              console.log('[POLL] Messages before dedup:', Array.from(messagesByKey.entries()).map(([k,m]) => ({key:k, id:m.id, opt:m.isOptimistic})))
               const seenServerIds = new Map<number|string, string>()
               let dedupCount = 0
               for (const [key, msg] of messagesByKey.entries()) {
@@ -1057,7 +1056,6 @@ export default function ChatThread(){
                   if (seenServerIds.has(serverId)) {
                     // Duplicate! Keep the one with tempId key (original optimistic)
                     const existingKey = seenServerIds.get(serverId)!
-                    console.log('[POLL] Found duplicate serverId:', serverId, 'keys:', key, existingKey)
                     dedupCount++
                     if (key.startsWith('temp_')) {
                       messagesByKey.delete(existingKey)
@@ -1070,7 +1068,6 @@ export default function ChatThread(){
                   }
                 }
               }
-              if (dedupCount > 0) console.log('[POLL] Removed', dedupCount, 'duplicates')
               
               // Clean up very old UNCONFIRMED optimistic messages (30s timeout)
               const now = Date.now()
@@ -1229,11 +1226,7 @@ export default function ChatThread(){
       
       // Add optimistic message immediately
       const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
-      console.log('[SEND] Adding optimistic message:', tempId)
-      setMessages(prev => {
-        console.log('[SEND] Current messages count:', prev.length)
-        return [...prev, optimisticWithKey]
-      })
+      setMessages(prev => [...prev, optimisticWithKey])
       
       // Register in recent optimistic to prevent poll from removing it due to stale state
       recentOptimisticRef.current.set(tempId, {
@@ -1319,15 +1312,12 @@ export default function ChatThread(){
               idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
               
               // Update optimistic message and remove poll-added duplicates
-              console.log('[CONFIRM] Server ID:', j.message_id, 'TempID:', tempId)
               setMessages(prev => {
                 const serverId = j.message_id
-                console.log('[CONFIRM] Messages before update:', prev.map(m => ({key: m.clientKey || m.id, id: m.id, opt: m.isOptimistic})))
                 let foundOriginal = false
                 const updated = prev.map(m => {
                   if ((m.clientKey || m.id) === tempId) {
                     foundOriginal = true
-                    console.log('[CONFIRM] Found original optimistic to update')
                     return {
                       ...m,
                       id: serverId,
@@ -1344,10 +1334,8 @@ export default function ChatThread(){
                 })
                 if (foundOriginal) {
                   const filtered = updated.filter(m => m.id !== serverId || (m.clientKey || m.id) === tempId)
-                  console.log('[CONFIRM] Filtered from', updated.length, 'to', filtered.length)
                   return filtered
                 }
-                console.log('[CONFIRM] Original not found!')
                 return updated
               })
               

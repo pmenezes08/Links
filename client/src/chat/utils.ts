@@ -88,6 +88,13 @@ export function normalizeTimestamp(raw?: string): string | undefined {
   if (!raw) return undefined
   const trimmed = raw.trim()
   if (!trimmed) return undefined
+
+  // RFC1123 / HTTP-date formats like: "Tue, 16 Dec 2025 09:32:13 GMT"
+  // Do NOT rewrite these into ISO-ish strings.
+  if (trimmed.includes(',') && /\b(GMT|UTC)\b/i.test(trimmed)) {
+    return trimmed
+  }
+
   const hasOffset = /([+-]\d{2}:\d{2}|Z)$/i.test(trimmed)
   if (trimmed.includes('T')) {
     return hasOffset ? trimmed : `${trimmed}Z`
@@ -116,7 +123,15 @@ export function normalizeMediaPath(path?: string | null): string {
  * Parse message timestamp to Date object
  */
 export function parseMessageTime(raw?: string): Date | null {
-  const normalized = normalizeTimestamp(raw)
+  if (!raw) return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+
+  // First try direct parsing (supports RFC1123 / "Tue, 16 Dec 2025 09:32:13 GMT")
+  const direct = new Date(trimmed)
+  if (!isNaN(direct.getTime())) return direct
+
+  const normalized = normalizeTimestamp(trimmed)
   if (!normalized) return null
   const parsed = new Date(normalized)
   return isNaN(parsed.getTime()) ? null : parsed
