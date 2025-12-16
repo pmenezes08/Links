@@ -205,7 +205,8 @@ def send_push_to_user(target_username: str, payload: dict):
     tag = payload.get("tag") if isinstance(payload, dict) else None
     data = {'url': payload.get('url', '/')}
     
-    # Simple dedupe window (30 seconds) to avoid flooding - check BEFORE sending any notification
+    # Simple dedupe window (2 seconds) to avoid technical duplicates only
+    # Reduced from 30s to allow rapid-fire notifications (multiple messages, stories, etc.)
     try:
         with get_db_connection() as conn_chk:
             cchk = conn_chk.cursor()
@@ -214,7 +215,7 @@ def send_push_to_user(target_username: str, payload: dict):
                     """
                     SELECT id FROM push_send_log
                     WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
-                      AND sent_at > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+                      AND sent_at > DATE_SUB(NOW(), INTERVAL 2 SECOND)
                     LIMIT 1
                     """,
                     (target_username, tag, title, body),
@@ -224,7 +225,7 @@ def send_push_to_user(target_username: str, payload: dict):
                     """
                     SELECT id FROM push_send_log
                     WHERE username=? AND IFNULL(tag,'') = IFNULL(?, '') AND IFNULL(title,'')=IFNULL(?, '') AND IFNULL(body,'')=IFNULL(?, '')
-                      AND datetime(sent_at) > datetime('now','-30 seconds')
+                      AND datetime(sent_at) > datetime('now','-2 seconds')
                     LIMIT 1
                     """,
                     (target_username, tag, title, body),

@@ -9530,7 +9530,7 @@ def send_message():
                         'title': f'Message from {username}',
                         'body': f'You have new messages from {username}',
                         'url': f'/user_chat/chat/{username}',
-                        'tag': f'message-{username}',
+                        'tag': f'message-{username}-{inserted_id}',  # Unique tag per message
                     })
             except Exception as _e:
                 logger.warning(f"push send_message warn: {_e}")
@@ -9741,10 +9741,10 @@ def send_photo_message():
                     logger.warning(f"active chat presence check (photo) failed: {pe}")
                 if should_push:
                     send_push_to_user(recipient_username, {
-                        'title': f'Message from {username}',
-                        'body': f'You have new messages from {username}',
+                        'title': f'Photo from {username}',
+                        'body': f'{username} sent you a photo',
                         'url': f'/user_chat/chat/{username}',
-                        'tag': f'message-{username}',
+                        'tag': f'message-{username}-{inserted_id}',  # Unique tag per message
                     })
             except Exception as _e:
                 logger.warning(f"push send_photo_message warn: {_e}")
@@ -9853,10 +9853,10 @@ def send_video_message():
                     logger.warning(f"active chat presence check (video) failed: {pe}")
                 if should_push:
                     send_push_to_user(recipient_username, {
-                        'title': f'Message from {username}',
-                        'body': f'You have new messages from {username}',
+                        'title': f'Video from {username}',
+                        'body': f'{username} sent you a video',
                         'url': f'/user_chat/chat/{username}',
-                        'tag': f'message-{username}',
+                        'tag': f'message-{username}-{inserted_id}',  # Unique tag per message
                     })
             except Exception as _e:
                 logger.warning(f"push send_video_message warn: {_e}")
@@ -9994,11 +9994,12 @@ def send_audio_message():
                 except Exception as pe:
                     logger.warning(f"active chat presence check (audio) failed: {pe}")
                 if should_push:
+                    import time
                     send_push_to_user(recipient_username, {
-                        'title': f'Message from {username}',
-                        'body': f'You have new messages from {username}',
+                        'title': f'Voice message from {username}',
+                        'body': f'{username} sent you a voice message',
                         'url': f'/user_chat/chat/{username}',
-                        'tag': f'message-{username}',
+                        'tag': f'message-{username}-audio-{int(time.time()*1000)}',  # Unique tag
                     })
             except Exception as _e:
                 logger.warning(f"push send_audio_message warn: {_e}")
@@ -12622,7 +12623,7 @@ def post_status():
                                 'title': 'New community post',
                                 'body': f"{username}: {content[:100]}",
                                 'url': notif_link,
-                                'tag': f"community-post-{community_id}",
+                                'tag': f"community-post-{community_id}-{post_id}",  # Unique tag per post
                             },
                         )
                     except Exception as pe:
@@ -20475,7 +20476,7 @@ def create_community_story():
                                 'title': f'New story in {community_name}' if community_name else 'New story',
                                 'body': notif_message,
                                 'url': notif_link,
-                                'tag': f"community-story-{community_id}",
+                                'tag': f"community-story-{community_id}-{first_story_id}",  # Unique tag per story
                             },
                         )
                     except Exception as pe:
