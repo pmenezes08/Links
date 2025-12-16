@@ -1,0 +1,9 @@
+# Cloud Run Buildpacks configuration
+# Only use Python buildpack, skip Node.js
+
+[[build.env]]
+name = "GOOGLE_SKIP_NODEJS"
+value = "true"
+
+[build]
+exclude = ["client/node_modules", "landing/node_modules"]
