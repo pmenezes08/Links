@@ -145,14 +145,26 @@ export default function PushInit(){
             
             // Listen for notification taps - NAVIGATE TO RELEVANT PAGE
             PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-              console.log('👆 Push notification tapped:', action)
+              console.log('👆 Push notification tapped:', JSON.stringify(action, null, 2))
               
               // Extract URL from notification data
-              const data = action.notification?.data || {}
-              const url = data.url || data.link || data.deepLink
+              // The data can be in different places depending on iOS/Android and FCM/APNs
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const notification: any = action.notification || {}
+              const data = notification.data || {}
               
-              console.log('📍 Notification data:', data)
-              console.log('📍 URL from notification:', url)
+              // Try multiple possible locations for the URL
+              const url = data.url 
+                || data.link 
+                || data.deepLink
+                || notification.url  // Sometimes at root level
+                || notification.link
+                || notification.custom?.url  // FCM custom data
+                || notification.userInfo?.url  // APNs userInfo
+              
+              console.log('📍 Full notification object:', JSON.stringify(notification, null, 2))
+              console.log('📍 Data object:', JSON.stringify(data, null, 2))
+              console.log('📍 Extracted URL:', url)
               
               // Navigate to the relevant page
               handleNotificationNavigation(url)

@@ -111,19 +111,24 @@ def send_fcm_notification(
             body=body
         )
         
-        # Build message
+        # Ensure all data values are strings (FCM requirement)
+        string_data = {k: str(v) for k, v in (data or {}).items()}
+        
+        # Build APNs payload with custom data unpacked as kwargs
+        apns_payload = messaging.APNSPayload(
+            aps=messaging.Aps(
+                sound='default',
+                badge=badge
+            ),
+            **string_data  # Unpack custom data into APNs payload
+        )
+        
+        # Build message with data in both FCM data and APNs custom payload
         message = messaging.Message(
             notification=notification,
-            data=data or {},
+            data=string_data,
             token=token,
-            apns=messaging.APNSConfig(
-                payload=messaging.APNSPayload(
-                    aps=messaging.Aps(
-                        sound='default',
-                        badge=badge
-                    )
-                )
-            )
+            apns=messaging.APNSConfig(payload=apns_payload)
         )
         
         # Send
