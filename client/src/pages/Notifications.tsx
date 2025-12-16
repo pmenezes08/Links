@@ -65,8 +65,12 @@ export default function Notifications(){
       setLoading(true)
       const r = await fetch('/api/notifications?all=true', { credentials:'include' })
       const j = await r.json()
+      console.log('📋 Raw notifications response:', j)
       if (j?.success){
+        console.log('📋 Total notifications received:', j.notifications?.length || 0)
+        console.log('📋 Notification types:', j.notifications?.map((n: Notif) => n?.type))
         const filtered = (j.notifications as Notif[]).filter(n => n?.type !== 'message')
+        console.log('📋 After filtering out messages:', filtered.length)
         setItems(filtered)
       }
     } finally { setLoading(false) }

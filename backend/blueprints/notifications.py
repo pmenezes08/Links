@@ -210,10 +210,11 @@ def get_notifications():
                 )
 
             current_app.logger.info(
-                "User %s has %d notifications, %d unread",
+                "User %s has %d notifications, %d unread, types: %s",
                 username,
                 len(notifications),
                 sum(1 for n in notifications if not n["is_read"]),
+                list(set(n["type"] for n in notifications)),
             )
             return jsonify({"success": True, "notifications": notifications})
     except Exception as exc:
