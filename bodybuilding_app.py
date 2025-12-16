@@ -5308,9 +5308,32 @@ def icons(filename):
         logger.error(f"Error serving icon {filename}: {str(e)}")
         abort(404)
 
-# service worker served by web server static mapping (/sw.js -> client/dist/sw.js)
+# Serve React build assets (JS, CSS) from client/dist/assets
+@app.route('/assets/<path:filename>')
+def serve_assets(filename):
+    """Serve React build assets from client/dist/assets."""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        assets_dir = os.path.join(base_dir, 'client', 'dist', 'assets')
+        resp = send_from_directory(assets_dir, filename)
+        # Cache static assets for 1 year (they have hashed names)
+        resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        return resp
+    except Exception as e:
+        logger.error(f"Error serving asset {filename}: {str(e)}")
+        abort(404)
 
-# web app manifest served by web server static mapping (/manifest.webmanifest -> client/public/manifest.webmanifest)
+# Serve service worker from client/dist
+@app.route('/sw.js')
+def serve_sw():
+    """Serve service worker from client/dist."""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'sw.js')
+    except Exception as e:
+        logger.error(f"Error serving sw.js: {str(e)}")
+        abort(404)
 
 @app.route('/premium_dashboard_react')
 @login_required
@@ -19433,6 +19456,12 @@ def community_feed_smart(community_id):
         logger.error(f"Error in community_feed_smart: {e}")
         abort(500)
 
+# Fallback route for /static/uploads - redirect to /uploads which handles R2
+@app.route('/static/uploads/<path:filename>')
+def serve_static_uploads(filename):
+    """Redirect /static/uploads/ to /uploads/ which handles R2 CDN fallback."""
+    return redirect(f'/uploads/{filename}')
+
 # Fallback route for serving uploaded images if web server mapping is missing
 @app.route('/uploads/<path:filename>')
 def serve_uploads(filename):
@@ -19491,6 +19520,14 @@ def serve_uploads(filename):
                     return resp
             except Exception:
                 continue
+
+        # File not found locally - try redirecting to R2 CDN
+        r2_public_url = os.environ.get('CLOUDFLARE_R2_PUBLIC_URL', '').rstrip('/')
+        if r2_public_url:
+            # Construct R2 URL - the file might be stored with or without 'uploads/' prefix
+            r2_url = f"{r2_public_url}/{normalized}"
+            logger.info(f"serve_uploads: redirecting to R2 CDN: {r2_url}")
+            return redirect(r2_url)
 
         missing_key = (filename or '').lower()
         if missing_key not in MISSING_UPLOAD_CACHE:
@@ -21978,6 +22015,13 @@ def community_background_file(filename):
             response.headers['ETag'] = f'"{filename}"'
             return response
         else:
+            # File not found locally - try redirecting to R2 CDN
+            r2_public_url = os.environ.get('CLOUDFLARE_R2_PUBLIC_URL', '').rstrip('/')
+            if r2_public_url:
+                r2_url = f"{r2_public_url}/community_backgrounds/{filename}"
+                logger.info(f"Community background redirecting to R2 CDN: {r2_url}")
+                return redirect(r2_url)
+            
             logger.warning(f"Community background file not found in uploads or static: {filename}")
             # Return a transparent 1x1 pixel instead of 404
             from flask import Response
