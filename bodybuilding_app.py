@@ -5315,6 +5315,13 @@ def serve_assets(filename):
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         assets_dir = os.path.join(base_dir, 'client', 'dist', 'assets')
+        file_path = os.path.join(assets_dir, filename)
+        logger.info(f"Serving asset: {filename}, path: {file_path}, exists: {os.path.exists(file_path)}")
+        if not os.path.exists(file_path):
+            # List available files for debugging
+            available = os.listdir(assets_dir) if os.path.exists(assets_dir) else []
+            logger.error(f"Asset not found: {filename}. Available: {available}")
+            abort(404)
         resp = send_from_directory(assets_dir, filename)
         # Cache static assets for 1 year (they have hashed names)
         resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
