@@ -72,7 +72,11 @@ export default function Notifications(){
     } finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { 
+    load()
+    // Clear badge when viewing notifications page
+    clearIOSNotifications()
+  }, [])
 
   // Clear iOS notification center and badge
   async function clearIOSNotifications() {

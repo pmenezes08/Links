@@ -103,8 +103,23 @@ export default function NativePushInit() {
       navigate(url);
     };
 
+    // Clear badge when app starts (in case there are stale badges)
+    const clearBadgeOnStart = async () => {
+      try {
+        await PushNotifications.removeAllDeliveredNotifications();
+        console.log('✅ Cleared delivered notifications on start');
+        // Also tell server to reset badge
+        await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' });
+      } catch (e) {
+        console.warn('Could not clear badge on start:', e);
+      }
+    };
+
     const initializePushNotifications = async () => {
       try {
+        // Clear any stale badges first
+        await clearBadgeOnStart();
+        
         // Step 1: Request permissions
         console.log('📋 Requesting push notification permissions...');
         const permResult = await PushNotifications.requestPermissions();

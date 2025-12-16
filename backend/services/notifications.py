@@ -104,8 +104,16 @@ def send_native_push(username: str, title: str, body: str, data: dict = None):
         logger.error(f"Error sending native push to {username}: {e}")
 
 
-def send_apns_notification(device_token: str, title: str, body: str, data: dict = None):
-    """Send iOS push notification via APNs using HTTP/2 (Apple's 2025 recommendation)."""
+def send_apns_notification(device_token: str, title: str, body: str, data: dict = None, badge: int = 1):
+    """Send iOS push notification via APNs using HTTP/2 (Apple's 2025 recommendation).
+    
+    Args:
+        device_token: APNs device token
+        title: Notification title
+        body: Notification body
+        data: Optional custom data dictionary
+        badge: Badge count to display on app icon
+    """
     
     if not APNS_AVAILABLE:
         logger.debug("APNs dependencies not available (httpx, PyJWT, cryptography)")
@@ -133,7 +141,7 @@ def send_apns_notification(device_token: str, title: str, body: str, data: dict 
                     "title": title,
                     "body": body
                 },
-                "badge": 1,
+                "badge": badge,
                 "sound": "default"
             }
         }

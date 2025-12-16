@@ -316,6 +316,102 @@ def clear_notification_badge():
         return jsonify({"success": False, "error": str(exc)}), 500
 
 
+@notifications_bp.route("/api/admin/cleanup_duplicate_tokens", methods=["POST"], endpoint="cleanup_duplicate_tokens")
+@_login_required
+def cleanup_duplicate_tokens():
+    """Admin endpoint to clean up duplicate push tokens in the database."""
+    from bodybuilding_app import is_app_admin, get_db_connection, get_sql_placeholder, USE_MYSQL
+
+    username = session.get("username")
+    if not is_app_admin(username):
+        return jsonify({"success": False, "error": "Unauthorized"}), 403
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ph = get_sql_placeholder()
+        
+        # For each user, keep only the most recent token per platform
+        # First, get count of duplicates
+        if USE_MYSQL:
+            # Count duplicates
+            cursor.execute("""
+                SELECT COUNT(*) FROM fcm_tokens t1
+                WHERE EXISTS (
+                    SELECT 1 FROM fcm_tokens t2
+                    WHERE t2.username = t1.username 
+                    AND t2.platform = t1.platform 
+                    AND t2.is_active = 1
+                    AND t2.last_seen > t1.last_seen
+                )
+                AND t1.is_active = 1
+            """)
+            row = cursor.fetchone()
+            duplicate_count = row[0] if row else 0
+            
+            # Deactivate older tokens (keep only the most recent per user/platform)
+            cursor.execute("""
+                UPDATE fcm_tokens t1
+                SET is_active = 0
+                WHERE EXISTS (
+                    SELECT 1 FROM (
+                        SELECT username, platform, MAX(last_seen) as max_seen
+                        FROM fcm_tokens
+                        WHERE is_active = 1
+                        GROUP BY username, platform
+                    ) t2
+                    WHERE t2.username = t1.username 
+                    AND t2.platform = t1.platform 
+                    AND t1.last_seen < t2.max_seen
+                )
+                AND t1.is_active = 1
+            """)
+            deactivated = cursor.rowcount
+        else:
+            # SQLite version
+            cursor.execute("""
+                SELECT COUNT(*) FROM fcm_tokens t1
+                WHERE EXISTS (
+                    SELECT 1 FROM fcm_tokens t2
+                    WHERE t2.username = t1.username 
+                    AND t2.platform = t1.platform 
+                    AND t2.is_active = 1
+                    AND t2.last_seen > t1.last_seen
+                )
+                AND t1.is_active = 1
+            """)
+            row = cursor.fetchone()
+            duplicate_count = row[0] if row else 0
+            
+            cursor.execute("""
+                UPDATE fcm_tokens
+                SET is_active = 0
+                WHERE rowid NOT IN (
+                    SELECT MAX(rowid)
+                    FROM fcm_tokens
+                    WHERE is_active = 1
+                    GROUP BY username, platform
+                )
+                AND is_active = 1
+            """)
+            deactivated = cursor.rowcount
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        current_app.logger.info(f"Cleaned up {deactivated} duplicate tokens")
+        return jsonify({
+            "success": True, 
+            "duplicates_found": duplicate_count,
+            "tokens_deactivated": deactivated
+        })
+        
+    except Exception as exc:
+        current_app.logger.error("Error cleaning up duplicate tokens: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
 @notifications_bp.route("/api/admin/broadcast_notification", methods=["POST"], endpoint="admin_broadcast_notification")
 @_login_required
 def admin_broadcast_notification():

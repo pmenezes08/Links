@@ -79,7 +79,8 @@ def send_fcm_notification(
     token: str,
     title: str,
     body: str,
-    data: Optional[dict] = None
+    data: Optional[dict] = None,
+    badge: int = 1
 ) -> bool:
     """
     Send push notification via Firebase Cloud Messaging.
@@ -89,6 +90,7 @@ def send_fcm_notification(
         title: Notification title
         body: Notification body
         data: Optional custom data dictionary
+        badge: Badge count to display on app icon
     
     Returns:
         True if sent successfully, False otherwise
@@ -118,7 +120,7 @@ def send_fcm_notification(
                 payload=messaging.APNSPayload(
                     aps=messaging.Aps(
                         sound='default',
-                        badge=1
+                        badge=badge
                     )
                 )
             )
@@ -162,6 +164,7 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
     
     Uses FCM tokens only - FCM handles APNs delivery internally for iOS.
     Only falls back to direct APNs if NO FCM tokens exist.
+    Limits to ONE token per platform to prevent duplicate notifications.
     
     Args:
         username: User to send notification to
@@ -182,14 +185,48 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
         cursor = conn.cursor()
         ph = get_sql_placeholder()
         
-        # Get user's FCM tokens (primary method)
-        cursor.execute(
-            f"SELECT token, platform FROM fcm_tokens WHERE username = {ph} AND is_active = 1",
-            (username,)
-        )
+        # Get unread notification count for accurate badge
+        try:
+            cursor.execute(
+                f"SELECT COUNT(*) FROM notifications WHERE username = {ph} AND is_read = 0",
+                (username,)
+            )
+            row = cursor.fetchone()
+            # Add 1 for this new notification (it's not saved yet when this is called)
+            badge_count = (row[0] if row else 0) + 1
+            logger.debug(f"Badge count for {username}: {badge_count}")
+        except Exception as e:
+            logger.warning(f"Could not get badge count: {e}")
+            badge_count = 1
+        
+        # Get user's most recent FCM token per platform (prevents duplicates)
+        # ORDER BY last_seen DESC to get the most recently active token
+        if USE_MYSQL:
+            cursor.execute(f"""
+                SELECT token, platform FROM (
+                    SELECT token, platform, last_seen,
+                           ROW_NUMBER() OVER (PARTITION BY platform ORDER BY last_seen DESC) as rn
+                    FROM fcm_tokens 
+                    WHERE username = {ph} AND is_active = 1
+                ) ranked WHERE rn = 1
+            """, (username,))
+        else:
+            # SQLite doesn't have window functions in older versions, use GROUP BY with MAX
+            cursor.execute(f"""
+                SELECT f.token, f.platform 
+                FROM fcm_tokens f
+                INNER JOIN (
+                    SELECT platform, MAX(last_seen) as max_seen
+                    FROM fcm_tokens 
+                    WHERE username = {ph} AND is_active = 1
+                    GROUP BY platform
+                ) latest ON f.platform = latest.platform AND f.last_seen = latest.max_seen
+                WHERE f.username = {ph} AND f.is_active = 1
+            """, (username, username))
+        
         fcm_tokens = cursor.fetchall()
         
-        # Build token list from FCM tokens
+        # Build token list - only one per platform
         all_tokens = {}
         has_ios_fcm_token = False
         
@@ -200,6 +237,12 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
             else:
                 token = row[0]
                 platform = row[1]
+            
+            # Skip if we already have a token for this platform
+            if any(p == platform for p in all_tokens.values()):
+                logger.debug(f"Skipping duplicate {platform} token for {username}")
+                continue
+                
             all_tokens[token] = platform
             if platform == 'ios' and not is_apns_token(token):
                 has_ios_fcm_token = True
@@ -208,10 +251,19 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
         # This prevents duplicate notifications (FCM routes to APNs internally)
         if not has_ios_fcm_token:
             try:
-                cursor.execute(
-                    f"SELECT token, platform FROM native_push_tokens WHERE username = {ph} AND is_active = 1",
-                    (username,)
-                )
+                if USE_MYSQL:
+                    cursor.execute(f"""
+                        SELECT token, platform FROM native_push_tokens 
+                        WHERE username = {ph} AND is_active = 1
+                        ORDER BY last_seen DESC LIMIT 1
+                    """, (username,))
+                else:
+                    cursor.execute(f"""
+                        SELECT token, platform FROM native_push_tokens 
+                        WHERE username = {ph} AND is_active = 1
+                        ORDER BY last_seen DESC LIMIT 1
+                    """, (username,))
+                
                 native_tokens = cursor.fetchall()
                 
                 for row in (native_tokens or []):
@@ -221,7 +273,7 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
                     else:
                         token = row[0]
                         platform = row[1]
-                    if token not in all_tokens:
+                    if token not in all_tokens and platform not in all_tokens.values():
                         all_tokens[token] = platform
             except Exception:
                 pass
@@ -233,9 +285,9 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
             logger.debug(f"No push tokens for user {username}")
             return 0
         
-        logger.info(f"📱 Sending push to {username}: {len(all_tokens)} token(s)")
+        logger.info(f"📱 Sending push to {username}: {len(all_tokens)} token(s) (deduplicated by platform)")
         
-        # Send to each token
+        # Send to each token (should be max 1 per platform now)
         for token, platform in all_tokens.items():
             token_preview = token[:16] + "..." if len(token) > 16 else token
             
@@ -243,14 +295,14 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
             if is_apns_token(token):
                 logger.info(f"📱 Token {token_preview} is APNs format, sending via APNs HTTP/2")
                 try:
-                    send_apns_notification(token, title, body, data)
+                    send_apns_notification(token, title, body, data, badge=badge_count)
                     sent_count += 1
                 except Exception as e:
                     logger.error(f"APNs send failed for {token_preview}: {e}")
             else:
                 # Send via FCM (handles APNs internally for iOS)
                 logger.info(f"📱 Token {token_preview} is FCM format, sending via Firebase")
-                if send_fcm_notification(token, title, body, data):
+                if send_fcm_notification(token, title, body, data, badge=badge_count):
                     sent_count += 1
                 else:
                     logger.warning(f"FCM send failed for {token_preview}")
