@@ -33,6 +33,7 @@ export default function EventDetail(){
   const [loading, setLoading] = useState(true)
   const [rsvpDetails, setRsvpDetails] = useState<RSVPDetails| null>(null)
   const [showAttendees, setShowAttendees] = useState(false)
+  const [attendeeFilter, setAttendeeFilter] = useState<'going'|'maybe'|'not_going'|'no_response'>('going')
 
   useEffect(() => { setTitle('Event Details') }, [setTitle])
 
@@ -66,6 +67,8 @@ export default function EventDetail(){
 
   async function loadAttendees(){
     if (!event_id) return
+    setAttendeeFilter('going')
+    setRsvpDetails(null)
     setShowAttendees(true)
     try{
       const q = new URLSearchParams({ event_id: String(event_id) })
@@ -226,46 +229,69 @@ export default function EventDetail(){
           </button>
         </div>
       </div>
-
       {/* Attendees Modal */}
       {showAttendees && (
-        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-end justify-center" onClick={(e)=> e.currentTarget===e.target && setShowAttendees(false)}>
-          <div className="w-[96%] max-w-[560px] mb-4 rounded-2xl border border-white/10 bg-black p-3">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold">Attendees</div>
-              <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setShowAttendees(false)}>✕</button>
+        <div
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-center justify-center p-4"
+          onClick={(e)=> e.currentTarget===e.target && setShowAttendees(false)}
+        >
+          <div className="w-full max-w-[560px] rounded-2xl border border-white/10 bg-black p-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="font-semibold">Who's coming</div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={attendeeFilter}
+                  onChange={(e)=> setAttendeeFilter(e.target.value as any)}
+                  className="rounded-lg bg-black border border-white/10 px-3 py-2 text-sm text-white/90 focus:border-[#4db6ac]/70 outline-none"
+                >
+                  <option value="going">Going</option>
+                  <option value="maybe">Maybe</option>
+                  <option value="not_going">Not going</option>
+                  <option value="no_response">Not responded</option>
+                </select>
+                <button className="px-2 py-1 rounded-full border border-white/10" onClick={()=> setShowAttendees(false)}>✕</button>
+              </div>
             </div>
+
             {!rsvpDetails ? (
               <div className="text-[#9fb0b5] text-sm">Loading…</div>
             ) : (
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <div className="font-medium text-green-400 mb-1">Going ({rsvpDetails.going.length})</div>
-                  <ul className="space-y-1 text-white/90">
-                    {rsvpDetails.going.map((u,idx)=> (<li key={`g-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium text-yellow-400 mb-1">Maybe ({rsvpDetails.maybe.length})</div>
-                  <ul className="space-y-1 text-white/90">
-                    {rsvpDetails.maybe.map((u,idx)=> (<li key={`m-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium text-red-400 mb-1">Can't Go ({rsvpDetails.not_going.length})</div>
-                  <ul className="space-y-1 text-white/90">
-                    {rsvpDetails.not_going.map((u,idx)=> (<li key={`n-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="font-medium text-[#9fb0b5] mb-1">No Response ({rsvpDetails.no_response.length})</div>
-                  <ul className="space-y-1 text-white/70">
-                    {rsvpDetails.no_response.map((u,idx)=> (<li key={`r-${idx}`}>{u.username}</li>))}
-                  </ul>
-                </div>
-              </div>
+              (() => {
+                const list =
+                  attendeeFilter === 'going' ? rsvpDetails.going :
+                  attendeeFilter === 'maybe' ? rsvpDetails.maybe :
+                  attendeeFilter === 'not_going' ? rsvpDetails.not_going :
+                  rsvpDetails.no_response
+
+                const label =
+                  attendeeFilter === 'going' ? 'Going' :
+                  attendeeFilter === 'maybe' ? 'Maybe' :
+                  attendeeFilter === 'not_going' ? 'Not going' :
+                  'Not responded'
+
+                const labelClass =
+                  attendeeFilter === 'going' ? 'text-green-400' :
+                  attendeeFilter === 'maybe' ? 'text-yellow-400' :
+                  attendeeFilter === 'not_going' ? 'text-red-400' :
+                  'text-[#9fb0b5]'
+
+                return (
+                  <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                    <div className={`font-medium mb-2 ${labelClass}`}>{label} ({list.length})</div>
+                    {list.length === 0 ? (
+                      <div className="text-sm text-[#9fb0b5]">No users in this category yet.</div>
+                    ) : (
+                      <ul className="space-y-1 text-sm text-white/90">
+                        {list.map((u, idx) => (<li key={`${attendeeFilter}-${idx}`}>{u.username}</li>))}
+                      </ul>
+                    )}
+                  </div>
+                )
+              })()
             )}
           </div>
+        </div>
+      )}</div>
         </div>
       )}
     </div>
