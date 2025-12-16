@@ -232,11 +232,19 @@ export default function EventDetail(){
       {/* Attendees Modal */}
       {showAttendees && (
         <div
-          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed left-0 right-0 bottom-0 z-[100] bg-black/60 backdrop-blur flex items-center justify-center px-4"
+          style={{
+            top: 'calc(56px + env(safe-area-inset-top, 0px))',
+            paddingTop: '16px',
+            paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+          }}
           onClick={(e)=> e.currentTarget===e.target && setShowAttendees(false)}
         >
-          <div className="w-full max-w-[560px] rounded-2xl border border-white/10 bg-black p-4 max-h-[80vh] flex flex-col my-auto">
-            <div className="flex items-center justify-between gap-3 mb-3">
+          <div 
+            className="w-full max-w-[560px] rounded-2xl border border-white/10 bg-black p-4 flex flex-col"
+            style={{ maxHeight: '100%' }}
+          >
+            <div className="flex items-center justify-between gap-3 mb-3 flex-shrink-0">
               <div className="font-semibold">Who's coming</div>
               <div className="flex items-center gap-2">
                 <select
