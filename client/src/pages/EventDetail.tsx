@@ -232,10 +232,10 @@ export default function EventDetail(){
       {/* Attendees Modal */}
       {showAttendees && (
         <div
-          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur flex items-center justify-center p-4 overflow-y-auto"
           onClick={(e)=> e.currentTarget===e.target && setShowAttendees(false)}
         >
-          <div className="w-full max-w-[560px] rounded-2xl border border-white/10 bg-black p-4 max-h-[80vh] flex flex-col">
+          <div className="w-full max-w-[560px] rounded-2xl border border-white/10 bg-black p-4 max-h-[80vh] flex flex-col my-auto">
             <div className="flex items-center justify-between gap-3 mb-3">
               <div className="font-semibold">Who's coming</div>
               <div className="flex items-center gap-2">

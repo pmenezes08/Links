@@ -1529,7 +1529,7 @@ function NestedCommunities({
         const hasChildren = !!(child.children && child.children.length > 0)
         const isFirstLevelChild = level === 1
         const isExpanded = isFirstLevelChild
-          ? expandedNestedParentId === child.id
+          ? (expandedDeepCommunityIds[child.id] ?? true)
           : (expandedDeepCommunityIds[child.id] ?? true)
         const shouldRenderChildren = (() => {
           if (!hasChildren) return false
@@ -1539,46 +1539,25 @@ function NestedCommunities({
         })()
         const expandDisabled = level >= 1 && !showNested
         const onToggleExpand = hasChildren ? () => {
-          if (isFirstLevelChild){
-            const currentlyExpanded = expandedNestedParentId === child.id
-            setExpandedNestedParentId(currentlyExpanded ? null : child.id)
-            if (currentlyExpanded && child.children){
-              const descendants = collectDescendantIds(child.children)
-              if (descendants.length){
-                setExpandedDeepCommunityIds(prev => {
-                  let changed = false
-                  const next = { ...prev }
-                  for (const id of descendants){
-                    if (next[id] !== undefined){
-                      delete next[id]
-                      changed = true
-                    }
-                  }
-                  return changed ? next : prev
-                })
-              }
+          const current = expandedDeepCommunityIds[child.id] ?? true
+          const nextExpanded = !current
+          setExpandedDeepCommunityIds(prev => {
+            const next = { ...prev }
+            if (nextExpanded){
+              delete next[child.id]
+            } else {
+              next[child.id] = false
             }
-          } else {
-            const current = expandedDeepCommunityIds[child.id] ?? true
-            const nextExpanded = !current
-            setExpandedDeepCommunityIds(prev => {
-              const next = { ...prev }
-              if (nextExpanded){
-                delete next[child.id]
-              } else {
-                next[child.id] = false
-              }
-              if (!nextExpanded && child.children){
-                const descendants = collectDescendantIds(child.children)
-                for (const id of descendants){
-                  if (next[id] !== undefined){
-                    delete next[id]
-                  }
+            if (!nextExpanded && child.children){
+              const descendants = collectDescendantIds(child.children)
+              for (const id of descendants){
+                if (next[id] !== undefined){
+                  delete next[id]
                 }
               }
-              return next
-            })
-          }
+            }
+            return next
+          })
         } : undefined
         return (
           <div key={child.id} className="space-y-2">
