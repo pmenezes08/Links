@@ -128,6 +128,8 @@ export default function CommunityFeed() {
   const [storyUploading, setStoryUploading] = useState(false)
   const [storyRefreshKey, setStoryRefreshKey] = useState(0)
   const [activeStoryPointer, setActiveStoryPointer] = useState<{ groupIndex: number; storyIndex: number } | null>(null)
+  const [storyMuted, setStoryMuted] = useState(true)
+  const storyVideoRef = useRef<HTMLVideoElement | null>(null)
   const storyContentRef = useRef<HTMLDivElement | null>(null)
   const storySwipeRef = useRef<{ startX: number; startY: number; time: number; pointerId?: number | null } | null>(null)
   const [storyViewersState, setStoryViewersState] = useState<{
@@ -2001,12 +2003,13 @@ export default function CommunityFeed() {
                 {currentStory.media_type === 'video' ? (
                   <>
                     <video
+                      ref={storyVideoRef}
                       key={currentStory.id}
                       src={resolveStoryMediaSrc(currentStory)}
                       className="w-full max-h-[50vh] object-contain relative z-[1]"
                       autoPlay
                       playsInline
-                      muted
+                      muted={storyMuted}
                       loop
                       preload="auto"
                       onLoadedData={(e) => {
@@ -2025,6 +2028,20 @@ export default function CommunityFeed() {
                         if (loader) loader.style.display = 'none'
                       }}
                     />
+                    {/* Sound toggle button */}
+                    <button
+                      className="absolute bottom-4 right-4 w-10 h-10 rounded-full bg-black/60 border border-white/20 text-white hover:bg-black/80 flex items-center justify-center z-[10] transition-all"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setStoryMuted(!storyMuted)
+                        if (storyVideoRef.current) {
+                          storyVideoRef.current.muted = !storyMuted
+                        }
+                      }}
+                      aria-label={storyMuted ? 'Unmute video' : 'Mute video'}
+                    >
+                      <i className={`fa-solid ${storyMuted ? 'fa-volume-xmark' : 'fa-volume-high'}`} />
+                    </button>
                     <div className="video-loader absolute inset-0 flex items-center justify-center bg-black/60 z-[2]">
                       <div className="flex flex-col items-center gap-2">
                         <div className="w-8 h-8 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
