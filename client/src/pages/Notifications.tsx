@@ -89,9 +89,12 @@ export default function Notifications(){
         console.warn('Could not clear iOS notifications:', e)
       }
     }
-    // Also tell server to reset badge count via silent push
+    // Tell server to reset badge count via silent push
     try {
-      await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
+      console.log('📛 Calling /api/notifications/clear-badge...')
+      const resp = await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
+      const result = await resp.json()
+      console.log('📛 Clear badge response:', result)
     } catch (e) {
       console.warn('Could not clear badge via server:', e)
     }

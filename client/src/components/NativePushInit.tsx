@@ -106,8 +106,11 @@ export default function NativePushInit() {
       try {
         await PushNotifications.removeAllDeliveredNotifications();
         console.log('✅ Cleared delivered notifications on start');
-        // Also tell server to reset badge
-        await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' });
+        // Also tell server to reset badge via silent push
+        console.log('📛 Calling /api/notifications/clear-badge on startup...');
+        const resp = await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' });
+        const result = await resp.json();
+        console.log('📛 Clear badge response:', result);
       } catch (e) {
         console.warn('Could not clear badge on start:', e);
       }

@@ -193,13 +193,13 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
         # Get unread notification count for accurate badge
         try:
             cursor.execute(
-                f"SELECT COUNT(*) FROM notifications WHERE username = {ph} AND is_read = 0",
+                f"SELECT COUNT(*) FROM notifications WHERE user_id = {ph} AND is_read = 0",
                 (username,)
             )
             row = cursor.fetchone()
             # Add 1 for this new notification (it's not saved yet when this is called)
             badge_count = (row[0] if row else 0) + 1
-            logger.debug(f"Badge count for {username}: {badge_count}")
+            logger.info(f"📛 Badge count for {username}: {badge_count}")
         except Exception as e:
             logger.warning(f"Could not get badge count: {e}")
             badge_count = 1
