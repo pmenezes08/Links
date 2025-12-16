@@ -768,15 +768,35 @@ export default function ChatThread(){
     if (!el) return
     
     if (!didInitialAutoScrollRef.current && messages.length > 0) {
-      // Initial load - scroll to bottom with RAF chain for reliability
+      // Initial load - multiple scroll attempts for images/media loading
+      didInitialAutoScrollRef.current = true
+      lastCountRef.current = messages.length
+      
       scrollToBottom()
-      // Second attempt after DOM settles
-      requestAnimationFrame(() => {
-        scrollToBottom()
-        didInitialAutoScrollRef.current = true
-        lastCountRef.current = messages.length
+      const timers = [
+        setTimeout(scrollToBottom, 50),
+        setTimeout(scrollToBottom, 150),
+        setTimeout(scrollToBottom, 300),
+        setTimeout(scrollToBottom, 600),
+        setTimeout(scrollToBottom, 1000),
+      ]
+      
+      // MutationObserver to scroll when content changes (images load)
+      let lastHeight = el.scrollHeight
+      const observer = new MutationObserver(() => {
+        if (el.scrollHeight !== lastHeight) {
+          lastHeight = el.scrollHeight
+          scrollToBottom()
+        }
       })
-      return
+      observer.observe(el, { childList: true, subtree: true, attributes: true })
+      const observerTimer = setTimeout(() => observer.disconnect(), 2000)
+      
+      return () => {
+        timers.forEach(clearTimeout)
+        clearTimeout(observerTimer)
+        observer.disconnect()
+      }
     }
     
     // New messages arrived
@@ -1273,26 +1293,32 @@ export default function ChatThread(){
               idBridgeRef.current.tempToServer.set(tempId, j.message_id)
               idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
               
-              // Immediately update the optimistic message to be confirmed
-              // Keep the same clientKey (tempId) so React doesn't remount
-              // PRESERVE encryption flags!
-              setMessages(prev => prev.map(m => {
-                if ((m.clientKey || m.id) === tempId) {
-                  return {
-                    ...m,
-                    id: j.message_id, // Update to server ID
-                    isOptimistic: false, // No longer optimistic
-                    time: m.time ?? ensureNormalizedTime(j.time || m.time),
-                    clientKey: tempId, // Keep stable key for React
-                    // Keep encryption flags from optimistic message
-                    is_encrypted: m.is_encrypted,
-                    encrypted_body: m.encrypted_body,
-                    encrypted_body_for_sender: m.encrypted_body_for_sender,
-                    signal_protocol: m.signal_protocol, // CRITICAL: Preserve Signal Protocol flag
+              // Update optimistic message and remove poll-added duplicates
+              setMessages(prev => {
+                const serverId = j.message_id
+                let foundOriginal = false
+                const updated = prev.map(m => {
+                  if ((m.clientKey || m.id) === tempId) {
+                    foundOriginal = true
+                    return {
+                      ...m,
+                      id: serverId,
+                      isOptimistic: false,
+                      time: m.time ?? ensureNormalizedTime(j.time || m.time),
+                      clientKey: tempId,
+                      is_encrypted: m.is_encrypted,
+                      encrypted_body: m.encrypted_body,
+                      encrypted_body_for_sender: m.encrypted_body_for_sender,
+                      signal_protocol: m.signal_protocol,
+                    }
                   }
+                  return m
+                })
+                if (foundOriginal) {
+                  return updated.filter(m => m.id !== serverId || (m.clientKey || m.id) === tempId)
                 }
-                return m
-              }))
+                return updated
+              })
               
               // Clean up ref
               setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
