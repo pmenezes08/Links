@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 type Member = { username:string; display_name?:string; avatar?:string|null }
 
@@ -37,6 +37,21 @@ export default function MentionTextarea({
   const [active, setActive] = useState(0)
   const timerRef = useRef<any>(null)
   const [anchor, setAnchor] = useState<{left:number; top:number}>({ left: 0, top: 0 })
+  const [overlayPadding, setOverlayPadding] = useState<string>('0.375rem 0.75rem')
+
+  // Sync overlay padding with textarea's computed padding
+  useLayoutEffect(() => {
+    const ta = taRef.current
+    if (!ta) return
+    try {
+      const computed = window.getComputedStyle(ta)
+      const pt = computed.paddingTop || '0px'
+      const pr = computed.paddingRight || '0px'
+      const pb = computed.paddingBottom || '0px'
+      const pl = computed.paddingLeft || '0px'
+      setOverlayPadding(`${pt} ${pr} ${pb} ${pl}`)
+    } catch {}
+  }, [className])
 
   // escapeHtml no longer needed here; handled in overlay
 
@@ -130,6 +145,7 @@ export default function MentionTextarea({
         overlayRef={overlayRef as React.RefObject<HTMLDivElement>}
         text={value}
         enabled={enabled && !perfDegraded && value.length <= 2000 && value.indexOf('@') !== -1}
+        padding={overlayPadding}
       />
       <textarea
         ref={taRef}
@@ -174,7 +190,7 @@ export default function MentionTextarea({
   )
 }
 
-function MentionHighlightOverlay({ overlayRef, text, enabled }:{ overlayRef: React.RefObject<HTMLDivElement>, text: string, enabled: boolean }){
+function MentionHighlightOverlay({ overlayRef, text, enabled, padding }:{ overlayRef: React.RefObject<HTMLDivElement>, text: string, enabled: boolean, padding: string }){
   const [maskHtml, setMaskHtml] = useState('')
   const debounceRef = useRef<any>(null)
   useEffect(() => {
@@ -216,7 +232,7 @@ function MentionHighlightOverlay({ overlayRef, text, enabled }:{ overlayRef: Rea
       ref={overlayRef}
       aria-hidden="true"
       className="absolute inset-0 pointer-events-none"
-      style={{ padding: '0.375rem 0.75rem', whiteSpace: 'pre-wrap', overflow: 'hidden' }}
+      style={{ padding, whiteSpace: 'pre-wrap', overflow: 'hidden' }}
     >
       <div
         dangerouslySetInnerHTML={{ __html: maskHtml }}

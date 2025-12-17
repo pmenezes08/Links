@@ -151,8 +151,48 @@ function SmartLink({
 }
 
 /**
+ * Colorizes @mentions in an array of React nodes
+ */
+function colorizeMentions(nodes: React.ReactNode[]): React.ReactNode[] {
+  const out: React.ReactNode[] = []
+  const mentionRe = /(^|\s)(@([a-zA-Z0-9_]{1,30}))/g
+  nodes.forEach((n, idx) => {
+    if (typeof n !== 'string') { out.push(n); return }
+    const segs: React.ReactNode[] = []
+    let last = 0
+    let m: RegExpExecArray | null
+    while ((m = mentionRe.exec(n))) {
+      const start = m.index
+      const lead = m[1]
+      const full = m[2]
+      if (start > last) { segs.push(n.slice(last, start)) }
+      if (lead) { segs.push(lead) }
+      segs.push(<span key={`men-${idx}-${start}`} className="text-[#4db6ac]">{full}</span>)
+      last = start + lead.length + full.length
+    }
+    if (last < n.length) { segs.push(n.slice(last)) }
+    out.push(...segs)
+  })
+  return out
+}
+
+/**
+ * Preserves newlines in text by converting them to <br> elements
+ */
+function preserveNewlines(text: string): React.ReactNode[] {
+  const parts = text.split(/\n/)
+  const out: React.ReactNode[] = []
+  parts.forEach((p, i) => {
+    if (i > 0) out.push(<br key={`br-${i}-${p.length}-${Math.random()}`} />)
+    if (p) out.push(p)
+  })
+  return out
+}
+
+/**
  * Renders text with clickable links (converts markdown links to HTML)
  * Internal c-point.co links are handled within the app
+ * Also colorizes @mentions
  */
 export function renderTextWithLinks(
   text: string,
@@ -168,9 +208,10 @@ export function renderTextWithLinks(
   let match
   
   while ((match = markdownRegex.exec(text)) !== null) {
-    // Add text before the link
+    // Add text before the link (with mentions colorized)
     if (match.index > lastIndex) {
-      parts.push(text.substring(lastIndex, match.index))
+      const textBefore = text.substring(lastIndex, match.index)
+      parts.push(...colorizeMentions(preserveNewlines(textBefore)))
     }
     
     // Add the link as a clickable element
@@ -190,9 +231,10 @@ export function renderTextWithLinks(
     lastIndex = match.index + match[0].length
   }
   
-  // Add remaining text
+  // Add remaining text (with mentions colorized)
   if (lastIndex < text.length) {
-    parts.push(text.substring(lastIndex))
+    const remainingText = text.substring(lastIndex)
+    parts.push(...colorizeMentions(preserveNewlines(remainingText)))
   }
   
   return parts.length > 0 ? parts : text
