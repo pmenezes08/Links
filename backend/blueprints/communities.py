@@ -104,15 +104,15 @@ def get_community_members():
             if not c.fetchone():
                 return jsonify({"success": False, "error": "Not a member of this community"}), 403
 
-            c.execute("SELECT creator_username, name FROM communities WHERE id = ?", (community_id,))
+            c.execute(f"SELECT creator_username, name FROM communities WHERE id = {placeholder}", (community_id,))
             community = c.fetchone()
             if not community:
                 return jsonify({"success": False, "error": "Community not found"}), 404
             creator_username = community["creator_username"] if hasattr(community, "keys") else community[0]
 
             c.execute(
-                """
-                SELECT DISTINCT
+                f"""
+                SELECT
                     u.username,
                     up.profile_picture,
                     c.creator_username,
@@ -122,7 +122,8 @@ def get_community_members():
                 JOIN users u ON uc.user_id = u.id
                 LEFT JOIN user_profiles up ON up.username = u.username
                 JOIN communities c ON c.id = uc.community_id
-                WHERE uc.community_id = ?
+                WHERE uc.community_id = {placeholder}
+                GROUP BY u.username, up.profile_picture, c.creator_username, uc.role
                 ORDER BY
                     CASE WHEN c.creator_username = u.username THEN 0 ELSE 1 END,
                     CASE
@@ -180,7 +181,7 @@ def get_community_members():
 
                 if current_user_role == "member":
                     c.execute(
-                        "SELECT 1 FROM community_admins WHERE community_id = ? AND LOWER(username) = LOWER(?)",
+                        f"SELECT 1 FROM community_admins WHERE community_id = {placeholder} AND LOWER(username) = LOWER({placeholder})",
                         (community_id, username),
                     )
                     if c.fetchone():
