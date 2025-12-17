@@ -189,21 +189,31 @@ export default function ChatThread(){
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((force?: boolean) => {
     const el = listRef.current
     if (!el) return
     
-    // Use single RAF for smooth, efficient scrolling
-    requestAnimationFrame(() => {
+    const doScroll = () => {
+      // First attempt: direct scrollTop
       el.scrollTop = el.scrollHeight
-      // Only use scroll anchor if initial scroll didn't work
-      if (el.scrollTop < el.scrollHeight - el.clientHeight - 10) {
-        const anchor = el.querySelector('.scroll-anchor')
-        if (anchor) {
-          anchor.scrollIntoView({ behavior: 'instant', block: 'end' })
-        }
+      
+      // Second attempt: scroll anchor (more reliable on iOS)
+      const anchor = el.querySelector('.scroll-anchor')
+      if (anchor) {
+        anchor.scrollIntoView({ behavior: 'instant', block: 'end' })
       }
-    })
+      
+      // Third attempt: force scroll again after layout settles
+      if (force) {
+        requestAnimationFrame(() => {
+          el.scrollTop = el.scrollHeight
+        })
+      }
+    }
+    
+    // Execute immediately and also after a RAF for layout
+    doScroll()
+    requestAnimationFrame(doScroll)
   }, [])
 
   useEffect(() => {
@@ -768,17 +778,23 @@ export default function ChatThread(){
     if (!el) return
     
     if (!didInitialAutoScrollRef.current && messages.length > 0) {
-      // Initial load - multiple scroll attempts for images/media loading
+      // Initial load - aggressive scroll attempts for images/media loading
       didInitialAutoScrollRef.current = true
       lastCountRef.current = messages.length
       
-      scrollToBottom()
+      // Immediate scroll with force flag
+      scrollToBottom(true)
+      
+      // Multiple delayed attempts to handle async image/media loading
       const timers = [
-        setTimeout(scrollToBottom, 50),
-        setTimeout(scrollToBottom, 150),
-        setTimeout(scrollToBottom, 300),
-        setTimeout(scrollToBottom, 600),
-        setTimeout(scrollToBottom, 1000),
+        setTimeout(() => scrollToBottom(true), 50),
+        setTimeout(() => scrollToBottom(true), 100),
+        setTimeout(() => scrollToBottom(true), 200),
+        setTimeout(() => scrollToBottom(true), 350),
+        setTimeout(() => scrollToBottom(true), 500),
+        setTimeout(() => scrollToBottom(true), 750),
+        setTimeout(() => scrollToBottom(true), 1000),
+        setTimeout(() => scrollToBottom(true), 1500),
       ]
       
       // MutationObserver to scroll when content changes (images load)
@@ -786,11 +802,12 @@ export default function ChatThread(){
       const observer = new MutationObserver(() => {
         if (el.scrollHeight !== lastHeight) {
           lastHeight = el.scrollHeight
-          scrollToBottom()
+          scrollToBottom(true)
         }
       })
       observer.observe(el, { childList: true, subtree: true, attributes: true })
-      const observerTimer = setTimeout(() => observer.disconnect(), 2000)
+      // Keep observer longer to catch slow-loading images
+      const observerTimer = setTimeout(() => observer.disconnect(), 3000)
       
       return () => {
         timers.forEach(clearTimeout)
