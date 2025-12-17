@@ -25,9 +25,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         NSLog("========================================")
         print("🚀 App launching...")
         
-        // Clear badge on app launch
-        application.applicationIconBadgeNumber = 0
-        NSLog("📛 Badge cleared on launch")
+        // Badge will be managed by the web app based on actual unread count
+        NSLog("📛 Badge management delegated to web app")
         
         // 1. Initialize Firebase (optional - for FCM token conversion)
         FirebaseApp.configure()
@@ -144,21 +143,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         task.resume()
     }
 
-    // MARK: - App Lifecycle - Badge Clearing
-    
-    func applicationDidBecomeActive(_ application: UIApplication) {
-        // Clear badge when app comes to foreground
-        application.applicationIconBadgeNumber = 0
-        NSLog("📛 Badge cleared on become active")
-        print("📛 Badge cleared - app became active")
-    }
-    
-    func applicationWillEnterForeground(_ application: UIApplication) {
-        // Also clear when entering foreground
-        application.applicationIconBadgeNumber = 0
-        NSLog("📛 Badge cleared on enter foreground")
-    }
-
     // MARK: - Capacitor Deep Links
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
@@ -198,12 +182,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         let userInfo = response.notification.request.content.userInfo
         print("👆 User tapped notification: \(userInfo)")
         
-        // Clear badge when notification is tapped
-        DispatchQueue.main.async {
-            UIApplication.shared.applicationIconBadgeNumber = 0
-            NSLog("📛 Badge cleared on notification tap")
-        }
-        
+        // Badge will be updated by the web app when marking notification as read
         completionHandler()
     }
 }

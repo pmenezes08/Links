@@ -267,6 +267,15 @@ def mark_all_notifications_read():
                 (username,),
             )
             conn.commit()
+        
+        # Send silent push to clear badge (all read = 0 unread)
+        try:
+            from backend.services.firebase_notifications import send_fcm_to_user_badge_only
+            send_fcm_to_user_badge_only(username, badge_count=0)
+            current_app.logger.info(f"Sent badge=0 to {username} after mark all read")
+        except Exception as badge_err:
+            current_app.logger.warning(f"Could not send badge update: {badge_err}")
+        
         return jsonify({"success": True})
     except Exception as exc:
         current_app.logger.error("Error marking all notifications as read: %s", exc)
@@ -290,6 +299,23 @@ def delete_read_notifications():
             )
             conn.commit()
             deleted_count = c.rowcount
+            
+            # Get remaining unread count and update badge
+            c.execute(
+                "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0",
+                (username,),
+            )
+            row = c.fetchone()
+            unread_count = row['COUNT(*)'] if hasattr(row, 'keys') else row[0] if row else 0
+        
+        # Send badge update with remaining unread count
+        try:
+            from backend.services.firebase_notifications import send_fcm_to_user_badge_only
+            send_fcm_to_user_badge_only(username, badge_count=unread_count)
+            current_app.logger.info(f"Sent badge={unread_count} to {username} after delete read")
+        except Exception as badge_err:
+            current_app.logger.warning(f"Could not send badge update: {badge_err}")
+        
         return jsonify({"success": True, "deleted": deleted_count})
     except Exception as exc:
         current_app.logger.error("Error deleting read notifications: %s", exc)
