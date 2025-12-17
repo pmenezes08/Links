@@ -985,6 +985,32 @@ export default function ChatThread(){
                       continue
                     }
                     
+                    // For audio messages: match by server audio_path or optimistic blob URL
+                    if (m.audio_path && existing.audio_path) {
+                      // If existing already has this server path, it's the same message
+                      if (existing.audio_path === m.audio_path) {
+                        stableKey = key
+                        idBridgeRef.current.serverToTemp.set(m.id, key)
+                        idBridgeRef.current.tempToServer.set(key, m.id)
+                        break
+                      }
+                      // If existing is optimistic (blob URL) and within time window, it's our upload
+                      if (existing.isOptimistic && existing.audio_path.startsWith('blob:')) {
+                        const serverTs = getMessageTimestamp(m.time)
+                        const existingTs = getMessageTimestamp(existing.time)
+                        if (serverTs !== null && existingTs !== null) {
+                          const timeDiff = Math.abs(serverTs - existingTs)
+                          if (timeDiff < 60000) { // 60 second window for audio uploads (can take a while)
+                            stableKey = key
+                            idBridgeRef.current.serverToTemp.set(m.id, key)
+                            idBridgeRef.current.tempToServer.set(key, m.id)
+                            break
+                          }
+                        }
+                      }
+                      continue
+                    }
+                    
                     // For text messages: match by content (only if optimistic)
                     if (!existing.isOptimistic) continue
                     if (existing.text !== messageText) continue
@@ -1502,9 +1528,9 @@ export default function ChatThread(){
     }
     
     setSending(true)
-    // Pause polling briefly to avoid race condition with server confirmation
-    skipNextPollsUntil.current = Date.now() + 800
-    const tempId = `temp_audio_${Date.now()}`
+    // Pause polling longer for audio uploads (they take more time than text)
+    skipNextPollsUntil.current = Date.now() + 5000
+    const tempId = `temp_audio_${Date.now()}_${Math.random().toString(36).slice(2)}`
     try{
       const url = URL.createObjectURL(blob)
       const now = new Date().toISOString()
@@ -1589,9 +1615,9 @@ export default function ChatThread(){
     }
     
     setSending(true)
-    // Pause polling briefly to avoid race condition with server confirmation
-    skipNextPollsUntil.current = Date.now() + 800
-    const tempId = `temp_audio_${Date.now()}`
+    // Pause polling longer for audio uploads (they take more time than text)
+    skipNextPollsUntil.current = Date.now() + 5000
+    const tempId = `temp_audio_${Date.now()}_${Math.random().toString(36).slice(2)}`
     try{
       const url = URL.createObjectURL(blob)
       const now = new Date().toISOString()

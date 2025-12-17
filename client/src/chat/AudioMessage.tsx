@@ -155,7 +155,7 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
   const displayDuration = duration > 0 ? duration : (message.audio_duration_seconds || 0)
 
   return (
-    <div className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
+    <div className="px-2 py-2 min-w-[240px] sm:min-w-[280px]" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-3">
         {/* Play/Pause Button */}
         <button
