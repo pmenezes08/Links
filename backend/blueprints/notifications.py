@@ -316,6 +316,20 @@ def delete_read_notifications():
         return jsonify({"success": False, "error": str(exc)}), 500
 
 
+@notifications_bp.route("/api/notifications/badge-count", methods=["GET"], endpoint="get_badge_count")
+@_login_required
+def get_badge_count():
+    """Get the current badge count (unread notifications + unread messages)."""
+    username = session["username"]
+    try:
+        from backend.services.firebase_notifications import get_total_badge_count
+        badge_count = get_total_badge_count(username)
+        return jsonify({"success": True, "badge_count": badge_count})
+    except Exception as exc:
+        current_app.logger.error("Error getting badge count: %s", exc)
+        return jsonify({"success": False, "error": str(exc), "badge_count": 0}), 500
+
+
 @notifications_bp.route("/api/notifications/clear-badge", methods=["POST"], endpoint="clear_notification_badge")
 @_login_required
 def clear_notification_badge():

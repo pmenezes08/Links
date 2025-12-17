@@ -25,8 +25,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         NSLog("========================================")
         print("🚀 App launching...")
         
-        // Badge will be managed by the web app based on actual unread count
-        NSLog("📛 Badge management delegated to web app")
+        // Sync badge with server when app launches
+        syncBadgeWithServer()
         
         // 1. Initialize Firebase (optional - for FCM token conversion)
         FirebaseApp.configure()
@@ -138,6 +138,52 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                         NSLog("Server response: %@", responseStr)
                     }
                 }
+            }
+        }
+        task.resume()
+    }
+
+    // MARK: - App Lifecycle - Badge Sync
+    
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        // Sync badge when app comes to foreground
+        syncBadgeWithServer()
+    }
+    
+    // MARK: - Badge Sync with Server
+    
+    private func syncBadgeWithServer() {
+        NSLog("📛 Syncing badge with server...")
+        
+        guard let url = URL(string: "\(serverURL)/api/notifications/badge-count") else {
+            NSLog("📛 Invalid badge URL")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                NSLog("📛 Badge sync error: %@", error.localizedDescription)
+                return
+            }
+            
+            guard let data = data else {
+                NSLog("📛 No data from badge sync")
+                return
+            }
+            
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let badgeCount = json["badge_count"] as? Int {
+                    DispatchQueue.main.async {
+                        UIApplication.shared.applicationIconBadgeNumber = badgeCount
+                        NSLog("📛 Badge synced to %d", badgeCount)
+                    }
+                }
+            } catch {
+                NSLog("📛 Badge JSON parse error: %@", error.localizedDescription)
             }
         }
         task.resume()
