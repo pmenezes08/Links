@@ -55,6 +55,12 @@ export default function ChatThread(){
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
   // Hide the main header - we use our own header in this page
   useEffect(() => { setTitle('') }, [setTitle])
+  
+  // Reset scroll state when switching to a different chat
+  useEffect(() => {
+    didInitialAutoScrollRef.current = false
+    setIsScrollReady(false)
+  }, [username])
 
   // Detect mobile device
   useEffect(() => {
@@ -187,33 +193,21 @@ export default function ChatThread(){
   const lastCountRef = useRef(0)
   const didInitialAutoScrollRef = useRef(false)
   const [showScrollDown, setShowScrollDown] = useState(false)
+  const [isScrollReady, setIsScrollReady] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   
-  const scrollToBottom = useCallback((force?: boolean) => {
+  const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (!el) return
     
-    const doScroll = () => {
-      // First attempt: direct scrollTop
-      el.scrollTop = el.scrollHeight
-      
-      // Second attempt: scroll anchor (more reliable on iOS)
-      const anchor = el.querySelector('.scroll-anchor')
-      if (anchor) {
-        anchor.scrollIntoView({ behavior: 'instant', block: 'end' })
-      }
-      
-      // Third attempt: force scroll again after layout settles
-      if (force) {
-        requestAnimationFrame(() => {
-          el.scrollTop = el.scrollHeight
-        })
-      }
-    }
+    // Direct scroll - no animation
+    el.scrollTop = el.scrollHeight
     
-    // Execute immediately and also after a RAF for layout
-    doScroll()
-    requestAnimationFrame(doScroll)
+    // Backup: use scroll anchor
+    const anchor = el.querySelector('.scroll-anchor')
+    if (anchor) {
+      anchor.scrollIntoView({ behavior: 'instant', block: 'end' })
+    }
   }, [])
 
   useEffect(() => {
@@ -778,39 +772,40 @@ export default function ChatThread(){
     if (!el) return
     
     if (!didInitialAutoScrollRef.current && messages.length > 0) {
-      // Initial load - aggressive scroll attempts for images/media loading
+      // Initial load - scroll to bottom BEFORE revealing content
       didInitialAutoScrollRef.current = true
       lastCountRef.current = messages.length
       
-      // Immediate scroll with force flag
-      scrollToBottom(true)
+      // Scroll immediately (content is hidden via isScrollReady=false)
+      scrollToBottom()
       
-      // Multiple delayed attempts to handle async image/media loading
-      const timers = [
-        setTimeout(() => scrollToBottom(true), 50),
-        setTimeout(() => scrollToBottom(true), 100),
-        setTimeout(() => scrollToBottom(true), 200),
-        setTimeout(() => scrollToBottom(true), 350),
-        setTimeout(() => scrollToBottom(true), 500),
-        setTimeout(() => scrollToBottom(true), 750),
-        setTimeout(() => scrollToBottom(true), 1000),
-        setTimeout(() => scrollToBottom(true), 1500),
-      ]
+      // Use RAF to ensure scroll happens before reveal
+      requestAnimationFrame(() => {
+        scrollToBottom()
+        // Reveal content after scroll is positioned
+        requestAnimationFrame(() => {
+          setIsScrollReady(true)
+          // One more scroll after reveal to ensure position
+          scrollToBottom()
+        })
+      })
       
-      // MutationObserver to scroll when content changes (images load)
+      // MutationObserver to handle images loading (silently adjusts scroll)
       let lastHeight = el.scrollHeight
       const observer = new MutationObserver(() => {
         if (el.scrollHeight !== lastHeight) {
           lastHeight = el.scrollHeight
-          scrollToBottom(true)
+          // Only auto-scroll if user is near bottom
+          const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
+          if (nearBottom) {
+            scrollToBottom()
+          }
         }
       })
       observer.observe(el, { childList: true, subtree: true, attributes: true })
-      // Keep observer longer to catch slow-loading images
-      const observerTimer = setTimeout(() => observer.disconnect(), 3000)
+      const observerTimer = setTimeout(() => observer.disconnect(), 5000)
       
       return () => {
-        timers.forEach(clearTimeout)
         clearTimeout(observerTimer)
         observer.disconnect()
       }
@@ -1971,6 +1966,9 @@ export default function ChatThread(){
           paddingBottom: listPaddingBottom,
           scrollPaddingBottom: listScrollPaddingBottom,
           minHeight: 0, // Required for flex child scrolling
+          // Hide content until scroll is positioned, then fade in
+          opacity: isScrollReady ? 1 : 0,
+          transition: 'opacity 150ms ease-out',
         } as CSSProperties}
         onPointerDown={handleContentPointerDown}
         onPointerUp={handleContentPointerUp}
