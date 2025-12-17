@@ -104,8 +104,10 @@ export default function NativePushInit() {
     // Clear badge when app starts (in case there are stale badges)
     const clearBadgeOnStart = async () => {
       try {
+        // Remove all delivered notifications - this should also clear badge on iOS
         await PushNotifications.removeAllDeliveredNotifications();
         console.log('✅ Cleared delivered notifications on start');
+        
         // Also tell server to reset badge via silent push
         console.log('📛 Calling /api/notifications/clear-badge on startup...');
         const resp = await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' });

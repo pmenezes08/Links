@@ -21,9 +21,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // CRITICAL DEBUG - This MUST show up
         NSLog("========================================")
         NSLog("CPOINT APP DELEGATE LAUNCHED!!!")
-        NSLog("BUILD 37 - DIRECT TOKEN REGISTRATION")
+        NSLog("BUILD 38 - WITH BADGE CLEARING")
         NSLog("========================================")
         print("🚀 App launching...")
+        
+        // Clear badge on app launch
+        application.applicationIconBadgeNumber = 0
+        NSLog("📛 Badge cleared on launch")
         
         // 1. Initialize Firebase (optional - for FCM token conversion)
         FirebaseApp.configure()
@@ -140,6 +144,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         task.resume()
     }
 
+    // MARK: - App Lifecycle - Badge Clearing
+    
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        // Clear badge when app comes to foreground
+        application.applicationIconBadgeNumber = 0
+        NSLog("📛 Badge cleared on become active")
+        print("📛 Badge cleared - app became active")
+    }
+    
+    func applicationWillEnterForeground(_ application: UIApplication) {
+        // Also clear when entering foreground
+        application.applicationIconBadgeNumber = 0
+        NSLog("📛 Badge cleared on enter foreground")
+    }
+
     // MARK: - Capacitor Deep Links
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
@@ -178,6 +197,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         
         let userInfo = response.notification.request.content.userInfo
         print("👆 User tapped notification: \(userInfo)")
+        
+        // Clear badge when notification is tapped
+        DispatchQueue.main.async {
+            UIApplication.shared.applicationIconBadgeNumber = 0
+            NSLog("📛 Badge cleared on notification tap")
+        }
         
         completionHandler()
     }
