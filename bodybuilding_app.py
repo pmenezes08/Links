@@ -14859,9 +14859,9 @@ def get_community_members_list(community_id):
                 role_column_exists = False
 
             if role_column_exists:
-                # Use the full query with role information
+                # Use GROUP BY instead of DISTINCT to avoid MySQL strict mode issues
                 c.execute("""
-                    SELECT DISTINCT
+                    SELECT 
                         u.username,
                         up.profile_picture,
                         c.creator_username,
@@ -14872,8 +14872,9 @@ def get_community_members_list(community_id):
                     LEFT JOIN user_profiles up ON u.username = up.username
                     JOIN communities c ON c.id = uc.community_id
                     WHERE uc.community_id = ?
+                    GROUP BY u.username, up.profile_picture, c.creator_username, uc.role
                     ORDER BY
-                        CASE WHEN c.creator_username = u.username THEN 0 ELSE 1 END,
+                        is_creator DESC,
                         CASE WHEN COALESCE(uc.role, 'member') = 'admin' THEN 0
                              WHEN COALESCE(uc.role, 'member') = 'owner' THEN 1
                              ELSE 2 END,
@@ -14883,7 +14884,7 @@ def get_community_members_list(community_id):
                 # Fallback query without role information for backward compatibility
                 logger.warning("Role column doesn't exist in user_communities table, using fallback query")
                 c.execute("""
-                    SELECT DISTINCT
+                    SELECT 
                         u.username,
                         up.profile_picture,
                         c.creator_username,
@@ -14894,8 +14895,9 @@ def get_community_members_list(community_id):
                     LEFT JOIN user_profiles up ON u.username = up.username
                     JOIN communities c ON c.id = uc.community_id
                     WHERE uc.community_id = ?
+                    GROUP BY u.username, up.profile_picture, c.creator_username
                     ORDER BY
-                        CASE WHEN c.creator_username = u.username THEN 0 ELSE 1 END,
+                        is_creator DESC,
                         u.username
                 """, (community_id,))
 
