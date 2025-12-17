@@ -1502,12 +1502,18 @@ export default function ChatThread(){
     }
     
     setSending(true)
+    // Pause polling briefly to avoid race condition with server confirmation
+    skipNextPollsUntil.current = Date.now() + 800
     const tempId = `temp_audio_${Date.now()}`
     try{
       const url = URL.createObjectURL(blob)
       const now = new Date().toISOString()
       const optimistic: Message = { id: tempId, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true, clientKey: tempId }
       setMessages(prev => [...prev, optimistic])
+      
+      // Register in recent optimistic to prevent poll from removing it
+      recentOptimisticRef.current.set(tempId, { message: optimistic, timestamp: Date.now() })
+      
       setTimeout(scrollToBottom, 50)
       const fd = new FormData()
       fd.append('recipient_id', String(otherUserId))
@@ -1517,25 +1523,33 @@ export default function ChatThread(){
       const j = await r.json().catch(()=>null)
       if (!j?.success){
         setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
+        recentOptimisticRef.current.delete(tempId)
         URL.revokeObjectURL(url)
         alert(j?.error || 'Failed to send audio')
       } else {
-        // Update optimistic message with server data
+        // Update optimistic message with server data and remove duplicates
         if (j.message_id) {
           idBridgeRef.current.tempToServer.set(tempId, j.message_id)
           idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
-          setMessages(prev => prev.map(m => {
-            if ((m.clientKey || m.id) === tempId) {
-              return {
-                ...m,
-                id: j.message_id,
-                audio_path: j.audio_path || m.audio_path,
-                isOptimistic: false,
-                clientKey: tempId,
+          setMessages(prev => {
+            const serverId = j.message_id
+            const updated = prev.map(m => {
+              if ((m.clientKey || m.id) === tempId) {
+                return {
+                  ...m,
+                  id: serverId,
+                  audio_path: j.audio_path || m.audio_path,
+                  isOptimistic: false,
+                  clientKey: tempId,
+                }
               }
-            }
-            return m
-          }))
+              return m
+            })
+            // Filter out poll-added duplicates
+            return updated.filter(m => m.id !== serverId || (m.clientKey || m.id) === tempId)
+          })
+          // Clean up ref
+          setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
         }
         // Revoke blob URL after successful upload
         setTimeout(() => URL.revokeObjectURL(url), 100)
@@ -1543,6 +1557,7 @@ export default function ChatThread(){
     }catch(error){
       console.error('Failed to send audio', error)
       setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
+      recentOptimisticRef.current.delete(tempId)
       alert('Failed to send audio')
     }finally{
       setSending(false)
@@ -1574,12 +1589,18 @@ export default function ChatThread(){
     }
     
     setSending(true)
+    // Pause polling briefly to avoid race condition with server confirmation
+    skipNextPollsUntil.current = Date.now() + 800
     const tempId = `temp_audio_${Date.now()}`
     try{
       const url = URL.createObjectURL(blob)
       const now = new Date().toISOString()
-      const optimistic: Message = { id: tempId, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true, clientKey: tempId }
+      const optimistic: Message = { id: tempId, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true, clientKey: tempId, audio_duration_seconds: durationSeconds }
       setMessages(prev => [...prev, optimistic])
+      
+      // Register in recent optimistic to prevent poll from removing it
+      recentOptimisticRef.current.set(tempId, { message: optimistic, timestamp: Date.now() })
+      
       setTimeout(scrollToBottom, 50)
       const fd = new FormData()
       fd.append('recipient_id', String(otherUserId))
@@ -1600,26 +1621,34 @@ export default function ChatThread(){
       const j = await r.json().catch(()=>null)
       if (!j?.success){
         setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
+        recentOptimisticRef.current.delete(tempId)
         URL.revokeObjectURL(url)
         alert(j?.error || 'Failed to send audio message')
       } else {
-        // Update optimistic message with server data
+        // Update optimistic message with server data and remove duplicates
         if (j.message_id) {
           idBridgeRef.current.tempToServer.set(tempId, j.message_id)
           idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
-          setMessages(prev => prev.map(m => {
-            if ((m.clientKey || m.id) === tempId) {
-              return {
-                ...m,
-                id: j.message_id,
-                audio_path: j.audio_path || m.audio_path,
-                audio_duration_seconds: durationSeconds,
-                isOptimistic: false,
-                clientKey: tempId,
+          setMessages(prev => {
+            const serverId = j.message_id
+            const updated = prev.map(m => {
+              if ((m.clientKey || m.id) === tempId) {
+                return {
+                  ...m,
+                  id: serverId,
+                  audio_path: j.audio_path || m.audio_path,
+                  audio_duration_seconds: durationSeconds,
+                  isOptimistic: false,
+                  clientKey: tempId,
+                }
               }
-            }
-            return m
-          }))
+              return m
+            })
+            // Filter out poll-added duplicates
+            return updated.filter(m => m.id !== serverId || (m.clientKey || m.id) === tempId)
+          })
+          // Clean up ref
+          setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
         }
         // Revoke blob URL after successful upload
         setTimeout(() => URL.revokeObjectURL(url), 100)
@@ -1627,6 +1656,7 @@ export default function ChatThread(){
     }catch(error){
       console.error('Failed to send voice message', error)
       setMessages(prev => prev.filter(m => (m.clientKey || m.id) !== tempId))
+      recentOptimisticRef.current.delete(tempId)
       const message = error instanceof Error ? error.message : String(error)
       alert('Failed to send voice message: ' + message)
     } finally {
