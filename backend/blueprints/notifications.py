@@ -268,11 +268,12 @@ def mark_all_notifications_read():
             )
             conn.commit()
         
-        # Send silent push to clear badge (all read = 0 unread)
+        # Send badge update with remaining unread count (messages may still be unread)
         try:
-            from backend.services.firebase_notifications import send_fcm_to_user_badge_only
-            send_fcm_to_user_badge_only(username, badge_count=0)
-            current_app.logger.info(f"Sent badge=0 to {username} after mark all read")
+            from backend.services.firebase_notifications import send_fcm_to_user_badge_only, get_total_badge_count
+            badge_count = get_total_badge_count(username)
+            send_fcm_to_user_badge_only(username, badge_count=badge_count)
+            current_app.logger.info(f"Sent badge={badge_count} to {username} after mark all read")
         except Exception as badge_err:
             current_app.logger.warning(f"Could not send badge update: {badge_err}")
         
@@ -300,19 +301,12 @@ def delete_read_notifications():
             conn.commit()
             deleted_count = c.rowcount
             
-            # Get remaining unread count and update badge
-            c.execute(
-                "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0",
-                (username,),
-            )
-            row = c.fetchone()
-            unread_count = row['COUNT(*)'] if hasattr(row, 'keys') else row[0] if row else 0
-        
-        # Send badge update with remaining unread count
+        # Send badge update with total unread count (notifications + messages)
         try:
-            from backend.services.firebase_notifications import send_fcm_to_user_badge_only
-            send_fcm_to_user_badge_only(username, badge_count=unread_count)
-            current_app.logger.info(f"Sent badge={unread_count} to {username} after delete read")
+            from backend.services.firebase_notifications import send_fcm_to_user_badge_only, get_total_badge_count
+            badge_count = get_total_badge_count(username)
+            send_fcm_to_user_badge_only(username, badge_count=badge_count)
+            current_app.logger.info(f"Sent badge={badge_count} to {username} after delete read")
         except Exception as badge_err:
             current_app.logger.warning(f"Could not send badge update: {badge_err}")
         
@@ -325,21 +319,22 @@ def delete_read_notifications():
 @notifications_bp.route("/api/notifications/clear-badge", methods=["POST"], endpoint="clear_notification_badge")
 @_login_required
 def clear_notification_badge():
-    """Clear the iOS app badge count by sending a silent push with badge: 0."""
+    """Sync the iOS badge count with actual unread notifications + messages."""
     username = session["username"]
     try:
-        from backend.services.firebase_notifications import send_fcm_to_user_badge_only
+        from backend.services.firebase_notifications import send_fcm_to_user_badge_only, get_total_badge_count
         
-        # Send silent push with badge: 0 to all user's devices
-        sent = send_fcm_to_user_badge_only(username, badge_count=0)
-        current_app.logger.info(f"Cleared badge for {username}, sent to {sent} device(s)")
-        return jsonify({"success": True, "devices_cleared": sent})
+        # Get actual unread count and send to device
+        badge_count = get_total_badge_count(username)
+        sent = send_fcm_to_user_badge_only(username, badge_count=badge_count)
+        current_app.logger.info(f"Synced badge={badge_count} for {username}, sent to {sent} device(s)")
+        return jsonify({"success": True, "badge_count": badge_count, "devices_updated": sent})
     except ImportError:
         # Function not available, just acknowledge the request
-        current_app.logger.debug("Badge clearing not available (function not implemented)")
-        return jsonify({"success": True, "devices_cleared": 0})
+        current_app.logger.debug("Badge sync not available (function not implemented)")
+        return jsonify({"success": True, "devices_updated": 0})
     except Exception as exc:
-        current_app.logger.error("Error clearing notification badge: %s", exc)
+        current_app.logger.error("Error syncing notification badge: %s", exc)
         return jsonify({"success": False, "error": str(exc)}), 500
 
 

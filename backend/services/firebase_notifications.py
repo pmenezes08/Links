@@ -190,20 +190,33 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
         cursor = conn.cursor()
         ph = get_sql_placeholder()
         
-        # Get unread notification count for accurate badge
+        # Get total unread count for badge (notifications + messages)
         try:
-            query = f"SELECT COUNT(*) FROM notifications WHERE user_id = {ph} AND is_read = 0"
-            logger.info(f"📛 Badge query: {query} with username={username}")
-            cursor.execute(query, (username,))
+            # Count unread notifications
+            cursor.execute(
+                f"SELECT COUNT(*) FROM notifications WHERE user_id = {ph} AND is_read = 0",
+                (username,)
+            )
             row = cursor.fetchone()
-            logger.info(f"📛 Badge query result row: {row}")
             if hasattr(row, 'keys'):
-                count = row.get('COUNT(*)', 0) or row.get('count(*)', 0) or list(row.values())[0]
+                notif_count = list(row.values())[0] or 0
             else:
-                count = row[0] if row else 0
-            # Add 1 for this new notification (it's not saved yet when this is called)
-            badge_count = count + 1
-            logger.info(f"📛 Badge count for {username}: {badge_count} (unread={count})")
+                notif_count = row[0] if row else 0
+            
+            # Count unread messages
+            cursor.execute(
+                f"SELECT COUNT(*) FROM messages WHERE receiver = {ph} AND is_read = 0",
+                (username,)
+            )
+            row = cursor.fetchone()
+            if hasattr(row, 'keys'):
+                msg_count = list(row.values())[0] or 0
+            else:
+                msg_count = row[0] if row else 0
+            
+            # Total badge = notifications + messages + 1 (for new notification being sent)
+            badge_count = notif_count + msg_count + 1
+            logger.info(f"📛 Badge count for {username}: {badge_count} (notif={notif_count}, msg={msg_count}, +1 new)")
         except Exception as e:
             logger.warning(f"Could not get badge count: {e}")
             import traceback
@@ -328,6 +341,51 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
         return 0
 
 
+def get_total_badge_count(username: str) -> int:
+    """
+    Get total unread count for badge (notifications + messages).
+    """
+    from backend.services.database import get_db_connection, get_sql_placeholder
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ph = get_sql_placeholder()
+        
+        # Count unread notifications
+        cursor.execute(
+            f"SELECT COUNT(*) FROM notifications WHERE user_id = {ph} AND is_read = 0",
+            (username,)
+        )
+        row = cursor.fetchone()
+        if hasattr(row, 'keys'):
+            notif_count = list(row.values())[0] or 0
+        else:
+            notif_count = row[0] if row else 0
+        
+        # Count unread messages
+        cursor.execute(
+            f"SELECT COUNT(*) FROM messages WHERE receiver = {ph} AND is_read = 0",
+            (username,)
+        )
+        row = cursor.fetchone()
+        if hasattr(row, 'keys'):
+            msg_count = list(row.values())[0] or 0
+        else:
+            msg_count = row[0] if row else 0
+        
+        cursor.close()
+        conn.close()
+        
+        total = notif_count + msg_count
+        logger.info(f"📛 Total badge for {username}: {total} (notif={notif_count}, msg={msg_count})")
+        return total
+        
+    except Exception as e:
+        logger.warning(f"Could not get total badge count for {username}: {e}")
+        return 0
+
+
 def send_fcm_to_user_badge_only(username: str, badge_count: int = 0) -> int:
     """
     Send a silent push notification to reset the iOS badge count.
@@ -421,6 +479,7 @@ __all__ = [
     'send_fcm_notification',
     'send_fcm_to_user',
     'send_fcm_to_user_badge_only',
+    'get_total_badge_count',
     'is_apns_token',
     'FIREBASE_AVAILABLE',
 ]

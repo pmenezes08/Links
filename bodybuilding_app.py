@@ -9365,7 +9365,18 @@ def get_messages():
             
             # Mark messages from other user as read
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
+            marked_read = c.rowcount
             conn.commit()
+            
+            # Update badge if any messages were marked as read
+            if marked_read > 0:
+                try:
+                    from backend.services.firebase_notifications import send_fcm_to_user_badge_only, get_total_badge_count
+                    badge_count = get_total_badge_count(username)
+                    send_fcm_to_user_badge_only(username, badge_count=badge_count)
+                    logger.debug(f"Updated badge to {badge_count} for {username} after reading {marked_read} messages")
+                except Exception as badge_err:
+                    logger.debug(f"Could not update badge: {badge_err}")
             
             # Write-through cache for fast subsequent polls
             # PERFORMANCE: Only cache full fetches, not delta fetches
