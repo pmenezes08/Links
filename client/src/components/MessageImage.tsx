@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import { useGifPlayback } from '../hooks/useGifPlayback'
 import { optimizeMessagePhoto } from '../utils/imageOptimizer'
 
@@ -12,6 +12,9 @@ interface MessageImageProps {
 export default function MessageImage({ src, alt, onClick, className = '' }: MessageImageProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [frozenFrame, setFrozenFrame] = useState<string | null>(null)
+  const [imgKey, setImgKey] = useState(0)
+  const imgRef = useRef<HTMLImageElement>(null)
   const normalizedSrc = useMemo(() => src?.split('?')[0]?.toLowerCase() || '', [src])
   const isGif = normalizedSrc.endsWith('.gif')
   const { isFrozen, stillSrc, replay, canReplay } = useGifPlayback(isGif ? src : null)
@@ -21,8 +24,57 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
     if (isGif) return src
     return optimizeMessagePhoto(src)
   }, [src, isGif])
-  
-  const displaySrc = isGif && isFrozen && stillSrc ? stillSrc : optimizedSrc
+
+  // Capture frozen frame from canvas when GIF should freeze
+  useEffect(() => {
+    if (!isGif) {
+      setFrozenFrame(null)
+      return
+    }
+    
+    if (!isFrozen) {
+      // Not frozen - clear any captured frame
+      setFrozenFrame(null)
+      return
+    }
+    
+    // Use stillSrc if available (from GIF parsing)
+    if (stillSrc) {
+      setFrozenFrame(stillSrc)
+      return
+    }
+    
+    // Try to capture current frame from the img element
+    const img = imgRef.current
+    if (!img || !img.complete || img.naturalWidth === 0) {
+      return
+    }
+    
+    // Small delay to ensure we capture a frame
+    const captureTimer = setTimeout(() => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(img, 0, 0)
+          const dataUrl = canvas.toDataURL('image/png')
+          setFrozenFrame(dataUrl)
+        }
+      } catch (e) {
+        // Canvas capture failed (CORS, etc.)
+        // We'll show the GIF with a frozen overlay instead
+        console.log('Could not capture GIF frame:', e)
+      }
+    }, 50)
+    
+    return () => clearTimeout(captureTimer)
+  }, [isGif, isFrozen, stillSrc])
+
+  // Determine what to display
+  const showFrozenFrame = isGif && isFrozen && frozenFrame
+  const displaySrc = showFrozenFrame ? frozenFrame : optimizedSrc
 
   const handleLoad = () => {
     setLoading(false)
@@ -31,6 +83,13 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
   const handleError = () => {
     setLoading(false)
     setError(true)
+  }
+
+  // When replaying, reset frozen frame and force img re-mount
+  const handleReplay = () => {
+    setFrozenFrame(null)
+    setImgKey(prev => prev + 1) // Force re-mount to restart GIF animation
+    replay()
   }
 
   return (
@@ -55,8 +114,10 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
         </div>
       )}
 
-      {/* Actual image - auto size based on content */}
+      {/* Actual image */}
       <img
+        ref={imgRef}
+        key={`${imgKey}-${showFrozenFrame ? 'frozen' : 'animated'}`}
         src={displaySrc}
         alt={alt}
         className={`max-w-full transition-opacity duration-300 ${
@@ -72,6 +133,11 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
         }}
       />
 
+      {/* Frozen overlay - dims the GIF when frozen (even without captured frame) */}
+      {isGif && isFrozen && !showFrozenFrame && (
+        <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+      )}
+
       {isGif && isFrozen && (
         <div className="absolute top-2 left-2 px-2 py-1 rounded-full bg-black/65 text-[10px] tracking-[0.2em] text-white/80 uppercase">
           GIF paused
@@ -84,7 +150,7 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
           className="absolute bottom-2 right-2 px-3 py-1.5 rounded-full bg-white/90 text-xs font-semibold text-black hover:bg-white transition"
           onClick={(event) => {
             event.stopPropagation()
-            replay()
+            handleReplay()
           }}
         >
           Replay
