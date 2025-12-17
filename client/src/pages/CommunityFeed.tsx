@@ -1389,6 +1389,14 @@ export default function CommunityFeed() {
       return { ...prev, posts: posts.filter((p: any) => p.id !== postId) }
     })
 
+    // Invalidate parent timeline cache so the post is removed there too
+    try {
+      const invalidateFn = (window as any).__invalidateParentTimelineCache
+      if (typeof invalidateFn === 'function') {
+        invalidateFn(postId)
+      }
+    } catch {}
+
     // Call API in background
     try {
       const fd = new FormData()

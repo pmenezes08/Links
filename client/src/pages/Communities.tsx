@@ -854,6 +854,33 @@ function ParentTimeline({ parentId }:{ parentId:number }){
   const cacheRef = (window as any).__parentTlCache || ((window as any).__parentTlCache = new Map<number, { ts:number; posts:any[] }>())
   const inflightRef = (window as any).__parentTlInflight || ((window as any).__parentTlInflight = new Map<number, Promise<any>>())
 
+  // Expose a global function to invalidate the timeline cache (called when posts are deleted elsewhere)
+  useEffect(() => {
+    (window as any).__invalidateParentTimelineCache = (postId?: number) => {
+      // Clear all parent timeline caches (sessionStorage)
+      try {
+        cacheRef.clear()
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const key = sessionStorage.key(i)
+          if (key && key.startsWith('parent_tl_cache:')) {
+            sessionStorage.removeItem(key)
+          }
+        }
+      } catch {}
+      // Clear home timeline cache (localStorage via deviceCache)
+      try {
+        localStorage.removeItem('home-timeline')
+      } catch {}
+      // If we have a postId, also remove it from local state if we're currently showing it
+      if (postId) {
+        setPosts(prev => prev.filter(p => p.id !== postId))
+      }
+    }
+    return () => {
+      delete (window as any).__invalidateParentTimelineCache
+    }
+  }, [])
+
   const refreshTimeline = useCallback(async () => {
     if (isRefreshing) return
     const now = Date.now()
