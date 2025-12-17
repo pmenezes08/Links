@@ -28,7 +28,7 @@ export function useGifPlayback(src?: string | null) {
         }
         timerRef.current = window.setTimeout(() => {
           setIsFrozen(true)
-        }, Math.max(info.loopDurationMs, 1500) * 4)
+        }, Math.max(info.loopDurationMs, 1500) * 3)
       })
       .catch(() => {
         // Ignore parsing failures; GIF will continue playing
@@ -51,7 +51,7 @@ export function useGifPlayback(src?: string | null) {
     setIsFrozen(false)
     timerRef.current = window.setTimeout(() => {
       setIsFrozen(true)
-    }, Math.max(loopDurationRef.current, 1500) * 4)
+    }, Math.max(loopDurationRef.current, 1500) * 3)
   }
 
   return {
