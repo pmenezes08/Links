@@ -9,10 +9,14 @@ interface MessageImageProps {
   className?: string
 }
 
+// 1x1 transparent PNG data URL - used to "blank" the GIF when frozen
+const BLANK_PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+
 export default function MessageImage({ src, alt, onClick, className = '' }: MessageImageProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [frozenFrame, setFrozenFrame] = useState<string | null>(null)
+  const [imgDimensions, setImgDimensions] = useState<{ width: number; height: number } | null>(null)
   const [imgKey, setImgKey] = useState(0)
   const imgRef = useRef<HTMLImageElement>(null)
   const normalizedSrc = useMemo(() => src?.split('?')[0]?.toLowerCase() || '', [src])
@@ -50,6 +54,11 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
       return
     }
     
+    // Save dimensions before we potentially lose access to them
+    if (!imgDimensions) {
+      setImgDimensions({ width: img.naturalWidth, height: img.naturalHeight })
+    }
+    
     // Small delay to ensure we capture a frame
     const captureTimer = setTimeout(() => {
       try {
@@ -64,20 +73,33 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
         }
       } catch (e) {
         // Canvas capture failed (CORS, etc.)
-        // We'll show the GIF with a frozen overlay instead
-        console.log('Could not capture GIF frame:', e)
+        // frozenFrame stays null - we'll show blank + play button
+        console.log('Could not capture GIF frame (CORS):', e)
       }
     }, 50)
     
     return () => clearTimeout(captureTimer)
-  }, [isGif, isFrozen, stillSrc])
+  }, [isGif, isFrozen, stillSrc, imgDimensions])
 
   // Determine what to display
-  const showFrozenFrame = isGif && isFrozen && frozenFrame
-  const displaySrc = showFrozenFrame ? frozenFrame : optimizedSrc
+  // When frozen WITHOUT a captured frame, show blank pixel to STOP the animation
+  const hasFrozenFrame = Boolean(frozenFrame)
+  const shouldShowBlank = isGif && isFrozen && !hasFrozenFrame
+  
+  const displaySrc = useMemo(() => {
+    if (!isGif) return optimizedSrc
+    if (isFrozen && frozenFrame) return frozenFrame
+    if (isFrozen && !frozenFrame) return BLANK_PIXEL // Stop animation by showing blank
+    return optimizedSrc
+  }, [isGif, isFrozen, frozenFrame, optimizedSrc])
 
   const handleLoad = () => {
     setLoading(false)
+    // Capture dimensions on first load
+    const img = imgRef.current
+    if (img && img.naturalWidth > 0 && !imgDimensions) {
+      setImgDimensions({ width: img.naturalWidth, height: img.naturalHeight })
+    }
   }
 
   const handleError = () => {
@@ -117,7 +139,7 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
       {/* Actual image */}
       <img
         ref={imgRef}
-        key={`${imgKey}-${showFrozenFrame ? 'frozen' : 'animated'}`}
+        key={`${imgKey}-${isFrozen ? 'frozen' : 'animated'}`}
         src={displaySrc}
         alt={alt}
         className={`max-w-full transition-opacity duration-300 ${
@@ -130,12 +152,32 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
           display: error ? 'none' : 'block',
           maxHeight: '320px',
           imageOrientation: 'from-image',
+          // Maintain size when showing blank pixel
+          ...(shouldShowBlank && imgDimensions ? {
+            width: imgDimensions.width,
+            height: imgDimensions.height,
+            maxWidth: '100%',
+            objectFit: 'contain' as const,
+          } : {}),
         }}
       />
 
-      {/* Frozen overlay - dims the GIF when frozen (even without captured frame) */}
-      {isGif && isFrozen && !showFrozenFrame && (
-        <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+      {/* Frozen placeholder - shown when we couldn't capture a frame */}
+      {shouldShowBlank && (
+        <div 
+          className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-700 to-gray-800"
+          style={imgDimensions ? { 
+            width: Math.min(imgDimensions.width, 320),
+            height: Math.min(imgDimensions.height, 320),
+          } : undefined}
+        >
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+              <i className="fa-solid fa-play text-white text-lg ml-1" />
+            </div>
+            <span className="text-white/60 text-xs">GIF</span>
+          </div>
+        </div>
       )}
 
       {isGif && isFrozen && (
