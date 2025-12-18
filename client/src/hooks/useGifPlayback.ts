@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { getGifInfo } from '../utils/gifControl'
 
-// Default duration for 3 loops if we can't determine actual GIF duration
+// Default duration for loops if we can't determine actual GIF duration
 const DEFAULT_LOOP_DURATION_MS = 2000
-const NUM_LOOPS = 3
+const NUM_LOOPS = 5
 
 export function useGifPlayback(src?: string | null) {
   const [stillSrc, setStillSrc] = useState<string | null>(null)

@@ -9,19 +9,52 @@ interface MessageImageProps {
   className?: string
 }
 
-// 1x1 transparent PNG data URL - used to "blank" the GIF when frozen
-const BLANK_PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+// Extract Giphy static URL from animated URL
+// Giphy URLs: https://media.giphy.com/media/{id}/giphy.gif -> https://media.giphy.com/media/{id}/giphy_s.gif
+// Also handles: https://media0.giphy.com/media/{id}/giphy.gif and similar CDN variants
+function getGiphyStaticUrl(gifUrl: string): string | null {
+  if (!gifUrl) return null
+  
+  // Match various Giphy URL patterns
+  const giphyPatterns = [
+    /^(https?:\/\/media\d?\.giphy\.com\/media\/[^/]+\/)giphy\.gif/i,
+    /^(https?:\/\/media\d?\.giphy\.com\/media\/[^/]+\/)(\d+)\.gif/i,
+    /^(https?:\/\/i\.giphy\.com\/)([^/]+)\.gif/i,
+  ]
+  
+  for (const pattern of giphyPatterns) {
+    const match = gifUrl.match(pattern)
+    if (match) {
+      // For standard giphy.gif URLs, use giphy_s.gif (static)
+      if (pattern === giphyPatterns[0]) {
+        return match[1] + 'giphy_s.gif'
+      }
+      // For numbered URLs like 200.gif, use 200_s.gif
+      if (pattern === giphyPatterns[1]) {
+        return match[1] + match[2] + '_s.gif'
+      }
+      // For i.giphy.com URLs
+      if (pattern === giphyPatterns[2]) {
+        return `https://media.giphy.com/media/${match[2]}/giphy_s.gif`
+      }
+    }
+  }
+  
+  return null
+}
 
 export default function MessageImage({ src, alt, onClick, className = '' }: MessageImageProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [frozenFrame, setFrozenFrame] = useState<string | null>(null)
-  const [imgDimensions, setImgDimensions] = useState<{ width: number; height: number } | null>(null)
   const [imgKey, setImgKey] = useState(0)
   const imgRef = useRef<HTMLImageElement>(null)
   const normalizedSrc = useMemo(() => src?.split('?')[0]?.toLowerCase() || '', [src])
   const isGif = normalizedSrc.endsWith('.gif')
   const { isFrozen, stillSrc, replay, canReplay } = useGifPlayback(isGif ? src : null)
+  
+  // Get Giphy static URL as fallback
+  const giphyStaticUrl = useMemo(() => getGiphyStaticUrl(src), [src])
   
   // Apply Cloudflare optimization (skip for GIFs to preserve animation)
   const optimizedSrc = useMemo(() => {
@@ -48,15 +81,16 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
       return
     }
     
+    // Use Giphy static URL if available
+    if (giphyStaticUrl) {
+      setFrozenFrame(giphyStaticUrl)
+      return
+    }
+    
     // Try to capture current frame from the img element
     const img = imgRef.current
     if (!img || !img.complete || img.naturalWidth === 0) {
       return
-    }
-    
-    // Save dimensions before we potentially lose access to them
-    if (!imgDimensions) {
-      setImgDimensions({ width: img.naturalWidth, height: img.naturalHeight })
     }
     
     // Small delay to ensure we capture a frame
@@ -72,34 +106,27 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
           setFrozenFrame(dataUrl)
         }
       } catch (e) {
-        // Canvas capture failed (CORS, etc.)
-        // frozenFrame stays null - we'll show blank + play button
+        // Canvas capture failed (CORS, etc.) - frozenFrame stays null
+        // GIF will continue playing but we'll show the pause overlay
         console.log('Could not capture GIF frame (CORS):', e)
       }
     }, 50)
     
     return () => clearTimeout(captureTimer)
-  }, [isGif, isFrozen, stillSrc, imgDimensions])
+  }, [isGif, isFrozen, stillSrc, giphyStaticUrl])
 
   // Determine what to display
-  // When frozen WITHOUT a captured frame, show blank pixel to STOP the animation
   const hasFrozenFrame = Boolean(frozenFrame)
-  const shouldShowBlank = isGif && isFrozen && !hasFrozenFrame
   
   const displaySrc = useMemo(() => {
     if (!isGif) return optimizedSrc
     if (isFrozen && frozenFrame) return frozenFrame
-    if (isFrozen && !frozenFrame) return BLANK_PIXEL // Stop animation by showing blank
+    // If frozen but no frame available, keep showing the GIF (it will animate but better than blank)
     return optimizedSrc
   }, [isGif, isFrozen, frozenFrame, optimizedSrc])
 
   const handleLoad = () => {
     setLoading(false)
-    // Capture dimensions on first load
-    const img = imgRef.current
-    if (img && img.naturalWidth > 0 && !imgDimensions) {
-      setImgDimensions({ width: img.naturalWidth, height: img.naturalHeight })
-    }
   }
 
   const handleError = () => {
@@ -139,7 +166,7 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
       {/* Actual image */}
       <img
         ref={imgRef}
-        key={`${imgKey}-${isFrozen ? 'frozen' : 'animated'}`}
+        key={`${imgKey}-${hasFrozenFrame ? 'frozen' : 'animated'}`}
         src={displaySrc}
         alt={alt}
         className={`max-w-full transition-opacity duration-300 ${
@@ -152,33 +179,8 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
           display: error ? 'none' : 'block',
           maxHeight: '320px',
           imageOrientation: 'from-image',
-          // Maintain size when showing blank pixel
-          ...(shouldShowBlank && imgDimensions ? {
-            width: imgDimensions.width,
-            height: imgDimensions.height,
-            maxWidth: '100%',
-            objectFit: 'contain' as const,
-          } : {}),
         }}
       />
-
-      {/* Frozen placeholder - shown when we couldn't capture a frame */}
-      {shouldShowBlank && (
-        <div 
-          className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-700 to-gray-800"
-          style={imgDimensions ? { 
-            width: Math.min(imgDimensions.width, 320),
-            height: Math.min(imgDimensions.height, 320),
-          } : undefined}
-        >
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-              <i className="fa-solid fa-play text-white text-lg ml-1" />
-            </div>
-            <span className="text-white/60 text-xs">GIF</span>
-          </div>
-        </div>
-      )}
 
       {isGif && isFrozen && (
         <div className="absolute top-2 left-2 px-2 py-1 rounded-full bg-black/65 text-[10px] tracking-[0.2em] text-white/80 uppercase">

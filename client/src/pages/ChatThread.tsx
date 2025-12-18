@@ -943,7 +943,7 @@ export default function ChatThread(){
                   for (const [key, existing] of messagesByKey.entries()) {
                     if (existing.sent !== isSentByMe) continue
                     
-                    // For photo messages: match by server image_path
+                    // For photo/GIF messages: match by server image_path
                     if (m.image_path && existing.image_path) {
                       // If existing already has this server path, it's the same message
                       if (existing.image_path === m.image_path) {
@@ -952,19 +952,18 @@ export default function ChatThread(){
                         idBridgeRef.current.tempToServer.set(key, m.id)
                         break
                       }
-                      // If existing is optimistic (blob URL) and same text/time, it's likely our upload
+                      // If existing is optimistic (blob URL), match by time window only
+                      // (don't check text - server sends empty string, optimistic has "📷 Photo"/"🎞️ GIF")
                       if (existing.isOptimistic && existing.image_path.startsWith('blob:')) {
-                        if (existing.text === messageText) {
-                          const serverTs = getMessageTimestamp(m.time)
-                          const existingTs = getMessageTimestamp(existing.time)
-                          if (serverTs !== null && existingTs !== null) {
-                            const timeDiff = Math.abs(serverTs - existingTs)
-                            if (timeDiff < 10000) { // 10 second window for photo uploads
-                              stableKey = key
-                              idBridgeRef.current.serverToTemp.set(m.id, key)
-                              idBridgeRef.current.tempToServer.set(key, m.id)
-                              break
-                            }
+                        const serverTs = getMessageTimestamp(m.time)
+                        const existingTs = getMessageTimestamp(existing.time)
+                        if (serverTs !== null && existingTs !== null) {
+                          const timeDiff = Math.abs(serverTs - existingTs)
+                          if (timeDiff < 30000) { // 30 second window for photo/GIF uploads
+                            stableKey = key
+                            idBridgeRef.current.serverToTemp.set(m.id, key)
+                            idBridgeRef.current.tempToServer.set(key, m.id)
+                            break
                           }
                         }
                       }
@@ -979,18 +978,17 @@ export default function ChatThread(){
                         idBridgeRef.current.tempToServer.set(key, m.id)
                         break
                       }
+                      // If existing is optimistic (blob URL), match by time window only
                       if (existing.isOptimistic && existing.video_path.startsWith('blob:')) {
-                        if (existing.text === messageText) {
-                          const serverTs = getMessageTimestamp(m.time)
-                          const existingTs = getMessageTimestamp(existing.time)
-                          if (serverTs !== null && existingTs !== null) {
-                            const timeDiff = Math.abs(serverTs - existingTs)
-                            if (timeDiff < 10000) {
-                              stableKey = key
-                              idBridgeRef.current.serverToTemp.set(m.id, key)
-                              idBridgeRef.current.tempToServer.set(key, m.id)
-                              break
-                            }
+                        const serverTs = getMessageTimestamp(m.time)
+                        const existingTs = getMessageTimestamp(existing.time)
+                        if (serverTs !== null && existingTs !== null) {
+                          const timeDiff = Math.abs(serverTs - existingTs)
+                          if (timeDiff < 30000) { // 30 second window for video uploads
+                            stableKey = key
+                            idBridgeRef.current.serverToTemp.set(m.id, key)
+                            idBridgeRef.current.tempToServer.set(key, m.id)
+                            break
                           }
                         }
                       }
