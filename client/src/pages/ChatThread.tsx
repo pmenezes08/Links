@@ -261,12 +261,17 @@ export default function ChatThread(){
     })
   }, [recording])
   
-  // Preload preview audio when recording preview is available (iOS fix)
+  // Cleanup preview audio when recording preview changes
   useEffect(() => {
-    const audio = previewAudioRef.current
-    if (audio && recordingPreview?.url) {
-      audio.src = recordingPreview.url
-      audio.load()
+    // When preview is cleared, stop and cleanup audio
+    if (!recordingPreview) {
+      const audio = previewAudioRef.current
+      if (audio) {
+        audio.pause()
+        audio.src = ''
+        previewAudioRef.current = null
+      }
+      setPreviewPlaying(false)
     }
   }, [recordingPreview])
   
@@ -1657,26 +1662,43 @@ export default function ChatThread(){
   
   // Toggle preview audio playback
   async function togglePreviewPlayback() {
-    const audio = previewAudioRef.current
-    if (!audio) return
+    if (!recordingPreview?.url) return
     
-    if (previewPlaying) {
+    // Get or create audio element
+    let audio = previewAudioRef.current
+    
+    if (previewPlaying && audio) {
       audio.pause()
       setPreviewPlaying(false)
-    } else {
-      try {
-        // iOS fix: ensure audio is loaded before playing
-        if (audio.readyState < 2) {
-          audio.load()
-          // Wait a bit for iOS to process the load
-          await new Promise(resolve => setTimeout(resolve, 100))
-        }
-        await audio.play()
-        setPreviewPlaying(true)
-      } catch (e) {
-        console.log('Preview play error:', e)
-        setPreviewPlaying(false)
+      return
+    }
+    
+    try {
+      // For iOS: create a fresh audio element each time to avoid caching issues
+      if (!audio) {
+        audio = new Audio()
+        audio.setAttribute('playsinline', 'true')
+        audio.setAttribute('webkit-playsinline', 'true')
+        audio.preload = 'auto'
+        audio.onended = () => setPreviewPlaying(false)
+        audio.onpause = () => setPreviewPlaying(false)
+        audio.onplay = () => setPreviewPlaying(true)
+        previewAudioRef.current = audio
       }
+      
+      // Set source if different
+      if (audio.src !== recordingPreview.url) {
+        audio.src = recordingPreview.url
+        audio.load()
+        // Wait for iOS to load
+        await new Promise(resolve => setTimeout(resolve, 150))
+      }
+      
+      await audio.play()
+      setPreviewPlaying(true)
+    } catch (e) {
+      console.log('Preview play error:', e)
+      setPreviewPlaying(false)
     }
   }
   
@@ -2449,19 +2471,7 @@ export default function ChatThread(){
                     {formatRecordingTime(((recordingPreview as any).duration || 0) * 1000)}
                   </span>
                 </div>
-                
-                {/* Hidden audio element for preview playback */}
-                <audio
-                  ref={previewAudioRef}
-                  src={recordingPreview?.url}
-                  preload="auto"
-                  playsInline
-                  webkit-playsinline="true"
-                  onEnded={() => setPreviewPlaying(false)}
-                  onPause={() => setPreviewPlaying(false)}
-                  onPlay={() => setPreviewPlaying(true)}
-                  className="hidden"
-                />
+                {/* Audio element is created programmatically in togglePreviewPlayback for iOS compatibility */}
               </div>
             )}
             
