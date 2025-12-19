@@ -11,6 +11,7 @@ export function useAudioRecorder() {
   const streamRef = useRef<MediaStream|null>(null)
   const [preview, setPreview] = useState<RecordingPreview|null>(null)
   const startedAtRef = useRef<number>(0)
+  const stoppedAtRef = useRef<number>(0)  // Capture when stop was called for accurate duration
   const finalizeTimerRef = useRef<any>(null)
   const stoppedRef = useRef(false)
   const finalizeAttemptRef = useRef(0)
@@ -51,6 +52,7 @@ export function useAudioRecorder() {
     recorderRef.current = null
     chunksRef.current = []
     stoppedRef.current = false
+    stoppedAtRef.current = 0
     finalizeAttemptRef.current = 0
     clearTimers()
     setLevel(0)
@@ -70,7 +72,7 @@ export function useAudioRecorder() {
     if (chunksRef.current.length === 0) {
       if (finalizeAttemptRef.current < 2) {
         finalizeAttemptRef.current += 1
-        finalizeTimerRef.current = setTimeout(finalize, 400)
+        finalizeTimerRef.current = setTimeout(finalize, 200)
         return
       }
     }
@@ -81,8 +83,9 @@ export function useAudioRecorder() {
         resetState()
         return
       }
-      // Use ref-based timing to avoid stale closure issues with recordMs
-      let actualDuration = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
+      // Use stoppedAtRef for accurate duration (captures when user pressed stop, not when finalize runs)
+      const stopTime = stoppedAtRef.current > 0 ? stoppedAtRef.current : Date.now()
+      let actualDuration = Math.max(1, Math.round((stopTime - startedAtRef.current) / 1000))
       try {
         const tmpUrl = URL.createObjectURL(blob)
         const a = new Audio(tmpUrl)
@@ -198,7 +201,8 @@ export function useAudioRecorder() {
       mr.onstop = () => {
         stoppedRef.current = true
         if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current)
-        finalizeTimerRef.current = setTimeout(finalize, 400)
+        // Reduced delay for faster preview (was 400ms)
+        finalizeTimerRef.current = setTimeout(finalize, isMobile ? 150 : 50)
       }
       setPreview(null)
       setRecording(true)
@@ -219,6 +223,8 @@ export function useAudioRecorder() {
   }, [finalize, isMobile])
 
   const stop = useCallback(() => {
+    // Capture stop time immediately for accurate duration calculation
+    stoppedAtRef.current = Date.now()
     try {
       const mr = recorderRef.current
       if (mr && mr.state !== 'inactive') {
@@ -229,21 +235,21 @@ export function useAudioRecorder() {
             try { 
               mr.stop() 
               // CRITICAL iOS FIX: Stop stream immediately after stopping recorder
-              setTimeout(() => stopStream(), 500)
+              setTimeout(() => stopStream(), 300)
             } catch {} 
-          }, 120)
+          }, 80)
         } else {
           mr.stop()
           // Stop stream for desktop too
-          setTimeout(() => stopStream(), 500)
+          setTimeout(() => stopStream(), 200)
         }
       }
     } catch {}
-    // UI safety reset
+    // UI safety reset (reduced from 800ms)
     setTimeout(() => { 
       setRecording(false)
       recorderRef.current = null
-    }, 800)
+    }, 400)
   }, [isMobile])
 
   const clearPreview = useCallback(() => {
@@ -257,6 +263,9 @@ export function useAudioRecorder() {
 
   // Stop and get blob directly (for "send while recording" scenario)
   const stopAndGetBlob = useCallback(async (): Promise<RecordingPreview | null> => {
+    // Capture duration immediately when stop is requested
+    const capturedDuration = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
+    
     const cleanupState = () => {
       setTimeout(() => {
         setRecording(false)
@@ -273,7 +282,7 @@ export function useAudioRecorder() {
         analyserRef.current = null
         sourceRef.current = null
         audioCtxRef.current = null
-      }, 100)
+      }, 50)
     }
     
     return new Promise<RecordingPreview | null>((resolve) => {
@@ -294,23 +303,22 @@ export function useAudioRecorder() {
       
       // Set up a one-time handler to get the data
       const onStopHandler = () => {
-        // Wait for finalization
+        // Check for chunks with minimal delay
         const checkPreview = () => {
-          // Check if chunks are available
           if (chunksRef.current.length > 0) {
             const preferType = isMobile ? 'audio/mp4' : 'audio/webm'
             const blob = new Blob(chunksRef.current, { type: preferType })
             if (blob.size > 0) {
-              const actualDuration = Math.round((Date.now() - startedAtRef.current) / 1000)
               const url = URL.createObjectURL(blob)
-              doResolve({ blob, url, duration: actualDuration })
+              doResolve({ blob, url, duration: capturedDuration })
               return
             }
           }
-          // Retry
-          setTimeout(checkPreview, 100)
+          // Retry with shorter interval
+          setTimeout(checkPreview, 50)
         }
-        setTimeout(checkPreview, 200)
+        // Start checking immediately for desktop, small delay for mobile
+        setTimeout(checkPreview, isMobile ? 100 : 20)
       }
       
       stoppedRef.current = true
@@ -321,30 +329,29 @@ export function useAudioRecorder() {
           try { 
             mr.stop()
             onStopHandler()
-            setTimeout(() => stopStream(), 500)
+            setTimeout(() => stopStream(), 300)
           } catch {}
-        }, 120)
+        }, 80)
       } else {
         mr.stop()
         onStopHandler()
-        setTimeout(() => stopStream(), 500)
+        setTimeout(() => stopStream(), 200)
       }
       
-      // Safety timeout - resolve with whatever we have
+      // Safety timeout - resolve with whatever we have (reduced from 2000ms)
       setTimeout(() => {
         if (resolved) return
         if (chunksRef.current.length > 0) {
           const preferType = isMobile ? 'audio/mp4' : 'audio/webm'
           const blob = new Blob(chunksRef.current, { type: preferType })
           if (blob.size > 0) {
-            const actualDuration = Math.round((Date.now() - startedAtRef.current) / 1000)
             const url = URL.createObjectURL(blob)
-            doResolve({ blob, url, duration: actualDuration })
+            doResolve({ blob, url, duration: capturedDuration })
             return
           }
         }
         doResolve(null)
-      }, 2000)
+      }, 1000)
     })
   }, [isMobile])
 
