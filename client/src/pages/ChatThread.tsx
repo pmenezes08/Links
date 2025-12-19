@@ -2392,20 +2392,31 @@ export default function ChatThread(){
               <div className="flex-1 flex items-center px-2 py-1.5 gap-2">
                 {/* Delete button */}
                 <button
+                  onTouchStart={(e) => {
+                    e.preventDefault()
+                    cancelRecordingPreview()
+                    setPreviewPlaying(false)
+                  }}
                   onClick={() => { cancelRecordingPreview(); setPreviewPlaying(false) }}
-                  className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors"
+                  className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors active:scale-95"
                   aria-label="Delete recording"
+                  style={{ touchAction: 'manipulation' }}
                 >
-                  <i className="fa-solid fa-trash text-sm" />
+                  <i className="fa-solid fa-trash text-sm pointer-events-none" />
                 </button>
                 
                 {/* Play/Pause button */}
                 <button
+                  onTouchStart={(e) => {
+                    e.preventDefault()
+                    togglePreviewPlayback()
+                  }}
                   onClick={togglePreviewPlayback}
-                  className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors"
+                  className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
                   aria-label={previewPlaying ? 'Pause' : 'Play'}
+                  style={{ touchAction: 'manipulation' }}
                 >
-                  <i className={`fa-solid ${previewPlaying ? 'fa-pause' : 'fa-play'} text-sm ${!previewPlaying ? 'ml-0.5' : ''}`} />
+                  <i className={`fa-solid ${previewPlaying ? 'fa-pause' : 'fa-play'} text-sm pointer-events-none ${!previewPlaying ? 'ml-0.5' : ''}`} />
                 </button>
                 
                 {/* Waveform placeholder / duration */}
@@ -2494,11 +2505,11 @@ export default function ChatThread(){
           {MIC_ENABLED && !recording && !recordingPreview && !draft.trim() && (
             <button
               className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
-              onClick={checkMicrophonePermission}
-              onTouchEnd={(e) => {
+              onTouchStart={(e) => {
                 e.preventDefault()
                 checkMicrophonePermission()
               }}
+              onClick={checkMicrophonePermission}
               aria-label="Start voice message"
               style={{
                 touchAction: 'manipulation',
@@ -2516,7 +2527,11 @@ export default function ChatThread(){
             <>
               {/* Pause button - stops recording, goes to preview */}
               <button
-                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors"
+                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors active:scale-95"
+                onTouchStart={(e) => {
+                  e.preventDefault()
+                  stopVoiceRecording()
+                }}
                 onClick={stopVoiceRecording}
                 aria-label="Pause recording"
                 style={{
@@ -2524,12 +2539,16 @@ export default function ChatThread(){
                   WebkitTapHighlightColor: 'transparent'
                 }}
               >
-                <i className="fa-solid fa-pause text-base" />
+                <i className="fa-solid fa-pause text-base pointer-events-none" />
               </button>
               
               {/* Send button - sends directly */}
               <button
-                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors"
+                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+                onTouchStart={(e) => {
+                  e.preventDefault()
+                  sendVoiceDirectly()
+                }}
                 onClick={sendVoiceDirectly}
                 aria-label="Send voice message"
                 style={{
@@ -2537,7 +2556,7 @@ export default function ChatThread(){
                   WebkitTapHighlightColor: 'transparent'
                 }}
               >
-                <i className="fa-solid fa-paper-plane text-base" />
+                <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
               </button>
             </>
           )}
@@ -2545,7 +2564,12 @@ export default function ChatThread(){
           {/* Preview controls - Send button only (delete is inline) */}
           {MIC_ENABLED && !recording && recordingPreview && (
             <button
-              className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors"
+              className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+              onTouchStart={(e) => {
+                if (sending) return
+                e.preventDefault()
+                sendRecordingPreview()
+              }}
               onClick={sendRecordingPreview}
               disabled={sending}
               aria-label="Send voice message"
@@ -2555,9 +2579,9 @@ export default function ChatThread(){
               }}
             >
               {sending ? (
-                <i className="fa-solid fa-spinner fa-spin text-base" />
+                <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
               ) : (
-                <i className="fa-solid fa-paper-plane text-base" />
+                <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
               )}
             </button>
           )}
