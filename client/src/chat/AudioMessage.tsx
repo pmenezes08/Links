@@ -9,14 +9,23 @@ interface AudioMessageProps {
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
+// Detect iOS for special handling
+const isIOS = () => {
+  if (typeof navigator === 'undefined') return false
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
 export default function AudioMessage({ message, audioPath }: AudioMessageProps) {
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [isDragging, setIsDragging] = useState(false)
+  const [isAudioReady, setIsAudioReady] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
+  const hasPlayedOnceRef = useRef(false)  // Track if audio has been "unlocked" on iOS
 
   // Add cache-busting to prevent caching issues
   const cacheBustedPath = useMemo(() => {
@@ -29,6 +38,10 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     const audio = audioRef.current
     if (!audio) return
 
+    // Reset state for new audio
+    setIsAudioReady(false)
+    hasPlayedOnceRef.current = false
+
     // Force load on iOS to prevent stuck state
     try {
       audio.load()
@@ -40,6 +53,10 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       if (audio.duration && isFinite(audio.duration)) {
         setDuration(audio.duration)
       }
+    }
+
+    const handleCanPlay = () => {
+      setIsAudioReady(true)
     }
 
     const handleTimeUpdate = () => {
@@ -55,11 +72,15 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     }
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+    audio.addEventListener('canplay', handleCanPlay)
+    audio.addEventListener('canplaythrough', handleCanPlay)
     audio.addEventListener('timeupdate', handleTimeUpdate)
     audio.addEventListener('durationchange', handleDurationChange)
 
     return () => {
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.removeEventListener('canplay', handleCanPlay)
+      audio.removeEventListener('canplaythrough', handleCanPlay)
       audio.removeEventListener('timeupdate', handleTimeUpdate)
       audio.removeEventListener('durationchange', handleDurationChange)
     }
