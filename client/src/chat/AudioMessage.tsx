@@ -54,12 +54,28 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       }
     }
 
+    const onError = (e: Event) => {
+      console.log('Audio error:', e)
+      setPlaying(false)
+    }
+
+    const onStalled = () => {
+      console.log('Audio stalled')
+    }
+
+    const onWaiting = () => {
+      console.log('Audio waiting for data')
+    }
+
     audio.addEventListener('loadedmetadata', onLoadedMetadata)
     audio.addEventListener('canplaythrough', onCanPlayThrough)
     audio.addEventListener('timeupdate', onTimeUpdate)
     audio.addEventListener('ended', onEnded)
     audio.addEventListener('play', onPlay)
     audio.addEventListener('pause', onPause)
+    audio.addEventListener('error', onError)
+    audio.addEventListener('stalled', onStalled)
+    audio.addEventListener('waiting', onWaiting)
 
     // Set source and load
     audio.src = audioPath
@@ -72,6 +88,9 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       audio.removeEventListener('ended', onEnded)
       audio.removeEventListener('play', onPlay)
       audio.removeEventListener('pause', onPause)
+      audio.removeEventListener('error', onError)
+      audio.removeEventListener('stalled', onStalled)
+      audio.removeEventListener('waiting', onWaiting)
       audio.pause()
       audio.src = ''
       audioRef.current = null
@@ -141,22 +160,19 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     }
   }
 
-  const handleProgressClick = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation()
+  const handleProgressClick = (e: React.PointerEvent) => {
     const bar = progressBarRef.current
     if (!bar) return
 
     const rect = bar.getBoundingClientRect()
-    const clientX = 'touches' in e ? e.touches[0]?.clientX ?? 0 : e.clientX
-    const x = Math.max(0, Math.min(clientX - rect.left, rect.width))
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width))
     const percent = x / rect.width
 
     // On click/tap, seek and play
     seekTo(percent, true)
   }
 
-  const cycleSpeed = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const cycleSpeed = () => {
     const currentIndex = PLAYBACK_SPEEDS.indexOf(playbackSpeed)
     const nextIndex = (currentIndex + 1) % PLAYBACK_SPEEDS.length
     setPlaybackSpeed(PLAYBACK_SPEEDS[nextIndex])
@@ -170,13 +186,9 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       <div className="flex items-center gap-3">
         {/* Play/Pause Button */}
         <button
-          onTouchStart={(e) => {
+          onPointerDown={(e) => {
             e.stopPropagation()
             e.preventDefault()
-            togglePlay()
-          }}
-          onClick={(e) => {
-            e.stopPropagation()
             togglePlay()
           }}
           className="w-10 h-10 rounded-full flex items-center justify-center transition-colors bg-[#4db6ac] hover:bg-[#45a99c] flex-shrink-0 active:scale-95"
@@ -191,8 +203,11 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
           <div
             ref={progressBarRef}
             className="h-8 flex items-center cursor-pointer"
-            onTouchStart={handleProgressClick}
-            onClick={handleProgressClick}
+            onPointerDown={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              handleProgressClick(e)
+            }}
             style={{ touchAction: 'manipulation' }}
           >
             <div className="w-full h-2 bg-white/15 rounded-full overflow-hidden relative">
@@ -216,12 +231,11 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
             
             {/* Speed Control */}
             <button
-              onTouchStart={(e) => {
+              onPointerDown={(e) => {
                 e.stopPropagation()
                 e.preventDefault()
-                cycleSpeed(e as any)
+                cycleSpeed()
               }}
-              onClick={cycleSpeed}
               className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-colors"
               style={{ touchAction: 'manipulation' }}
             >
