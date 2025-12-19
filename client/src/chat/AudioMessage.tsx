@@ -111,49 +111,60 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     const percent = x / rect.width
     const newTime = percent * seekDuration
     
+    // Update UI immediately
     setCurrentTime(newTime)
     
+    const needToPlay = forcePlay || (shouldResume && wasPlayingRef.current)
+    
     try {
-      // iOS Capacitor fix: seeking only works reliably while audio is playing
-      // So we play first (muted), seek, then either continue or pause
-      const needToPlay = forcePlay || (shouldResume && wasPlayingRef.current)
+      // iOS Capacitor fix: currentTime must be set AFTER play() starts
+      // We use the 'playing' event to know when audio has actually started
       
-      // Store current volume and mute for the seek operation
-      const originalVolume = audio.volume
-      
-      // Start playing (muted if we're just seeking)
-      if (!needToPlay) {
-        audio.volume = 0
-      }
-      
-      // Play first to unlock iOS audio
-      try {
-        await audio.play()
-        hasPlayedOnceRef.current = true
-      } catch (e) {
-        // If play fails, try setting currentTime anyway
-        audio.currentTime = newTime
-        audio.volume = originalVolume
-        return
-      }
-      
-      // Now seek while playing
-      audio.currentTime = newTime
-      
-      // Small delay to let iOS process the seek
-      await new Promise(resolve => setTimeout(resolve, 30))
-      
-      if (needToPlay) {
-        // Continue playing
-        setPlaying(true)
-      } else {
-        // Pause and restore volume
-        audio.pause()
-        audio.volume = originalVolume
-        setPlaying(false)
-      }
+      await new Promise<void>((resolve, reject) => {
+        const onPlaying = () => {
+          audio.removeEventListener('playing', onPlaying)
+          // Now that audio is playing, we can seek
+          audio.currentTime = newTime
+          
+          if (!needToPlay) {
+            // If user just wanted to seek (not play), pause after seeking
+            setTimeout(() => {
+              audio.pause()
+              setPlaying(false)
+              resolve()
+            }, 50)
+          } else {
+            setPlaying(true)
+            resolve()
+          }
+        }
+        
+        audio.addEventListener('playing', onPlaying)
+        
+        // Start playback
+        audio.play().then(() => {
+          hasPlayedOnceRef.current = true
+        }).catch((e) => {
+          audio.removeEventListener('playing', onPlaying)
+          reject(e)
+        })
+        
+        // Fallback timeout
+        setTimeout(() => {
+          audio.removeEventListener('playing', onPlaying)
+          // Try direct seek as fallback
+          audio.currentTime = newTime
+          if (needToPlay) {
+            audio.play().catch(() => {})
+            setPlaying(true)
+          }
+          resolve()
+        }, 300)
+      })
     } catch (err) {
       console.log('Seek error:', err)
+      // Last resort: just try to set the time
+      audio.currentTime = newTime
     }
   }
 
