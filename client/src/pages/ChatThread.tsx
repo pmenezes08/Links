@@ -261,6 +261,15 @@ export default function ChatThread(){
     })
   }, [recording])
   
+  // Preload preview audio when recording preview is available (iOS fix)
+  useEffect(() => {
+    const audio = previewAudioRef.current
+    if (audio && recordingPreview?.url) {
+      audio.src = recordingPreview.url
+      audio.load()
+    }
+  }, [recordingPreview])
+  
   // Layout helpers
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const defaultComposerPadding = 64
@@ -1647,7 +1656,7 @@ export default function ChatThread(){
   }
   
   // Toggle preview audio playback
-  function togglePreviewPlayback() {
+  async function togglePreviewPlayback() {
     const audio = previewAudioRef.current
     if (!audio) return
     
@@ -1655,7 +1664,19 @@ export default function ChatThread(){
       audio.pause()
       setPreviewPlaying(false)
     } else {
-      audio.play().then(() => setPreviewPlaying(true)).catch(() => setPreviewPlaying(false))
+      try {
+        // iOS fix: ensure audio is loaded before playing
+        if (audio.readyState < 2) {
+          audio.load()
+          // Wait a bit for iOS to process the load
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+        await audio.play()
+        setPreviewPlaying(true)
+      } catch (e) {
+        console.log('Preview play error:', e)
+        setPreviewPlaying(false)
+      }
     }
   }
   
