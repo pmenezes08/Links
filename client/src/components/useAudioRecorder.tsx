@@ -209,11 +209,9 @@ export function useAudioRecorder() {
       startedAtRef.current = Date.now()
       if (recordTimerRef.current) clearInterval(recordTimerRef.current)
       recordTimerRef.current = setInterval(() => setRecordMs(Date.now() - startedAtRef.current), 200)
-      if (isMobile) {
-        mr.start()
-      } else {
-        mr.start(1000)
-      }
+      // Use timeslice for all platforms to avoid memory issues with long recordings
+      // iOS especially needs this to prevent truncation of long audio
+      mr.start(1000)
       // No time limit - user controls when to stop
     } catch (e:any) {
       alert('Could not access microphone: ' + (e?.message || 'Unknown error'))
@@ -229,23 +227,18 @@ export function useAudioRecorder() {
       const mr = recorderRef.current
       if (mr && mr.state !== 'inactive') {
         stoppedRef.current = true
-        if (isMobile) {
-          try { mr.requestData() } catch {}
-          setTimeout(() => { 
-            try { 
-              mr.stop() 
-              // CRITICAL iOS FIX: Stop stream immediately after stopping recorder
-              setTimeout(() => stopStream(), 300)
-            } catch {} 
-          }, 80)
-        } else {
-          mr.stop()
-          // Stop stream for desktop too
-          setTimeout(() => stopStream(), 200)
-        }
+        // Request any remaining buffered data before stopping
+        try { mr.requestData() } catch {}
+        // Small delay to let the data be processed, then stop
+        setTimeout(() => { 
+          try { 
+            mr.stop() 
+            setTimeout(() => stopStream(), 300)
+          } catch {} 
+        }, isMobile ? 80 : 50)
       }
     } catch {}
-    // UI safety reset (reduced from 800ms)
+    // UI safety reset
     setTimeout(() => { 
       setRecording(false)
       recorderRef.current = null
@@ -323,20 +316,15 @@ export function useAudioRecorder() {
       
       stoppedRef.current = true
       
-      if (isMobile) {
-        try { mr.requestData() } catch {}
-        setTimeout(() => {
-          try { 
-            mr.stop()
-            onStopHandler()
-            setTimeout(() => stopStream(), 300)
-          } catch {}
-        }, 80)
-      } else {
-        mr.stop()
-        onStopHandler()
-        setTimeout(() => stopStream(), 200)
-      }
+      // Request any remaining buffered data before stopping
+      try { mr.requestData() } catch {}
+      setTimeout(() => {
+        try { 
+          mr.stop()
+          onStopHandler()
+          setTimeout(() => stopStream(), 300)
+        } catch {}
+      }, isMobile ? 80 : 50)
       
       // Safety timeout - resolve with whatever we have (reduced from 2000ms)
       setTimeout(() => {
