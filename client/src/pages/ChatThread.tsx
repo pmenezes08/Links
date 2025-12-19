@@ -2433,6 +2433,9 @@ export default function ChatThread(){
                 <audio
                   ref={previewAudioRef}
                   src={recordingPreview?.url}
+                  preload="auto"
+                  playsInline
+                  webkit-playsinline="true"
                   onEnded={() => setPreviewPlaying(false)}
                   onPause={() => setPreviewPlaying(false)}
                   onPlay={() => setPreviewPlaying(true)}

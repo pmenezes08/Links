@@ -111,41 +111,47 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     const percent = x / rect.width
     const newTime = percent * seekDuration
     
+    setCurrentTime(newTime)
+    
     try {
-      // Pause first
-      audio.pause()
+      // iOS Capacitor fix: seeking only works reliably while audio is playing
+      // So we play first (muted), seek, then either continue or pause
+      const needToPlay = forcePlay || (shouldResume && wasPlayingRef.current)
       
-      // On iOS, we need to wait for the 'seeked' event before playing
-      const seekAndPlay = () => new Promise<void>((resolve) => {
-        const onSeeked = async () => {
-          audio.removeEventListener('seeked', onSeeked)
-          
-          if (forcePlay || (shouldResume && wasPlayingRef.current)) {
-            try {
-              await audio.play()
-              hasPlayedOnceRef.current = true
-              setPlaying(true)
-            } catch (e) {
-              console.log('Play after seek error:', e)
-            }
-          }
-          resolve()
-        }
-        
-        audio.addEventListener('seeked', onSeeked)
-        
-        // Set the current time to trigger seeking
+      // Store current volume and mute for the seek operation
+      const originalVolume = audio.volume
+      
+      // Start playing (muted if we're just seeking)
+      if (!needToPlay) {
+        audio.volume = 0
+      }
+      
+      // Play first to unlock iOS audio
+      try {
+        await audio.play()
+        hasPlayedOnceRef.current = true
+      } catch (e) {
+        // If play fails, try setting currentTime anyway
         audio.currentTime = newTime
-        setCurrentTime(newTime)
-        
-        // Fallback timeout in case seeked event doesn't fire
-        setTimeout(() => {
-          audio.removeEventListener('seeked', onSeeked)
-          resolve()
-        }, 500)
-      })
+        audio.volume = originalVolume
+        return
+      }
       
-      await seekAndPlay()
+      // Now seek while playing
+      audio.currentTime = newTime
+      
+      // Small delay to let iOS process the seek
+      await new Promise(resolve => setTimeout(resolve, 30))
+      
+      if (needToPlay) {
+        // Continue playing
+        setPlaying(true)
+      } else {
+        // Pause and restore volume
+        audio.pause()
+        audio.volume = originalVolume
+        setPlaying(false)
+      }
     } catch (err) {
       console.log('Seek error:', err)
     }
@@ -177,13 +183,15 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     const audio = audioRef.current
     if (!audio) return
     
-    // On touch end, always start playing (this is the expected mobile UX)
+    // On touch end, always start playing from current position (expected mobile UX)
     try {
-      // Wait a tick for iOS to process the last seek
-      await new Promise(resolve => setTimeout(resolve, 50))
-      await audio.play()
-      hasPlayedOnceRef.current = true
-      setPlaying(true)
+      // Audio should already be at the right position from touch move
+      // Just ensure it's playing
+      if (!playing) {
+        await audio.play()
+        hasPlayedOnceRef.current = true
+        setPlaying(true)
+      }
     } catch (e) {
       console.log('Play on touch end error:', e)
     }
