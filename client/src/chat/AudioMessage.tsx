@@ -102,6 +102,7 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
         setPlaying(false)
       } else {
         await audioRef.current.play()
+        hasPlayedOnceRef.current = true  // Mark as unlocked
         setPlaying(true)
       }
     } catch {
@@ -128,14 +129,32 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     const newTime = percent * seekDuration
     
     try {
-      // Pause during seek to prevent audio glitches
-      audio.pause()
-      audio.currentTime = newTime
+      // iOS Capacitor fix: audio must be "unlocked" before seeking works
+      // If not played yet, we need to play first, then seek
+      if (isIOS() && !hasPlayedOnceRef.current) {
+        // Unlock the audio by playing briefly
+        const originalVolume = audio.volume
+        audio.volume = 0  // Mute to avoid audio blip
+        await audio.play()
+        hasPlayedOnceRef.current = true
+        audio.pause()
+        audio.volume = originalVolume
+        // Small delay to let iOS process the unlock
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      
+      // Now seek - use fastSeek if available (better for iOS), otherwise currentTime
+      if (typeof audio.fastSeek === 'function') {
+        audio.fastSeek(newTime)
+      } else {
+        audio.currentTime = newTime
+      }
       setCurrentTime(newTime)
       
       // Play if forcePlay is true, or resume if was playing and this is end of seek
       if (forcePlay || (shouldResume && wasPlayingRef.current)) {
         await audio.play()
+        hasPlayedOnceRef.current = true
         setPlaying(true)
       }
     } catch (err) {
@@ -166,11 +185,16 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
 
   const handleTouchEnd = async () => {
     setIsDragging(false)
-    // Resume playback if was playing
     const audio = audioRef.current
-    if (wasPlayingRef.current && audio) {
+    if (!audio) return
+    
+    // On iOS, always start playing after touch seek (user expectation)
+    // On other platforms, only resume if was playing
+    const shouldPlay = isIOS() || wasPlayingRef.current
+    if (shouldPlay) {
       try {
         await audio.play()
+        hasPlayedOnceRef.current = true
         setPlaying(true)
       } catch {}
     }
@@ -276,11 +300,11 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       <audio
         ref={audioRef}
         src={cacheBustedPath}
-        preload="metadata"
+        preload="auto"
         playsInline
         webkit-playsinline="true"
-        onEnded={() => { setPlaying(false); setCurrentTime(0) }}
-        onPlay={() => setPlaying(true)}
+        onEnded={() => { setPlaying(false); setCurrentTime(0); hasPlayedOnceRef.current = false }}
+        onPlay={() => { setPlaying(true); hasPlayedOnceRef.current = true }}
         onPause={() => setPlaying(false)}
         className="hidden"
       />
