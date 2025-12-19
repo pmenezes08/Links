@@ -89,55 +89,93 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     }
   }
 
-  const seekToPosition = (clientX: number) => {
+  // Track if we were playing before seeking
+  const wasPlayingRef = useRef(false)
+
+  const seekToPosition = async (clientX: number, shouldResume = false) => {
     const bar = progressBarRef.current
     const audio = audioRef.current
-    if (!bar || !audio || !duration) return
+    if (!bar || !audio) return
+    
+    // Use duration or displayDuration for seeking
+    const seekDuration = duration > 0 ? duration : displayDuration
+    if (!seekDuration || seekDuration <= 0) return
 
     const rect = bar.getBoundingClientRect()
     const x = Math.max(0, Math.min(clientX - rect.left, rect.width))
     const percent = x / rect.width
-    const newTime = percent * duration
+    const newTime = percent * seekDuration
     
-    audio.currentTime = newTime
-    setCurrentTime(newTime)
+    try {
+      // Pause during seek to prevent audio glitches
+      audio.pause()
+      audio.currentTime = newTime
+      setCurrentTime(newTime)
+      
+      // Resume if was playing and this is end of seek
+      if (shouldResume && wasPlayingRef.current) {
+        await audio.play()
+        setPlaying(true)
+      }
+    } catch (err) {
+      console.log('Seek error:', err)
+    }
   }
 
-  const handleProgressClick = (e: React.MouseEvent) => {
+  const handleProgressClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    seekToPosition(e.clientX)
+    wasPlayingRef.current = playing
+    await seekToPosition(e.clientX, true)
   }
 
   const handleTouchStart = (e: React.TouchEvent) => {
     e.stopPropagation()
+    wasPlayingRef.current = playing
     setIsDragging(true)
     const touch = e.touches[0]
-    if (touch) seekToPosition(touch.clientX)
+    if (touch) seekToPosition(touch.clientX, false)
   }
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!isDragging) return
     const touch = e.touches[0]
-    if (touch) seekToPosition(touch.clientX)
+    if (touch) seekToPosition(touch.clientX, false)
   }
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = async () => {
     setIsDragging(false)
+    // Resume playback if was playing
+    const audio = audioRef.current
+    if (wasPlayingRef.current && audio) {
+      try {
+        await audio.play()
+        setPlaying(true)
+      } catch {}
+    }
   }
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.stopPropagation()
+    wasPlayingRef.current = playing
     setIsDragging(true)
-    seekToPosition(e.clientX)
+    seekToPosition(e.clientX, false)
     
     const handleMouseMove = (ev: MouseEvent) => {
-      seekToPosition(ev.clientX)
+      seekToPosition(ev.clientX, false)
     }
     
-    const handleMouseUp = () => {
+    const handleMouseUp = async () => {
       setIsDragging(false)
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
+      // Resume playback if was playing
+      const audio = audioRef.current
+      if (wasPlayingRef.current && audio) {
+        try {
+          await audio.play()
+          setPlaying(true)
+        } catch {}
+      }
     }
     
     document.addEventListener('mousemove', handleMouseMove)

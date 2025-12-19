@@ -109,7 +109,19 @@ export default function ChatThread(){
   const cameraInputRef = useRef<HTMLInputElement|null>(null)
   const audioInputRef = useRef<HTMLInputElement|null>(null)
   const videoInputRef = useRef<HTMLInputElement|null>(null)
-  const { recording, recordMs, preview: recordingPreview, start: startVoiceRecording, stop: stopVoiceRecording, clearPreview: cancelRecordingPreview, level } = useAudioRecorder() as any
+  const { recording, recordMs, preview: recordingPreview, start: startVoiceRecording, stop: stopVoiceRecording, clearPreview: cancelRecordingPreview, level, stopAndGetBlob } = useAudioRecorder() as any
+  
+  // Format milliseconds as MM:SS
+  const formatRecordingTime = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000)
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
+  
+  // State for inline preview audio playback
+  const [previewPlaying, setPreviewPlaying] = useState(false)
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
   const setSending = useCallback((value: boolean) => {
     sendingLockRef.current = value
     setSendingState(value)
@@ -1613,7 +1625,38 @@ export default function ChatThread(){
     // CRITICAL iOS FIX: Add small delay before cleanup to ensure blob is sent
     setTimeout(() => {
       cancelRecordingPreview()
+      setPreviewPlaying(false)
     }, 100)
+  }
+  
+  // Send voice message directly while recording (WhatsApp-style)
+  async function sendVoiceDirectly() {
+    if (!recording) return
+    try {
+      const result = await stopAndGetBlob()
+      if (result && result.blob && result.blob.size > 0) {
+        uploadAudioBlobWithDuration(result.blob, result.duration)
+        // Clean up the URL after a delay
+        setTimeout(() => {
+          try { URL.revokeObjectURL(result.url) } catch {}
+        }, 1000)
+      }
+    } catch (err) {
+      console.error('Failed to send voice directly:', err)
+    }
+  }
+  
+  // Toggle preview audio playback
+  function togglePreviewPlayback() {
+    const audio = previewAudioRef.current
+    if (!audio) return
+    
+    if (previewPlaying) {
+      audio.pause()
+      setPreviewPlaying(false)
+    } else {
+      audio.play().then(() => setPreviewPlaying(true)).catch(() => setPreviewPlaying(false))
+    }
   }
   
   async function uploadAudioBlobWithDuration(blob: Blob, durationSeconds: number){
@@ -2320,22 +2363,67 @@ export default function ChatThread(){
           >
             {/* Recording sound bar - replaces text input during recording */}
             {MIC_ENABLED && recording && (
-              <div className="flex-1 flex items-center px-4 py-2.5 gap-3">
-                <div className="flex items-center gap-3 flex-1">
-                  <span className="inline-block w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
-                  {/* Unified level bar (simple) */}
-                  <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
-                    <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, (level||0)*100))}%` }} />
-                  </div>
-                  <div className="text-xs text-white/70 ml-2">
-                    Recording...
-                  </div>
+              <div className="flex-1 flex items-center px-3 py-2 gap-2">
+                {/* Recording indicator */}
+                <span className="inline-block w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse flex-shrink-0" />
+                
+                {/* Level bar */}
+                <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
+                  <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, (level||0)*100))}%` }} />
+                </div>
+                
+                {/* Duration display */}
+                <div className="text-sm font-mono text-white tabular-nums flex-shrink-0 min-w-[45px] text-right">
+                  {formatRecordingTime(recordMs || 0)}
                 </div>
               </div>
             )}
             
-            {/* Regular text input - hidden during recording */}
-            {!(MIC_ENABLED && recording) && (
+            {/* Inline voice preview - WhatsApp style (replaces text input when preview exists) */}
+            {MIC_ENABLED && !recording && recordingPreview && (
+              <div className="flex-1 flex items-center px-2 py-1.5 gap-2">
+                {/* Delete button */}
+                <button
+                  onClick={() => { cancelRecordingPreview(); setPreviewPlaying(false) }}
+                  className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors"
+                  aria-label="Delete recording"
+                >
+                  <i className="fa-solid fa-trash text-sm" />
+                </button>
+                
+                {/* Play/Pause button */}
+                <button
+                  onClick={togglePreviewPlayback}
+                  className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors"
+                  aria-label={previewPlaying ? 'Pause' : 'Play'}
+                >
+                  <i className={`fa-solid ${previewPlaying ? 'fa-pause' : 'fa-play'} text-sm ${!previewPlaying ? 'ml-0.5' : ''}`} />
+                </button>
+                
+                {/* Waveform placeholder / duration */}
+                <div className="flex-1 flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                    <div className="h-full bg-[#4db6ac] w-full" />
+                  </div>
+                  <span className="text-xs text-white/70 tabular-nums flex-shrink-0">
+                    {formatRecordingTime(((recordingPreview as any).duration || 0) * 1000)}
+                  </span>
+                </div>
+                
+                {/* Hidden audio element for preview playback */}
+                <audio
+                  ref={previewAudioRef}
+                  src={recordingPreview?.url}
+                  onEnded={() => setPreviewPlaying(false)}
+                  onPause={() => setPreviewPlaying(false)}
+                  onPlay={() => setPreviewPlaying(true)}
+                  className="hidden"
+                />
+              </div>
+            )}
+            
+            {/* Regular text input - hidden during recording or preview */}
+            {!(MIC_ENABLED && (recording || recordingPreview)) && (
               <textarea
                 ref={textareaRef}
                 rows={1}
@@ -2394,8 +2482,8 @@ export default function ChatThread(){
             )}
           </div>
 
-          {/* Mic button - outside input container, side by side with send */}
-          {MIC_ENABLED && !recording && !draft.trim() && (
+          {/* Mic button - shown when not recording, no preview, and no text */}
+          {MIC_ENABLED && !recording && !recordingPreview && !draft.trim() && (
             <button
               className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
               onClick={checkMicrophonePermission}
@@ -2415,20 +2503,59 @@ export default function ChatThread(){
             </button>
           )}
 
-          {/* Send/Stop button */}
-          {MIC_ENABLED && recording ? (
+          {/* Recording controls - WhatsApp style: Pause + Send */}
+          {MIC_ENABLED && recording && (
+            <>
+              {/* Pause button - stops recording, goes to preview */}
+              <button
+                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors"
+                onClick={stopVoiceRecording}
+                aria-label="Pause recording"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent'
+                }}
+              >
+                <i className="fa-solid fa-pause text-base" />
+              </button>
+              
+              {/* Send button - sends directly */}
+              <button
+                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors"
+                onClick={sendVoiceDirectly}
+                aria-label="Send voice message"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent'
+                }}
+              >
+                <i className="fa-solid fa-paper-plane text-base" />
+              </button>
+            </>
+          )}
+          
+          {/* Preview controls - Send button only (delete is inline) */}
+          {MIC_ENABLED && !recording && recordingPreview && (
             <button
-              className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white"
-              onClick={stopVoiceRecording}
-              aria-label="Stop recording"
+              className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors"
+              onClick={sendRecordingPreview}
+              disabled={sending}
+              aria-label="Send voice message"
               style={{
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent'
               }}
             >
-              <i className="fa-solid fa-stop text-base" />
+              {sending ? (
+                <i className="fa-solid fa-spinner fa-spin text-base" />
+              ) : (
+                <i className="fa-solid fa-paper-plane text-base" />
+              )}
             </button>
-          ) : (
+          )}
+          
+          {/* Normal send button - shown when not recording and no preview */}
+          {!(MIC_ENABLED && (recording || recordingPreview)) && (
             <button
               className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
                 sending 
@@ -2603,29 +2730,7 @@ export default function ChatThread(){
         </div>
       )}
 
-      {/* Voice message preview modal */}
-      {recordingPreview && (
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && cancelRecordingPreview()}>
-          <div className="w-[92%] max-w-[480px] rounded-2xl border border-white/10 bg-[#0b0b0b] p-4 shadow-[0_0_40px_rgba(77,182,172,0.12)]">
-            <div className="flex items-center justify-between mb-3">
-              <div className="font-semibold text-white">Preview voice message</div>
-              <button className="px-2 py-1 rounded-full border border-white/10 text-white/70 hover:text-white" onClick={cancelRecordingPreview} aria-label="Close">✕</button>
-            </div>
-            <div className="mb-3 text-sm text-white/70">Duration: {Math.min(60, (recordingPreview as any).duration || Math.round((recordMs||0)/1000))}s</div>
-            <div className="mb-4">
-              <audio controls src={recordingPreview.url} className="w-full" playsInline webkit-playsinline="true" />
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <button onClick={cancelRecordingPreview} className="px-2.5 py-1.5 rounded-lg border border-white/10 text-white/70 hover:bg-white/5 text-sm">
-                <i className="fa-regular fa-trash-can mr-2" />Discard
-              </button>
-              <button onClick={sendRecordingPreview} className="px-3.5 py-1.5 rounded-lg bg-[#4db6ac] text-black hover:brightness-110 text-sm">
-                <i className="fa-solid fa-paper-plane mr-2" />Send
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Voice message preview is now inline in the composer - no modal needed */}
 
       {/* Photo preview modal */}
       {previewImage && (

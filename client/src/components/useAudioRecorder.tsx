@@ -209,11 +209,7 @@ export function useAudioRecorder() {
       } else {
         mr.start(1000)
       }
-      // Auto-cap recording at 60s
-      if (stopTimeoutRef.current) clearTimeout(stopTimeoutRef.current)
-      stopTimeoutRef.current = setTimeout(() => {
-        try { if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop() } catch {}
-      }, 60000)
+      // No time limit - user controls when to stop
     } catch (e:any) {
       alert('Could not access microphone: ' + (e?.message || 'Unknown error'))
       resetState()
@@ -258,6 +254,99 @@ export function useAudioRecorder() {
     setPreview(null)
   }, [preview])
 
+  // Stop and get blob directly (for "send while recording" scenario)
+  const stopAndGetBlob = useCallback(async (): Promise<RecordingPreview | null> => {
+    const cleanupState = () => {
+      setTimeout(() => {
+        setRecording(false)
+        recorderRef.current = null
+        chunksRef.current = []
+        clearTimers()
+        setLevel(0)
+        try {
+          if (visRafRef.current) cancelAnimationFrame(visRafRef.current)
+          if (analyserRef.current) analyserRef.current.disconnect()
+          if (sourceRef.current) sourceRef.current.disconnect()
+          if (audioCtxRef.current) audioCtxRef.current.close()
+        } catch {}
+        analyserRef.current = null
+        sourceRef.current = null
+        audioCtxRef.current = null
+      }, 100)
+    }
+    
+    return new Promise<RecordingPreview | null>((resolve) => {
+      const mr = recorderRef.current
+      if (!mr || mr.state === 'inactive') {
+        cleanupState()
+        resolve(null)
+        return
+      }
+      
+      let resolved = false
+      const doResolve = (result: RecordingPreview | null) => {
+        if (resolved) return
+        resolved = true
+        cleanupState()
+        resolve(result)
+      }
+      
+      // Set up a one-time handler to get the data
+      const onStopHandler = () => {
+        // Wait for finalization
+        const checkPreview = () => {
+          // Check if chunks are available
+          if (chunksRef.current.length > 0) {
+            const preferType = isMobile ? 'audio/mp4' : 'audio/webm'
+            const blob = new Blob(chunksRef.current, { type: preferType })
+            if (blob.size > 0) {
+              const actualDuration = Math.round((Date.now() - startedAtRef.current) / 1000)
+              const url = URL.createObjectURL(blob)
+              doResolve({ blob, url, duration: actualDuration })
+              return
+            }
+          }
+          // Retry
+          setTimeout(checkPreview, 100)
+        }
+        setTimeout(checkPreview, 200)
+      }
+      
+      stoppedRef.current = true
+      
+      if (isMobile) {
+        try { mr.requestData() } catch {}
+        setTimeout(() => {
+          try { 
+            mr.stop()
+            onStopHandler()
+            setTimeout(() => stopStream(), 500)
+          } catch {}
+        }, 120)
+      } else {
+        mr.stop()
+        onStopHandler()
+        setTimeout(() => stopStream(), 500)
+      }
+      
+      // Safety timeout - resolve with whatever we have
+      setTimeout(() => {
+        if (resolved) return
+        if (chunksRef.current.length > 0) {
+          const preferType = isMobile ? 'audio/mp4' : 'audio/webm'
+          const blob = new Blob(chunksRef.current, { type: preferType })
+          if (blob.size > 0) {
+            const actualDuration = Math.round((Date.now() - startedAtRef.current) / 1000)
+            const url = URL.createObjectURL(blob)
+            doResolve({ blob, url, duration: actualDuration })
+            return
+          }
+        }
+        doResolve(null)
+      }, 2000)
+    })
+  }, [isMobile])
+
   const ensurePreview = useCallback(async (timeoutMs: number = 5000): Promise<RecordingPreview | null> => {
     try {
       if (recording) {
@@ -287,5 +376,5 @@ export function useAudioRecorder() {
     } catch {}
   }, [])
 
-  return { recording, recordMs, preview, start, stop, clearPreview, ensurePreview, level }
+  return { recording, recordMs, preview, start, stop, clearPreview, ensurePreview, level, stopAndGetBlob }
 }
