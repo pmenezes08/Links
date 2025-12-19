@@ -2435,12 +2435,12 @@ export default function ChatThread(){
               <div className="flex-1 flex items-center px-2 py-1.5 gap-2">
                 {/* Delete button */}
                 <button
-                  onTouchStart={(e) => {
+                  onPointerDown={(e) => {
                     e.preventDefault()
+                    e.stopPropagation()
                     cancelRecordingPreview()
                     setPreviewPlaying(false)
                   }}
-                  onClick={() => { cancelRecordingPreview(); setPreviewPlaying(false) }}
                   className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors active:scale-95"
                   aria-label="Delete recording"
                   style={{ touchAction: 'manipulation' }}
@@ -2450,11 +2450,11 @@ export default function ChatThread(){
                 
                 {/* Play/Pause button */}
                 <button
-                  onTouchStart={(e) => {
+                  onPointerDown={(e) => {
                     e.preventDefault()
+                    e.stopPropagation()
                     togglePreviewPlayback()
                   }}
-                  onClick={togglePreviewPlayback}
                   className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
                   aria-label={previewPlaying ? 'Pause' : 'Play'}
                   style={{ touchAction: 'manipulation' }}

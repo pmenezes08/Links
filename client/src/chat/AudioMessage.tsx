@@ -14,11 +14,11 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
+  const [, setIsLoaded] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
-  const seekTargetRef = useRef<number | null>(null)
 
-  // Create and setup audio element
+  // Create audio element once and reuse
   useEffect(() => {
     if (!audioPath) return
 
@@ -31,12 +31,7 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     const onLoadedMetadata = () => {
       if (audio.duration && isFinite(audio.duration)) {
         setDuration(audio.duration)
-      }
-    }
-
-    const onDurationChange = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        setDuration(audio.duration)
+        setIsLoaded(true)
       }
     }
 
@@ -49,52 +44,66 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       setCurrentTime(0)
     }
 
-    const onPlay = () => {
-      setPlaying(true)
-      // If we have a pending seek, do it now
-      if (seekTargetRef.current !== null) {
-        const target = seekTargetRef.current
-        seekTargetRef.current = null
-        // Small delay to ensure audio is actually playing
-        setTimeout(() => {
-          audio.currentTime = target
-        }, 50)
-      }
-    }
-    
+    const onPlay = () => setPlaying(true)
     const onPause = () => setPlaying(false)
 
+    const onCanPlayThrough = () => {
+      setIsLoaded(true)
+      if (audio.duration && isFinite(audio.duration)) {
+        setDuration(audio.duration)
+      }
+    }
+
+    const onError = (e: Event) => {
+      console.log('Audio error:', e)
+      setPlaying(false)
+    }
+
+    const onStalled = () => {
+      console.log('Audio stalled')
+    }
+
+    const onWaiting = () => {
+      console.log('Audio waiting for data')
+    }
+
     audio.addEventListener('loadedmetadata', onLoadedMetadata)
-    audio.addEventListener('durationchange', onDurationChange)
+    audio.addEventListener('canplaythrough', onCanPlayThrough)
     audio.addEventListener('timeupdate', onTimeUpdate)
     audio.addEventListener('ended', onEnded)
     audio.addEventListener('play', onPlay)
     audio.addEventListener('pause', onPause)
+    audio.addEventListener('error', onError)
+    audio.addEventListener('stalled', onStalled)
+    audio.addEventListener('waiting', onWaiting)
 
+    // Set source and load
     audio.src = audioPath
     audio.load()
 
     return () => {
       audio.removeEventListener('loadedmetadata', onLoadedMetadata)
-      audio.removeEventListener('durationchange', onDurationChange)
+      audio.removeEventListener('canplaythrough', onCanPlayThrough)
       audio.removeEventListener('timeupdate', onTimeUpdate)
       audio.removeEventListener('ended', onEnded)
       audio.removeEventListener('play', onPlay)
       audio.removeEventListener('pause', onPause)
+      audio.removeEventListener('error', onError)
+      audio.removeEventListener('stalled', onStalled)
+      audio.removeEventListener('waiting', onWaiting)
       audio.pause()
       audio.src = ''
       audioRef.current = null
     }
   }, [audioPath])
 
-  // Update playback rate
+  // Update playback rate when speed changes
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.playbackRate = playbackSpeed
     }
   }, [playbackSpeed])
 
-  // Play/pause toggle
   const togglePlay = async () => {
     const audio = audioRef.current
     if (!audio) return
@@ -107,44 +116,51 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       }
     } catch (e) {
       console.log('Play error:', e)
+      setPlaying(false)
     }
   }
 
-  // Seek and play from position
-  const seekAndPlay = async (percent: number) => {
+  // Simple seek - works on iOS by seeking while playing
+  const seekTo = async (percent: number, andPlay: boolean = false) => {
     const audio = audioRef.current
     if (!audio) return
 
-    const targetDuration = duration > 0 ? duration : (message.audio_duration_seconds || 0)
-    if (targetDuration <= 0) return
+    const targetDuration = duration > 0 ? duration : displayDuration
+    if (!targetDuration || targetDuration <= 0) return
 
-    const targetTime = percent * targetDuration
-    setCurrentTime(targetTime) // Update UI immediately
+    const newTime = percent * targetDuration
 
     try {
-      if (playing) {
-        // Already playing - just seek directly
-        audio.currentTime = targetTime
-      } else {
-        // Not playing - on iOS we need to play first, then seek
-        // Store the target and seek in the onPlay handler
-        seekTargetRef.current = targetTime
+      // iOS requires: play first, then seek
+      const wasPlaying = playing
+      
+      if (!wasPlaying) {
+        // Start playing (this "unlocks" seeking on iOS)
         await audio.play()
+      }
+      
+      // Now seek
+      audio.currentTime = newTime
+      setCurrentTime(newTime)
+      
+      // If user didn't want to play, pause after seeking
+      if (!andPlay && !wasPlaying) {
+        // Small delay to let iOS process the seek
+        setTimeout(() => {
+          audio.pause()
+        }, 100)
       }
     } catch (e) {
       console.log('Seek error:', e)
-      // Try direct seek as fallback
+      // Fallback: try direct seek
       try {
-        audio.currentTime = targetTime
+        audio.currentTime = newTime
+        setCurrentTime(newTime)
       } catch {}
     }
   }
 
-  // Handle tap on progress bar
-  const handleSeek = (e: React.PointerEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    
+  const handleProgressClick = (e: React.PointerEvent) => {
     const bar = progressBarRef.current
     if (!bar) return
 
@@ -152,12 +168,14 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width))
     const percent = x / rect.width
 
-    seekAndPlay(percent)
+    // On click/tap, seek and play
+    seekTo(percent, true)
   }
 
   const cycleSpeed = () => {
-    const idx = PLAYBACK_SPEEDS.indexOf(playbackSpeed)
-    setPlaybackSpeed(PLAYBACK_SPEEDS[(idx + 1) % PLAYBACK_SPEEDS.length])
+    const currentIndex = PLAYBACK_SPEEDS.indexOf(playbackSpeed)
+    const nextIndex = (currentIndex + 1) % PLAYBACK_SPEEDS.length
+    setPlaybackSpeed(PLAYBACK_SPEEDS[nextIndex])
   }
 
   const displayDuration = duration > 0 ? duration : (message.audio_duration_seconds || 0)
@@ -169,11 +187,11 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
         {/* Play/Pause Button */}
         <button
           onPointerDown={(e) => {
-            e.preventDefault()
             e.stopPropagation()
+            e.preventDefault()
             togglePlay()
           }}
-          className="w-10 h-10 rounded-full flex items-center justify-center bg-[#4db6ac] hover:bg-[#45a99c] flex-shrink-0 active:scale-95"
+          className="w-10 h-10 rounded-full flex items-center justify-center transition-colors bg-[#4db6ac] hover:bg-[#45a99c] flex-shrink-0 active:scale-95"
           style={{ touchAction: 'manipulation' }}
         >
           <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-sm pointer-events-none ${!playing ? 'ml-0.5' : ''}`} />
@@ -181,39 +199,44 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
         
         {/* Progress and Controls */}
         <div className="flex-1 min-w-0">
-          {/* Progress Bar */}
+          {/* Seekable Progress Bar */}
           <div
             ref={progressBarRef}
             className="h-8 flex items-center cursor-pointer"
-            onPointerDown={handleSeek}
-            style={{ touchAction: 'none' }}
+            onPointerDown={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              handleProgressClick(e)
+            }}
+            style={{ touchAction: 'manipulation' }}
           >
-            <div className="w-full h-2 bg-white/15 rounded-full overflow-visible relative">
+            <div className="w-full h-2 bg-white/15 rounded-full overflow-hidden relative">
               <div 
-                className="h-full bg-[#4db6ac] rounded-full" 
-                style={{ width: `${Math.min(100, progress)}%` }} 
+                className="h-full bg-[#4db6ac]" 
+                style={{ width: `${progress}%` }} 
               />
-              {/* Seek handle */}
+              {/* Seek handle - always visible on mobile */}
               <div 
-                className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg"
-                style={{ left: `calc(${Math.min(100, progress)}% - 8px)` }}
+                className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-md"
+                style={{ left: `calc(${progress}% - 8px)` }}
               />
             </div>
           </div>
           
           {/* Time and Speed */}
-          <div className="flex items-center justify-between -mt-1">
-            <span className="text-[11px] text-white/60 tabular-nums">
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] text-white/60 tabular-nums">
               {formatDuration(currentTime)} / {formatDuration(displayDuration)}
-            </span>
+            </div>
             
+            {/* Speed Control */}
             <button
               onPointerDown={(e) => {
-                e.preventDefault()
                 e.stopPropagation()
+                e.preventDefault()
                 cycleSpeed()
               }}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/70"
+              className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-colors"
               style={{ touchAction: 'manipulation' }}
             >
               {playbackSpeed}x
