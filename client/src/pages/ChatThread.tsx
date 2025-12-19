@@ -2352,6 +2352,17 @@ export default function ChatThread(){
             className="hidden"
           />
 
+          {/* Recording indicator - rendered OUTSIDE the input container to avoid overflow:hidden clipping */}
+          {MIC_ENABLED && recording && (
+            <div className="flex items-center gap-1.5 flex-shrink-0 pr-2">
+              <span 
+                className="inline-block w-3 h-3 bg-red-500 rounded-full animate-pulse" 
+                style={{ boxShadow: '0 0 8px 2px rgba(239, 68, 68, 0.6)' }}
+              />
+              <span className="text-red-400 text-xs font-semibold tracking-wide">REC</span>
+            </div>
+          )}
+
           {/* Message input container */}
           <div 
             className="flex-1 flex items-center rounded-lg bg-white/8 overflow-hidden relative"
@@ -2364,15 +2375,6 @@ export default function ChatThread(){
             {/* Recording sound bar - replaces text input during recording */}
             {MIC_ENABLED && recording && (
               <div className="flex-1 flex items-center px-3 py-2 gap-2">
-                {/* Recording indicator - larger with glow effect and REC label */}
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <span 
-                    className="inline-block w-3 h-3 bg-red-500 rounded-full animate-pulse" 
-                    style={{ boxShadow: '0 0 8px 2px rgba(239, 68, 68, 0.6)' }}
-                  />
-                  <span className="text-red-400 text-xs font-semibold tracking-wide">REC</span>
-                </div>
-                
                 {/* Level bar */}
                 <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
                   <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, (level||0)*100))}%` }} />
