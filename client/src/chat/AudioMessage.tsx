@@ -9,20 +9,12 @@ interface AudioMessageProps {
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
-// Detect iOS for special handling
-const isIOS = () => {
-  if (typeof navigator === 'undefined') return false
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-}
-
 export default function AudioMessage({ message, audioPath }: AudioMessageProps) {
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [isDragging, setIsDragging] = useState(false)
-  const [isAudioReady, setIsAudioReady] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
   const hasPlayedOnceRef = useRef(false)  // Track if audio has been "unlocked" on iOS
@@ -39,7 +31,6 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     if (!audio) return
 
     // Reset state for new audio
-    setIsAudioReady(false)
     hasPlayedOnceRef.current = false
 
     // Force load on iOS to prevent stuck state
@@ -55,10 +46,6 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       }
     }
 
-    const handleCanPlay = () => {
-      setIsAudioReady(true)
-    }
-
     const handleTimeUpdate = () => {
       if (!isDragging) {
         setCurrentTime(audio.currentTime)
@@ -72,15 +59,11 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     }
 
     audio.addEventListener('loadedmetadata', handleLoadedMetadata)
-    audio.addEventListener('canplay', handleCanPlay)
-    audio.addEventListener('canplaythrough', handleCanPlay)
     audio.addEventListener('timeupdate', handleTimeUpdate)
     audio.addEventListener('durationchange', handleDurationChange)
 
     return () => {
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
-      audio.removeEventListener('canplay', handleCanPlay)
-      audio.removeEventListener('canplaythrough', handleCanPlay)
       audio.removeEventListener('timeupdate', handleTimeUpdate)
       audio.removeEventListener('durationchange', handleDurationChange)
     }
@@ -129,34 +112,40 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     const newTime = percent * seekDuration
     
     try {
-      // iOS Capacitor fix: audio must be "unlocked" before seeking works
-      // If not played yet, we need to play first, then seek
-      if (isIOS() && !hasPlayedOnceRef.current) {
-        // Unlock the audio by playing briefly
-        const originalVolume = audio.volume
-        audio.volume = 0  // Mute to avoid audio blip
-        await audio.play()
-        hasPlayedOnceRef.current = true
-        audio.pause()
-        audio.volume = originalVolume
-        // Small delay to let iOS process the unlock
-        await new Promise(resolve => setTimeout(resolve, 50))
-      }
+      // Pause first
+      audio.pause()
       
-      // Now seek - use fastSeek if available (better for iOS), otherwise currentTime
-      if (typeof audio.fastSeek === 'function') {
-        audio.fastSeek(newTime)
-      } else {
+      // On iOS, we need to wait for the 'seeked' event before playing
+      const seekAndPlay = () => new Promise<void>((resolve) => {
+        const onSeeked = async () => {
+          audio.removeEventListener('seeked', onSeeked)
+          
+          if (forcePlay || (shouldResume && wasPlayingRef.current)) {
+            try {
+              await audio.play()
+              hasPlayedOnceRef.current = true
+              setPlaying(true)
+            } catch (e) {
+              console.log('Play after seek error:', e)
+            }
+          }
+          resolve()
+        }
+        
+        audio.addEventListener('seeked', onSeeked)
+        
+        // Set the current time to trigger seeking
         audio.currentTime = newTime
-      }
-      setCurrentTime(newTime)
+        setCurrentTime(newTime)
+        
+        // Fallback timeout in case seeked event doesn't fire
+        setTimeout(() => {
+          audio.removeEventListener('seeked', onSeeked)
+          resolve()
+        }, 500)
+      })
       
-      // Play if forcePlay is true, or resume if was playing and this is end of seek
-      if (forcePlay || (shouldResume && wasPlayingRef.current)) {
-        await audio.play()
-        hasPlayedOnceRef.current = true
-        setPlaying(true)
-      }
+      await seekAndPlay()
     } catch (err) {
       console.log('Seek error:', err)
     }
@@ -188,15 +177,15 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     const audio = audioRef.current
     if (!audio) return
     
-    // On iOS, always start playing after touch seek (user expectation)
-    // On other platforms, only resume if was playing
-    const shouldPlay = isIOS() || wasPlayingRef.current
-    if (shouldPlay) {
-      try {
-        await audio.play()
-        hasPlayedOnceRef.current = true
-        setPlaying(true)
-      } catch {}
+    // On touch end, always start playing (this is the expected mobile UX)
+    try {
+      // Wait a tick for iOS to process the last seek
+      await new Promise(resolve => setTimeout(resolve, 50))
+      await audio.play()
+      hasPlayedOnceRef.current = true
+      setPlaying(true)
+    } catch (e) {
+      console.log('Play on touch end error:', e)
     }
   }
 
