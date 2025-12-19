@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChatMessage } from '../types/chat'
 import { formatDuration } from './utils'
 
@@ -14,60 +14,69 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
-  const [isDragging, setIsDragging] = useState(false)
-  const audioRef = useRef<HTMLAudioElement>(null)
+  const [, setIsLoaded] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
-  const hasPlayedOnceRef = useRef(false)  // Track if audio has been "unlocked" on iOS
 
-  // Add cache-busting to prevent caching issues
-  const cacheBustedPath = useMemo(() => {
-    if (!audioPath) return ''
-    const separator = audioPath.includes('?') ? '&' : '?'
-    return `${audioPath}${separator}_cb=${Date.now()}`
-  }, [audioPath])
-
+  // Create audio element once and reuse
   useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
+    if (!audioPath) return
 
-    // Reset state for new audio
-    hasPlayedOnceRef.current = false
+    const audio = new Audio()
+    audio.preload = 'auto'
+    audio.setAttribute('playsinline', 'true')
+    audio.setAttribute('webkit-playsinline', 'true')
+    audioRef.current = audio
 
-    // Force load on iOS to prevent stuck state
-    try {
-      audio.load()
-    } catch {
-      // ignore load errors
+    const onLoadedMetadata = () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setDuration(audio.duration)
+        setIsLoaded(true)
+      }
     }
 
-    const handleLoadedMetadata = () => {
+    const onTimeUpdate = () => {
+      setCurrentTime(audio.currentTime)
+    }
+
+    const onEnded = () => {
+      setPlaying(false)
+      setCurrentTime(0)
+    }
+
+    const onPlay = () => setPlaying(true)
+    const onPause = () => setPlaying(false)
+
+    const onCanPlayThrough = () => {
+      setIsLoaded(true)
       if (audio.duration && isFinite(audio.duration)) {
         setDuration(audio.duration)
       }
     }
 
-    const handleTimeUpdate = () => {
-      if (!isDragging) {
-        setCurrentTime(audio.currentTime)
-      }
-    }
+    audio.addEventListener('loadedmetadata', onLoadedMetadata)
+    audio.addEventListener('canplaythrough', onCanPlayThrough)
+    audio.addEventListener('timeupdate', onTimeUpdate)
+    audio.addEventListener('ended', onEnded)
+    audio.addEventListener('play', onPlay)
+    audio.addEventListener('pause', onPause)
 
-    const handleDurationChange = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        setDuration(audio.duration)
-      }
-    }
-
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
-    audio.addEventListener('timeupdate', handleTimeUpdate)
-    audio.addEventListener('durationchange', handleDurationChange)
+    // Set source and load
+    audio.src = audioPath
+    audio.load()
 
     return () => {
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
-      audio.removeEventListener('timeupdate', handleTimeUpdate)
-      audio.removeEventListener('durationchange', handleDurationChange)
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata)
+      audio.removeEventListener('canplaythrough', onCanPlayThrough)
+      audio.removeEventListener('timeupdate', onTimeUpdate)
+      audio.removeEventListener('ended', onEnded)
+      audio.removeEventListener('play', onPlay)
+      audio.removeEventListener('pause', onPause)
+      audio.pause()
+      audio.src = ''
+      audioRef.current = null
     }
-  }, [cacheBustedPath, isDragging])
+  }, [audioPath])
 
   // Update playback rate when speed changes
   useEffect(() => {
@@ -77,163 +86,73 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
   }, [playbackSpeed])
 
   const togglePlay = async () => {
-    if (!audioRef.current) return
+    const audio = audioRef.current
+    if (!audio) return
 
     try {
       if (playing) {
-        audioRef.current.pause()
-        setPlaying(false)
+        audio.pause()
       } else {
-        await audioRef.current.play()
-        hasPlayedOnceRef.current = true  // Mark as unlocked
-        setPlaying(true)
+        await audio.play()
       }
-    } catch {
-      // Silently handle play errors
+    } catch (e) {
+      console.log('Play error:', e)
       setPlaying(false)
     }
   }
 
-  // Track if we were playing before seeking
-  const wasPlayingRef = useRef(false)
-
-  const seekToPosition = async (clientX: number, shouldResume = false, forcePlay = false) => {
-    const bar = progressBarRef.current
-    const audio = audioRef.current
-    if (!bar || !audio) return
-    
-    // Use duration or displayDuration for seeking
-    const seekDuration = duration > 0 ? duration : displayDuration
-    if (!seekDuration || seekDuration <= 0) return
-
-    const rect = bar.getBoundingClientRect()
-    const x = Math.max(0, Math.min(clientX - rect.left, rect.width))
-    const percent = x / rect.width
-    const newTime = percent * seekDuration
-    
-    // Update UI immediately
-    setCurrentTime(newTime)
-    
-    const needToPlay = forcePlay || (shouldResume && wasPlayingRef.current)
-    
-    try {
-      // iOS Capacitor fix: currentTime must be set AFTER play() starts
-      // We use the 'playing' event to know when audio has actually started
-      
-      await new Promise<void>((resolve, reject) => {
-        const onPlaying = () => {
-          audio.removeEventListener('playing', onPlaying)
-          // Now that audio is playing, we can seek
-          audio.currentTime = newTime
-          
-          if (!needToPlay) {
-            // If user just wanted to seek (not play), pause after seeking
-            setTimeout(() => {
-              audio.pause()
-              setPlaying(false)
-              resolve()
-            }, 50)
-          } else {
-            setPlaying(true)
-            resolve()
-          }
-        }
-        
-        audio.addEventListener('playing', onPlaying)
-        
-        // Start playback
-        audio.play().then(() => {
-          hasPlayedOnceRef.current = true
-        }).catch((e) => {
-          audio.removeEventListener('playing', onPlaying)
-          reject(e)
-        })
-        
-        // Fallback timeout
-        setTimeout(() => {
-          audio.removeEventListener('playing', onPlaying)
-          // Try direct seek as fallback
-          audio.currentTime = newTime
-          if (needToPlay) {
-            audio.play().catch(() => {})
-            setPlaying(true)
-          }
-          resolve()
-        }, 300)
-      })
-    } catch (err) {
-      console.log('Seek error:', err)
-      // Last resort: just try to set the time
-      audio.currentTime = newTime
-    }
-  }
-
-  const handleProgressClick = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    wasPlayingRef.current = playing
-    // forcePlay=true so clicking always starts playback from that position
-    await seekToPosition(e.clientX, true, true)
-  }
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    e.stopPropagation()
-    wasPlayingRef.current = playing
-    setIsDragging(true)
-    const touch = e.touches[0]
-    if (touch) seekToPosition(touch.clientX, false)
-  }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging) return
-    const touch = e.touches[0]
-    if (touch) seekToPosition(touch.clientX, false)
-  }
-
-  const handleTouchEnd = async () => {
-    setIsDragging(false)
+  // Simple seek - works on iOS by seeking while playing
+  const seekTo = async (percent: number, andPlay: boolean = false) => {
     const audio = audioRef.current
     if (!audio) return
-    
-    // On touch end, always start playing from current position (expected mobile UX)
+
+    const targetDuration = duration > 0 ? duration : displayDuration
+    if (!targetDuration || targetDuration <= 0) return
+
+    const newTime = percent * targetDuration
+
     try {
-      // Audio should already be at the right position from touch move
-      // Just ensure it's playing
-      if (!playing) {
+      // iOS requires: play first, then seek
+      const wasPlaying = playing
+      
+      if (!wasPlaying) {
+        // Start playing (this "unlocks" seeking on iOS)
         await audio.play()
-        hasPlayedOnceRef.current = true
-        setPlaying(true)
+      }
+      
+      // Now seek
+      audio.currentTime = newTime
+      setCurrentTime(newTime)
+      
+      // If user didn't want to play, pause after seeking
+      if (!andPlay && !wasPlaying) {
+        // Small delay to let iOS process the seek
+        setTimeout(() => {
+          audio.pause()
+        }, 100)
       }
     } catch (e) {
-      console.log('Play on touch end error:', e)
+      console.log('Seek error:', e)
+      // Fallback: try direct seek
+      try {
+        audio.currentTime = newTime
+        setCurrentTime(newTime)
+      } catch {}
     }
   }
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleProgressClick = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation()
-    wasPlayingRef.current = playing
-    setIsDragging(true)
-    seekToPosition(e.clientX, false)
-    
-    const handleMouseMove = (ev: MouseEvent) => {
-      seekToPosition(ev.clientX, false)
-    }
-    
-    const handleMouseUp = async () => {
-      setIsDragging(false)
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-      // Resume playback if was playing
-      const audio = audioRef.current
-      if (wasPlayingRef.current && audio) {
-        try {
-          await audio.play()
-          setPlaying(true)
-        } catch {}
-      }
-    }
-    
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
+    const bar = progressBarRef.current
+    if (!bar) return
+
+    const rect = bar.getBoundingClientRect()
+    const clientX = 'touches' in e ? e.touches[0]?.clientX ?? 0 : e.clientX
+    const x = Math.max(0, Math.min(clientX - rect.left, rect.width))
+    const percent = x / rect.width
+
+    // On click/tap, seek and play
+    seekTo(percent, true)
   }
 
   const cycleSpeed = (e: React.MouseEvent) => {
@@ -243,19 +162,27 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     setPlaybackSpeed(PLAYBACK_SPEEDS[nextIndex])
   }
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
   const displayDuration = duration > 0 ? duration : (message.audio_duration_seconds || 0)
+  const progress = displayDuration > 0 ? (currentTime / displayDuration) * 100 : 0
 
   return (
     <div className="px-2 py-2 min-w-[240px] sm:min-w-[280px]" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-3">
         {/* Play/Pause Button */}
         <button
-          onClick={togglePlay}
-          className="w-10 h-10 rounded-full flex items-center justify-center transition-colors bg-[#4db6ac] hover:bg-[#45a99c] flex-shrink-0"
-          title={playing ? 'Pause' : 'Play'}
+          onTouchStart={(e) => {
+            e.stopPropagation()
+            e.preventDefault()
+            togglePlay()
+          }}
+          onClick={(e) => {
+            e.stopPropagation()
+            togglePlay()
+          }}
+          className="w-10 h-10 rounded-full flex items-center justify-center transition-colors bg-[#4db6ac] hover:bg-[#45a99c] flex-shrink-0 active:scale-95"
+          style={{ touchAction: 'manipulation' }}
         >
-          <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-sm ${!playing ? 'ml-0.5' : ''}`} />
+          <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-sm pointer-events-none ${!playing ? 'ml-0.5' : ''}`} />
         </button>
         
         {/* Progress and Controls */}
@@ -263,59 +190,46 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
           {/* Seekable Progress Bar */}
           <div
             ref={progressBarRef}
-            className="h-6 flex items-center cursor-pointer group"
+            className="h-8 flex items-center cursor-pointer"
+            onTouchStart={handleProgressClick}
             onClick={handleProgressClick}
-            onMouseDown={handleMouseDown}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            style={{ touchAction: 'manipulation' }}
           >
-            <div className="w-full h-1.5 bg-white/15 rounded-full overflow-hidden relative">
+            <div className="w-full h-2 bg-white/15 rounded-full overflow-hidden relative">
               <div 
-                className="h-full bg-[#4db6ac] transition-all duration-75" 
+                className="h-full bg-[#4db6ac]" 
                 style={{ width: `${progress}%` }} 
               />
-              {/* Seek handle */}
+              {/* Seek handle - always visible on mobile */}
               <div 
-                className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
-                style={{ left: `calc(${progress}% - 6px)` }}
+                className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-md"
+                style={{ left: `calc(${progress}% - 8px)` }}
               />
             </div>
           </div>
           
           {/* Time and Speed */}
-          <div className="flex items-center justify-between mt-0.5">
+          <div className="flex items-center justify-between">
             <div className="text-[11px] text-white/60 tabular-nums">
-              {playing || currentTime > 0 ? (
-                <span>{formatDuration(currentTime)} / {formatDuration(displayDuration)}</span>
-              ) : (
-                <span>{displayDuration > 0 ? formatDuration(displayDuration) : '--:--'}</span>
-              )}
+              {formatDuration(currentTime)} / {formatDuration(displayDuration)}
             </div>
             
             {/* Speed Control */}
             <button
+              onTouchStart={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                cycleSpeed(e as any)
+              }}
               onClick={cycleSpeed}
               className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-colors"
-              title="Change playback speed"
+              style={{ touchAction: 'manipulation' }}
             >
               {playbackSpeed}x
             </button>
           </div>
         </div>
       </div>
-      
-      <audio
-        ref={audioRef}
-        src={cacheBustedPath}
-        preload="auto"
-        playsInline
-        webkit-playsinline="true"
-        onEnded={() => { setPlaying(false); setCurrentTime(0); hasPlayedOnceRef.current = false }}
-        onPlay={() => { setPlaying(true); hasPlayedOnceRef.current = true }}
-        onPause={() => setPlaying(false)}
-        className="hidden"
-      />
     </div>
   )
 }
