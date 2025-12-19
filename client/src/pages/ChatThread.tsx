@@ -2364,8 +2364,14 @@ export default function ChatThread(){
             {/* Recording sound bar - replaces text input during recording */}
             {MIC_ENABLED && recording && (
               <div className="flex-1 flex items-center px-3 py-2 gap-2">
-                {/* Recording indicator */}
-                <span className="inline-block w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse flex-shrink-0" />
+                {/* Recording indicator - larger with glow effect and REC label */}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <span 
+                    className="inline-block w-3 h-3 bg-red-500 rounded-full animate-pulse" 
+                    style={{ boxShadow: '0 0 8px 2px rgba(239, 68, 68, 0.6)' }}
+                  />
+                  <span className="text-red-400 text-xs font-semibold tracking-wide">REC</span>
+                </div>
                 
                 {/* Level bar */}
                 <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">

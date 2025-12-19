@@ -81,7 +81,8 @@ export function useAudioRecorder() {
         resetState()
         return
       }
-      let actualDuration = Math.round(recordMs / 1000)
+      // Use ref-based timing to avoid stale closure issues with recordMs
+      let actualDuration = Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000))
       try {
         const tmpUrl = URL.createObjectURL(blob)
         const a = new Audio(tmpUrl)
@@ -99,7 +100,7 @@ export function useAudioRecorder() {
       stopStream()
       resetState()
     }
-  }, [isMobile, recordMs])
+  }, [isMobile])
 
   const start = useCallback(async () => {
     try {

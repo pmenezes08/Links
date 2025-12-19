@@ -92,7 +92,7 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
   // Track if we were playing before seeking
   const wasPlayingRef = useRef(false)
 
-  const seekToPosition = async (clientX: number, shouldResume = false) => {
+  const seekToPosition = async (clientX: number, shouldResume = false, forcePlay = false) => {
     const bar = progressBarRef.current
     const audio = audioRef.current
     if (!bar || !audio) return
@@ -112,8 +112,8 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       audio.currentTime = newTime
       setCurrentTime(newTime)
       
-      // Resume if was playing and this is end of seek
-      if (shouldResume && wasPlayingRef.current) {
+      // Play if forcePlay is true, or resume if was playing and this is end of seek
+      if (forcePlay || (shouldResume && wasPlayingRef.current)) {
         await audio.play()
         setPlaying(true)
       }
@@ -125,7 +125,8 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
   const handleProgressClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
     wasPlayingRef.current = playing
-    await seekToPosition(e.clientX, true)
+    // forcePlay=true so clicking always starts playback from that position
+    await seekToPosition(e.clientX, true, true)
   }
 
   const handleTouchStart = (e: React.TouchEvent) => {
