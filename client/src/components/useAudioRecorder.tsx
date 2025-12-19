@@ -137,7 +137,8 @@ export function useAudioRecorder() {
     }
   }, [cleanup])
 
-  const stop = useCallback((): Promise<RecordingPreview | null> => {
+  // Internal stop function - setPreviewState controls whether to set preview state
+  const stopInternal = useCallback((setPreviewState: boolean): Promise<RecordingPreview | null> => {
     return new Promise((resolve) => {
       const recorder = recorderRef.current
       const duration = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000))
@@ -162,7 +163,10 @@ export function useAudioRecorder() {
             if (blob.size > 0) {
               const url = URL.createObjectURL(blob)
               const previewData = { blob, url, duration }
-              setPreview(previewData)
+              // Only set preview state if requested (pause button)
+              if (setPreviewState) {
+                setPreview(previewData)
+              }
               cleanup()
               setRecording(false)
               resolve(previewData)
@@ -187,9 +191,15 @@ export function useAudioRecorder() {
     })
   }, [cleanup])
 
+  // Stop and show preview (pause button)
+  const stop = useCallback((): Promise<RecordingPreview | null> => {
+    return stopInternal(true)
+  }, [stopInternal])
+
+  // Stop and get blob without showing preview (send button)
   const stopAndGetBlob = useCallback(async (): Promise<RecordingPreview | null> => {
-    return stop()
-  }, [stop])
+    return stopInternal(false)
+  }, [stopInternal])
 
   const clearPreview = useCallback(() => {
     if (preview?.url) {
