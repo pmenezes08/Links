@@ -10032,6 +10032,9 @@ def send_audio_message():
                 (username, recipient_username, '', rel_path, duration_seconds, mime, audio_summary)
             )
             conn.commit()
+            
+            # Get the inserted message ID
+            message_id = c.lastrowid
 
             # Invalidate caches
             invalidate_message_cache(username, recipient_username)
@@ -10094,6 +10097,7 @@ def send_audio_message():
 
             return jsonify({
                 'success': True, 
+                'message_id': message_id,
                 'audio_path': rel_path,
                 'audio_summary': audio_summary
             })

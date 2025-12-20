@@ -3,25 +3,33 @@
  * Premium users only - provides UI toggle and state management
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 
 const STORAGE_KEY = 'voice_note_summary_preference'
 
 export function useVoiceNoteSummary(isPremium: boolean) {
-  // Load preference from localStorage
-  const [includeSummary, setIncludeSummary] = useState(() => {
-    if (!isPremium) return false
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      return stored === 'true'
-    } catch {
-      return false
-    }
-  })
+  // Track if we've initialized from storage
+  const hasInitialized = useRef(false)
+  
+  // Start with false, then load from storage once premium is confirmed
+  const [includeSummary, setIncludeSummary] = useState(false)
 
-  // Save preference when it changes
+  // Initialize from localStorage when premium status is known
   useEffect(() => {
-    if (isPremium) {
+    if (isPremium && !hasInitialized.current) {
+      hasInitialized.current = true
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY)
+        if (stored === 'true') {
+          setIncludeSummary(true)
+        }
+      } catch {}
+    }
+  }, [isPremium])
+
+  // Save preference when it changes (only if premium)
+  useEffect(() => {
+    if (isPremium && hasInitialized.current) {
       try {
         localStorage.setItem(STORAGE_KEY, String(includeSummary))
       } catch {}
@@ -32,6 +40,7 @@ export function useVoiceNoteSummary(isPremium: boolean) {
   useEffect(() => {
     if (!isPremium && includeSummary) {
       setIncludeSummary(false)
+      hasInitialized.current = false
     }
   }, [isPremium, includeSummary])
 
