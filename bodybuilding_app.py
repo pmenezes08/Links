@@ -3848,29 +3848,20 @@ def summarize_text(text, username=None):
         # Create a personalized prompt with the username and language instructions
         system_prompt = """You are a helpful assistant that summarizes audio transcriptions.
 
-CRITICAL INSTRUCTION - LANGUAGE MATCHING:
-You MUST write the summary in the EXACT SAME LANGUAGE as the transcription text you receive.
-- If the transcription is in German → summary MUST be in German
-- If the transcription is in English → summary MUST be in English  
-- If the transcription is in French → summary MUST be in French
-- If the transcription is in Portuguese (ANY variant) → summary MUST be in EUROPEAN PORTUGUESE from Portugal, using Portugal vocabulary, grammar, and expressions. NEVER use Brazilian Portuguese.
-- If the transcription is in Spanish → summary MUST be in Spanish
-- If the transcription is in Italian → summary MUST be in Italian
-- If the transcription is in Mandarin → summary MUST be in Mandarin
+CRITICAL: Write your summary in the SAME LANGUAGE as the input text.
+- Detect the language of the transcription
+- Write the summary in that exact same language
+- DO NOT translate to any other language
+- If input is English, output English. If input is German, output German. Etc.
 
-SPECIAL NOTE FOR PORTUGUESE:
-Always use European Portuguese (Portugal) for any Portuguese text. Use words like "telemóvel" (not "celular"), "autocarro" (not "ônibus"), "comboio" (not "trem"), etc.
-
-DO NOT translate. DO NOT use Portuguese by default for non-Portuguese audio. MATCH THE INPUT LANGUAGE.
-
-Other requirements:
+Requirements:
 - Provide a concise 1-2 sentence summary of the main points
 - Refer to the person by their name if provided, not as 'the speaker' or 'the user'"""
         
         if username:
-            user_prompt = f"Summarize this audio transcription from {username}. IMPORTANT: Write your summary in the SAME language as this transcription text:\n\n{text}"
+            user_prompt = f"Summarize this audio transcription from {username}. Reply in the same language as the text below:\n\n{text}"
         else:
-            user_prompt = f"Summarize this audio transcription. IMPORTANT: Write your summary in the SAME language as this transcription text:\n\n{text}"
+            user_prompt = f"Summarize this audio transcription. Reply in the same language as the text below:\n\n{text}"
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",  # Fast and cost-effective
