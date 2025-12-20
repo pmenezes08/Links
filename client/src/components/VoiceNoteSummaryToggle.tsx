@@ -22,20 +22,21 @@ export default function VoiceNoteSummaryToggle({
     return (
       <button
         type="button"
-        onClick={(e) => {
+        onPointerDown={(e) => {
           e.preventDefault()
           e.stopPropagation()
           onToggle()
         }}
-        className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium transition-all ${
+        className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium transition-all active:scale-95 ${
           enabled
             ? 'bg-[#4db6ac]/20 text-[#4db6ac] border border-[#4db6ac]/30'
             : 'bg-white/5 text-white/50 border border-white/10 hover:bg-white/10'
         }`}
         title={enabled ? 'AI summary enabled' : 'Enable AI summary'}
+        style={{ touchAction: 'manipulation' }}
       >
-        <i className={`fa-solid fa-wand-magic-sparkles text-[9px] ${enabled ? 'text-[#4db6ac]' : 'text-white/40'}`} />
-        <span>AI</span>
+        <i className={`fa-solid fa-wand-magic-sparkles text-[9px] pointer-events-none ${enabled ? 'text-[#4db6ac]' : 'text-white/40'}`} />
+        <span className="pointer-events-none">AI</span>
       </button>
     )
   }
