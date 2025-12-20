@@ -3753,6 +3753,7 @@ def transcribe_audio_file(audio_file_path):
     """
     Transcribe an audio file using OpenAI Whisper API
     Returns the transcribed text or None if transcription fails
+    Supports both local files and R2 CDN URLs
     """
     if not OPENAI_AVAILABLE:
         logger.warning("OpenAI package not available - run: pip install openai")
@@ -3760,31 +3761,65 @@ def transcribe_audio_file(audio_file_path):
     
     if not OPENAI_API_KEY:
         logger.warning(f"OpenAI API key not set (length: {len(OPENAI_API_KEY)})")
-        logger.warning("Set OPENAI_API_KEY in PythonAnywhere Web tab > Environment variables")
+        logger.warning("Set OPENAI_API_KEY environment variable")
         return None
     
     try:
         logger.info(f"Transcribing audio file: {audio_file_path}")
         client = OpenAI(api_key=OPENAI_API_KEY)
         
-        # Handle both relative paths (uploads/audio/file.webm) and full paths
-        if not os.path.isabs(audio_file_path):
-            # Remove 'uploads/' prefix if present for consistency
-            rel_path = audio_file_path.replace('uploads/', '', 1)
-            full_path = os.path.join(app.config['UPLOAD_FOLDER'], rel_path)
+        # Check if this is a URL (R2 CDN) or local path
+        if audio_file_path.startswith('http://') or audio_file_path.startswith('https://'):
+            # Download from R2 CDN to a temporary file
+            import tempfile
+            import requests
+            
+            logger.info(f"Downloading audio from CDN: {audio_file_path}")
+            response = requests.get(audio_file_path, timeout=30)
+            response.raise_for_status()
+            
+            # Determine file extension from URL
+            ext = os.path.splitext(audio_file_path)[1] or '.mp4'
+            
+            # Create temp file with proper extension (OpenAI needs this)
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_file:
+                tmp_file.write(response.content)
+                tmp_path = tmp_file.name
+            
+            try:
+                with open(tmp_path, 'rb') as audio_file:
+                    transcription = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file,
+                        response_format="text"
+                    )
+                logger.info(f"Transcription successful: {transcription[:100]}...")
+                return transcription
+            finally:
+                # Clean up temp file
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
         else:
-            full_path = audio_file_path
-        
-        # Open and transcribe the audio file
-        with open(full_path, 'rb') as audio_file:
-            transcription = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-                response_format="text"
-            )
-        
-        logger.info(f"Transcription successful: {transcription[:100]}...")
-        return transcription
+            # Handle local file paths
+            if not os.path.isabs(audio_file_path):
+                # Remove 'uploads/' prefix if present for consistency
+                rel_path = audio_file_path.replace('uploads/', '', 1)
+                full_path = os.path.join(app.config['UPLOAD_FOLDER'], rel_path)
+            else:
+                full_path = audio_file_path
+            
+            # Open and transcribe the audio file
+            with open(full_path, 'rb') as audio_file:
+                transcription = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    response_format="text"
+                )
+            
+            logger.info(f"Transcription successful: {transcription[:100]}...")
+            return transcription
     except Exception as e:
         logger.error(f"Error transcribing audio: {str(e)}")
         return None
