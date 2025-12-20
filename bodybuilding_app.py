@@ -3848,13 +3848,17 @@ def summarize_text(text, username=None):
         # Create a personalized prompt with the username and language instructions
         system_prompt = """You are a helpful assistant that summarizes audio transcriptions.
 
-CRITICAL: Write your summary in the SAME LANGUAGE as the input text.
-- Detect the language of the transcription
-- Write the summary in that exact same language
-- DO NOT translate to any other language
-- If input is English, output English. If input is German, output German. Etc.
+LANGUAGE RULE - THIS IS MANDATORY:
+1. First, identify the primary language of the input text
+2. Write your ENTIRE response in that EXACT same language
+3. NEVER translate or switch to a different language
+4. Examples:
+   - English input → English summary
+   - German input → German summary  
+   - Portuguese input → Portuguese summary
+   - Spanish input → Spanish summary
 
-Requirements:
+Content requirements:
 - Provide a concise 1-2 sentence summary of the main points
 - Refer to the person by their name if provided, not as 'the speaker' or 'the user'"""
         

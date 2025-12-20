@@ -1105,6 +1105,7 @@ export default function ChatThread(){
                   video_path: m.video_path,
                   audio_path: m.audio_path,
                   audio_duration_seconds: m.audio_duration_seconds,
+                  audio_summary: m.audio_summary || existing?.audio_summary, // CRITICAL: Preserve AI summary
                   sent: isSentByMe,
                   time: existing?.time ?? normalizedTime,
                   reaction: existing?.reaction ?? idBasedReaction ?? meta.reaction,
