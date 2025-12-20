@@ -9304,7 +9304,7 @@ def get_messages():
                 c.execute(
                     f"""
                     SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
-                           is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at
+                           is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary
                     FROM messages
                     WHERE ((sender = ? AND receiver = ?)
                        OR (sender = ? AND receiver = ?)){since_clause}
@@ -9318,7 +9318,7 @@ def get_messages():
                 try:
                     c.execute(
                         f"""
-                        SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
+                        SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at, audio_summary
                         FROM messages
                         WHERE ((sender = ? AND receiver = ?)
                            OR (sender = ? AND receiver = ?)){since_clause}
@@ -9330,7 +9330,7 @@ def get_messages():
                     with_edited = False
                     c.execute(
                         f"""
-                        SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp
+                        SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, audio_summary
                         FROM messages
                         WHERE ((sender = ? AND receiver = ?)
                            OR (sender = ? AND receiver = ?)){since_clause}
@@ -9347,18 +9347,22 @@ def get_messages():
                     audio_path_val = msg.get('audio_path')
                     audio_duration_val = msg.get('audio_duration_seconds')
                     audio_mime_val = msg.get('audio_mime')
+                    audio_summary_val = msg.get('audio_summary')
                 else:
                     image_path_val = msg[4] if len(msg) > 4 else None
                     video_path_val = msg[5] if len(msg) > 5 else None
                     audio_path_val = msg[6] if len(msg) > 6 else None
                     audio_duration_val = msg[7] if len(msg) > 7 else None
                     audio_mime_val = msg[8] if len(msg) > 8 else None
+                    audio_summary_val = None
                 edited_at_val = None
                 if with_edited:
                     if hasattr(msg, 'get'):
                         edited_at_val = msg.get('edited_at')
+                        audio_summary_val = msg.get('audio_summary')
                     elif len(msg):
-                        edited_at_val = msg[-1]
+                        edited_at_val = msg[-2] if len(msg) > 1 else None  # edited_at is second to last
+                        audio_summary_val = msg[-1] if len(msg) > 0 else None  # audio_summary is last
                 msg_dict = {
                     'id': msg['id'],
                     'text': msg['message'],
@@ -9367,6 +9371,7 @@ def get_messages():
                     'audio_path': audio_path_val,
                     'audio_duration_seconds': audio_duration_val,
                     'audio_mime': audio_mime_val,
+                    'audio_summary': audio_summary_val,
                     'sent': msg['sender'] == username,
                     'time': msg['timestamp'],
                     'edited_at': edited_at_val
@@ -9913,10 +9918,12 @@ def send_video_message():
 @app.route('/send_audio_message', methods=['POST'])
 @login_required
 def send_audio_message():
-    """Send a voice message to another user"""
+    """Send a voice message to another user, optionally with AI summary (premium only)"""
     username = session.get('username')
     recipient_id = request.form.get('recipient_id')
     duration_seconds_raw = (request.form.get('duration_seconds') or '').strip()
+    include_summary = request.form.get('include_summary', '').lower() == 'true'
+    
     try:
         duration_seconds = int(duration_seconds_raw) if duration_seconds_raw else None
     except Exception:
@@ -9972,13 +9979,40 @@ def send_audio_message():
             # stored_path is either CDN URL or local path
             rel_path = stored_path
 
+            # Generate AI summary if requested and user is premium
+            audio_summary = None
+            if include_summary:
+                # Check if user is premium
+                c.execute("SELECT subscription FROM users WHERE username=?", (username,))
+                user_row = c.fetchone()
+                user_subscription = user_row['subscription'] if hasattr(user_row, 'keys') else user_row[0] if user_row else 'free'
+                
+                if user_subscription == 'premium':
+                    try:
+                        logger.info(f"Generating AI summary for chat voice note: {rel_path}")
+                        audio_summary = process_audio_for_summary(rel_path, username=username)
+                        if audio_summary:
+                            logger.info(f"AI summary generated for chat: {audio_summary[:100]}...")
+                    except Exception as e:
+                        logger.error(f"Error generating AI summary for chat voice note: {e}")
+                        audio_summary = None
+                else:
+                    logger.info(f"User {username} is not premium, skipping AI summary")
+
+            # Ensure messages table has audio_summary column
+            try:
+                c.execute("ALTER TABLE messages ADD COLUMN audio_summary TEXT")
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
+
             # Insert audio message
             c.execute(
                 """
-                INSERT INTO messages (sender, receiver, message, audio_path, audio_duration_seconds, audio_mime, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, NOW())
+                INSERT INTO messages (sender, receiver, message, audio_path, audio_duration_seconds, audio_mime, audio_summary, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
                 """,
-                (username, recipient_username, '', rel_path, duration_seconds, mime)
+                (username, recipient_username, '', rel_path, duration_seconds, mime, audio_summary)
             )
             conn.commit()
 
@@ -10041,7 +10075,11 @@ def send_audio_message():
             except Exception as _e:
                 logger.warning(f"push send_audio_message warn: {_e}")
 
-            return jsonify({'success': True, 'audio_path': rel_path})
+            return jsonify({
+                'success': True, 
+                'audio_path': rel_path,
+                'audio_summary': audio_summary
+            })
     except Exception as e:
         logger.error(f"Error sending audio message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send audio'})

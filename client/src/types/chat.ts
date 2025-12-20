@@ -5,6 +5,7 @@ export interface ChatMessage {
   video_path?: string
   audio_path?: string
   audio_duration_seconds?: number
+  audio_summary?: string | null
   sent: boolean
   time: string
   reaction?: string

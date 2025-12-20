@@ -15,7 +15,10 @@ import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
+import { useUserProfile } from '../contexts/UserProfileContext'
 import Avatar from '../components/Avatar'
+import { useVoiceNoteSummary } from '../hooks/useVoiceNoteSummary'
+import VoiceNoteSummaryToggle from '../components/VoiceNoteSummaryToggle'
 import ZoomableImage from '../components/ZoomableImage'
 // E2E encryption disabled - these imports kept for future re-enablement
 // import { encryptionService } from '../services/simpleEncryption'
@@ -53,6 +56,14 @@ export default function ChatThread(){
   const { username } = useParams()
   const navigate = useNavigate()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
+  
+  // Get user profile for premium status
+  const { profile: userProfile } = useUserProfile()
+  const isPremium = (userProfile as any)?.subscription === 'premium'
+  
+  // Voice note AI summary toggle (premium only)
+  const { includeSummary, toggleSummary, canUseSummary } = useVoiceNoteSummary(isPremium)
+  
   // Hide the main header - we use our own header in this page
   useEffect(() => { setTitle('') }, [setTitle])
   
@@ -1637,7 +1648,7 @@ export default function ChatThread(){
   
   function sendRecordingPreview(){
     if (!recordingPreview) return
-    uploadAudioBlobWithDuration(recordingPreview.blob, (recordingPreview as any).duration || Math.round((recordMs||0)/1000))
+    uploadAudioBlobWithDuration(recordingPreview.blob, (recordingPreview as any).duration || Math.round((recordMs||0)/1000), includeSummary)
     // CRITICAL iOS FIX: Add small delay before cleanup to ensure blob is sent
     setTimeout(() => {
       cancelRecordingPreview()
@@ -1651,7 +1662,7 @@ export default function ChatThread(){
     try {
       const result = await stopAndGetBlob()
       if (result && result.blob && result.blob.size > 0) {
-        uploadAudioBlobWithDuration(result.blob, result.duration)
+        uploadAudioBlobWithDuration(result.blob, result.duration, includeSummary)
         // Clean up the URL after a delay
         setTimeout(() => {
           try { URL.revokeObjectURL(result.url) } catch {}
@@ -1704,7 +1715,7 @@ export default function ChatThread(){
     }
   }
   
-  async function uploadAudioBlobWithDuration(blob: Blob, durationSeconds: number){
+  async function uploadAudioBlobWithDuration(blob: Blob, durationSeconds: number, withSummary: boolean = false){
     if (!otherUserId) return
     
     // Don't send if blob is empty (cancelled recording)
@@ -1713,13 +1724,23 @@ export default function ChatThread(){
     }
     
     setSending(true)
-    // Pause polling longer for audio uploads (they take more time than text)
-    skipNextPollsUntil.current = Date.now() + 5000
+    // Pause polling longer for audio uploads (they take more time, especially with AI summary)
+    skipNextPollsUntil.current = Date.now() + (withSummary ? 15000 : 5000)
     const tempId = `temp_audio_${Date.now()}_${Math.random().toString(36).slice(2)}`
     try{
       const url = URL.createObjectURL(blob)
       const now = new Date().toISOString()
-      const optimistic: Message = { id: tempId, text: '🎤 Voice message', audio_path: url, sent: true, time: now, isOptimistic: true, clientKey: tempId, audio_duration_seconds: durationSeconds }
+      const optimistic: Message = { 
+        id: tempId, 
+        text: '🎤 Voice message', 
+        audio_path: url, 
+        sent: true, 
+        time: now, 
+        isOptimistic: true, 
+        clientKey: tempId, 
+        audio_duration_seconds: durationSeconds,
+        audio_summary: withSummary ? '✨ Generating summary...' : undefined
+      }
       setMessages(prev => [...prev, optimistic])
       
       // Register in recent optimistic to prevent poll from removing it
@@ -1729,6 +1750,9 @@ export default function ChatThread(){
       const fd = new FormData()
       fd.append('recipient_id', String(otherUserId))
       fd.append('duration_seconds', String(durationSeconds))
+      if (withSummary) {
+        fd.append('include_summary', 'true')
+      }
       
       // Determine file extension based on blob type
       let filename = 'voice.webm'
@@ -1762,6 +1786,7 @@ export default function ChatThread(){
                   id: serverId,
                   audio_path: j.audio_path || m.audio_path,
                   audio_duration_seconds: durationSeconds,
+                  audio_summary: j.audio_summary || undefined,
                   isOptimistic: false,
                   clientKey: tempId,
                 }
@@ -2698,6 +2723,16 @@ export default function ChatThread(){
           {/* Recording controls - WhatsApp style: Pause + Send */}
           {MIC_ENABLED && recording && (
             <>
+              {/* AI Summary toggle (premium only) */}
+              {canUseSummary && (
+                <VoiceNoteSummaryToggle
+                  enabled={includeSummary}
+                  onToggle={toggleSummary}
+                  isPremium={isPremium}
+                  compact
+                />
+              )}
+              
               {/* Pause button - stops recording, goes to preview */}
               <button
                 className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors active:scale-95"
@@ -2734,29 +2769,41 @@ export default function ChatThread(){
             </>
           )}
           
-          {/* Preview controls - Send button only (delete is inline) */}
+          {/* Preview controls - AI toggle + Send button */}
           {MIC_ENABLED && !recording && recordingPreview && (
-            <button
-              className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
-              onTouchStart={(e) => {
-                if (sending) return
-                e.preventDefault()
-                sendRecordingPreview()
-              }}
-              onClick={sendRecordingPreview}
-              disabled={sending}
-              aria-label="Send voice message"
-              style={{
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent'
-              }}
-            >
+            <>
+              {/* AI Summary toggle (premium only) */}
+              {canUseSummary && (
+                <VoiceNoteSummaryToggle
+                  enabled={includeSummary}
+                  onToggle={toggleSummary}
+                  isPremium={isPremium}
+                  compact
+                />
+              )}
+              
+              <button
+                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+                onTouchStart={(e) => {
+                  if (sending) return
+                  e.preventDefault()
+                  sendRecordingPreview()
+                }}
+                onClick={sendRecordingPreview}
+                disabled={sending}
+                aria-label="Send voice message"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent'
+                }}
+              >
               {sending ? (
                 <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
               ) : (
                 <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
               )}
             </button>
+            </>
           )}
           
           {/* Normal send button - shown when not recording and no preview */}
