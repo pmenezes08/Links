@@ -9300,6 +9300,7 @@ def get_messages():
             base_params = (username, other_username, other_username, username)
             query_params = base_params + (since_id_int,) if since_id_int else base_params
             
+            has_audio_summary = True
             try:
                 c.execute(
                     f"""
@@ -9327,17 +9328,31 @@ def get_messages():
                         query_params,
                     )
                 except Exception:
-                    with_edited = False
-                    c.execute(
-                        f"""
-                        SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, audio_summary
-                        FROM messages
-                        WHERE ((sender = ? AND receiver = ?)
-                           OR (sender = ? AND receiver = ?)){since_clause}
-                        ORDER BY timestamp ASC
-                        """,
-                        query_params,
-                    )
+                    # Fallback without audio_summary column
+                    has_audio_summary = False
+                    try:
+                        c.execute(
+                            f"""
+                            SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
+                            FROM messages
+                            WHERE ((sender = ? AND receiver = ?)
+                               OR (sender = ? AND receiver = ?)){since_clause}
+                            ORDER BY timestamp ASC
+                            """,
+                            query_params,
+                        )
+                    except Exception:
+                        with_edited = False
+                        c.execute(
+                            f"""
+                            SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp
+                            FROM messages
+                            WHERE ((sender = ? AND receiver = ?)
+                               OR (sender = ? AND receiver = ?)){since_clause}
+                            ORDER BY timestamp ASC
+                            """,
+                            query_params,
+                        )
             
             messages = []
             for msg in c.fetchall():
@@ -9347,7 +9362,7 @@ def get_messages():
                     audio_path_val = msg.get('audio_path')
                     audio_duration_val = msg.get('audio_duration_seconds')
                     audio_mime_val = msg.get('audio_mime')
-                    audio_summary_val = msg.get('audio_summary')
+                    audio_summary_val = msg.get('audio_summary') if has_audio_summary else None
                 else:
                     image_path_val = msg[4] if len(msg) > 4 else None
                     video_path_val = msg[5] if len(msg) > 5 else None
@@ -9359,10 +9374,12 @@ def get_messages():
                 if with_edited:
                     if hasattr(msg, 'get'):
                         edited_at_val = msg.get('edited_at')
-                        audio_summary_val = msg.get('audio_summary')
+                        if has_audio_summary:
+                            audio_summary_val = msg.get('audio_summary')
                     elif len(msg):
-                        edited_at_val = msg[-2] if len(msg) > 1 else None  # edited_at is second to last
-                        audio_summary_val = msg[-1] if len(msg) > 0 else None  # audio_summary is last
+                        edited_at_val = msg[-1] if not has_audio_summary else (msg[-2] if len(msg) > 1 else None)
+                        if has_audio_summary:
+                            audio_summary_val = msg[-1] if len(msg) > 0 else None
                 msg_dict = {
                     'id': msg['id'],
                     'text': msg['message'],
