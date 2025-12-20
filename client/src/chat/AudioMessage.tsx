@@ -299,18 +299,6 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
           </div>
         </div>
       </div>
-      
-      {/* AI Summary */}
-      {message.audio_summary && (
-        <div className="mt-2 pt-2 border-t border-white/10">
-          <div className="flex items-start gap-1.5">
-            <i className="fa-solid fa-wand-magic-sparkles text-[10px] text-[#4db6ac] mt-0.5 flex-shrink-0" />
-            <p className="text-[12px] text-white/70 leading-relaxed">
-              {message.audio_summary}
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -15,10 +15,7 @@ import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
-import { useUserProfile } from '../contexts/UserProfileContext'
 import Avatar from '../components/Avatar'
-import { useVoiceNoteSummary } from '../hooks/useVoiceNoteSummary'
-import VoiceNoteSummaryToggle from '../components/VoiceNoteSummaryToggle'
 import ZoomableImage from '../components/ZoomableImage'
 // E2E encryption disabled - these imports kept for future re-enablement
 // import { encryptionService } from '../services/simpleEncryption'
@@ -57,12 +54,7 @@ export default function ChatThread(){
   const navigate = useNavigate()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
   
-  // Get user profile for premium status
-  const { profile: userProfile } = useUserProfile()
-  const isPremium = (userProfile as any)?.subscription === 'premium'
   
-  // Voice note AI summary toggle (premium only)
-  const { includeSummary, toggleSummary, canUseSummary } = useVoiceNoteSummary(isPremium)
   
   // Hide the main header - we use our own header in this page
   useEffect(() => { setTitle('') }, [setTitle])
@@ -1105,7 +1097,6 @@ export default function ChatThread(){
                   video_path: m.video_path,
                   audio_path: m.audio_path,
                   audio_duration_seconds: m.audio_duration_seconds,
-                  audio_summary: m.audio_summary || existing?.audio_summary, // CRITICAL: Preserve AI summary
                   sent: isSentByMe,
                   time: existing?.time ?? normalizedTime,
                   reaction: existing?.reaction ?? idBasedReaction ?? meta.reaction,
@@ -1649,7 +1640,7 @@ export default function ChatThread(){
   
   function sendRecordingPreview(){
     if (!recordingPreview) return
-    uploadAudioBlobWithDuration(recordingPreview.blob, (recordingPreview as any).duration || Math.round((recordMs||0)/1000), includeSummary)
+    uploadAudioBlobWithDuration(recordingPreview.blob, (recordingPreview as any).duration || Math.round((recordMs||0)/1000))
     // CRITICAL iOS FIX: Add small delay before cleanup to ensure blob is sent
     setTimeout(() => {
       cancelRecordingPreview()
@@ -1663,7 +1654,7 @@ export default function ChatThread(){
     try {
       const result = await stopAndGetBlob()
       if (result && result.blob && result.blob.size > 0) {
-        uploadAudioBlobWithDuration(result.blob, result.duration, includeSummary)
+        uploadAudioBlobWithDuration(result.blob, result.duration)
         // Clean up the URL after a delay
         setTimeout(() => {
           try { URL.revokeObjectURL(result.url) } catch {}
@@ -1716,7 +1707,7 @@ export default function ChatThread(){
     }
   }
   
-  async function uploadAudioBlobWithDuration(blob: Blob, durationSeconds: number, withSummary: boolean = false){
+  async function uploadAudioBlobWithDuration(blob: Blob, durationSeconds: number){
     if (!otherUserId) return
     
     // Don't send if blob is empty (cancelled recording)
@@ -1725,8 +1716,8 @@ export default function ChatThread(){
     }
     
     setSending(true)
-    // Pause polling longer for audio uploads (they take more time, especially with AI summary)
-    skipNextPollsUntil.current = Date.now() + (withSummary ? 15000 : 5000)
+    // Pause polling for audio uploads
+    skipNextPollsUntil.current = Date.now() + 5000
     const tempId = `temp_audio_${Date.now()}_${Math.random().toString(36).slice(2)}`
     try{
       const url = URL.createObjectURL(blob)
@@ -1739,8 +1730,7 @@ export default function ChatThread(){
         time: now, 
         isOptimistic: true, 
         clientKey: tempId, 
-        audio_duration_seconds: durationSeconds,
-        audio_summary: withSummary ? '✨ Generating summary...' : undefined
+        audio_duration_seconds: durationSeconds
       }
       setMessages(prev => [...prev, optimistic])
       
@@ -1751,9 +1741,6 @@ export default function ChatThread(){
       const fd = new FormData()
       fd.append('recipient_id', String(otherUserId))
       fd.append('duration_seconds', String(durationSeconds))
-      if (withSummary) {
-        fd.append('include_summary', 'true')
-      }
       
       // Determine file extension based on blob type
       let filename = 'voice.webm'
@@ -1787,7 +1774,6 @@ export default function ChatThread(){
                   id: serverId,
                   audio_path: j.audio_path || m.audio_path,
                   audio_duration_seconds: durationSeconds,
-                  audio_summary: j.audio_summary || undefined,
                   isOptimistic: false,
                   clientKey: tempId,
                 }
@@ -2724,16 +2710,6 @@ export default function ChatThread(){
           {/* Recording controls - WhatsApp style: Pause + Send */}
           {MIC_ENABLED && recording && (
             <>
-              {/* AI Summary toggle (premium only) */}
-              {canUseSummary && (
-                <VoiceNoteSummaryToggle
-                  enabled={includeSummary}
-                  onToggle={toggleSummary}
-                  isPremium={isPremium}
-                  compact
-                />
-              )}
-              
               {/* Pause button - stops recording, goes to preview */}
               <button
                 className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors active:scale-95"
@@ -2770,19 +2746,9 @@ export default function ChatThread(){
             </>
           )}
           
-          {/* Preview controls - AI toggle + Send button */}
+          {/* Preview controls - Send button */}
           {MIC_ENABLED && !recording && recordingPreview && (
             <>
-              {/* AI Summary toggle (premium only) */}
-              {canUseSummary && (
-                <VoiceNoteSummaryToggle
-                  enabled={includeSummary}
-                  onToggle={toggleSummary}
-                  isPremium={isPremium}
-                  compact
-                />
-              )}
-              
               <button
                 className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
                 onPointerDown={(e) => {
