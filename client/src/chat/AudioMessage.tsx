@@ -231,7 +231,12 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
   }
 
   return (
-    <div className="px-2 py-2 min-w-[240px] sm:min-w-[280px]" onClick={(e) => e.stopPropagation()}>
+    <div 
+      className="px-2 py-2 min-w-[240px] sm:min-w-[280px]" 
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
       <div className="flex items-center gap-3">
         {/* Play/Pause Button */}
         <button
@@ -256,6 +261,8 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
             style={{ touchAction: 'none' }}
           >
             <div className="w-full h-2 bg-white/15 rounded-full overflow-hidden relative">
