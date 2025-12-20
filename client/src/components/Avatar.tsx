@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type KeyboardEvent, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cacheAvatarUrl, isAvatarCached } from '../utils/avatarCache'
+import { optimizeAvatar } from '../utils/imageOptimizer'
 
 type AvatarProps = {
   username: string
@@ -92,7 +93,7 @@ function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials
 export default function Avatar({ username, url, size = 40, className = '', linkToProfile = false, onClick, displayName }: AvatarProps){
   const navigate = useNavigate()
   
-  // Resolve the URL and check cache
+  // Resolve the URL and apply Cloudflare optimization
   const resolved = (() => {
     const p = (url || '').trim()
     if (!p) return null
@@ -112,10 +113,12 @@ export default function Avatar({ username, url, size = 40, className = '', linkT
     // If this URL is already cached for this user, browser will use its cache
     // This prevents the "constant server request" issue
     if (isAvatarCached(username, resolvedUrl)) {
-      return resolvedUrl
+      // Still apply Cloudflare optimization for faster delivery
+      return optimizeAvatar(resolvedUrl, size)
     }
     
-    return resolvedUrl
+    // Apply Cloudflare Image Resizing for optimized delivery
+    return optimizeAvatar(resolvedUrl, size)
   })()
   
   // Use display name for initials if provided, otherwise fall back to username

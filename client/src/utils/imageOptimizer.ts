@@ -6,6 +6,9 @@
 // Your domain for Cloudflare transformations
 const CF_DOMAIN = 'https://c-point.co'
 
+// R2 CDN domains that already serve optimized content
+const R2_DOMAINS = ['media.c-point.co', 'pub-']
+
 interface ImageOptions {
   width?: number
   height?: number
@@ -29,12 +32,15 @@ export function optimizeImage(originalUrl: string | null | undefined, options: I
   // - Already optimized URLs
   // - SVGs (don't need optimization)
   // - GIFs (preserve animation)
+  // - R2 CDN URLs (already on edge)
+  const isR2Url = R2_DOMAINS.some(domain => originalUrl.includes(domain))
   if (
     originalUrl.startsWith('blob:') ||
     originalUrl.startsWith('data:') ||
     originalUrl.includes('/cdn-cgi/image/') ||
     originalUrl.endsWith('.svg') ||
-    originalUrl.endsWith('.gif')
+    originalUrl.endsWith('.gif') ||
+    isR2Url
   ) {
     return originalUrl
   }
