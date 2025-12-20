@@ -79,6 +79,8 @@ export default function ChatThread(){
   const [editingId, setEditingId] = useState<number|string| null>(null)
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
+  const [selectedMessages, setSelectedMessages] = useState<Set<number|string>>(new Set())
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false)
   const [draft, setDraft] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string; sender?:string; image_path?:string; video_path?:string; audio_path?:string }|null>(null)
   const [sending, setSendingState] = useState(false)
@@ -1913,6 +1915,82 @@ export default function ChatThread(){
     })
   }
 
+  // Toggle message selection in multi-select mode
+  function toggleMessageSelection(messageId: number | string) {
+    setSelectedMessages(prev => {
+      const next = new Set(prev)
+      if (next.has(messageId)) {
+        next.delete(messageId)
+      } else {
+        next.add(messageId)
+      }
+      return next
+    })
+  }
+
+  // Enter multi-select mode (triggered by long press on any message)
+  function enterMultiSelectMode(firstMessageId?: number | string) {
+    setIsMultiSelectMode(true)
+    if (firstMessageId !== undefined) {
+      setSelectedMessages(new Set([firstMessageId]))
+    }
+  }
+
+  // Exit multi-select mode
+  function exitMultiSelectMode() {
+    setIsMultiSelectMode(false)
+    setSelectedMessages(new Set())
+  }
+
+  // Delete all selected messages
+  async function deleteSelectedMessages() {
+    if (selectedMessages.size === 0) return
+    
+    const count = selectedMessages.size
+    if (!confirm(`Delete ${count} message${count > 1 ? 's' : ''}?`)) {
+      return
+    }
+
+    // Get message data before deleting
+    const messagesToDelete = messages.filter(m => selectedMessages.has(m.id))
+    
+    // Add all to pending deletions
+    selectedMessages.forEach(id => pendingDeletions.current.add(id))
+    
+    // Optimistically remove all selected messages
+    setMessages(prev => prev.filter(m => !selectedMessages.has(m.id)))
+    
+    // Exit multi-select mode
+    exitMultiSelectMode()
+    
+    // Delete each message
+    for (const msg of messagesToDelete) {
+      try {
+        const fd = new URLSearchParams({ message_id: String(msg.id) })
+        const res = await fetch('/delete_message', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: fd
+        })
+        const j = await res.json()
+        
+        if (j?.success) {
+          setTimeout(() => {
+            pendingDeletions.current.delete(msg.id)
+          }, 5000)
+        } else {
+          pendingDeletions.current.delete(msg.id)
+          // Don't restore individual messages, just log the error
+          console.error('Failed to delete message:', msg.id, j?.error)
+        }
+      } catch {
+        pendingDeletions.current.delete(msg.id)
+        console.error('Network error deleting message:', msg.id)
+      }
+    }
+  }
+
   return (
     <>
     {/* Main container with overflow:hidden */}
@@ -2081,14 +2159,37 @@ export default function ChatThread(){
                 </div>
               )}
               
-              <div data-message-date={m.time}>
+              <div 
+                data-message-date={m.time}
+                className={`flex items-center gap-2 ${isMultiSelectMode ? 'py-1' : ''}`}
+                onClick={isMultiSelectMode ? () => toggleMessageSelection(m.id) : undefined}
+              >
+                {/* Selection checkbox in multi-select mode */}
+                {isMultiSelectMode && (
+                  <button
+                    className={`w-6 h-6 flex-shrink-0 rounded-full flex items-center justify-center border-2 transition-all ${
+                      selectedMessages.has(m.id)
+                        ? 'bg-[#4db6ac] border-[#4db6ac]'
+                        : 'bg-transparent border-white/40'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleMessageSelection(m.id)
+                    }}
+                  >
+                    {selectedMessages.has(m.id) && (
+                      <i className="fa-solid fa-check text-white text-xs" />
+                    )}
+                  </button>
+                )}
+                <div className="flex-1 min-w-0">
                 <MessageBubble
                   message={m}
                   isEditing={editingId === m.id}
                   editText={editText}
                   editingSaving={editingSaving}
                   otherDisplayName={otherProfile?.display_name || username || 'User'}
-                  onDelete={() => handleDeleteMessage(m.id, m)}
+                  onDelete={isMultiSelectMode ? () => {} : () => handleDeleteMessage(m.id, m)}
                   onReact={(emoji) => {
                     setMessages(msgs => msgs.map(x => x.id === m.id ? { ...x, reaction: emoji } : x))
                     // Save using ID-based storage (primary, more reliable)
@@ -2122,6 +2223,7 @@ export default function ChatThread(){
                     setEditingId(m.id)
                     setEditText(m.text)
                   } : undefined}
+                  onSelect={isMultiSelectMode ? undefined : () => enterMultiSelectMode(m.id)}
                   onEditTextChange={setEditText}
                   onCommitEdit={commitEdit}
                   onCancelEdit={() => {
@@ -2152,6 +2254,7 @@ export default function ChatThread(){
                   otherUsername={username}
                   linkifyText={linkifyText}
                 />
+                </div>
               </div>
             </div>
           )
@@ -2175,7 +2278,7 @@ export default function ChatThread(){
     {/* End of main container - compositor and scroll button rendered outside to avoid overflow:hidden clipping */}
 
     {/* Scroll to bottom button - positioned above composer */}
-    {showScrollDown && (
+    {showScrollDown && !isMultiSelectMode && (
       <button
         className="fixed z-50 w-10 h-10 rounded-full bg-[#4db6ac] text-black shadow-lg border border-[#4db6ac] hover:brightness-110 flex items-center justify-center"
         style={{ 
@@ -2189,7 +2292,43 @@ export default function ChatThread(){
       </button>
     )}
 
+    {/* Multi-select action bar */}
+    {isMultiSelectMode && (
+      <div 
+        className="fixed left-0 right-0 z-[1001] bg-[#1a1a1a]/95 backdrop-blur-md border-t border-white/10"
+        style={{ bottom: 0 }}
+      >
+        <div className="flex items-center justify-between px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+          <button
+            className="flex items-center gap-2 text-white/70 hover:text-white transition-colors"
+            onClick={exitMultiSelectMode}
+          >
+            <i className="fa-solid fa-xmark text-lg" />
+            <span className="text-sm">Cancel</span>
+          </button>
+          
+          <div className="text-white/80 text-sm font-medium">
+            {selectedMessages.size} selected
+          </div>
+          
+          <button
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+              selectedMessages.size > 0
+                ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                : 'bg-white/5 text-white/30'
+            }`}
+            onClick={deleteSelectedMessages}
+            disabled={selectedMessages.size === 0}
+          >
+            <i className="fa-solid fa-trash text-sm" />
+            <span className="text-sm">Delete</span>
+          </button>
+        </div>
+      </div>
+    )}
+
     {/* ====== COMPOSER - FIXED AT BOTTOM ====== */}
+    {!isMultiSelectMode && (
     <div 
       ref={composerRef}
       className="fixed left-0 right-0"
@@ -2539,11 +2678,11 @@ export default function ChatThread(){
           {MIC_ENABLED && !recording && !recordingPreview && !draft.trim() && (
             <button
               className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
-              onTouchStart={(e) => {
+              onPointerDown={(e) => {
                 e.preventDefault()
+                e.stopPropagation()
                 checkMicrophonePermission()
               }}
-              onClick={checkMicrophonePermission}
               aria-label="Start voice message"
               style={{
                 touchAction: 'manipulation',
@@ -2656,7 +2795,7 @@ export default function ChatThread(){
         }}
       />
     </div>
-
+    )}
 
       {/* Permission guide modal */}
       {showPermissionGuide && (

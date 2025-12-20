@@ -15,8 +15,10 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
   const [duration, setDuration] = useState(0)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [, setIsLoaded] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
+  const wasPlayingRef = useRef(false)
 
   // Create audio element once and reuse
   useEffect(() => {
@@ -104,6 +106,10 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     }
   }, [playbackSpeed])
 
+  // Calculate display duration (from audio or from message metadata)
+  const displayDuration = duration > 0 ? duration : (message.audio_duration_seconds || 0)
+  const progress = displayDuration > 0 ? (currentTime / displayDuration) * 100 : 0
+
   const togglePlay = async () => {
     const audio = audioRef.current
     if (!audio) return
@@ -160,16 +166,62 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     }
   }
 
-  const handleProgressClick = (e: React.PointerEvent) => {
+  // Calculate percent from pointer position
+  const getPercentFromPointer = (clientX: number): number => {
+    const bar = progressBarRef.current
+    if (!bar) return 0
+    const rect = bar.getBoundingClientRect()
+    const x = Math.max(0, Math.min(clientX - rect.left, rect.width))
+    return x / rect.width
+  }
+
+  // Handle drag start
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    
     const bar = progressBarRef.current
     if (!bar) return
+    
+    // Capture pointer for drag
+    bar.setPointerCapture(e.pointerId)
+    setIsDragging(true)
+    wasPlayingRef.current = playing
+    
+    // Seek to initial position
+    const percent = getPercentFromPointer(e.clientX)
+    seekTo(percent, false)
+  }
 
-    const rect = bar.getBoundingClientRect()
-    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width))
-    const percent = x / rect.width
+  // Handle drag move
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDragging) return
+    e.stopPropagation()
+    e.preventDefault()
+    
+    const percent = getPercentFromPointer(e.clientX)
+    const targetDuration = duration > 0 ? duration : displayDuration
+    if (targetDuration > 0) {
+      setCurrentTime(percent * targetDuration)
+    }
+  }
 
-    // On click/tap, seek and play
-    seekTo(percent, true)
+  // Handle drag end
+  const handlePointerUp = async (e: React.PointerEvent) => {
+    if (!isDragging) return
+    e.stopPropagation()
+    e.preventDefault()
+    
+    const bar = progressBarRef.current
+    if (bar) {
+      bar.releasePointerCapture(e.pointerId)
+    }
+    
+    setIsDragging(false)
+    
+    // Seek to final position and play
+    const percent = getPercentFromPointer(e.clientX)
+    await seekTo(percent, true)
   }
 
   const cycleSpeed = () => {
@@ -177,9 +229,6 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     const nextIndex = (currentIndex + 1) % PLAYBACK_SPEEDS.length
     setPlaybackSpeed(PLAYBACK_SPEEDS[nextIndex])
   }
-
-  const displayDuration = duration > 0 ? duration : (message.audio_duration_seconds || 0)
-  const progress = displayDuration > 0 ? (currentTime / displayDuration) * 100 : 0
 
   return (
     <div className="px-2 py-2 min-w-[240px] sm:min-w-[280px]" onClick={(e) => e.stopPropagation()}>
@@ -199,16 +248,15 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
         
         {/* Progress and Controls */}
         <div className="flex-1 min-w-0">
-          {/* Seekable Progress Bar */}
+          {/* Seekable Progress Bar - supports tap and drag */}
           <div
             ref={progressBarRef}
             className="h-8 flex items-center cursor-pointer"
-            onPointerDown={(e) => {
-              e.stopPropagation()
-              e.preventDefault()
-              handleProgressClick(e)
-            }}
-            style={{ touchAction: 'manipulation' }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            style={{ touchAction: 'none' }}
           >
             <div className="w-full h-2 bg-white/15 rounded-full overflow-hidden relative">
               <div 

@@ -7,6 +7,7 @@ interface LongPressActionableProps {
   onReply: () => void
   onCopy: () => void
   onEdit?: () => void
+  onSelect?: () => void
   disabled?: boolean
 }
 
@@ -30,7 +31,8 @@ export default function LongPressActionable({
   onReact, 
   onReply, 
   onCopy, 
-  onEdit, 
+  onEdit,
+  onSelect,
   disabled 
 }: LongPressActionableProps) {
   const [showMenu, setShowMenu] = useState(false)
@@ -132,6 +134,15 @@ export default function LongPressActionable({
                 >
                   <i className="fa-regular fa-pen-to-square mr-2 text-xs opacity-60" />
                   Edit
+                </button>
+              )}
+              {onSelect && (
+                <button 
+                  className="text-left px-2 py-1 text-sm hover:bg-white/5 rounded" 
+                  onClick={() => { setShowMenu(false); setShowEmojiPicker(false); onSelect() }}
+                >
+                  <i className="fa-regular fa-square-check mr-2 text-xs opacity-60" />
+                  Select
                 </button>
               )}
               <button 

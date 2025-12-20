@@ -44,6 +44,8 @@ export interface MessageBubbleProps {
   onCopy: () => void
   /** Handler to start editing (only for sent messages) */
   onEdit?: () => void
+  /** Handler to enter multi-select mode */
+  onSelect?: () => void
   /** Handler to update edit text */
   onEditTextChange: (text: string) => void
   /** Handler to commit edit */
@@ -71,6 +73,7 @@ export default function MessageBubble({
   onReply,
   onCopy,
   onEdit,
+  onSelect,
   onEditTextChange,
   onCommitEdit,
   onCancelEdit,
@@ -86,6 +89,7 @@ export default function MessageBubble({
       onReply={onReply}
       onCopy={onCopy}
       onEdit={onEdit}
+      onSelect={onSelect}
       disabled={isEditing}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
@@ -282,47 +286,42 @@ export default function MessageBubble({
 
           {/* Text content or editor */}
           {isEditing ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs text-white/60">
-                <i className="fa-regular fa-pen-to-square" />
-                <span>Edit message</span>
-              </div>
-              <div
-                className="relative group"
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
-              >
-                <textarea
-                  className="w-full bg-black/30 border border-white/15 rounded-xl px-3 py-2 text-sm pr-10 focus:outline-none focus:border-[#4db6ac] shadow-inner"
-                  value={editText}
-                  onChange={(e) => onEditTextChange(e.target.value)}
-                  rows={3}
-                  placeholder="Edit your message..."
-                />
+            <div 
+              className="min-w-[280px] sm:min-w-[320px]"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              <textarea
+                className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4db6ac] resize-none"
+                value={editText}
+                onChange={(e) => onEditTextChange(e.target.value)}
+                rows={2}
+                autoFocus
+                placeholder="Edit message..."
+              />
+              <div className="flex gap-2 justify-end mt-1.5">
                 <button
-                  className={`absolute top-2 right-2 w-8 h-8 rounded-lg flex items-center justify-center ${
+                  className="px-2.5 py-1 text-xs text-white/60 hover:text-white/80 transition-colors"
+                  onClick={onCancelEdit}
+                >
+                  Cancel
+                </button>
+                <button
+                  className={`px-3 py-1 text-xs rounded-md flex items-center gap-1.5 ${
                     editingSaving
                       ? 'bg-gray-600 text-gray-300'
                       : 'bg-[#4db6ac] text-black hover:brightness-110'
                   }`}
                   onClick={editingSaving ? undefined : onCommitEdit}
                   disabled={editingSaving}
-                  title="Save"
                 >
                   {editingSaving ? (
-                    <i className="fa-solid fa-spinner fa-spin" />
+                    <i className="fa-solid fa-spinner fa-spin text-[10px]" />
                   ) : (
-                    <i className="fa-solid fa-check" />
+                    <i className="fa-solid fa-check text-[10px]" />
                   )}
-                </button>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button
-                  className="px-3 py-1.5 text-xs bg-white/10 border border-white/20 rounded-lg hover:bg-white/15"
-                  onClick={onCancelEdit}
-                >
-                  Cancel
+                  <span>Save</span>
                 </button>
               </div>
             </div>
