@@ -93,9 +93,9 @@ export default function MessageBubble({
       disabled={isEditing}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-        <div className={`relative ${m.reaction ? 'mb-3' : ''}`}>
+        <div className={`relative inline-block max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-3' : ''}`}>
           <div
-            className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} max-w-[82%] md:max-w-[65%] px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
+            className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
               m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
             } ${m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
           >
@@ -349,10 +349,10 @@ export default function MessageBubble({
             </span>
           )}
           </div>
-          {/* WhatsApp-style reaction pill - floats at bottom-right corner */}
+          {/* WhatsApp-style reaction pill - floats at bottom corner */}
           {m.reaction && (
             <div 
-              className={`absolute -bottom-2.5 ${m.sent ? 'right-2' : 'left-2'} bg-[#1f1f1f] px-1.5 py-0.5 rounded-full shadow-lg border border-white/10 z-10`}
+              className={`absolute ${m.sent ? '-bottom-2.5 right-1' : '-bottom-3.5 left-1'} bg-[#1f1f1f] px-1.5 py-0.5 rounded-full shadow-lg border border-white/10 z-10`}
             >
               <span className="text-sm select-none">{m.reaction}</span>
             </div>
