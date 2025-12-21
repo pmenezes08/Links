@@ -444,18 +444,21 @@ def send_fcm_to_user_badge_only(username: str, badge_count: int = 0) -> int:
                 continue
             
             try:
-                # Silent push with badge update only (no notification payload)
+                # Badge update push - use alert type for faster delivery
+                # iOS throttles background pushes but processes alert pushes immediately
                 message = messaging.Message(
                     token=token,
                     apns=messaging.APNSConfig(
                         headers={
-                            'apns-push-type': 'background',
-                            'apns-priority': '5',  # Lower priority for background push
+                            'apns-push-type': 'alert',  # Use alert type for faster delivery
+                            'apns-priority': '10',  # High priority
                         },
                         payload=messaging.APNSPayload(
                             aps=messaging.Aps(
                                 badge=badge_count,
-                                content_available=True  # Silent push
+                                content_available=True,
+                                # Empty alert to avoid showing notification but still get fast delivery
+                                sound=None,
                             )
                         )
                     )

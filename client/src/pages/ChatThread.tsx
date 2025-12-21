@@ -755,16 +755,31 @@ export default function ChatThread(){
           }
           
           // Clear iOS badge after reading messages (server already marked them as read)
-          if (Capacitor.isNativePlatform()) {
+          // Do this aggressively - multiple calls to ensure badge clears quickly
+          const clearBadge = async () => {
+            if (Capacitor.isNativePlatform()) {
+              try {
+                await PushNotifications.removeAllDeliveredNotifications()
+                console.log('✅ Cleared iOS notifications after opening chat')
+              } catch (e) {
+                console.warn('Could not clear iOS notifications:', e)
+              }
+            }
+            // Sync badge count with server (this sends silent push to update badge)
             try {
-              await PushNotifications.removeAllDeliveredNotifications()
-              console.log('✅ Cleared iOS notifications after opening chat')
+              const resp = await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
+              const result = await resp.json()
+              console.log('📛 Badge sync result:', result)
             } catch (e) {
-              console.warn('Could not clear iOS notifications:', e)
+              console.warn('Badge sync failed:', e)
             }
           }
-          // Also sync badge count with server
-          fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' }).catch(() => {})
+          
+          // Clear immediately
+          clearBadge()
+          // And again after a short delay (in case of race condition)
+          setTimeout(clearBadge, 500)
+          setTimeout(clearBadge, 2000)
         }
       }).catch(()=>{})
       
