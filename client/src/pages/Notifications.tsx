@@ -64,6 +64,7 @@ export default function Notifications(){
     try{
       setLoading(true)
       const r = await fetch('/api/notifications?all=true', { credentials:'include' })
+      console.log('📋 Notifications API status:', r.status)
       const j = await r.json()
       console.log('📋 Raw notifications response:', j)
       if (j?.success){
@@ -72,7 +73,14 @@ export default function Notifications(){
         const filtered = (j.notifications as Notif[]).filter(n => n?.type !== 'message')
         console.log('📋 After filtering out messages:', filtered.length)
         setItems(filtered)
+      } else {
+        console.error('📋 Notifications API error:', j?.error || 'Unknown error')
+        // Still set items to empty array so page doesn't get stuck on "Loading..."
+        setItems([])
       }
+    } catch (err) {
+      console.error('📋 Notifications fetch error:', err)
+      setItems([])
     } finally { setLoading(false) }
   }
 

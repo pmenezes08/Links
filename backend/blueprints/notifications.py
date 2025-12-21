@@ -55,9 +55,12 @@ def _login_required(view_func):
     def wrapper(*args, **kwargs):
         if "username" not in session:
             try:
-                current_app.logger.info("No username in session for %s, redirecting to login", request.path)
+                current_app.logger.info("No username in session for %s", request.path)
             except Exception:
                 pass
+            # Return JSON for API endpoints, redirect for pages
+            if request.path.startswith("/api/"):
+                return jsonify({"success": False, "error": "unauthenticated"}), 401
             return redirect(url_for("auth.login"))
         return view_func(*args, **kwargs)
 
@@ -172,32 +175,37 @@ def get_notifications():
     """Get notifications for the current user."""
     username = session["username"]
     show_all = request.args.get("all", "false").lower() == "true"
+    current_app.logger.info("📋 get_notifications called for user=%s, show_all=%s", username, show_all)
 
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
 
-            if USE_MYSQL:
-                c.execute(
-                    """
-                    DELETE FROM notifications
-                    WHERE user_id = ?
-                    AND is_read = 1
-                    AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY)
-                    """,
-                    (username,),
-                )
-            else:
-                c.execute(
-                    """
-                    DELETE FROM notifications
-                    WHERE user_id = ?
-                    AND is_read = 1
-                    AND datetime(created_at) < datetime('now','-7 day')
-                    """,
-                    (username,),
-                )
-            conn.commit()
+            # Clean up old read notifications (best effort, don't fail if this errors)
+            try:
+                if USE_MYSQL:
+                    c.execute(
+                        """
+                        DELETE FROM notifications
+                        WHERE user_id = ?
+                        AND is_read = 1
+                        AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY)
+                        """,
+                        (username,),
+                    )
+                else:
+                    c.execute(
+                        """
+                        DELETE FROM notifications
+                        WHERE user_id = ?
+                        AND is_read = 1
+                        AND datetime(created_at) < datetime('now','-7 day')
+                        """,
+                        (username,),
+                    )
+                conn.commit()
+            except Exception as cleanup_err:
+                current_app.logger.warning("Notification cleanup failed (non-fatal): %s", cleanup_err)
 
             # Try query with link column, fallback if column doesn't exist
             try:
@@ -290,8 +298,9 @@ def get_notifications():
             )
             return jsonify({"success": True, "notifications": notifications})
     except Exception as exc:
-        current_app.logger.error("Error getting notifications: %s", exc)
-        return jsonify({"success": False, "error": "Server error"}), 500
+        import traceback
+        current_app.logger.error("Error getting notifications: %s\n%s", exc, traceback.format_exc())
+        return jsonify({"success": False, "error": str(exc)}), 500
 
 
 @notifications_bp.route(
