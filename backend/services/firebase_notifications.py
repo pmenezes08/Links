@@ -190,33 +190,10 @@ def send_fcm_to_user(username: str, title: str, body: str, data: Optional[dict] 
         cursor = conn.cursor()
         ph = get_sql_placeholder()
         
-        # Get total unread count for badge (notifications + messages)
+        # Get total unread count for badge using the shared function
         try:
-            # Count unread notifications
-            cursor.execute(
-                f"SELECT COUNT(*) FROM notifications WHERE user_id = {ph} AND is_read = 0",
-                (username,)
-            )
-            row = cursor.fetchone()
-            if hasattr(row, 'keys'):
-                notif_count = list(row.values())[0] or 0
-            else:
-                notif_count = row[0] if row else 0
-            
-            # Count unread messages
-            cursor.execute(
-                f"SELECT COUNT(*) FROM messages WHERE receiver = {ph} AND is_read = 0",
-                (username,)
-            )
-            row = cursor.fetchone()
-            if hasattr(row, 'keys'):
-                msg_count = list(row.values())[0] or 0
-            else:
-                msg_count = row[0] if row else 0
-            
-            # Total badge = notifications + messages + 1 (for new notification being sent)
-            badge_count = notif_count + msg_count + 1
-            logger.info(f"📛 Badge count for {username}: {badge_count} (notif={notif_count}, msg={msg_count}, +1 new)")
+            badge_count = get_total_badge_count(username)
+            logger.info(f"📛 Badge count for {username}: {badge_count}")
         except Exception as e:
             logger.warning(f"Could not get badge count: {e}")
             import traceback
