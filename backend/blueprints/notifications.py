@@ -168,6 +168,43 @@ def check_new_notifications():
         return jsonify({"success": False, "error": str(exc)}), 500
 
 
+@notifications_bp.route("/api/notifications/debug", endpoint="debug_notifications")
+@_login_required
+def debug_notifications():
+    """Debug endpoint to check notifications table."""
+    username = session["username"]
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Get count of all notifications for user
+            c.execute("SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ?", (username,))
+            row = c.fetchone()
+            total = row["cnt"] if hasattr(row, "keys") else row[0]
+            
+            # Get count by type
+            c.execute("SELECT type, COUNT(*) as cnt FROM notifications WHERE user_id = ? GROUP BY type", (username,))
+            type_counts = {}
+            for r in c.fetchall():
+                t = r["type"] if hasattr(r, "keys") else r[0]
+                cnt = r["cnt"] if hasattr(r, "keys") else r[1]
+                type_counts[t] = cnt
+            
+            return jsonify({
+                "success": True,
+                "username": username,
+                "total_notifications": total,
+                "by_type": type_counts,
+                "use_mysql": USE_MYSQL,
+            })
+    except Exception as exc:
+        import traceback
+        return jsonify({
+            "success": False,
+            "error": str(exc),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
 @notifications_bp.route("/api/notifications", endpoint="get_notifications")
 @_login_required
 @_handle_broken_pipe
