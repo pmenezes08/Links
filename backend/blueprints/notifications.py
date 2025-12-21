@@ -694,6 +694,81 @@ def get_badge_count():
         return jsonify({"success": False, "error": str(exc), "badge_count": 0}), 500
 
 
+@notifications_bp.route("/api/notifications/badge-debug", methods=["GET"], endpoint="debug_badge_count")
+@_login_required
+def debug_badge_count():
+    """Debug endpoint to see badge count breakdown."""
+    username = session["username"]
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Count unread notifications (excluding message type)
+            c.execute(
+                "SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0 AND type != 'message'",
+                (username,)
+            )
+            row = c.fetchone()
+            notif_count = row["cnt"] if hasattr(row, "keys") else row[0]
+            
+            # Count message-type notifications (should be excluded)
+            c.execute(
+                "SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0 AND type = 'message'",
+                (username,)
+            )
+            row = c.fetchone()
+            msg_notif_count = row["cnt"] if hasattr(row, "keys") else row[0]
+            
+            # Count unread messages (distinct senders)
+            c.execute(
+                "SELECT COUNT(DISTINCT sender) as cnt FROM messages WHERE receiver = ? AND is_read = 0",
+                (username,)
+            )
+            row = c.fetchone()
+            msg_convos = row["cnt"] if hasattr(row, "keys") else row[0]
+            
+            # Count total unread messages
+            c.execute(
+                "SELECT COUNT(*) as cnt FROM messages WHERE receiver = ? AND is_read = 0",
+                (username,)
+            )
+            row = c.fetchone()
+            total_unread_msgs = row["cnt"] if hasattr(row, "keys") else row[0]
+            
+            # List who has sent unread messages
+            c.execute(
+                "SELECT sender, COUNT(*) as cnt FROM messages WHERE receiver = ? AND is_read = 0 GROUP BY sender",
+                (username,)
+            )
+            unread_from = []
+            for r in c.fetchall():
+                sender = r["sender"] if hasattr(r, "keys") else r[0]
+                cnt = r["cnt"] if hasattr(r, "keys") else r[1]
+                unread_from.append({"sender": sender, "count": cnt})
+            
+            total_badge = notif_count + msg_convos
+            
+            return jsonify({
+                "success": True,
+                "username": username,
+                "badge_total": total_badge,
+                "breakdown": {
+                    "unread_notifications": notif_count,
+                    "message_type_notifications_excluded": msg_notif_count,
+                    "unread_message_conversations": msg_convos,
+                    "total_unread_messages": total_unread_msgs,
+                },
+                "unread_messages_from": unread_from,
+            })
+    except Exception as exc:
+        import traceback
+        return jsonify({
+            "success": False,
+            "error": str(exc),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
 @notifications_bp.route("/api/notifications/clear-badge", methods=["POST"], endpoint="clear_notification_badge")
 @_login_required
 def clear_notification_badge():
