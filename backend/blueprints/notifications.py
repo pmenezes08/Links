@@ -97,19 +97,48 @@ def check_new_notifications():
 
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute(
-                """
-                SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
-                FROM notifications
-                WHERE user_id = ? AND is_read = 0 AND created_at > ?
-                ORDER BY created_at DESC
-                LIMIT 10
-                """,
-                (username, last_check),
-            )
+            # Try query with link column, fallback if column doesn't exist
+            try:
+                c.execute(
+                    """
+                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
+                    FROM notifications
+                    WHERE user_id = ? AND is_read = 0 AND created_at > ?
+                    ORDER BY created_at DESC
+                    LIMIT 10
+                    """,
+                    (username, last_check),
+                )
+                has_link_column = True
+            except Exception:
+                c.execute(
+                    """
+                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                    FROM notifications
+                    WHERE user_id = ? AND is_read = 0 AND created_at > ?
+                    ORDER BY created_at DESC
+                    LIMIT 10
+                    """,
+                    (username, last_check),
+                )
+                has_link_column = False
 
             notifications = []
             for row in c.fetchall():
+                link_value = None
+                if has_link_column:
+                    try:
+                        link_value = row.get("link") if hasattr(row, "get") else row["link"]
+                    except (KeyError, IndexError):
+                        link_value = None
+                
+                # Handle created_at - ensure it's a string for JSON serialization
+                created_at_val = row["created_at"]
+                if hasattr(created_at_val, "strftime"):
+                    created_at_val = created_at_val.strftime("%Y-%m-%d %H:%M:%S")
+                elif created_at_val is None:
+                    created_at_val = ""
+                
                 notifications.append(
                     {
                         "id": row["id"],
@@ -119,8 +148,8 @@ def check_new_notifications():
                         "community_id": row["community_id"],
                         "message": row["message"],
                         "is_read": row["is_read"],
-                        "created_at": row["created_at"],
-                        "link": row.get("link") if hasattr(row, "get") else None,
+                        "created_at": created_at_val,
+                        "link": link_value,
                     }
                 )
 
@@ -170,31 +199,74 @@ def get_notifications():
                 )
             conn.commit()
 
-            if show_all:
-                c.execute(
-                    """
-                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
-                    FROM notifications
-                    WHERE user_id = ?
-                    ORDER BY created_at DESC
-                    LIMIT 50
-                    """,
-                    (username,),
-                )
-            else:
-                c.execute(
-                    """
-                    SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
-                    FROM notifications
-                    WHERE user_id = ? AND is_read = 0
-                    ORDER BY created_at DESC
-                    LIMIT 50
-                    """,
-                    (username,),
-                )
+            # Try query with link column, fallback if column doesn't exist
+            try:
+                if show_all:
+                    c.execute(
+                        """
+                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
+                        FROM notifications
+                        WHERE user_id = ?
+                        ORDER BY created_at DESC
+                        LIMIT 50
+                        """,
+                        (username,),
+                    )
+                else:
+                    c.execute(
+                        """
+                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at, link
+                        FROM notifications
+                        WHERE user_id = ? AND is_read = 0
+                        ORDER BY created_at DESC
+                        LIMIT 50
+                        """,
+                        (username,),
+                    )
+                has_link_column = True
+            except Exception as col_err:
+                current_app.logger.warning("Link column may not exist, using fallback query: %s", col_err)
+                if show_all:
+                    c.execute(
+                        """
+                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                        FROM notifications
+                        WHERE user_id = ?
+                        ORDER BY created_at DESC
+                        LIMIT 50
+                        """,
+                        (username,),
+                    )
+                else:
+                    c.execute(
+                        """
+                        SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                        FROM notifications
+                        WHERE user_id = ? AND is_read = 0
+                        ORDER BY created_at DESC
+                        LIMIT 50
+                        """,
+                        (username,),
+                    )
+                has_link_column = False
 
             notifications = []
             for row in c.fetchall():
+                # Handle link field access for both MySQL dict and SQLite Row
+                link_value = None
+                if has_link_column:
+                    try:
+                        link_value = row.get("link") if hasattr(row, "get") else row["link"]
+                    except (KeyError, IndexError):
+                        link_value = None
+                
+                # Handle created_at - ensure it's a string for JSON serialization
+                created_at_val = row["created_at"]
+                if hasattr(created_at_val, "strftime"):
+                    created_at_val = created_at_val.strftime("%Y-%m-%d %H:%M:%S")
+                elif created_at_val is None:
+                    created_at_val = ""
+                
                 notifications.append(
                     {
                         "id": row["id"],
@@ -203,9 +275,9 @@ def get_notifications():
                         "post_id": row["post_id"],
                         "community_id": row["community_id"],
                         "message": row["message"],
-                        "link": row.get("link") if hasattr(row, "get") else None,
+                        "link": link_value,
                         "is_read": bool(row["is_read"]),
-                        "created_at": row["created_at"],
+                        "created_at": created_at_val,
                     }
                 )
 

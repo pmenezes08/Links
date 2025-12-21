@@ -9745,10 +9745,24 @@ def react_to_message():
                     logger.warning(f"active chat presence check (reaction) failed: {pe}")
                 
                 if should_push:
+                    # Create in-app notification
+                    notif_message = f'{username} reacted {emoji} to: "{preview}"' if preview else f'{username} reacted {emoji} to your message'
+                    notif_link = f'/user_chat/chat/{username}'
+                    create_notification(
+                        user_id=notify_user,
+                        from_user=username,
+                        notification_type='reaction',
+                        post_id=None,
+                        community_id=None,
+                        message=notif_message,
+                        link=notif_link,
+                    )
+                    
+                    # Send push notification
                     send_push_to_user(notify_user, {
                         'title': f'{username} reacted {emoji}',
                         'body': f'to: "{preview}"' if preview else 'to your message',
-                        'url': f'/user_chat/chat/{username}',
+                        'url': notif_link,
                         'tag': f'reaction-{username}-{message_id}',
                     })
             
