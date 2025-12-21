@@ -719,21 +719,21 @@ def debug_badge_count():
             row = c.fetchone()
             msg_notif_count = row["cnt"] if hasattr(row, "keys") else row[0]
             
-            # Count unread messages (distinct senders)
-            c.execute(
-                "SELECT COUNT(DISTINCT sender) as cnt FROM messages WHERE receiver = ? AND is_read = 0",
-                (username,)
-            )
-            row = c.fetchone()
-            msg_convos = row["cnt"] if hasattr(row, "keys") else row[0]
-            
             # Count total unread messages
             c.execute(
                 "SELECT COUNT(*) as cnt FROM messages WHERE receiver = ? AND is_read = 0",
                 (username,)
             )
             row = c.fetchone()
-            total_unread_msgs = row["cnt"] if hasattr(row, "keys") else row[0]
+            msg_count = row["cnt"] if hasattr(row, "keys") else row[0]
+            
+            # Also count distinct senders for info
+            c.execute(
+                "SELECT COUNT(DISTINCT sender) as cnt FROM messages WHERE receiver = ? AND is_read = 0",
+                (username,)
+            )
+            row = c.fetchone()
+            msg_convos = row["cnt"] if hasattr(row, "keys") else row[0]
             
             # List who has sent unread messages
             c.execute(
@@ -746,7 +746,7 @@ def debug_badge_count():
                 cnt = r["cnt"] if hasattr(r, "keys") else r[1]
                 unread_from.append({"sender": sender, "count": cnt})
             
-            total_badge = notif_count + msg_convos
+            total_badge = notif_count + msg_count
             
             return jsonify({
                 "success": True,
@@ -755,8 +755,8 @@ def debug_badge_count():
                 "breakdown": {
                     "unread_notifications": notif_count,
                     "message_type_notifications_excluded": msg_notif_count,
-                    "unread_message_conversations": msg_convos,
-                    "total_unread_messages": total_unread_msgs,
+                    "unread_messages": msg_count,
+                    "unread_conversations": msg_convos,
                 },
                 "unread_messages_from": unread_from,
             })

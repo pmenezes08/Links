@@ -323,6 +323,7 @@ def get_total_badge_count(username: str) -> int:
     Get total unread count for badge (notifications + messages).
     
     Note: Excludes 'message' type notifications since messages are counted separately.
+    Badge = unread notifications + total unread messages
     """
     from backend.services.database import get_db_connection, get_sql_placeholder
     
@@ -342,10 +343,9 @@ def get_total_badge_count(username: str) -> int:
         else:
             notif_count = row[0] if row else 0
         
-        # Count unread messages (unique conversations, not individual messages)
-        # This counts how many different people have sent unread messages
+        # Count ALL unread messages (total count, not just conversations)
         cursor.execute(
-            f"SELECT COUNT(DISTINCT sender) FROM messages WHERE receiver = {ph} AND is_read = 0",
+            f"SELECT COUNT(*) FROM messages WHERE receiver = {ph} AND is_read = 0",
             (username,)
         )
         row = cursor.fetchone()
@@ -358,7 +358,7 @@ def get_total_badge_count(username: str) -> int:
         conn.close()
         
         total = notif_count + msg_count
-        logger.info(f"📛 Total badge for {username}: {total} (notif={notif_count}, msg_convos={msg_count})")
+        logger.info(f"📛 Total badge for {username}: {total} (notif={notif_count}, msgs={msg_count})")
         return total
         
     except Exception as e:
