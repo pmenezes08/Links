@@ -93,7 +93,7 @@ export default function MessageBubble({
       disabled={isEditing}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-        <div className={`relative inline-block max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-4' : ''}`}>
+        <div className={`relative inline-block max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-5' : ''}`}>
           <div
             className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
               m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
@@ -352,7 +352,7 @@ export default function MessageBubble({
           {/* WhatsApp-style reaction pill - floats at bottom corner */}
           {m.reaction && (
             <div 
-              className={`absolute ${m.sent ? '-bottom-4' : '-bottom-4'} ${m.sent ? 'right-1' : 'left-1'} bg-[#1f1f1f] px-1.5 py-0.5 rounded-full shadow-lg border border-white/10 z-10`}
+              className={`absolute -bottom-5 ${m.sent ? 'right-1' : 'left-1'} bg-[#1f1f1f] px-1.5 py-0.5 rounded-full shadow-lg border border-white/10 z-10`}
             >
               <span className="text-sm select-none">{m.reaction}</span>
             </div>
