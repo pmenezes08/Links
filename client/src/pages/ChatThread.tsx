@@ -12,6 +12,7 @@ import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
+import { PushNotifications } from '@capacitor/push-notifications'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
@@ -752,6 +753,18 @@ export default function ChatThread(){
               otherUserId: userId 
             }, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
           }
+          
+          // Clear iOS badge after reading messages (server already marked them as read)
+          if (Capacitor.isNativePlatform()) {
+            try {
+              await PushNotifications.removeAllDeliveredNotifications()
+              console.log('✅ Cleared iOS notifications after opening chat')
+            } catch (e) {
+              console.warn('Could not clear iOS notifications:', e)
+            }
+          }
+          // Also sync badge count with server
+          fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' }).catch(() => {})
         }
       }).catch(()=>{})
       
