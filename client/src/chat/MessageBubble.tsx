@@ -93,14 +93,22 @@ export default function MessageBubble({
       disabled={isEditing}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-        <div
-          className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} max-w-[82%] md:max-w-[65%] px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
-            m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
-          } ${m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
-          style={{
-            position: 'relative',
-          } as React.CSSProperties}
-        >
+        <div className="relative">
+          {/* Reaction emoji - positioned at edge of bubble */}
+          {m.reaction && (
+            <span 
+              className={`absolute bottom-0 text-base select-none z-10 ${
+                m.sent ? '-left-5' : '-right-5'
+              }`}
+            >
+              {m.reaction}
+            </span>
+          )}
+          <div
+            className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} max-w-[82%] md:max-w-[65%] px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
+              m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
+            } ${m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
+          >
           {/* Story reply - shows a preview of the story being replied to */}
           {m.storyReply ? (() => {
             const isVideo = m.storyReply.mediaType === '🎥'
@@ -343,24 +351,13 @@ export default function MessageBubble({
               <span className={`text-[10px] ml-2 ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
                 {formatMessageTime(m.time)}
               </span>
-              {/* Reaction emoji - inline with timestamp */}
-              {m.reaction ? (
-                <span className="text-sm ml-1 select-none align-middle">
-                  {m.reaction}
-                </span>
-              ) : null}
             </div>
           ) : (
             <span className={`text-[10px] ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
               {formatMessageTime(m.time)}
-              {/* Reaction emoji - inline with timestamp */}
-              {m.reaction ? (
-                <span className="text-sm ml-1 select-none align-middle">
-                  {m.reaction}
-                </span>
-              ) : null}
             </span>
           )}
+          </div>
         </div>
       </div>
     </LongPressActionable>
