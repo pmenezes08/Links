@@ -779,15 +779,17 @@ def clear_notification_badge():
         
         # Get actual unread count and send to device
         badge_count = get_total_badge_count(username)
+        current_app.logger.info(f"📛 clear-badge called for {username}, calculated badge={badge_count}")
         sent = send_fcm_to_user_badge_only(username, badge_count=badge_count)
-        current_app.logger.info(f"Synced badge={badge_count} for {username}, sent to {sent} device(s)")
+        current_app.logger.info(f"📛 Synced badge={badge_count} for {username}, sent to {sent} device(s)")
         return jsonify({"success": True, "badge_count": badge_count, "devices_updated": sent})
-    except ImportError:
+    except ImportError as ie:
         # Function not available, just acknowledge the request
-        current_app.logger.debug("Badge sync not available (function not implemented)")
-        return jsonify({"success": True, "devices_updated": 0})
+        current_app.logger.warning(f"Badge sync not available: {ie}")
+        return jsonify({"success": True, "devices_updated": 0, "warning": "Badge sync function not available"})
     except Exception as exc:
-        current_app.logger.error("Error syncing notification badge: %s", exc)
+        import traceback
+        current_app.logger.error(f"Error syncing notification badge: {exc}\n{traceback.format_exc()}")
         return jsonify({"success": False, "error": str(exc)}), 500
 
 
