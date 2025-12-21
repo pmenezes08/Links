@@ -93,19 +93,13 @@ export default function MessageBubble({
       disabled={isEditing}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-        <div
-          className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} max-w-[82%] md:max-w-[65%] px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
-            m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
-          } ${m.isOptimistic ? 'opacity-70' : 'opacity-100'} relative`}
-        >
-          {/* Reaction emoji - inside bubble, bottom-right corner on the border */}
-          {m.reaction && (
-            <span 
-              className="absolute -bottom-2 right-1 text-base select-none z-10 drop-shadow-sm"
-            >
-              {m.reaction}
-            </span>
-          )}
+        <div className={`relative ${m.reaction ? 'mb-3' : ''}`}>
+          <div
+            className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} max-w-[82%] md:max-w-[65%] px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
+              m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
+            } ${m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
+          >
+          
           {/* Story reply - shows a preview of the story being replied to */}
           {m.storyReply ? (() => {
             const isVideo = m.storyReply.mediaType === '🎥'
@@ -353,6 +347,15 @@ export default function MessageBubble({
             <span className={`text-[10px] ${m.sent ? 'text-white/60' : 'text-white/45'}`}>
               {formatMessageTime(m.time)}
             </span>
+          )}
+          </div>
+          {/* WhatsApp-style reaction pill - floats at bottom-right corner */}
+          {m.reaction && (
+            <div 
+              className={`absolute -bottom-2.5 ${m.sent ? 'right-2' : 'left-2'} bg-[#1f1f1f] px-1.5 py-0.5 rounded-full shadow-lg border border-white/10 z-10`}
+            >
+              <span className="text-sm select-none">{m.reaction}</span>
+            </div>
           )}
         </div>
       </div>
