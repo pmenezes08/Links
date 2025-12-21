@@ -2,7 +2,8 @@
 Simple Flask app to serve the landing page.
 Used for www.c-point.co
 
-All webapp routes are redirected to app.c-point.co
+Landing pages are served from the React SPA.
+App routes are redirected to app.c-point.co
 """
 from flask import Flask, send_from_directory, redirect, request
 import os
@@ -15,11 +16,17 @@ app = Flask(__name__, static_folder=DIST_DIR)
 
 APP_DOMAIN = 'https://app.c-point.co'
 
-# Serve the landing page
+# Landing page routes (served by React SPA)
+LANDING_ROUTES = {'/', '/privacy', '/terms', '/support'}
+
+# Serve the landing page and its routes
 @app.route('/')
-def index():
-    # Check if there's an invite parameter - redirect to app
-    if request.args.get('invite'):
+@app.route('/privacy')
+@app.route('/terms')
+@app.route('/support')
+def landing_pages():
+    # Check if there's an invite parameter on homepage - redirect to app
+    if request.path == '/' and request.args.get('invite'):
         return redirect(f'{APP_DOMAIN}/?{request.query_string.decode()}')
     return send_from_directory(DIST_DIR, 'index.html')
 
@@ -41,7 +48,7 @@ def well_known(filename):
     well_known_dir = os.path.join(BASE_DIR, 'static', '.well-known')
     return send_from_directory(well_known_dir, filename)
 
-# Redirect ALL webapp routes to app.c-point.co
+# Redirect webapp routes to app.c-point.co
 # Login and signup (with invite links)
 @app.route('/login')
 @app.route('/signup')
@@ -81,16 +88,17 @@ def redirect_api(subpath):
     query = f'?{request.query_string.decode()}' if request.query_string else ''
     return redirect(f'{APP_DOMAIN}/api/{subpath}{query}')
 
-# Catch-all for other static files
+# Catch-all for other paths
 @app.route('/<path:filename>')
 def static_files(filename):
-    # Check if file exists in landing/dist
+    # Check if file exists in landing/dist (static files like favicon, robots.txt, etc.)
     filepath = os.path.join(DIST_DIR, filename)
     if os.path.isfile(filepath):
         return send_from_directory(DIST_DIR, filename)
-    # If not found, redirect to app (might be an app route)
-    query = f'?{request.query_string.decode()}' if request.query_string else ''
-    return redirect(f'{APP_DOMAIN}/{filename}{query}')
+    
+    # For all other unknown routes, serve the React app (it will show 404 page)
+    # This allows React Router to handle the 404 display
+    return send_from_directory(DIST_DIR, 'index.html')
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)
