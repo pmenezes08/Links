@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 export const Footer = () => {
   return (
     <footer className="bg-card border-t border-border py-12">
@@ -7,6 +9,17 @@ export const Footer = () => {
           <p className="text-muted-foreground mb-4">
             Enter the network where ideas connect people
           </p>
+          <div className="flex justify-center gap-6 mb-4">
+            <Link to="/privacy" className="text-sm text-muted-foreground hover:text-[#4db6ac] transition-colors">
+              Privacy Policy
+            </Link>
+            <Link to="/terms" className="text-sm text-muted-foreground hover:text-[#4db6ac] transition-colors">
+              Terms of Service
+            </Link>
+            <Link to="/support" className="text-sm text-muted-foreground hover:text-[#4db6ac] transition-colors">
+              Support
+            </Link>
+          </div>
           <p className="text-sm text-muted-foreground">
             © {new Date().getFullYear()} C-Point. All rights reserved.
           </p>
