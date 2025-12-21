@@ -266,10 +266,24 @@ def test_create_notification():
             test_message = f"Test notification created at {datetime.now().strftime('%H:%M:%S')}"
             
             if USE_MYSQL:
-                c.execute("""
-                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
-                    VALUES (%s, %s, 'test', %s, NOW(), 0)
-                """, (username, 'system', test_message))
+                # Try with both timestamp and created_at columns
+                try:
+                    c.execute("""
+                        INSERT INTO notifications (user_id, from_user, type, message, timestamp, created_at, is_read)
+                        VALUES (%s, %s, 'test', %s, NOW(), NOW(), 0)
+                    """, (username, 'system', test_message))
+                except Exception:
+                    # Fallback if one column doesn't exist
+                    try:
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, message, timestamp, is_read)
+                            VALUES (%s, %s, 'test', %s, NOW(), 0)
+                        """, (username, 'system', test_message))
+                    except Exception:
+                        c.execute("""
+                            INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
+                            VALUES (%s, %s, 'test', %s, NOW(), 0)
+                        """, (username, 'system', test_message))
             else:
                 c.execute("""
                     INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
@@ -284,6 +298,50 @@ def test_create_notification():
                 "message": "Test notification created",
                 "notification_id": inserted_id,
                 "test_message": test_message,
+            })
+    except Exception as exc:
+        import traceback
+        return jsonify({
+            "success": False,
+            "error": str(exc),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+@notifications_bp.route("/api/notifications/fix-schema", methods=["POST"], endpoint="fix_notifications_schema")
+@_login_required
+def fix_notifications_schema():
+    """Fix the notifications table schema by adding default to timestamp column."""
+    username = session["username"]
+    # Only allow admin to run this
+    if username != "admin":
+        return jsonify({"success": False, "error": "Admin only"}), 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            results = []
+            
+            if USE_MYSQL:
+                # Add default value to timestamp column if it exists
+                try:
+                    c.execute("ALTER TABLE notifications MODIFY COLUMN timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                    results.append("Modified timestamp column to have default value")
+                except Exception as e:
+                    results.append(f"timestamp column modify: {e}")
+                
+                # Ensure created_at has default too
+                try:
+                    c.execute("ALTER TABLE notifications MODIFY COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                    results.append("Modified created_at column to have default value")
+                except Exception as e:
+                    results.append(f"created_at column modify: {e}")
+                
+                conn.commit()
+            
+            return jsonify({
+                "success": True,
+                "results": results,
             })
     except Exception as exc:
         import traceback
