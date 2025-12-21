@@ -286,7 +286,7 @@ export default function MessageBubble({
           {/* Text content or editor */}
           {isEditing ? (
             <div 
-              className="min-w-[320px] sm:min-w-[400px]"
+              className="w-[65vw] max-w-[320px]"
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
