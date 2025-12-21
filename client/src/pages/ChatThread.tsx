@@ -25,7 +25,7 @@ import { useSignalDecryption, DECRYPTION_RETRY_DELAY_MS } from '../hooks/useSign
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
-import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
+import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { sendImageMessage, sendVideoMessage } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
 import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
@@ -753,6 +753,9 @@ export default function ChatThread(){
               otherUserId: userId 
             }, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
           }
+          
+          // Clear the chat threads cache so Messages list shows updated unread counts
+          clearDeviceCache('chat-threads-list')
           
           // Clear iOS badge after reading messages (server already marked them as read)
           // Do this aggressively - multiple calls to ensure badge clears quickly

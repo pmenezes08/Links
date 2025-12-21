@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
 import Avatar from '../components/Avatar'
@@ -54,6 +54,7 @@ function formatLastMessagePreview(text: string | null): string {
 export default function Messages(){
   const { setTitle } = useHeader()
   const navigate = useNavigate()
+  const location = useLocation()
   useEffect(() => {
     setTitle('Messages')
     return () => setTitle('')
@@ -174,8 +175,8 @@ export default function Messages(){
   }, [loadThreads])
 
   useEffect(() => {
-    // Fetch fresh data (will update cache)
-    loadThreads(threads.length > 0) // Silent if we have cached data
+    // Fetch fresh data immediately (non-silent to ensure UI updates quickly)
+    loadThreads(false)
     
     // Also load archived chats count on mount
     loadArchivedThreads()
@@ -209,14 +210,23 @@ export default function Messages(){
     }
     document.addEventListener('visibilitychange', onVis)
     
+    // Handle navigation back (popstate fires when user presses back/forward)
+    const onPopState = () => {
+      console.log('🔙 Detected back navigation, refreshing threads')
+      loadThreads(false) // Non-silent refresh on back navigation
+    }
+    window.addEventListener('popstate', onPopState)
+    
     // Poll every 3 seconds for faster updates (was 5s)
     const t = setInterval(() => loadThreads(true), 3000)
     
     return () => {
       document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('popstate', onPopState)
       clearInterval(t)
     }
-  }, [loadThreads, loadArchivedThreads])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadThreads, loadArchivedThreads, location.key])
 
   useEffect(() => {
     let cancelled = false
