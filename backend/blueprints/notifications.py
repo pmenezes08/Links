@@ -176,10 +176,36 @@ def debug_notifications():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            
+            # Check table structure
+            table_info = {}
+            try:
+                if USE_MYSQL:
+                    c.execute("DESCRIBE notifications")
+                    columns = []
+                    for r in c.fetchall():
+                        col_name = r["Field"] if hasattr(r, "keys") else r[0]
+                        col_type = r["Type"] if hasattr(r, "keys") else r[1]
+                        columns.append({"name": col_name, "type": str(col_type)})
+                    table_info["columns"] = columns
+                else:
+                    c.execute("PRAGMA table_info(notifications)")
+                    columns = []
+                    for r in c.fetchall():
+                        columns.append({"name": r[1], "type": r[2]})
+                    table_info["columns"] = columns
+            except Exception as te:
+                table_info["error"] = str(te)
+            
             # Get count of all notifications for user
             c.execute("SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ?", (username,))
             row = c.fetchone()
             total = row["cnt"] if hasattr(row, "keys") else row[0]
+            
+            # Get total count in table (all users)
+            c.execute("SELECT COUNT(*) as cnt FROM notifications")
+            row2 = c.fetchone()
+            total_all = row2["cnt"] if hasattr(row2, "keys") else row2[0]
             
             # Get count by type
             c.execute("SELECT type, COUNT(*) as cnt FROM notifications WHERE user_id = ? GROUP BY type", (username,))
@@ -214,8 +240,10 @@ def debug_notifications():
                 "success": True,
                 "username": username,
                 "total_notifications": total,
+                "total_all_users": total_all,
                 "by_type": type_counts,
                 "latest_5": latest,
+                "table_info": table_info,
                 "use_mysql": USE_MYSQL,
             })
     except Exception as exc:
