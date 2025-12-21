@@ -189,12 +189,73 @@ def debug_notifications():
                 cnt = r["cnt"] if hasattr(r, "keys") else r[1]
                 type_counts[t] = cnt
             
+            # Get latest 5 notifications with all fields
+            c.execute("""
+                SELECT id, from_user, type, post_id, community_id, message, is_read, created_at
+                FROM notifications 
+                WHERE user_id = ? 
+                ORDER BY created_at DESC 
+                LIMIT 5
+            """, (username,))
+            latest = []
+            for r in c.fetchall():
+                latest.append({
+                    "id": r["id"] if hasattr(r, "keys") else r[0],
+                    "from_user": r["from_user"] if hasattr(r, "keys") else r[1],
+                    "type": r["type"] if hasattr(r, "keys") else r[2],
+                    "post_id": r["post_id"] if hasattr(r, "keys") else r[3],
+                    "community_id": r["community_id"] if hasattr(r, "keys") else r[4],
+                    "message": r["message"] if hasattr(r, "keys") else r[5],
+                    "is_read": r["is_read"] if hasattr(r, "keys") else r[6],
+                    "created_at": str(r["created_at"] if hasattr(r, "keys") else r[7]),
+                })
+            
             return jsonify({
                 "success": True,
                 "username": username,
                 "total_notifications": total,
                 "by_type": type_counts,
+                "latest_5": latest,
                 "use_mysql": USE_MYSQL,
+            })
+    except Exception as exc:
+        import traceback
+        return jsonify({
+            "success": False,
+            "error": str(exc),
+            "traceback": traceback.format_exc()
+        }), 500
+
+
+@notifications_bp.route("/api/notifications/test-create", methods=["POST"], endpoint="test_create_notification")
+@_login_required
+def test_create_notification():
+    """Create a test notification to verify the system works."""
+    username = session["username"]
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            test_message = f"Test notification created at {datetime.now().strftime('%H:%M:%S')}"
+            
+            if USE_MYSQL:
+                c.execute("""
+                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
+                    VALUES (%s, %s, 'test', %s, NOW(), 0)
+                """, (username, 'system', test_message))
+            else:
+                c.execute("""
+                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
+                    VALUES (?, ?, 'test', ?, datetime('now'), 0)
+                """, (username, 'system', test_message))
+            
+            conn.commit()
+            inserted_id = c.lastrowid
+            
+            return jsonify({
+                "success": True,
+                "message": "Test notification created",
+                "notification_id": inserted_id,
+                "test_message": test_message,
             })
     except Exception as exc:
         import traceback
