@@ -2211,6 +2211,15 @@ export default function ChatThread(){
                     // Also save to legacy time-based storage for backwards compatibility
                     writeMessageMeta(metaRef.current, m.time, m.text, Boolean(m.sent), { reaction: emoji })
                     try { localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) } catch {}
+                    // Notify the other user about the reaction
+                    if (m.id && !String(m.id).startsWith('temp_')) {
+                      fetch('/api/chat/react_to_message', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message_id: m.id, emoji })
+                      }).catch(() => {})
+                    }
                   }}
                   onReply={() => {
                     setReplyTo({

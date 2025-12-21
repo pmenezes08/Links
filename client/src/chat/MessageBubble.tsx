@@ -93,22 +93,19 @@ export default function MessageBubble({
       disabled={isEditing}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-        <div className="relative">
-          {/* Reaction emoji - positioned at edge of bubble */}
+        <div
+          className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} max-w-[82%] md:max-w-[65%] px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
+            m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
+          } ${m.isOptimistic ? 'opacity-70' : 'opacity-100'} relative`}
+        >
+          {/* Reaction emoji - inside bubble, bottom-right corner on the border */}
           {m.reaction && (
             <span 
-              className={`absolute bottom-0 text-base select-none z-10 ${
-                m.sent ? '-left-5' : '-right-5'
-              }`}
+              className="absolute -bottom-2 right-1 text-base select-none z-10 drop-shadow-sm"
             >
               {m.reaction}
             </span>
           )}
-          <div
-            className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} max-w-[82%] md:max-w-[65%] px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
-              m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
-            } ${m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
-          >
           {/* Story reply - shows a preview of the story being replied to */}
           {m.storyReply ? (() => {
             const isVideo = m.storyReply.mediaType === '🎥'
@@ -357,7 +354,6 @@ export default function MessageBubble({
               {formatMessageTime(m.time)}
             </span>
           )}
-          </div>
         </div>
       </div>
     </LongPressActionable>

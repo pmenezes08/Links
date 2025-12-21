@@ -9687,6 +9687,77 @@ def edit_message_api():
         logger.error(f"edit_message_api error: {e}")
         return jsonify({'success': False, 'error': 'Failed to edit message'}), 500
 
+@app.route('/api/chat/react_to_message', methods=['POST'])
+@login_required
+def react_to_message():
+    """React to a message with an emoji and notify the message sender."""
+    username = session.get('username')
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        message_id = data.get('message_id')
+        emoji = data.get('emoji', '').strip()
+    else:
+        message_id = request.form.get('message_id')
+        emoji = (request.form.get('emoji') or '').strip()
+    
+    if not message_id:
+        return jsonify({'success': False, 'error': 'message_id required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Get the message sender to notify them
+            c.execute("SELECT sender, receiver, message FROM messages WHERE id = ?", (message_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Message not found'}), 404
+            
+            sender = row['sender'] if hasattr(row, 'keys') else row[0]
+            receiver = row['receiver'] if hasattr(row, 'keys') else row[1]
+            message_text = row['message'] if hasattr(row, 'keys') else row[2]
+            
+            # Determine who to notify (the other person in the chat)
+            if str(sender) == str(username):
+                # User is reacting to their own message - notify the receiver
+                notify_user = receiver
+            else:
+                # User is reacting to received message - notify the sender
+                notify_user = sender
+            
+            # Send notification if there's an emoji (not removing reaction)
+            if emoji and notify_user:
+                # Truncate message preview
+                preview = (message_text or '').strip()[:50]
+                if len(message_text or '') > 50:
+                    preview += '...'
+                
+                # Check if user is currently viewing this chat (don't notify if they're already in it)
+                should_push = True
+                try:
+                    c2 = conn.cursor()
+                    c2.execute(
+                        "SELECT 1 FROM active_chat_presence WHERE username = ? AND peer = ? AND last_ping > DATE_SUB(NOW(), INTERVAL 30 SECOND)",
+                        (notify_user, username)
+                    )
+                    if c2.fetchone():
+                        should_push = False
+                except Exception as pe:
+                    logger.warning(f"active chat presence check (reaction) failed: {pe}")
+                
+                if should_push:
+                    send_push_to_user(notify_user, {
+                        'title': f'{username} reacted {emoji}',
+                        'body': f'to: "{preview}"' if preview else 'to your message',
+                        'url': f'/user_chat/chat/{username}',
+                        'tag': f'reaction-{username}-{message_id}',
+                    })
+            
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"react_to_message error: {e}")
+        return jsonify({'success': False, 'error': 'Failed to save reaction'}), 500
+
+
 @app.route('/send_photo_message', methods=['POST'])
 @login_required
 def send_photo_message():
