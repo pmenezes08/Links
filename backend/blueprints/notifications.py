@@ -311,7 +311,7 @@ def test_create_notification():
 @notifications_bp.route("/api/notifications/fix-schema", methods=["POST"], endpoint="fix_notifications_schema")
 @_login_required
 def fix_notifications_schema():
-    """Fix the notifications table schema by adding default to timestamp column."""
+    """Fix the notifications table schema - comprehensive fix for timestamp/created_at issues."""
     username = session["username"]
     # Only allow admin to run this
     if username != "admin":
@@ -323,21 +323,55 @@ def fix_notifications_schema():
             results = []
             
             if USE_MYSQL:
-                # Add default value to timestamp column if it exists
-                try:
-                    c.execute("ALTER TABLE notifications MODIFY COLUMN timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-                    results.append("Modified timestamp column to have default value")
-                except Exception as e:
-                    results.append(f"timestamp column modify: {e}")
+                # First, check which columns exist
+                c.execute("DESCRIBE notifications")
+                existing_columns = [r["Field"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
+                results.append(f"Existing columns: {existing_columns}")
                 
-                # Ensure created_at has default too
-                try:
-                    c.execute("ALTER TABLE notifications MODIFY COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-                    results.append("Modified created_at column to have default value")
-                except Exception as e:
-                    results.append(f"created_at column modify: {e}")
+                # Fix 1: Add default value to timestamp column if it exists
+                if "timestamp" in existing_columns:
+                    try:
+                        c.execute("ALTER TABLE notifications MODIFY COLUMN timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                        results.append("✅ Modified timestamp column to have default value")
+                    except Exception as e:
+                        results.append(f"⚠️ timestamp column modify failed: {e}")
+                
+                # Fix 2: Add created_at column if it doesn't exist
+                if "created_at" not in existing_columns:
+                    try:
+                        c.execute("ALTER TABLE notifications ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                        results.append("✅ Added created_at column")
+                        # Copy data from timestamp to created_at if timestamp exists
+                        if "timestamp" in existing_columns:
+                            try:
+                                c.execute("UPDATE notifications SET created_at = timestamp WHERE created_at IS NULL")
+                                results.append("✅ Copied timestamp values to created_at")
+                            except Exception as e:
+                                results.append(f"⚠️ Could not copy timestamp to created_at: {e}")
+                    except Exception as e:
+                        results.append(f"⚠️ created_at column add failed: {e}")
+                else:
+                    # Ensure created_at has default
+                    try:
+                        c.execute("ALTER TABLE notifications MODIFY COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                        results.append("✅ Modified created_at column to have default value")
+                    except Exception as e:
+                        results.append(f"⚠️ created_at column modify failed: {e}")
+                
+                # Fix 3: Add link column if it doesn't exist
+                if "link" not in existing_columns:
+                    try:
+                        c.execute("ALTER TABLE notifications ADD COLUMN link TEXT")
+                        results.append("✅ Added link column")
+                    except Exception as e:
+                        results.append(f"⚠️ link column add failed: {e}")
                 
                 conn.commit()
+                
+                # Verify final schema
+                c.execute("DESCRIBE notifications")
+                final_columns = [r["Field"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
+                results.append(f"Final columns: {final_columns}")
             
             return jsonify({
                 "success": True,
