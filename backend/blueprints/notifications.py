@@ -331,15 +331,15 @@ def fix_notifications_schema():
                 # Fix 1: Add default value to timestamp column if it exists
                 if "timestamp" in existing_columns:
                     try:
-                        c.execute("ALTER TABLE notifications MODIFY COLUMN timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-                        results.append("✅ Modified timestamp column to have default value")
+                        c.execute("ALTER TABLE notifications MODIFY COLUMN timestamp TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP")
+                        results.append("✅ Modified timestamp column to have default value and allow NULL")
                     except Exception as e:
                         results.append(f"⚠️ timestamp column modify failed: {e}")
                 
                 # Fix 2: Add created_at column if it doesn't exist
                 if "created_at" not in existing_columns:
                     try:
-                        c.execute("ALTER TABLE notifications ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                        c.execute("ALTER TABLE notifications ADD COLUMN created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP")
                         results.append("✅ Added created_at column")
                         # Copy data from timestamp to created_at if timestamp exists
                         if "timestamp" in existing_columns:
@@ -351,27 +351,62 @@ def fix_notifications_schema():
                     except Exception as e:
                         results.append(f"⚠️ created_at column add failed: {e}")
                 else:
-                    # Ensure created_at has default
+                    # Ensure created_at has default and allows NULL
                     try:
-                        c.execute("ALTER TABLE notifications MODIFY COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-                        results.append("✅ Modified created_at column to have default value")
+                        c.execute("ALTER TABLE notifications MODIFY COLUMN created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP")
+                        results.append("✅ Modified created_at column to have default value and allow NULL")
                     except Exception as e:
                         results.append(f"⚠️ created_at column modify failed: {e}")
                 
                 # Fix 3: Add link column if it doesn't exist
                 if "link" not in existing_columns:
                     try:
-                        c.execute("ALTER TABLE notifications ADD COLUMN link TEXT")
+                        c.execute("ALTER TABLE notifications ADD COLUMN link TEXT NULL")
                         results.append("✅ Added link column")
                     except Exception as e:
                         results.append(f"⚠️ link column add failed: {e}")
+                
+                # Fix 4: Create a trigger to auto-populate timestamp from created_at and vice versa
+                # This ensures both columns stay in sync
+                try:
+                    # Drop existing trigger if any
+                    c.execute("DROP TRIGGER IF EXISTS notifications_timestamp_sync")
+                except Exception:
+                    pass
+                
+                if "timestamp" in existing_columns and "created_at" in existing_columns:
+                    try:
+                        c.execute("""
+                            CREATE TRIGGER notifications_timestamp_sync 
+                            BEFORE INSERT ON notifications 
+                            FOR EACH ROW 
+                            BEGIN
+                                IF NEW.timestamp IS NULL AND NEW.created_at IS NOT NULL THEN
+                                    SET NEW.timestamp = NEW.created_at;
+                                ELSEIF NEW.created_at IS NULL AND NEW.timestamp IS NOT NULL THEN
+                                    SET NEW.created_at = NEW.timestamp;
+                                ELSEIF NEW.timestamp IS NULL AND NEW.created_at IS NULL THEN
+                                    SET NEW.timestamp = CURRENT_TIMESTAMP;
+                                    SET NEW.created_at = CURRENT_TIMESTAMP;
+                                END IF;
+                            END
+                        """)
+                        results.append("✅ Created trigger to sync timestamp and created_at columns")
+                    except Exception as e:
+                        results.append(f"⚠️ Trigger creation failed: {e}")
                 
                 conn.commit()
                 
                 # Verify final schema
                 c.execute("DESCRIBE notifications")
-                final_columns = [r["Field"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
-                results.append(f"Final columns: {final_columns}")
+                final_columns = []
+                for r in c.fetchall():
+                    col_name = r["Field"] if hasattr(r, "keys") else r[0]
+                    col_type = r["Type"] if hasattr(r, "keys") else r[1]
+                    col_null = r["Null"] if hasattr(r, "keys") else r[2]
+                    col_default = r["Default"] if hasattr(r, "keys") else r[4]
+                    final_columns.append({"name": col_name, "type": str(col_type), "null": col_null, "default": str(col_default)})
+                results.append(f"Final schema: {final_columns}")
             
             return jsonify({
                 "success": True,
