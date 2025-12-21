@@ -476,8 +476,14 @@ def get_notifications():
                     )
                 has_link_column = False
 
-            notifications = []
+            # First pass: collect notifications and unique from_users
+            raw_notifications = []
+            from_users = set()
             for row in c.fetchall():
+                from_user = row["from_user"]
+                if from_user:
+                    from_users.add(from_user)
+                
                 # Handle link field access for both MySQL dict and SQLite Row
                 link_value = None
                 if has_link_column:
@@ -493,19 +499,43 @@ def get_notifications():
                 elif created_at_val is None:
                     created_at_val = ""
                 
-                notifications.append(
-                    {
-                        "id": row["id"],
-                        "from_user": row["from_user"],
-                        "type": row["type"],
-                        "post_id": row["post_id"],
-                        "community_id": row["community_id"],
-                        "message": row["message"],
-                        "link": link_value,
-                        "is_read": bool(row["is_read"]),
-                        "created_at": created_at_val,
-                    }
-                )
+                raw_notifications.append({
+                    "id": row["id"],
+                    "from_user": from_user,
+                    "type": row["type"],
+                    "post_id": row["post_id"],
+                    "community_id": row["community_id"],
+                    "message": row["message"],
+                    "link": link_value,
+                    "is_read": bool(row["is_read"]),
+                    "created_at": created_at_val,
+                })
+            
+            # Batch fetch avatars for all from_users
+            avatar_map = {}
+            if from_users:
+                try:
+                    placeholders = ",".join(["?" for _ in from_users])
+                    c.execute(
+                        f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({placeholders})",
+                        tuple(from_users),
+                    )
+                    for r in c.fetchall():
+                        uname = r["username"] if hasattr(r, "keys") else r[0]
+                        avatar = r["profile_picture"] if hasattr(r, "keys") else r[1]
+                        avatar_map[uname] = avatar
+                except Exception as avatar_err:
+                    current_app.logger.warning("Could not fetch avatars: %s", avatar_err)
+            
+            # Add avatars to notifications
+            notifications = []
+            for n in raw_notifications:
+                avatar_url = avatar_map.get(n["from_user"])
+                # Ensure avatar URL is properly formatted
+                if avatar_url and not avatar_url.startswith(("http://", "https://", "/")):
+                    avatar_url = f"/static/{avatar_url}"
+                n["avatar"] = avatar_url
+                notifications.append(n)
 
             current_app.logger.info(
                 "User %s has %d notifications, %d unread, types: %s",

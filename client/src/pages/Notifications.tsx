@@ -14,6 +14,7 @@ type Notif = {
   is_read: boolean
   created_at?: string
   link?: string|null
+  avatar?: string|null
 }
 
 function iconFor(type?: string){
@@ -204,16 +205,39 @@ export default function Notifications(){
           <div className="flex flex-col gap-2">
             {items.map(n => {
               const typeKey = n.type?.split(':')[0] ?? n.type
+              const avatarUrl = n.avatar && (n.avatar.startsWith('http') || n.avatar.startsWith('/')) 
+                ? n.avatar 
+                : n.avatar ? `/static/${n.avatar}` : null
               return (
                 <button
                   key={n.id}
                   onClick={() => onClick(n)}
-                  className={`text-left w-full px-3 py-2 rounded-lg border ${n.is_read ? 'border-white/10 bg-white/[0.03]' : 'border-[#4db6ac]/40 bg-[#4db6ac]/10'}`}
+                  className={`text-left w-full px-3 py-2.5 rounded-xl border ${n.is_read ? 'border-white/10 bg-white/[0.03]' : 'border-[#4db6ac]/40 bg-[#4db6ac]/10'}`}
                 >
-                  <div className="flex items-start gap-2">
-                    <i className={`${iconFor(n.type)} text-[#4db6ac] mt-0.5`} />
+                  <div className="flex items-start gap-3">
+                    {/* Avatar or Icon */}
+                    <div className="relative flex-shrink-0">
+                      {avatarUrl ? (
+                        <img 
+                          src={avatarUrl} 
+                          alt={n.from_user || ''} 
+                          className="w-10 h-10 rounded-full object-cover bg-white/10"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                            (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      <div className={`w-10 h-10 rounded-full bg-[#1a2526] flex items-center justify-center ${avatarUrl ? 'hidden' : ''}`}>
+                        <i className={`${iconFor(n.type)} text-[#4db6ac] text-lg`} />
+                      </div>
+                      {/* Small type indicator badge */}
+                      <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#0b0f10] border border-white/10 flex items-center justify-center">
+                        <i className={`${iconFor(n.type)} text-[#4db6ac] text-[10px]`} />
+                      </div>
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm truncate">
+                      <div className="text-sm">
                         {typeKey === 'event_invitation' ? (n.message || 'Event invitation') :
                          typeKey === 'community_post' ? (n.message || `@${n.from_user} made a new post`) :
                          typeKey === 'new_member' ? (n.message || `@${n.from_user} joined the community`) :
@@ -221,19 +245,24 @@ export default function Notifications(){
                          typeKey === 'admin_broadcast' ? (n.message || 'Administrator announcement') : (
                           n.message ? (n.message) : (
                             <>
-                              <strong>@{n.from_user}</strong> {
-                                typeKey === 'task_assigned' ? 'assigned you a task' :
+                              <span className="font-medium text-white">@{n.from_user}</span>{' '}
+                              <span className="text-white/70">
+                                {typeKey === 'task_assigned' ? 'assigned you a task' :
                                 typeKey === 'reaction' ? 'reacted to your post' :
                                 typeKey === 'reply' ? 'replied to your post' :
                                 typeKey === 'mention_post' ? 'mentioned you in a post' :
-                                typeKey === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'
-                              }
+                                typeKey === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'}
+                              </span>
                             </>
                           )
                         )}
                       </div>
-                      <div className="text-[11px] text-[#9fb0b5]">{timeAgo(n.created_at)}</div>
+                      <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(n.created_at)}</div>
                     </div>
+                    {/* Unread indicator */}
+                    {!n.is_read && (
+                      <div className="w-2 h-2 rounded-full bg-[#4db6ac] flex-shrink-0 mt-2" />
+                    )}
                   </div>
                 </button>
               )
