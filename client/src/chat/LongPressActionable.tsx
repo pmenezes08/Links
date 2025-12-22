@@ -39,19 +39,47 @@ export default function LongPressActionable({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<EmojiCategory>('Smileys')
   const [isPressed, setIsPressed] = useState(false)
-  const [menuPosition, setMenuPosition] = useState<'above' | 'below'>('above')
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({})
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   
-  // Calculate menu position when showing
-  const calculatePosition = useCallback(() => {
-    if (!containerRef.current) return 'above'
+  // Calculate menu position when showing - uses fixed positioning for reliability
+  const calculateMenuStyle = useCallback((): React.CSSProperties => {
+    if (!containerRef.current) return { bottom: '100%', right: 8 }
+    
     const rect = containerRef.current.getBoundingClientRect()
     const viewportHeight = window.innerHeight
-    // If message is in the bottom 40% of screen, show menu above with more offset
-    // Otherwise show below
-    const isNearBottom = rect.top > viewportHeight * 0.6
-    return isNearBottom ? 'above' : 'below'
+    const viewportWidth = window.innerWidth
+    const menuHeight = 220 // Approximate menu height
+    const menuWidth = 200 // Approximate menu width
+    const composerHeight = 80 // Approximate composer bar height
+    
+    // Calculate available space below (above composer)
+    const spaceBelow = viewportHeight - rect.bottom - composerHeight
+    
+    // Prefer above if message is near bottom or not enough space below
+    const showAbove = spaceBelow < menuHeight || rect.bottom > viewportHeight - 200
+    
+    // Calculate horizontal position (keep menu within viewport)
+    let rightPos = viewportWidth - rect.right + 8
+    if (rightPos < 8) rightPos = 8
+    if (rightPos + menuWidth > viewportWidth - 8) rightPos = viewportWidth - menuWidth - 8
+    
+    if (showAbove) {
+      // Position above the message
+      return {
+        position: 'fixed',
+        bottom: viewportHeight - rect.top + 8,
+        right: rightPos,
+      }
+    } else {
+      // Position below the message
+      return {
+        position: 'fixed',
+        top: rect.bottom + 8,
+        right: rightPos,
+      }
+    }
   }, [])
   
   function handleStart(e?: React.MouseEvent | React.TouchEvent) {
@@ -66,7 +94,7 @@ export default function LongPressActionable({
     setIsPressed(true)
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
-      setMenuPosition(calculatePosition())
+      setMenuStyle(calculateMenuStyle())
       setShowMenu(true)
       setIsPressed(false)
     }, 500) // 500ms for better UX
@@ -82,7 +110,7 @@ export default function LongPressActionable({
   const handleContextMenu = (e: React.MouseEvent) => {
     if (disabled) return
     e.preventDefault()
-    setMenuPosition(calculatePosition())
+    setMenuStyle(calculateMenuStyle())
     setShowMenu(true)
   }
   
@@ -111,9 +139,10 @@ export default function LongPressActionable({
       {!disabled && showMenu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => { setShowMenu(false); setShowEmojiPicker(false) }} />
-          <div className={`absolute z-50 right-2 bg-[#111] border border-white/15 rounded-lg shadow-xl px-2 py-2 min-w-[160px] ${
-            menuPosition === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
-          }`}>
+          <div 
+            className="z-50 bg-[#111] border border-white/15 rounded-lg shadow-xl px-2 py-2 min-w-[160px]"
+            style={menuStyle}
+          >
             <div className="flex items-center gap-2 px-2 pb-2 border-b border-white/10">
               {QUICK_REACTIONS.map(e => (
                 <button 
