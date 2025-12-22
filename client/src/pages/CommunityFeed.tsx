@@ -3310,7 +3310,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                     <span className="font-medium">{r.username}</span>
                     <span className="text-[11px] text-[#9fb0b5]">{formatSmartTime(r.timestamp)}</span>
                     <button
-                      className="ml-auto px-2 py-0.5 rounded-full text-[11px] text-[#9fb0b5] hover:text-[#4db6ac]"
+                      className={`ml-auto px-2 py-0.5 rounded-full text-[11px] ${activeChildReplyFor === r.id ? 'text-[#4db6ac]' : 'text-[#9fb0b5] hover:text-[#4db6ac]'}`}
                       onClick={(e)=> { e.stopPropagation(); setActiveChildReplyFor(id => id === r.id ? null : r.id); setChildReplyText('') }}
                     >
                       Reply
@@ -3463,7 +3463,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         </div>
       )}
       {/* Inline quick reply composer - sleek, full-width, low-distraction */}
-      {!post.poll && (
+      {/* Hidden when child reply is active */}
+      {!post.poll && activeChildReplyFor === null && (
         <div className="px-3 pb-3" onClick={(e)=> e.stopPropagation()}>
           <div className="rounded-xl border border-white/5 bg-white/[0.03] px-2 pt-2 pb-2 space-y-2">
               <MentionTextarea
