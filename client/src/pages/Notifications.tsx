@@ -116,8 +116,8 @@ export default function Notifications(){
       if (j?.success){
         console.log('📋 Total notifications received:', j.notifications?.length || 0)
         console.log('📋 Notification types:', j.notifications?.map((n: Notif) => n?.type))
-        const filtered = (j.notifications as Notif[]).filter(n => n?.type !== 'message')
-        console.log('📋 After filtering out messages:', filtered.length)
+        const filtered = (j.notifications as Notif[]).filter(n => n?.type !== 'message' && n?.type !== 'reaction')
+        console.log('📋 After filtering out messages and reactions:', filtered.length)
         setItems(filtered)
       } else {
         console.error('📋 Notifications API error:', j?.error || 'Unknown error')
