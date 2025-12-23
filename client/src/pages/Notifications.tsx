@@ -17,6 +17,42 @@ type Notif = {
   avatar?: string|null
 }
 
+type CalendarEvent = {
+  id: number
+  title: string
+  date: string
+  end_date?: string
+  start_time?: string
+  end_time?: string
+  community_id: number
+  community_name: string
+  user_rsvp?: string | null
+  rsvp_counts?: { going: number; maybe: number; not_going: number }
+}
+
+type Poll = {
+  id: number
+  post_id: number
+  question: string
+  community_id: number
+  community_name: string
+  total_votes: number
+  user_vote?: number | null
+  options: { id: number; text: string; votes: number }[]
+}
+
+type Task = {
+  id: number
+  title: string
+  description?: string
+  due_date?: string
+  community_id: number
+  community_name: string
+  status?: string
+}
+
+type TabType = 'notifications' | 'calendar' | 'polls' | 'tasks'
+
 function iconFor(type?: string){
   const normalized = type?.split(':')[0]
   switch(normalized){
@@ -53,11 +89,20 @@ function timeAgo(ts?: string){
 export default function Notifications(){
   const { setTitle } = useHeader()
   const navigate = useNavigate()
+  const [activeTab, setActiveTab] = useState<TabType>('notifications')
   const [items, setItems] = useState<Notif[]|null>(null)
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
   const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [broadcastNotif, setBroadcastNotif] = useState<Notif|null>(null)
+  
+  // New data for tabs
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [polls, setPolls] = useState<Poll[]>([])
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const [pollsLoading, setPollsLoading] = useState(false)
+  const [tasksLoading, setTasksLoading] = useState(false)
 
   useEffect(() => { setTitle('Notifications') }, [setTitle])
 
@@ -90,6 +135,62 @@ export default function Notifications(){
     // Clear badge when viewing notifications page
     clearIOSNotifications()
   }, [])
+  
+  // Load events, polls, tasks when switching tabs
+  useEffect(() => {
+    if (activeTab === 'calendar' && events.length === 0 && !eventsLoading) {
+      loadEvents()
+    } else if (activeTab === 'polls' && polls.length === 0 && !pollsLoading) {
+      loadPolls()
+    } else if (activeTab === 'tasks' && tasks.length === 0 && !tasksLoading) {
+      loadTasks()
+    }
+  }, [activeTab])
+  
+  async function loadEvents() {
+    try {
+      setEventsLoading(true)
+      const r = await fetch('/api/all_calendar_events', { credentials: 'include' })
+      const j = await r.json()
+      if (j?.success) {
+        setEvents(j.events || [])
+      }
+    } catch (err) {
+      console.error('Failed to load events:', err)
+    } finally {
+      setEventsLoading(false)
+    }
+  }
+  
+  async function loadPolls() {
+    try {
+      setPollsLoading(true)
+      const r = await fetch('/api/all_active_polls', { credentials: 'include' })
+      const j = await r.json()
+      if (j?.success) {
+        setPolls(j.polls || [])
+      }
+    } catch (err) {
+      console.error('Failed to load polls:', err)
+    } finally {
+      setPollsLoading(false)
+    }
+  }
+  
+  async function loadTasks() {
+    try {
+      setTasksLoading(true)
+      const r = await fetch('/api/all_my_tasks', { credentials: 'include' })
+      const j = await r.json()
+      if (j?.success) {
+        setTasks(j.tasks || [])
+      }
+    } catch (err) {
+      console.error('Failed to load tasks:', err)
+    } finally {
+      setTasksLoading(false)
+    }
+  }
 
   // Clear iOS notification center and badge
   async function clearIOSNotifications() {
@@ -170,104 +271,281 @@ export default function Notifications(){
     }
   }
 
-  if (loading || !items) {
-    return (
-      <div className="min-h-screen bg-black text-white pb-safe">
-        <div className="max-w-xl mx-auto px-3 pb-20 text-[#9fb0b5]">Loading…</div>
-      </div>
-    )
+  // Format date for display
+  function formatEventDate(dateStr: string) {
+    try {
+      const d = new Date(dateStr)
+      const today = new Date()
+      const tomorrow = new Date(today)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      
+      if (d.toDateString() === today.toDateString()) return 'Today'
+      if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    } catch {
+      return dateStr
+    }
   }
 
   return (
     <div className="min-h-screen bg-black text-white pb-safe">
       <div className="app-content max-w-xl mx-auto px-3 pb-20">
-        <div className="flex items-center justify-center gap-3 mb-3 border-b border-white/10 pb-2">
-          <button
-            onClick={markAll}
-            className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#4db6ac]"
-          >
-            Mark all read
-          </button>
-          <button
-            onClick={clearAll}
-            disabled={clearing}
-            className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#e53935] disabled:opacity-50"
-          >
-            Clear all
-          </button>
+        {/* Tab Navigation */}
+        <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-hide border-b border-white/10 pb-2">
+          {[
+            { key: 'notifications' as TabType, label: 'Notifications', icon: 'fa-regular fa-bell' },
+            { key: 'calendar' as TabType, label: 'Calendar', icon: 'fa-regular fa-calendar' },
+            { key: 'polls' as TabType, label: 'Polls', icon: 'fa-solid fa-chart-bar' },
+            { key: 'tasks' as TabType, label: 'Tasks', icon: 'fa-solid fa-list-check' },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${
+                activeTab === tab.key 
+                  ? 'bg-[#4db6ac] text-black font-semibold' 
+                  : 'text-white/60 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <i className={tab.icon} />
+              {tab.label}
+            </button>
+          ))}
         </div>
-        {items.length === 0 ? (
-          <div className="text-[#9fb0b5] py-10 text-center">
-            <i className="fa-regular fa-bell" />
-            <div className="mt-2">No notifications</div>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {items.map(n => {
-              const typeKey = n.type?.split(':')[0] ?? n.type
-              const avatarUrl = n.avatar && (n.avatar.startsWith('http') || n.avatar.startsWith('/')) 
-                ? n.avatar 
-                : n.avatar ? `/static/${n.avatar}` : null
-              return (
-                <button
-                  key={n.id}
-                  onClick={() => onClick(n)}
-                  className={`text-left w-full px-3 py-2.5 rounded-xl border ${n.is_read ? 'border-white/10 bg-white/[0.03]' : 'border-[#4db6ac]/40 bg-[#4db6ac]/10'}`}
-                >
-                  <div className="flex items-start gap-3">
-                    {/* Avatar or Icon */}
-                    <div className="relative flex-shrink-0">
-                      {avatarUrl ? (
-                        <img 
-                          src={avatarUrl} 
-                          alt={n.from_user || ''} 
-                          className="w-10 h-10 rounded-full object-cover bg-white/10"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none';
-                            (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                          }}
-                        />
-                      ) : null}
-                      <div className={`w-10 h-10 rounded-full bg-[#1a2526] flex items-center justify-center ${avatarUrl ? 'hidden' : ''}`}>
-                        <i className={`${iconFor(n.type)} text-[#4db6ac] text-lg`} />
-                      </div>
-                      {/* Small type indicator badge */}
-                      <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#0b0f10] border border-white/10 flex items-center justify-center">
-                        <i className={`${iconFor(n.type)} text-[#4db6ac] text-[10px]`} />
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm">
-                        {typeKey === 'event_invitation' ? (n.message || 'Event invitation') :
-                         typeKey === 'community_post' ? (n.message || `@${n.from_user} made a new post`) :
-                         typeKey === 'new_member' ? (n.message || `@${n.from_user} joined the community`) :
-                         typeKey === 'poll' ? (n.message || `@${n.from_user} created a new poll`) :
-                         typeKey === 'admin_broadcast' ? (n.message || 'Administrator announcement') : (
-                          n.message ? (n.message) : (
-                            <>
-                              <span className="font-medium text-white">@{n.from_user}</span>{' '}
-                              <span className="text-white/70">
-                                {typeKey === 'task_assigned' ? 'assigned you a task' :
-                                typeKey === 'reaction' ? 'reacted to your post' :
-                                typeKey === 'reply' ? 'replied to your post' :
-                                typeKey === 'mention_post' ? 'mentioned you in a post' :
-                                typeKey === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'}
-                              </span>
-                            </>
-                          )
+        
+        {/* Notifications Tab */}
+        {activeTab === 'notifications' && (
+          <>
+            <div className="flex items-center justify-center gap-3 mb-3 border-b border-white/10 pb-2">
+              <button
+                onClick={markAll}
+                className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#4db6ac]"
+              >
+                Mark all read
+              </button>
+              <button
+                onClick={clearAll}
+                disabled={clearing}
+                className="px-3 py-1.5 rounded-full text-sm border border-white/15 hover:border-[#e53935] disabled:opacity-50"
+              >
+                Clear all
+              </button>
+            </div>
+            {loading || !items ? (
+              <div className="text-[#9fb0b5] py-10 text-center">Loading…</div>
+            ) : items.length === 0 ? (
+              <div className="text-[#9fb0b5] py-10 text-center">
+                <i className="fa-regular fa-bell text-2xl" />
+                <div className="mt-2">No notifications</div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {items.map(n => {
+                  const typeKey = n.type?.split(':')[0] ?? n.type
+                  const avatarUrl = n.avatar && (n.avatar.startsWith('http') || n.avatar.startsWith('/')) 
+                    ? n.avatar 
+                    : n.avatar ? `/static/${n.avatar}` : null
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => onClick(n)}
+                      className={`text-left w-full px-3 py-2.5 rounded-xl border ${n.is_read ? 'border-white/10 bg-white/[0.03]' : 'border-[#4db6ac]/40 bg-[#4db6ac]/10'}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="relative flex-shrink-0">
+                          {avatarUrl ? (
+                            <img 
+                              src={avatarUrl} 
+                              alt={n.from_user || ''} 
+                              className="w-10 h-10 rounded-full object-cover bg-white/10"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-10 h-10 rounded-full bg-[#1a2526] flex items-center justify-center ${avatarUrl ? 'hidden' : ''}`}>
+                            <i className={`${iconFor(n.type)} text-[#4db6ac] text-lg`} />
+                          </div>
+                          <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#0b0f10] border border-white/10 flex items-center justify-center">
+                            <i className={`${iconFor(n.type)} text-[#4db6ac] text-[10px]`} />
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm">
+                            {typeKey === 'event_invitation' ? (n.message || 'Event invitation') :
+                             typeKey === 'community_post' ? (n.message || `@${n.from_user} made a new post`) :
+                             typeKey === 'new_member' ? (n.message || `@${n.from_user} joined the community`) :
+                             typeKey === 'poll' ? (n.message || `@${n.from_user} created a new poll`) :
+                             typeKey === 'admin_broadcast' ? (n.message || 'Administrator announcement') : (
+                              n.message ? (n.message) : (
+                                <>
+                                  <span className="font-medium text-white">@{n.from_user}</span>{' '}
+                                  <span className="text-white/70">
+                                    {typeKey === 'task_assigned' ? 'assigned you a task' :
+                                    typeKey === 'reaction' ? 'reacted to your post' :
+                                    typeKey === 'reply' ? 'replied to your post' :
+                                    typeKey === 'mention_post' ? 'mentioned you in a post' :
+                                    typeKey === 'mention_reply' ? 'mentioned you in a reply' : 'interacted with you'}
+                                  </span>
+                                </>
+                              )
+                            )}
+                          </div>
+                          <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(n.created_at)}</div>
+                        </div>
+                        {!n.is_read && (
+                          <div className="w-2 h-2 rounded-full bg-[#4db6ac] flex-shrink-0 mt-2" />
                         )}
                       </div>
-                      <div className="text-[11px] text-[#9fb0b5] mt-0.5">{timeAgo(n.created_at)}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+        
+        {/* Calendar Tab */}
+        {activeTab === 'calendar' && (
+          <>
+            {eventsLoading ? (
+              <div className="text-[#9fb0b5] py-10 text-center">Loading events…</div>
+            ) : events.length === 0 ? (
+              <div className="text-[#9fb0b5] py-10 text-center">
+                <i className="fa-regular fa-calendar text-2xl" />
+                <div className="mt-2">No upcoming events</div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {events.map(event => (
+                  <button
+                    key={event.id}
+                    onClick={() => navigate(`/event/${event.id}`)}
+                    className="text-left w-full px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-[#4db6ac]/20 flex flex-col items-center justify-center flex-shrink-0">
+                        <div className="text-[10px] text-[#4db6ac] uppercase font-medium">
+                          {new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}
+                        </div>
+                        <div className="text-lg font-bold text-white">
+                          {new Date(event.date).getDate()}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-white truncate">{event.title}</div>
+                        <div className="text-xs text-[#9fb0b5] mt-0.5">
+                          {formatEventDate(event.date)}
+                          {event.start_time && ` • ${event.start_time}`}
+                        </div>
+                        <div className="text-xs text-[#4db6ac] mt-1 truncate">{event.community_name}</div>
+                      </div>
+                      {event.user_rsvp && (
+                        <div className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                          event.user_rsvp === 'going' ? 'bg-green-500/20 text-green-400' :
+                          event.user_rsvp === 'maybe' ? 'bg-yellow-500/20 text-yellow-400' :
+                          'bg-red-500/20 text-red-400'
+                        }`}>
+                          {event.user_rsvp === 'going' ? 'Going' : event.user_rsvp === 'maybe' ? 'Maybe' : 'Not going'}
+                        </div>
+                      )}
                     </div>
-                    {/* Unread indicator */}
-                    {!n.is_read && (
-                      <div className="w-2 h-2 rounded-full bg-[#4db6ac] flex-shrink-0 mt-2" />
-                    )}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        
+        {/* Polls Tab */}
+        {activeTab === 'polls' && (
+          <>
+            {pollsLoading ? (
+              <div className="text-[#9fb0b5] py-10 text-center">Loading polls…</div>
+            ) : polls.length === 0 ? (
+              <div className="text-[#9fb0b5] py-10 text-center">
+                <i className="fa-solid fa-chart-bar text-2xl" />
+                <div className="mt-2">No active polls</div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {polls.map(poll => (
+                  <button
+                    key={poll.id}
+                    onClick={() => navigate(`/community/${poll.community_id}/polls_react`)}
+                    className="text-left w-full px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                        <i className="fa-solid fa-chart-bar text-purple-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-white">{poll.question}</div>
+                        <div className="text-xs text-[#9fb0b5] mt-1">
+                          {poll.total_votes} vote{poll.total_votes !== 1 ? 's' : ''} • {poll.options.length} options
+                        </div>
+                        <div className="text-xs text-[#4db6ac] mt-1 truncate">{poll.community_name}</div>
+                      </div>
+                      {poll.user_vote !== null && poll.user_vote !== undefined && (
+                        <div className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#4db6ac]/20 text-[#4db6ac]">
+                          Voted
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        
+        {/* Tasks Tab */}
+        {activeTab === 'tasks' && (
+          <>
+            {tasksLoading ? (
+              <div className="text-[#9fb0b5] py-10 text-center">Loading tasks…</div>
+            ) : tasks.length === 0 ? (
+              <div className="text-[#9fb0b5] py-10 text-center">
+                <i className="fa-solid fa-list-check text-2xl" />
+                <div className="mt-2">No pending tasks</div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {tasks.map(task => (
+                  <button
+                    key={task.id}
+                    onClick={() => navigate(`/community/${task.community_id}/tasks_react`)}
+                    className="text-left w-full px-4 py-3 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        task.status === 'ongoing' ? 'bg-blue-500/20' : 'bg-orange-500/20'
+                      }`}>
+                        <i className={`fa-solid ${task.status === 'ongoing' ? 'fa-spinner' : 'fa-circle-dot'} ${
+                          task.status === 'ongoing' ? 'text-blue-400' : 'text-orange-400'
+                        }`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-white">{task.title}</div>
+                        {task.due_date && (
+                          <div className="text-xs text-[#9fb0b5] mt-0.5">
+                            Due: {formatEventDate(task.due_date)}
+                          </div>
+                        )}
+                        <div className="text-xs text-[#4db6ac] mt-1 truncate">{task.community_name}</div>
+                      </div>
+                      <div className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                        task.status === 'ongoing' ? 'bg-blue-500/20 text-blue-400' : 'bg-orange-500/20 text-orange-400'
+                      }`}>
+                        {task.status === 'ongoing' ? 'In Progress' : 'Not Started'}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
       {broadcastOpen && (

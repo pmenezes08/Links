@@ -12045,6 +12045,231 @@ def api_my_tasks():
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
+@app.route('/api/all_my_tasks')
+@login_required
+def api_all_my_tasks():
+    """List all tasks assigned to the current user across ALL their communities."""
+    username = session['username']
+    try:
+        ensure_tasks_table()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            # Get all communities user is a member of
+            c.execute(f"""
+                SELECT uc.community_id, c.name as community_name
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                JOIN communities c ON c.id = uc.community_id
+                WHERE LOWER(u.username) = LOWER({ph})
+            """, (username,))
+            communities = {row['community_id']: row['community_name'] for row in c.fetchall()}
+            
+            if not communities:
+                return jsonify({'success': True, 'tasks': []})
+            
+            # Get all incomplete tasks assigned to user across all communities
+            placeholders = ','.join([ph] * len(communities))
+            c.execute(f"""
+                SELECT id, community_id, title, description, due_date, assigned_to_username, 
+                       created_by_username, created_at, completed, status
+                FROM tasks
+                WHERE community_id IN ({placeholders}) 
+                  AND assigned_to_username = {ph}
+                  AND (completed = 0 OR completed IS NULL)
+                ORDER BY (CASE WHEN due_date IS NULL THEN 1 ELSE 0 END), due_date ASC, id DESC
+            """, (*communities.keys(), username))
+            tasks = []
+            for row in c.fetchall():
+                task = dict(row)
+                task['community_name'] = communities.get(task['community_id'], 'Unknown')
+                tasks.append(task)
+        return jsonify({'success': True, 'tasks': tasks})
+    except Exception as e:
+        logger.error(f"api_all_my_tasks error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/all_active_polls')
+@login_required
+def api_all_active_polls():
+    """Get all active polls across ALL communities the user is a member of."""
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Get all communities user is a member of
+            c.execute(f"""
+                SELECT uc.community_id, c.name as community_name
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                JOIN communities c ON c.id = uc.community_id
+                WHERE LOWER(u.username) = LOWER({ph})
+            """, (username,))
+            communities = {row['community_id']: row['community_name'] for row in c.fetchall()}
+            
+            if not communities:
+                return jsonify({'success': True, 'polls': []})
+            
+            # Get all active polls across user's communities
+            placeholders = ','.join([ph] * len(communities))
+            if USE_MYSQL:
+                c.execute(f"""
+                    SELECT p.*, po.timestamp as created_at, po.username, po.community_id
+                    FROM polls p 
+                    JOIN posts po ON p.post_id = po.id 
+                    WHERE po.community_id IN ({placeholders})
+                      AND p.is_active = 1 
+                      AND (p.expires_at IS NULL OR p.expires_at >= NOW())
+                    ORDER BY po.timestamp DESC
+                """, tuple(communities.keys()))
+            else:
+                c.execute(f"""
+                    SELECT p.*, po.timestamp as created_at, po.username, po.community_id
+                    FROM polls p 
+                    JOIN posts po ON p.post_id = po.id 
+                    WHERE po.community_id IN ({placeholders})
+                      AND p.is_active = 1 
+                      AND (p.expires_at IS NULL OR p.expires_at >= datetime('now'))
+                    ORDER BY po.timestamp DESC
+                """, tuple(communities.keys()))
+            polls_raw = c.fetchall()
+            
+            polls = []
+            for poll_raw in polls_raw:
+                poll = dict(poll_raw)
+                poll['community_name'] = communities.get(poll.get('community_id'), 'Unknown')
+                
+                # Get poll options
+                c.execute(f"SELECT * FROM poll_options WHERE poll_id = {ph} ORDER BY id", (poll['id'],))
+                options_raw = c.fetchall()
+                poll['options'] = [dict(option) for option in options_raw]
+                
+                # Get user's vote
+                c.execute(f"SELECT option_id FROM poll_votes WHERE poll_id = {ph} AND username = {ph}", (poll['id'], username))
+                user_vote_raw = c.fetchone()
+                poll['user_vote'] = user_vote_raw['option_id'] if user_vote_raw else None
+                
+                # Calculate total votes
+                total_votes = sum(option['votes'] for option in poll['options'])
+                poll['total_votes'] = total_votes
+                
+                polls.append(poll)
+            
+            return jsonify({'success': True, 'polls': polls})
+    except Exception as e:
+        logger.error(f"api_all_active_polls error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/all_calendar_events')
+@login_required
+def api_all_calendar_events():
+    """Get all upcoming calendar events across ALL communities the user is a member of."""
+    username = session['username']
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Get all communities user is a member of
+            c.execute(f"""
+                SELECT uc.community_id, c.name as community_name
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                JOIN communities c ON c.id = uc.community_id
+                WHERE LOWER(u.username) = LOWER({ph})
+            """, (username,))
+            communities = {row['community_id']: row['community_name'] for row in c.fetchall()}
+            
+            # Get calendar events where user is invited or is the creator, filtered to upcoming
+            if USE_MYSQL:
+                query = f"""
+                    SELECT DISTINCT ce.id, ce.username, ce.title, ce.date, 
+                           COALESCE(ce.end_date, ce.date) as end_date,
+                           COALESCE(ce.start_time, ce.time) as start_time,
+                           ce.end_time,
+                           ce.time, ce.description, ce.created_at, ce.community_id, ce.timezone
+                    FROM calendar_events ce
+                    LEFT JOIN event_invitations ei ON ce.id = ei.event_id
+                    WHERE (ce.username = {ph} OR ei.invited_username = {ph})
+                      AND ce.date >= CURDATE()
+                    ORDER BY ce.date ASC, COALESCE(ce.start_time, ce.time) ASC
+                """
+            else:
+                query = f"""
+                    SELECT DISTINCT ce.id, ce.username, ce.title, ce.date, 
+                           COALESCE(ce.end_date, ce.date) as end_date,
+                           COALESCE(ce.start_time, ce.time) as start_time,
+                           ce.end_time,
+                           ce.time, ce.description, ce.created_at, ce.community_id, ce.timezone
+                    FROM calendar_events ce
+                    LEFT JOIN event_invitations ei ON ce.id = ei.event_id
+                    WHERE (ce.username = {ph} OR ei.invited_username = {ph})
+                      AND ce.date >= date('now')
+                    ORDER BY ce.date ASC, COALESCE(ce.start_time, ce.time) ASC
+                """
+            c.execute(query, (username, username))
+            events_raw = c.fetchall()
+            
+            events = []
+            for event in events_raw:
+                event_id = event['id']
+                community_id = event['community_id']
+                
+                # Get RSVP counts
+                c.execute(f"""
+                    SELECT response, COUNT(*) as count
+                    FROM event_rsvps
+                    WHERE event_id = {ph}
+                    GROUP BY response
+                """, (event_id,))
+                rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
+                for row in c.fetchall():
+                    rsvp_counts[row['response']] = row['count']
+                
+                # Get user's RSVP
+                c.execute(f"SELECT response FROM event_rsvps WHERE event_id = {ph} AND username = {ph}", (event_id, username))
+                result = c.fetchone()
+                user_rsvp = result['response'] if result else None
+                
+                # Extract time
+                def extract_time(dt_str):
+                    if not dt_str or dt_str == '0000-00-00 00:00:00':
+                        return None
+                    try:
+                        if ' ' in str(dt_str):
+                            return str(dt_str).split(' ')[1][:5]
+                        return dt_str
+                    except:
+                        return dt_str
+                
+                events.append({
+                    'id': event['id'],
+                    'username': event['username'],
+                    'title': event['title'],
+                    'date': event['date'],
+                    'end_date': event['end_date'],
+                    'time': event['time'],
+                    'start_time': extract_time(event['start_time']),
+                    'end_time': extract_time(event['end_time']),
+                    'timezone': event.get('timezone') if hasattr(event, 'get') else None,
+                    'description': event['description'],
+                    'community_id': community_id,
+                    'community_name': communities.get(community_id, 'Unknown'),
+                    'rsvp_counts': rsvp_counts,
+                    'user_rsvp': user_rsvp,
+                    'is_creator': event['username'] == username
+                })
+            
+            return jsonify({'success': True, 'events': events})
+    except Exception as e:
+        logger.error(f"api_all_calendar_events error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
 @app.route('/api/create_task', methods=['POST'])
 @login_required
 def api_create_task():
