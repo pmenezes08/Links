@@ -26,7 +26,7 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
-import { sendImageMessage, sendVideoMessage } from '../chat/mediaSenders'
+import { sendImageMessage, sendVideoMessage, type UploadProgress } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
 import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
 
@@ -139,6 +139,7 @@ export default function ChatThread(){
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
+  const [videoUploadProgress, setVideoUploadProgress] = useState<UploadProgress | null>(null)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
   const headerMenuRef = useRef<HTMLDivElement | null>(null)
   // Bridge between temp ids and server ids to avoid flicker and keep stable keys
@@ -1530,6 +1531,13 @@ export default function ChatThread(){
       idBridgeRef,
       setSending,
       cleanup,
+      onProgress: (progress) => {
+        setVideoUploadProgress(progress)
+        // Clear progress after completion or error
+        if (progress.stage === 'done' || progress.stage === 'error') {
+          setTimeout(() => setVideoUploadProgress(null), 2000)
+        }
+      },
     })
   }
 
@@ -2470,6 +2478,44 @@ export default function ChatThread(){
                 </button>
               </div>
             </>
+          )}
+
+          {/* Video upload progress bar */}
+          {videoUploadProgress && (
+            <div className="mb-2 px-3 py-2.5 bg-white/5 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0">
+                  {videoUploadProgress.stage === 'compressing' && (
+                    <i className="fa-solid fa-compress text-[#4db6ac] animate-pulse" />
+                  )}
+                  {videoUploadProgress.stage === 'uploading' && (
+                    <i className="fa-solid fa-cloud-arrow-up text-[#4db6ac] animate-bounce" />
+                  )}
+                  {videoUploadProgress.stage === 'done' && (
+                    <i className="fa-solid fa-check-circle text-green-400" />
+                  )}
+                  {videoUploadProgress.stage === 'error' && (
+                    <i className="fa-solid fa-exclamation-circle text-red-400" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-white/80 truncate">
+                    {videoUploadProgress.message || 'Processing video...'}
+                  </div>
+                  <div className="mt-1.5 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        videoUploadProgress.stage === 'error' ? 'bg-red-400' : 'bg-[#4db6ac]'
+                      }`}
+                      style={{ width: `${videoUploadProgress.progress}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="flex-shrink-0 text-xs text-white/50">
+                  {Math.round(videoUploadProgress.progress)}%
+                </div>
+              </div>
+            </div>
           )}
 
           {replyTo && (
