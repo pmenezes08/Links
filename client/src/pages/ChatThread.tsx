@@ -2536,8 +2536,13 @@ export default function ChatThread(){
           <div className="flex items-end gap-2 sm:gap-2.5">
             {/* Attachment button */}
             <button 
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 transition-all cursor-pointer select-none"
+              className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 transition-all cursor-pointer select-none"
               onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setShowAttachMenu(!showAttachMenu)
+              }}
+              onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
                 setShowAttachMenu(!showAttachMenu)
@@ -2547,6 +2552,8 @@ export default function ChatThread(){
                 WebkitTapHighlightColor: 'transparent',
                 WebkitUserSelect: 'none',
                 userSelect: 'none',
+                minHeight: '44px',
+                minWidth: '44px',
               }}
             >
               <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 pointer-events-none ${
@@ -2729,8 +2736,13 @@ export default function ChatThread(){
           {/* Mic button - shown when not recording, no preview, and no text */}
           {MIC_ENABLED && !recording && !recordingPreview && !draft.trim() && (
             <button
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
+              className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
               onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                checkMicrophonePermission()
+              }}
+              onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
                 checkMicrophonePermission()
@@ -2741,6 +2753,8 @@ export default function ChatThread(){
                 WebkitTapHighlightColor: 'transparent',
                 WebkitUserSelect: 'none',
                 userSelect: 'none',
+                minHeight: '44px',
+                minWidth: '44px',
               }}
             >
               <i className="fa-solid fa-microphone text-base pointer-events-none" />
@@ -2752,8 +2766,13 @@ export default function ChatThread(){
             <>
               {/* Pause button - stops recording, goes to preview */}
               <button
-                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors active:scale-95"
+                className="w-11 h-11 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors active:scale-95"
                 onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  stopVoiceRecording()
+                }}
+                onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
                   stopVoiceRecording()
@@ -2761,7 +2780,9 @@ export default function ChatThread(){
                 aria-label="Pause recording"
                 style={{
                   touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent'
+                  WebkitTapHighlightColor: 'transparent',
+                  minHeight: '44px',
+                  minWidth: '44px',
                 }}
               >
                 <i className="fa-solid fa-pause text-base pointer-events-none" />
@@ -2769,8 +2790,13 @@ export default function ChatThread(){
               
               {/* Send button - sends directly */}
               <button
-                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+                className="w-11 h-11 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
                 onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  sendVoiceDirectly()
+                }}
+                onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
                   sendVoiceDirectly()
@@ -2778,7 +2804,9 @@ export default function ChatThread(){
                 aria-label="Send voice message"
                 style={{
                   touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent'
+                  WebkitTapHighlightColor: 'transparent',
+                  minHeight: '44px',
+                  minWidth: '44px',
                 }}
               >
                 <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
@@ -2790,8 +2818,14 @@ export default function ChatThread(){
           {MIC_ENABLED && !recording && recordingPreview && (
             <>
               <button
-                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+                className="w-11 h-11 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
                 onPointerDown={(e) => {
+                  if (sending) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  sendRecordingPreview()
+                }}
+                onClick={(e) => {
                   if (sending) return
                   e.preventDefault()
                   e.stopPropagation()
@@ -2801,7 +2835,9 @@ export default function ChatThread(){
                 aria-label="Send voice message"
                 style={{
                   touchAction: 'manipulation',
-                  WebkitTapHighlightColor: 'transparent'
+                  WebkitTapHighlightColor: 'transparent',
+                  minHeight: '44px',
+                  minWidth: '44px',
                 }}
               >
               {sending ? (
@@ -2816,7 +2852,7 @@ export default function ChatThread(){
           {/* Normal send button - shown when not recording and no preview */}
           {!(MIC_ENABLED && (recording || recordingPreview)) && (
             <button
-              className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
+              className={`w-11 h-11 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
                 sending 
                   ? 'bg-gray-600 text-gray-300' 
                   : draft.trim()
@@ -2829,11 +2865,20 @@ export default function ChatThread(){
                 e.stopPropagation()
                 send()
               }}
+              onClick={(e) => {
+                // Fallback for devices where onPointerDown doesn't fire reliably
+                if (!draft.trim() || sending) return
+                e.preventDefault()
+                e.stopPropagation()
+                send()
+              }}
               disabled={sending || !draft.trim()}
               aria-label="Send"
               style={{
                 touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent'
+                WebkitTapHighlightColor: 'transparent',
+                minHeight: '44px',
+                minWidth: '44px',
               }}
             >
               {sending ? (
