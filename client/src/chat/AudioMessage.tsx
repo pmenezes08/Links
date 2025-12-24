@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useMemo } from 'react'
+import { Capacitor } from '@capacitor/core'
 import type { ChatMessage } from '../types/chat'
 import { formatDuration } from './utils'
 
@@ -7,20 +8,52 @@ interface AudioMessageProps {
   audioPath: string
 }
 
-// Detect iOS device
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+// Detect iOS device - check Capacitor platform first (for native apps), then fallback to User-Agent
+// This function is called dynamically to ensure Capacitor is initialized
+function detectIsIOS(): boolean {
+  // Primary check: Capacitor platform (most reliable for native iOS apps)
+  // Capacitor.getPlatform() returns 'ios', 'android', or 'web'
+  try {
+    const platform = Capacitor.getPlatform()
+    if (platform === 'ios') {
+      console.log('[AudioCompat] iOS detected via Capacitor platform')
+      return true
+    }
+    // If Capacitor says it's not iOS, trust it
+    if (platform === 'android') {
+      return false
+    }
+    // platform === 'web' - fall through to User-Agent checks for Safari
+  } catch {
+    // Capacitor not available - fall through to User-Agent checks
+  }
+  
+  // Fallback: User-Agent checks for Safari/WebView on iOS (web builds)
+  const ua = navigator.userAgent || ''
+  if (/iPad|iPhone|iPod/.test(ua)) {
+    console.log('[AudioCompat] iOS detected via User-Agent')
+    return true
+  }
+  // Check for iPad masquerading as Mac (iPadOS 13+)
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) {
+    console.log('[AudioCompat] iOS detected via MacIntel + touchPoints')
+    return true
+  }
+  return false
+}
 
 /**
  * Get iOS-compatible audio URL
  * iOS Safari cannot play WebM - use transcoding endpoint
  */
-function getCompatibleAudioUrl(audioPath: string): string {
+function getCompatibleAudioUrl(audioPath: string, forceIOS?: boolean): string {
   if (!audioPath) return ''
   
+  const isIOSDevice = forceIOS ?? detectIsIOS()
+  
   // Only need transcoding for webm files on iOS
-  if (!isIOS || !audioPath.toLowerCase().includes('.webm')) {
-    console.log('[AudioCompat] No transcoding needed:', { isIOS, audioPath })
+  if (!isIOSDevice || !audioPath.toLowerCase().includes('.webm')) {
+    console.log('[AudioCompat] No transcoding needed:', { isIOS: isIOSDevice, audioPath })
     return audioPath
   }
   
@@ -66,7 +99,7 @@ function getCompatibleAudioUrl(audioPath: string): string {
   }
   
   const result = `/audio_compat/${path}`
-  console.log('[AudioCompat] Transcoding URL:', { original: audioPath, result })
+  console.log('[AudioCompat] Transcoding URL:', { original: audioPath, result, isIOS: isIOSDevice })
   // Use the compatibility endpoint
   return result
 }
@@ -82,15 +115,23 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
   const [isDragging, setIsDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isTranscoding, setIsTranscoding] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
   const audioRef = useRef<HTMLAudioElement>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
   const wasPlayingRef = useRef(false)
   
-  // Get iOS-compatible URL
-  const compatibleAudioUrl = useMemo(() => getCompatibleAudioUrl(audioPath), [audioPath])
+  // Detect iOS once per component instance (ensures Capacitor is initialized)
+  const isIOSDevice = useMemo(() => detectIsIOS(), [])
+  
+  // Get iOS-compatible URL - recalculate if retry count changes (to force transcoding on retry)
+  const compatibleAudioUrl = useMemo(() => {
+    // On retry for iOS webm files, always use the transcoding endpoint
+    const forceTranscode = retryCount > 0 && isIOSDevice && audioPath.toLowerCase().includes('.webm')
+    return getCompatibleAudioUrl(audioPath, forceTranscode ? true : undefined)
+  }, [audioPath, retryCount, isIOSDevice])
   
   // Check if we need transcoding (iOS + webm)
-  const needsTranscoding = isIOS && audioPath.toLowerCase().includes('.webm') && !audioPath.startsWith('blob:')
+  const needsTranscoding = isIOSDevice && audioPath.toLowerCase().includes('.webm') && !audioPath.startsWith('blob:')
 
   // Handle audio events
   useEffect(() => {
@@ -132,14 +173,30 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       const audioEl = e.target as HTMLAudioElement
       const errorCode = audioEl.error?.code
       const errorMsg = audioEl.error?.message || 'Unknown error'
-      console.error('Audio error for:', audioPath, 'code:', errorCode, 'msg:', errorMsg)
+      console.error('Audio error for:', audioPath, 'code:', errorCode, 'msg:', errorMsg, 'url:', compatibleAudioUrl, 'isIOS:', isIOSDevice, 'retryCount:', retryCount)
       setPlaying(false)
+      setIsTranscoding(false)
+      
+      // For iOS with webm files, try retry with forced transcoding
+      if (isIOSDevice && audioPath.toLowerCase().includes('.webm') && retryCount < 2) {
+        console.log('[AudioCompat] Retrying with transcoding, attempt:', retryCount + 1)
+        setRetryCount(prev => prev + 1)
+        setError(null) // Clear error to allow retry
+        return
+      }
       
       // Set user-friendly error message
       if (errorCode === 4) {
-        setError('Format not supported')
+        // MEDIA_ERR_SRC_NOT_SUPPORTED
+        if (isIOSDevice && audioPath.toLowerCase().includes('.webm')) {
+          setError('Audio format not supported on iOS')
+        } else {
+          setError('Format not supported')
+        }
       } else if (errorCode === 2) {
         setError('Network error')
+      } else if (errorCode === 3) {
+        setError('Audio decoding failed')
       } else {
         setError('Cannot play audio')
       }
@@ -171,6 +228,22 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     }
   }, [playbackSpeed])
 
+  // Reload audio when retry count changes
+  useEffect(() => {
+    if (retryCount > 0 && audioRef.current) {
+      console.log('[AudioCompat] Reloading audio for retry:', retryCount, 'new URL:', compatibleAudioUrl)
+      const audio = audioRef.current
+      audio.load()
+      // Auto-play after reload
+      setTimeout(() => {
+        audio.play().catch(e => {
+          console.error('[AudioCompat] Retry play failed:', e)
+          setError('Cannot play audio')
+        })
+      }, 200)
+    }
+  }, [retryCount, compatibleAudioUrl])
+
   // Calculate display duration
   const displayDuration = duration > 0 ? duration : (message.audio_duration_seconds || 0)
   const progress = displayDuration > 0 ? (currentTime / displayDuration) * 100 : 0
@@ -196,15 +269,28 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
         setIsTranscoding(false)
         setError(null)
       } catch (e: any) {
-        console.error('Play failed:', e)
+        console.error('Play failed:', e, 'url:', compatibleAudioUrl, 'isIOS:', isIOSDevice)
         setPlaying(false)
         setIsTranscoding(false)
+        
+        // For iOS with webm files, try retry with forced transcoding
+        if (isIOSDevice && audioPath.toLowerCase().includes('.webm') && retryCount < 2) {
+          console.log('[AudioCompat] Play failed, retrying with transcoding, attempt:', retryCount + 1)
+          setRetryCount(prev => prev + 1)
+          return
+        }
         
         // Set appropriate error message
         if (e.name === 'NotAllowedError') {
           setError('Tap to play')
         } else if (e.name === 'NotSupportedError') {
-          setError('Format not supported')
+          if (isIOSDevice && audioPath.toLowerCase().includes('.webm')) {
+            setError('Audio format not supported on iOS')
+          } else {
+            setError('Format not supported')
+          }
+        } else if (e.name === 'AbortError') {
+          setError('Playback interrupted')
         } else {
           setError('Cannot play audio')
         }
