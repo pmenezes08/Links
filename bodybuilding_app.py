@@ -10268,13 +10268,17 @@ def serve_audio_compat(filename):
     If the file is WebM and the request is from iOS, transcode to M4A.
     """
     try:
+        logger.info(f"audio_compat: Request for {filename}")
+        
         # Check if iOS device
         ua = request.headers.get('User-Agent', '')
         is_ios = 'iPhone' in ua or 'iPad' in ua or 'iPod' in ua
         
+        logger.info(f"audio_compat: is_ios={is_ios}, filename={filename}")
+        
         # Only transcode webm files for iOS
         if not is_ios or not filename.lower().endswith('.webm'):
-            # Redirect to normal uploads handler
+            logger.info(f"audio_compat: No transcoding needed, redirecting to /uploads/{filename}")
             return redirect(f'/uploads/{filename}')
         
         # Find the original file
@@ -10285,6 +10289,8 @@ def serve_audio_compat(filename):
         if normalized.startswith('voice_messages/'):
             pass  # Already correct path
         
+        logger.info(f"audio_compat: Normalized path: {normalized}")
+        
         # Check various locations
         possible_paths = [
             os.path.join(base_dir, 'uploads', normalized),
@@ -10294,30 +10300,43 @@ def serve_audio_compat(filename):
         
         source_file = None
         for p in possible_paths:
+            logger.info(f"audio_compat: Checking path: {p}")
             if os.path.exists(p):
                 source_file = p
+                logger.info(f"audio_compat: Found local file: {p}")
                 break
         
         # If not found locally, check R2
         if not source_file:
             r2_public_url = os.environ.get('CLOUDFLARE_R2_PUBLIC_URL', '')
+            logger.info(f"audio_compat: File not found locally, R2 URL: {r2_public_url}")
             if r2_public_url:
-                # Download from R2 to temp file, transcode, and serve
-                r2_url = f"{r2_public_url}/{normalized}"
-                try:
-                    resp = requests.get(r2_url, timeout=30, stream=True)
-                    if resp.status_code == 200:
-                        # Save to temp file
-                        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp:
-                            for chunk in resp.iter_content(chunk_size=8192):
-                                tmp.write(chunk)
-                            source_file = tmp.name
-                except Exception as e:
-                    logger.error(f"audio_compat: Failed to download from R2: {e}")
-                    return redirect(f'/uploads/{filename}')
+                # Try multiple R2 URL patterns
+                r2_urls_to_try = [
+                    f"{r2_public_url}/{normalized}",
+                    f"{r2_public_url}/uploads/{normalized}",
+                    f"{r2_public_url}/{filename}",
+                ]
+                
+                for r2_url in r2_urls_to_try:
+                    try:
+                        logger.info(f"audio_compat: Trying R2 URL: {r2_url}")
+                        resp = requests.get(r2_url, timeout=30, stream=True)
+                        if resp.status_code == 200:
+                            # Save to temp file
+                            with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp:
+                                for chunk in resp.iter_content(chunk_size=8192):
+                                    tmp.write(chunk)
+                                source_file = tmp.name
+                            logger.info(f"audio_compat: Downloaded from R2 to {source_file}")
+                            break
+                        else:
+                            logger.info(f"audio_compat: R2 returned {resp.status_code} for {r2_url}")
+                    except Exception as e:
+                        logger.error(f"audio_compat: Failed to download from R2 {r2_url}: {e}")
         
         if not source_file:
-            logger.warning(f"audio_compat: Source file not found: {filename}")
+            logger.warning(f"audio_compat: Source file not found anywhere: {filename}")
             return redirect(f'/uploads/{filename}')
         
         # Create transcoded M4A file
@@ -10332,19 +10351,25 @@ def serve_audio_compat(filename):
                 '-movflags', '+faststart',
                 output_file
             ]
+            logger.info(f"audio_compat: Running ffmpeg: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, timeout=60)
             
             if result.returncode != 0:
-                logger.error(f"audio_compat: ffmpeg failed: {result.stderr.decode()[:500]}")
+                stderr_msg = result.stderr.decode()[:500]
+                logger.error(f"audio_compat: ffmpeg failed with code {result.returncode}: {stderr_msg}")
                 # Cleanup temp files
                 if source_file.startswith(tempfile.gettempdir()):
                     try: os.unlink(source_file)
                     except: pass
                 return redirect(f'/uploads/{filename}')
             
+            logger.info(f"audio_compat: ffmpeg succeeded, output file: {output_file}")
+            
             # Read transcoded file
             with open(output_file, 'rb') as f:
                 audio_data = f.read()
+            
+            logger.info(f"audio_compat: Transcoded audio size: {len(audio_data)} bytes")
             
             # Cleanup temp files
             try: os.unlink(output_file)
@@ -10358,6 +10383,7 @@ def serve_audio_compat(filename):
             response.headers['Content-Type'] = 'audio/mp4'
             response.headers['Accept-Ranges'] = 'bytes'
             response.headers['Cache-Control'] = 'public, max-age=86400'
+            logger.info(f"audio_compat: Serving transcoded audio for {filename}")
             return response
             
         except subprocess.TimeoutExpired:

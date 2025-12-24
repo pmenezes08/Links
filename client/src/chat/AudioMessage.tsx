@@ -20,12 +20,14 @@ function getCompatibleAudioUrl(audioPath: string): string {
   
   // Only need transcoding for webm files on iOS
   if (!isIOS || !audioPath.toLowerCase().includes('.webm')) {
+    console.log('[AudioCompat] No transcoding needed:', { isIOS, audioPath })
     return audioPath
   }
   
   // Convert to use the audio_compat endpoint
   // Handle different URL formats
   if (audioPath.startsWith('blob:')) {
+    console.log('[AudioCompat] Blob URL, skipping transcoding:', audioPath)
     return audioPath // Can't transcode blob URLs
   }
   
@@ -63,8 +65,10 @@ function getCompatibleAudioUrl(audioPath: string): string {
     path = audioPath.substring(idx + 9)
   }
   
+  const result = `/audio_compat/${path}`
+  console.log('[AudioCompat] Transcoding URL:', { original: audioPath, result })
   // Use the compatibility endpoint
-  return `/audio_compat/${path}`
+  return result
 }
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
