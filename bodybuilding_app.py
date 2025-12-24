@@ -8077,9 +8077,10 @@ def verify_email():
     pending = verify_pending_signup_token(token)
     if pending:
         try:
+            ph = get_sql_placeholder()
             with get_db_connection() as conn:
                 c = conn.cursor()
-                c.execute("SELECT id, username, email, password, first_name, last_name, mobile FROM pending_signups WHERE id=?", (pending['pending_id'],))
+                c.execute(f"SELECT id, username, email, password, first_name, last_name, mobile FROM pending_signups WHERE id={ph}", (pending['pending_id'],))
                 row = c.fetchone()
                 if not row:
                     return render_template('verification_result.html', success=False, message='Pending registration not found or expired')
@@ -8096,7 +8097,7 @@ def verify_email():
                 try:
                     suffix = 1
                     while True:
-                        c.execute("SELECT 1 FROM users WHERE username=?", (username,))
+                        c.execute(f"SELECT 1 FROM users WHERE username={ph}", (username,))
                         if not c.fetchone():
                             break
                         suffix += 1
@@ -8104,24 +8105,24 @@ def verify_email():
                 except Exception:
                     pass
                 # if email exists, just mark verified, else insert
-                c.execute("SELECT id FROM users WHERE email=?", (pend_email,))
+                c.execute(f"SELECT id FROM users WHERE email={ph}", (pend_email,))
                 exists = c.fetchone()
                 if exists:
-                    c.execute("UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, ?) WHERE email=?", (datetime.now().isoformat(), pend_email))
+                    c.execute(f"UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, {ph}) WHERE email={ph}", (datetime.now().isoformat(), pend_email))
                 else:
                     first_name = _val(row, 'first_name', 4) or ''
                     last_name = _val(row, 'last_name', 5) or ''
                     password_hash = _val(row, 'password', 3)
                     mobile = _val(row, 'mobile', 6) or ''
-                    c.execute("""
+                    c.execute(f"""
                         INSERT INTO users (username, email, password, first_name, last_name, age, gender, primary_goal, subscription, created_at, email_verified, email_verified_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'free', ?, 1, ?)
+                        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'free', {ph}, 1, {ph})
                     """, (username, pend_email, password_hash, first_name, last_name, None, '', '', datetime.now().strftime('%m.%d.%y %H:%M'), datetime.now().isoformat()))
                     if mobile:
-                        c.execute("UPDATE users SET mobile=? WHERE username=?", (mobile, username))
+                        c.execute(f"UPDATE users SET mobile={ph} WHERE username={ph}", (mobile, username))
                 # cleanup pending
                 try:
-                    c.execute("DELETE FROM pending_signups WHERE id=?", (pending['pending_id'],))
+                    c.execute(f"DELETE FROM pending_signups WHERE id={ph}", (pending['pending_id'],))
                 except Exception:
                     pass
                 conn.commit()
@@ -8133,11 +8134,12 @@ def verify_email():
     if not email:
         return render_template('verification_result.html', success=False, message='Verification link is invalid or expired')
     try:
+        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
             # Only set email_verified_at on FIRST verification (when it's NULL)
             # This ensures the timestamp always represents the first time they verified
-            c.execute("UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, ?) WHERE email=?", (datetime.now().isoformat(), email))
+            c.execute(f"UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, {ph}) WHERE email={ph}", (datetime.now().isoformat(), email))
             conn.commit()
         return render_template('verification_result.html', success=True, message='Your email has been verified! You can close this tab.')
     except Exception as e:
