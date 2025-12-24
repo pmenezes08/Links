@@ -687,7 +687,8 @@ export default function ChatThread(){
       const normalizedTime = ensureNormalizedTime(m.time)
       const meta = readMessageMeta(metaRef.current, normalizedTime, messageText, Boolean(m.sent))
       
-      // Use ID-based reaction storage (primary) or fall back to time-based (legacy)
+      // Prioritize server-side reaction, then localStorage, then legacy time-based
+      const serverReaction = m.reaction || null
       const idBasedReaction = m.id ? storedReactions[String(m.id)] : undefined
       
       return {
@@ -695,7 +696,7 @@ export default function ChatThread(){
         text: messageText,
         time: normalizedTime,
         video_path: m.video_path,
-        reaction: idBasedReaction || meta.reaction,
+        reaction: serverReaction || idBasedReaction || meta.reaction,
         replySnippet: replySnippet || meta.replySnippet,
         storyReply,
         isOptimistic: false,
@@ -1122,6 +1123,8 @@ export default function ChatThread(){
                 const finalDecryptionError = shouldPreserveExistingText ? false : m.decryption_error
                 
                 // Update or create message
+                // Server-side reaction takes priority over local storage
+                const serverReaction = m.reaction || null
                 messagesByKey.set(finalKey, {
                   id: m.id, // Use server ID now
                   text: finalText,
@@ -1131,7 +1134,7 @@ export default function ChatThread(){
                   audio_duration_seconds: m.audio_duration_seconds,
                   sent: isSentByMe,
                   time: existing?.time ?? normalizedTime,
-                  reaction: existing?.reaction ?? idBasedReaction ?? meta.reaction,
+                  reaction: serverReaction || existing?.reaction || idBasedReaction || meta.reaction,
                   replySnippet: replySnippet || existing?.replySnippet || meta.replySnippet,
                   storyReply: storyReply || existing?.storyReply,
                   isOptimistic: false, // No longer optimistic

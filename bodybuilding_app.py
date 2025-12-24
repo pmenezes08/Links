@@ -2042,6 +2042,25 @@ def add_missing_tables():
                 except Exception as ae:
                     logger.warning(f"Could not ensure {col_name} column on messages: {ae}")
             
+            # Ensure messages table has reaction columns
+            for col_name, col_type in [
+                ('reaction', 'VARCHAR(32)'),  # The emoji reaction
+                ('reaction_by', 'VARCHAR(191)'),  # Who reacted (username)
+            ]:
+                try:
+                    exists = False
+                    try:
+                        c.execute(f"SHOW COLUMNS FROM messages LIKE '{col_name}'")
+                        exists = c.fetchone() is not None
+                    except Exception:
+                        exists = False
+                    if not exists:
+                        c.execute(f"ALTER TABLE messages ADD COLUMN {col_name} {col_type}")
+                        conn.commit()
+                        logger.info(f"Added {col_name} column to messages table for reactions")
+                except Exception as ae:
+                    logger.warning(f"Could not ensure {col_name} column on messages: {ae}")
+
             # Ensure messages table has E2E encryption columns
             for col_name, col_type in [
                 ('is_encrypted', 'INTEGER DEFAULT 0'),
@@ -9307,11 +9326,12 @@ def get_messages():
             query_params = base_params + (since_id_int,) if since_id_int else base_params
             
             has_audio_summary = True
+            has_reactions = True
             try:
                 c.execute(
                     f"""
                     SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
-                           is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary
+                           is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary, reaction, reaction_by
                     FROM messages
                     WHERE ((sender = ? AND receiver = ?)
                        OR (sender = ? AND receiver = ?)){since_clause}
@@ -9320,12 +9340,13 @@ def get_messages():
                     query_params,
                 )
             except Exception:
-                # Fallback without encryption fields
-                with_encryption = False
+                # Fallback without reaction fields
+                has_reactions = False
                 try:
                     c.execute(
                         f"""
-                        SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at, audio_summary
+                        SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
+                               is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary
                         FROM messages
                         WHERE ((sender = ? AND receiver = ?)
                            OR (sender = ? AND receiver = ?)){since_clause}
@@ -9334,12 +9355,12 @@ def get_messages():
                         query_params,
                     )
                 except Exception:
-                    # Fallback without audio_summary column
-                    has_audio_summary = False
+                    # Fallback without encryption fields
+                    with_encryption = False
                     try:
                         c.execute(
                             f"""
-                            SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
+                            SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at, audio_summary
                             FROM messages
                             WHERE ((sender = ? AND receiver = ?)
                                OR (sender = ? AND receiver = ?)){since_clause}
@@ -9348,17 +9369,31 @@ def get_messages():
                             query_params,
                         )
                     except Exception:
-                        with_edited = False
-                        c.execute(
-                            f"""
-                            SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp
-                            FROM messages
-                            WHERE ((sender = ? AND receiver = ?)
-                               OR (sender = ? AND receiver = ?)){since_clause}
-                            ORDER BY timestamp ASC
-                            """,
-                            query_params,
-                        )
+                        # Fallback without audio_summary column
+                        has_audio_summary = False
+                        try:
+                            c.execute(
+                                f"""
+                                SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
+                                FROM messages
+                                WHERE ((sender = ? AND receiver = ?)
+                                   OR (sender = ? AND receiver = ?)){since_clause}
+                                ORDER BY timestamp ASC
+                                """,
+                                query_params,
+                            )
+                        except Exception:
+                            with_edited = False
+                            c.execute(
+                                f"""
+                                SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp
+                                FROM messages
+                                WHERE ((sender = ? AND receiver = ?)
+                                   OR (sender = ? AND receiver = ?)){since_clause}
+                                ORDER BY timestamp ASC
+                                """,
+                                query_params,
+                            )
             
             messages = []
             for msg in c.fetchall():
@@ -9386,6 +9421,15 @@ def get_messages():
                         edited_at_val = msg[-1] if not has_audio_summary else (msg[-2] if len(msg) > 1 else None)
                         if has_audio_summary:
                             audio_summary_val = msg[-1] if len(msg) > 0 else None
+                # Get reaction fields if available
+                reaction_val = None
+                reaction_by_val = None
+                if has_reactions:
+                    if hasattr(msg, 'get'):
+                        reaction_val = msg.get('reaction')
+                        reaction_by_val = msg.get('reaction_by')
+                    # For tuple results, reactions are at the end of the query
+                
                 msg_dict = {
                     'id': msg['id'],
                     'text': msg['message'],
@@ -9397,7 +9441,9 @@ def get_messages():
                     'audio_summary': audio_summary_val,
                     'sent': msg['sender'] == username,
                     'time': msg['timestamp'],
-                    'edited_at': edited_at_val
+                    'edited_at': edited_at_val,
+                    'reaction': reaction_val,
+                    'reaction_by': reaction_by_val,
                 }
                 
                 # Add encryption fields if available
@@ -9706,10 +9752,11 @@ def react_to_message():
         return jsonify({'success': False, 'error': 'message_id required'}), 400
     
     try:
+        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
             # Get the message sender to notify them
-            c.execute("SELECT sender, receiver, message FROM messages WHERE id = ?", (message_id,))
+            c.execute(f"SELECT sender, receiver, message FROM messages WHERE id = {ph}", (message_id,))
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Message not found'}), 404
@@ -9717,6 +9764,21 @@ def react_to_message():
             sender = row['sender'] if hasattr(row, 'keys') else row[0]
             receiver = row['receiver'] if hasattr(row, 'keys') else row[1]
             message_text = row['message'] if hasattr(row, 'keys') else row[2]
+            
+            # Verify user is part of this conversation
+            if str(username) != str(sender) and str(username) != str(receiver):
+                return jsonify({'success': False, 'error': 'Not authorized'}), 403
+            
+            # Save the reaction to the database
+            # If emoji is empty, remove the reaction; otherwise set it
+            if emoji:
+                c.execute(f"UPDATE messages SET reaction = {ph}, reaction_by = {ph} WHERE id = {ph}", 
+                         (emoji, username, message_id))
+            else:
+                # Only clear reaction if this user set it
+                c.execute(f"UPDATE messages SET reaction = NULL, reaction_by = NULL WHERE id = {ph} AND reaction_by = {ph}", 
+                         (message_id, username))
+            conn.commit()
             
             # Determine who to notify (the other person in the chat)
             if str(sender) == str(username):
@@ -9738,7 +9800,7 @@ def react_to_message():
                 try:
                     c2 = conn.cursor()
                     c2.execute(
-                        "SELECT 1 FROM active_chat_presence WHERE username = ? AND peer = ? AND last_ping > DATE_SUB(NOW(), INTERVAL 30 SECOND)",
+                        f"SELECT 1 FROM active_chat_presence WHERE username = {ph} AND peer = {ph} AND last_ping > DATE_SUB(NOW(), INTERVAL 30 SECOND)",
                         (notify_user, username)
                     )
                     if c2.fetchone():
@@ -9768,7 +9830,7 @@ def react_to_message():
                         'tag': f'reaction-{username}-{message_id}',
                     })
             
-            return jsonify({'success': True})
+            return jsonify({'success': True, 'reaction': emoji, 'reaction_by': username if emoji else None})
     except Exception as e:
         logger.error(f"react_to_message error: {e}")
         return jsonify({'success': False, 'error': 'Failed to save reaction'}), 500
