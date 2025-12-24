@@ -22,15 +22,24 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
 
   // Create audio element once and reuse
   useEffect(() => {
-    if (!audioPath) return
+    if (!audioPath) {
+      console.log('No audioPath provided')
+      return
+    }
+
+    console.log('Setting up audio element for:', audioPath)
 
     const audio = new Audio()
-    audio.preload = 'auto'
+    audio.preload = 'metadata'  // Changed from 'auto' - more reliable on mobile
     audio.setAttribute('playsinline', 'true')
     audio.setAttribute('webkit-playsinline', 'true')
+    // iOS needs these attributes
+    ;(audio as any).playsInline = true
+    ;(audio as any).webkitPlaysInline = true
     audioRef.current = audio
 
     const onLoadedMetadata = () => {
+      console.log('Audio metadata loaded, duration:', audio.duration)
       if (audio.duration && isFinite(audio.duration)) {
         setDuration(audio.duration)
         setIsLoaded(true)
@@ -46,10 +55,18 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       setCurrentTime(0)
     }
 
-    const onPlay = () => setPlaying(true)
-    const onPause = () => setPlaying(false)
+    const onPlay = () => {
+      console.log('Audio playing')
+      setPlaying(true)
+    }
+    
+    const onPause = () => {
+      console.log('Audio paused')
+      setPlaying(false)
+    }
 
     const onCanPlayThrough = () => {
+      console.log('Audio can play through')
       setIsLoaded(true)
       if (audio.duration && isFinite(audio.duration)) {
         setDuration(audio.duration)
@@ -57,12 +74,13 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
     }
 
     const onError = (e: Event) => {
-      console.log('Audio error:', e)
+      const audioEl = e.target as HTMLAudioElement
+      console.error('Audio error:', audioEl?.error?.message || 'Unknown error', 'code:', audioEl?.error?.code)
       setPlaying(false)
     }
 
     const onStalled = () => {
-      console.log('Audio stalled')
+      console.log('Audio stalled - network issue?')
     }
 
     const onWaiting = () => {
@@ -81,6 +99,7 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
 
     // Set source and load
     audio.src = audioPath
+    console.log('Audio src set to:', audio.src)
     audio.load()
 
     return () => {
@@ -112,17 +131,39 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
 
   const togglePlay = async () => {
     const audio = audioRef.current
-    if (!audio) return
+    if (!audio) {
+      console.log('No audio element')
+      return
+    }
 
     try {
       if (playing) {
         audio.pause()
       } else {
-        await audio.play()
+        // iOS fix: ensure audio is loaded before playing
+        if (audio.readyState < 2) {
+          console.log('Audio not ready, loading...', audio.readyState)
+          audio.load()
+          // Wait a bit for load to start
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+        
+        console.log('Attempting to play audio:', audioPath, 'readyState:', audio.readyState)
+        const playPromise = audio.play()
+        if (playPromise !== undefined) {
+          await playPromise
+        }
       }
-    } catch (e) {
-      console.log('Play error:', e)
+    } catch (e: any) {
+      console.error('Play error:', e?.message || e, 'src:', audio.src)
       setPlaying(false)
+      
+      // Try to reload and play on error
+      if (e?.name === 'NotAllowedError') {
+        console.log('Playback not allowed - user interaction required')
+      } else if (e?.name === 'NotSupportedError') {
+        console.log('Audio format not supported')
+      }
     }
   }
 
@@ -240,13 +281,17 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       <div className="flex items-center gap-3">
         {/* Play/Pause Button */}
         <button
-          onPointerDown={(e) => {
+          onClick={(e) => {
             e.stopPropagation()
             e.preventDefault()
             togglePlay()
           }}
+          onTouchEnd={(e) => {
+            // Prevent ghost click on mobile
+            e.stopPropagation()
+          }}
           className="w-10 h-10 rounded-full flex items-center justify-center transition-colors bg-[#4db6ac] hover:bg-[#45a99c] flex-shrink-0 active:scale-95"
-          style={{ touchAction: 'manipulation' }}
+          style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
         >
           <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-sm pointer-events-none ${!playing ? 'ml-0.5' : ''}`} />
         </button>
@@ -286,13 +331,13 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
             
             {/* Speed Control */}
             <button
-              onPointerDown={(e) => {
+              onClick={(e) => {
                 e.stopPropagation()
                 e.preventDefault()
                 cycleSpeed()
               }}
               className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-colors"
-              style={{ touchAction: 'manipulation' }}
+              style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
             >
               {playbackSpeed}x
             </button>
