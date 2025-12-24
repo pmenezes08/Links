@@ -1,10 +1,70 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useMemo } from 'react'
 import type { ChatMessage } from '../types/chat'
 import { formatDuration } from './utils'
 
 interface AudioMessageProps {
   message: ChatMessage
   audioPath: string
+}
+
+// Detect iOS device
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+
+/**
+ * Get iOS-compatible audio URL
+ * iOS Safari cannot play WebM - use transcoding endpoint
+ */
+function getCompatibleAudioUrl(audioPath: string): string {
+  if (!audioPath) return ''
+  
+  // Only need transcoding for webm files on iOS
+  if (!isIOS || !audioPath.toLowerCase().includes('.webm')) {
+    return audioPath
+  }
+  
+  // Convert to use the audio_compat endpoint
+  // Handle different URL formats
+  if (audioPath.startsWith('blob:')) {
+    return audioPath // Can't transcode blob URLs
+  }
+  
+  // Extract the path portion from various URL formats
+  let path = audioPath
+  
+  // Handle CDN URLs (e.g., https://cdn.example.com/voice_messages/abc.webm)
+  if (audioPath.startsWith('http://') || audioPath.startsWith('https://')) {
+    try {
+      const url = new URL(audioPath)
+      // Get path after domain, removing leading slash
+      path = url.pathname.startsWith('/') ? url.pathname.substring(1) : url.pathname
+      // Remove 'uploads/' prefix if present
+      if (path.startsWith('uploads/')) {
+        path = path.substring(8)
+      }
+    } catch {
+      // URL parsing failed, try simple extraction
+      const lastSlash = audioPath.lastIndexOf('/')
+      if (lastSlash > 0) {
+        // Try to get voice_messages/xxx.webm part
+        const voiceIdx = audioPath.indexOf('voice_messages/')
+        if (voiceIdx > 0) {
+          path = audioPath.substring(voiceIdx)
+        } else {
+          path = audioPath.substring(lastSlash + 1)
+        }
+      }
+    }
+  } else if (audioPath.startsWith('/uploads/')) {
+    path = audioPath.substring(9) // Remove '/uploads/'
+  } else if (audioPath.includes('/uploads/')) {
+    // Full URL with /uploads/
+    const idx = audioPath.indexOf('/uploads/')
+    path = audioPath.substring(idx + 9)
+  }
+  
+  // Use the compatibility endpoint
+  return `/audio_compat/${path}`
 }
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
@@ -16,9 +76,17 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [isLoaded, setIsLoaded] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isTranscoding, setIsTranscoding] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
   const progressBarRef = useRef<HTMLDivElement>(null)
   const wasPlayingRef = useRef(false)
+  
+  // Get iOS-compatible URL
+  const compatibleAudioUrl = useMemo(() => getCompatibleAudioUrl(audioPath), [audioPath])
+  
+  // Check if we need transcoding (iOS + webm)
+  const needsTranscoding = isIOS && audioPath.toLowerCase().includes('.webm') && !audioPath.startsWith('blob:')
 
   // Handle audio events
   useEffect(() => {
@@ -49,14 +117,28 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
 
     const onCanPlay = () => {
       setIsLoaded(true)
+      setIsTranscoding(false)
+      setError(null) // Clear any previous errors
       if (audio.duration && isFinite(audio.duration)) {
         setDuration(audio.duration)
       }
     }
 
-    const onError = () => {
-      console.error('Audio error for:', audioPath)
+    const onError = (e: Event) => {
+      const audioEl = e.target as HTMLAudioElement
+      const errorCode = audioEl.error?.code
+      const errorMsg = audioEl.error?.message || 'Unknown error'
+      console.error('Audio error for:', audioPath, 'code:', errorCode, 'msg:', errorMsg)
       setPlaying(false)
+      
+      // Set user-friendly error message
+      if (errorCode === 4) {
+        setError('Format not supported')
+      } else if (errorCode === 2) {
+        setError('Network error')
+      } else {
+        setError('Cannot play audio')
+      }
     }
 
     audio.addEventListener('loadedmetadata', onLoadedMetadata)
@@ -76,7 +158,7 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       audio.removeEventListener('pause', onPause)
       audio.removeEventListener('error', onError)
     }
-  }, [audioPath, isDragging])
+  }, [audioPath, compatibleAudioUrl, isDragging])
 
   // Update playback rate when speed changes
   useEffect(() => {
@@ -89,20 +171,39 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
   const displayDuration = duration > 0 ? duration : (message.audio_duration_seconds || 0)
   const progress = displayDuration > 0 ? (currentTime / displayDuration) * 100 : 0
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     const audio = audioRef.current
     if (!audio) return
 
     if (playing) {
       audio.pause()
     } else {
-      // iOS requires play() to be called directly from user interaction
-      const playPromise = audio.play()
-      if (playPromise !== undefined) {
-        playPromise.catch((error) => {
-          console.error('Play failed:', error)
-          setPlaying(false)
-        })
+      // Show transcoding indicator if needed and not yet loaded
+      if (needsTranscoding && !isLoaded) {
+        setIsTranscoding(true)
+      }
+      
+      try {
+        // iOS requires play() to be called directly from user interaction
+        const playPromise = audio.play()
+        if (playPromise !== undefined) {
+          await playPromise
+        }
+        setIsTranscoding(false)
+        setError(null)
+      } catch (e: any) {
+        console.error('Play failed:', e)
+        setPlaying(false)
+        setIsTranscoding(false)
+        
+        // Set appropriate error message
+        if (e.name === 'NotAllowedError') {
+          setError('Tap to play')
+        } else if (e.name === 'NotSupportedError') {
+          setError('Format not supported')
+        } else {
+          setError('Cannot play audio')
+        }
       }
     }
   }
@@ -200,13 +301,21 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
       {/* Actual audio element in DOM - required for iOS */}
       <audio
         ref={audioRef}
-        src={audioPath}
+        src={compatibleAudioUrl}
         preload="metadata"
         playsInline
         webkit-playsinline="true"
         x-webkit-airplay="allow"
         style={{ display: 'none' }}
       />
+      
+      {/* Error display */}
+      {error && (
+        <div className="text-[11px] text-red-400 mb-1 flex items-center gap-1">
+          <i className="fa-solid fa-triangle-exclamation text-[10px]" />
+          {error}
+        </div>
+      )}
       
       <div className="flex items-center gap-3">
         {/* Play/Pause Button */}
@@ -216,10 +325,17 @@ export default function AudioMessage({ message, audioPath }: AudioMessageProps) 
             e.stopPropagation()
             togglePlay()
           }}
-          className="w-10 h-10 rounded-full flex items-center justify-center transition-colors bg-[#4db6ac] hover:bg-[#45a99c] flex-shrink-0 active:scale-95"
+          disabled={isTranscoding}
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors flex-shrink-0 active:scale-95 ${
+            isTranscoding ? 'bg-[#4db6ac]/70' : 'bg-[#4db6ac] hover:bg-[#45a99c]'
+          }`}
           style={{ WebkitTapHighlightColor: 'transparent' }}
         >
-          <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-sm pointer-events-none ${!playing ? 'ml-0.5' : ''}`} />
+          {isTranscoding ? (
+            <i className="fa-solid fa-spinner fa-spin text-white text-sm pointer-events-none" />
+          ) : (
+            <i className={`fa-solid ${playing ? 'fa-pause' : 'fa-play'} text-white text-sm pointer-events-none ${!playing ? 'ml-0.5' : ''}`} />
+          )}
         </button>
         
         {/* Progress and Controls */}
