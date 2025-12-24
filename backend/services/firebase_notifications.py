@@ -322,7 +322,9 @@ def get_total_badge_count(username: str) -> int:
     """
     Get total unread count for badge (notifications + messages).
     
-    Note: Excludes 'message' type notifications since messages are counted separately.
+    Note: Excludes 'message' and 'reaction' type notifications.
+    - 'message' types are counted separately via unread messages
+    - 'reaction' types are chat message reactions (excluded from badge)
     Badge = unread notifications + total unread messages
     """
     from backend.services.database import get_db_connection, get_sql_placeholder
@@ -332,9 +334,9 @@ def get_total_badge_count(username: str) -> int:
         cursor = conn.cursor()
         ph = get_sql_placeholder()
         
-        # Count unread notifications (EXCLUDE 'message' type - those are counted separately)
+        # Count unread notifications (EXCLUDE 'message' and 'reaction' types)
         cursor.execute(
-            f"SELECT COUNT(*) FROM notifications WHERE user_id = {ph} AND is_read = 0 AND type != 'message'",
+            f"SELECT COUNT(*) FROM notifications WHERE user_id = {ph} AND is_read = 0 AND type != 'message' AND type != 'reaction'",
             (username,)
         )
         row = cursor.fetchone()

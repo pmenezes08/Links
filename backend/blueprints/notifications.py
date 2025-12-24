@@ -703,21 +703,29 @@ def debug_badge_count():
         with get_db_connection() as conn:
             c = conn.cursor()
             
-            # Count unread notifications (excluding message type)
+            # Count unread notifications (excluding message and reaction types)
             c.execute(
-                "SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0 AND type != 'message'",
+                "SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0 AND type != 'message' AND type != 'reaction'",
                 (username,)
             )
             row = c.fetchone()
             notif_count = row["cnt"] if hasattr(row, "keys") else row[0]
             
-            # Count message-type notifications (should be excluded)
+            # Count message-type notifications (excluded from badge)
             c.execute(
                 "SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0 AND type = 'message'",
                 (username,)
             )
             row = c.fetchone()
             msg_notif_count = row["cnt"] if hasattr(row, "keys") else row[0]
+            
+            # Count reaction-type notifications (excluded from badge)
+            c.execute(
+                "SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0 AND type = 'reaction'",
+                (username,)
+            )
+            row = c.fetchone()
+            reaction_notif_count = row["cnt"] if hasattr(row, "keys") else row[0]
             
             # Count total unread messages
             c.execute(
@@ -755,6 +763,7 @@ def debug_badge_count():
                 "breakdown": {
                     "unread_notifications": notif_count,
                     "message_type_notifications_excluded": msg_notif_count,
+                    "reaction_type_notifications_excluded": reaction_notif_count,
                     "unread_messages": msg_count,
                     "unread_conversations": msg_convos,
                 },
