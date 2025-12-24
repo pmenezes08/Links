@@ -8,24 +8,35 @@ interface AudioMessageProps {
   audioPath: string
 }
 
-// Detect iOS device - check both User-Agent and Capacitor platform for native apps
+// Detect iOS device - check Capacitor platform first (for native apps), then fallback to User-Agent
 // This function is called dynamically to ensure Capacitor is initialized
 function detectIsIOS(): boolean {
-  // Check if running as native iOS app via Capacitor
+  // Primary check: Capacitor platform (most reliable for native iOS apps)
+  // Capacitor.getPlatform() returns 'ios', 'android', or 'web'
   try {
-    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+    const platform = Capacitor.getPlatform()
+    if (platform === 'ios') {
+      console.log('[AudioCompat] iOS detected via Capacitor platform')
       return true
     }
+    // If Capacitor says it's not iOS, trust it
+    if (platform === 'android') {
+      return false
+    }
+    // platform === 'web' - fall through to User-Agent checks for Safari
   } catch {
-    // Capacitor not available or not initialized
+    // Capacitor not available - fall through to User-Agent checks
   }
-  // Check User-Agent for Safari/WebView on iOS
+  
+  // Fallback: User-Agent checks for Safari/WebView on iOS (web builds)
   const ua = navigator.userAgent || ''
   if (/iPad|iPhone|iPod/.test(ua)) {
+    console.log('[AudioCompat] iOS detected via User-Agent')
     return true
   }
   // Check for iPad masquerading as Mac (iPadOS 13+)
   if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) {
+    console.log('[AudioCompat] iOS detected via MacIntel + touchPoints')
     return true
   }
   return false
