@@ -98,7 +98,8 @@ function getCompatibleAudioUrl(audioPath: string, forceIOS?: boolean): string {
     path = audioPath.substring(idx + 9)
   }
   
-  const result = `/audio_compat/${path}`
+  // Add transcode=1 query param to force server-side transcoding for iOS
+  const result = `/audio_compat/${path}?transcode=1`
   console.log('[AudioCompat] Transcoding URL:', { original: audioPath, result, isIOS: isIOSDevice })
   // Use the compatibility endpoint
   return result

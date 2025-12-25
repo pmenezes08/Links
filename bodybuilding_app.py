@@ -10270,14 +10270,22 @@ def serve_audio_compat(filename):
     try:
         logger.info(f"audio_compat: Request for {filename}")
         
-        # Check if iOS device
+        # Check if iOS device - be more permissive for Capacitor apps
         ua = request.headers.get('User-Agent', '')
+        # Standard iOS indicators
         is_ios = 'iPhone' in ua or 'iPad' in ua or 'iPod' in ua
+        # Also check for Safari on mobile (could be iOS WKWebView)
+        is_ios = is_ios or ('Safari' in ua and 'Mobile' in ua and 'Android' not in ua)
+        # Check for iOS WebKit (Capacitor uses WKWebView)
+        is_ios = is_ios or ('AppleWebKit' in ua and 'Mobile' in ua and 'Android' not in ua)
         
-        logger.info(f"audio_compat: is_ios={is_ios}, filename={filename}")
+        # Allow forcing transcoding via query parameter (for native apps)
+        force_transcode = request.args.get('transcode', '').lower() in ('1', 'true', 'yes')
         
-        # Only transcode webm files for iOS
-        if not is_ios or not filename.lower().endswith('.webm'):
+        logger.info(f"audio_compat: is_ios={is_ios}, force_transcode={force_transcode}, ua={ua[:100]}, filename={filename}")
+        
+        # Only transcode webm files for iOS (or if forced)
+        if not (is_ios or force_transcode) or not filename.lower().endswith('.webm'):
             logger.info(f"audio_compat: No transcoding needed, redirecting to /uploads/{filename}")
             return redirect(f'/uploads/{filename}')
         
@@ -10344,10 +10352,23 @@ def serve_audio_compat(filename):
             with tempfile.NamedTemporaryFile(suffix='.m4a', delete=False) as tmp_out:
                 output_file = tmp_out.name
             
-            # Transcode using ffmpeg
+            # Transcode using ffmpeg with iOS-optimized settings
+            # -vn: no video
+            # -c:a aac: use AAC codec (iOS native)
+            # -b:a 128k: bitrate
+            # -ar 44100: sample rate (iOS standard)
+            # -ac 1: mono (voice messages are typically mono)
+            # -profile:a aac_low: AAC-LC profile (most compatible)
+            # -movflags +faststart: optimize for streaming
             cmd = [
-                'ffmpeg', '-y', '-i', source_file,
-                '-c:a', 'aac', '-b:a', '128k',
+                'ffmpeg', '-y', 
+                '-i', source_file,
+                '-vn',  # No video
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-ar', '44100',  # Standard sample rate
+                '-ac', '1',  # Mono for voice
+                '-profile:a', 'aac_low',  # AAC-LC profile - most compatible
                 '-movflags', '+faststart',
                 output_file
             ]
@@ -10369,7 +10390,17 @@ def serve_audio_compat(filename):
             with open(output_file, 'rb') as f:
                 audio_data = f.read()
             
-            logger.info(f"audio_compat: Transcoded audio size: {len(audio_data)} bytes")
+            file_size = len(audio_data)
+            logger.info(f"audio_compat: Transcoded audio size: {file_size} bytes")
+            
+            if file_size == 0:
+                logger.error(f"audio_compat: Transcoded file is empty!")
+                if source_file.startswith(tempfile.gettempdir()):
+                    try: os.unlink(source_file)
+                    except: pass
+                try: os.unlink(output_file)
+                except: pass
+                return redirect(f'/uploads/{filename}')
             
             # Cleanup temp files
             try: os.unlink(output_file)
@@ -10378,12 +10409,14 @@ def serve_audio_compat(filename):
                 try: os.unlink(source_file)
                 except: pass
             
-            # Serve with proper headers
+            # Serve with proper headers for iOS audio playback
             response = Response(audio_data, mimetype='audio/mp4')
             response.headers['Content-Type'] = 'audio/mp4'
+            response.headers['Content-Length'] = str(file_size)
             response.headers['Accept-Ranges'] = 'bytes'
             response.headers['Cache-Control'] = 'public, max-age=86400'
-            logger.info(f"audio_compat: Serving transcoded audio for {filename}")
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            logger.info(f"audio_compat: Serving transcoded audio for {filename}, size={file_size}")
             return response
             
         except subprocess.TimeoutExpired:
