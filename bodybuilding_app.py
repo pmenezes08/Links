@@ -10353,38 +10353,56 @@ def serve_audio_compat(filename):
                 output_file = tmp_out.name
             
             # Transcode using ffmpeg with iOS-compatible settings
-            # Simple command that produces AAC audio in M4A container
+            # Use native AAC encoder for best iOS compatibility
             cmd = [
                 'ffmpeg', '-y',
+                '-hide_banner',     # Less verbose output
+                '-loglevel', 'warning',
                 '-i', source_file,
                 '-vn',              # No video
-                '-acodec', 'aac',   # AAC audio codec
-                '-b:a', '128k',     # Audio bitrate
-                '-ar', '44100',     # Sample rate
-                '-ac', '2',         # Stereo (iOS prefers stereo)
-                '-movflags', '+faststart',  # Optimize for streaming
+                '-c:a', 'aac',      # AAC audio codec
+                '-b:a', '128k',     # Audio bitrate  
+                '-ar', '44100',     # Sample rate (44.1kHz is standard)
+                '-ac', '2',         # Stereo
+                '-f', 'ipod',       # Force iPod/iPhone compatible M4A format
                 output_file
             ]
             logger.info(f"audio_compat: Running ffmpeg: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, timeout=60)
             
             if result.returncode != 0:
-                stderr_msg = result.stderr.decode()[:500]
+                stderr_msg = result.stderr.decode('utf-8', errors='replace')[:500]
                 logger.error(f"audio_compat: ffmpeg failed with code {result.returncode}: {stderr_msg}")
                 # Cleanup temp files
                 if source_file.startswith(tempfile.gettempdir()):
                     try: os.unlink(source_file)
                     except: pass
-                return redirect(f'/uploads/{filename}')
+                try: os.unlink(output_file)
+                except: pass
+                return jsonify({'error': 'Transcoding failed', 'details': stderr_msg[:200]}), 500
             
-            logger.info(f"audio_compat: ffmpeg succeeded, output file: {output_file}")
+            # Log ffmpeg output for debugging
+            stdout_msg = result.stdout.decode('utf-8', errors='replace')[:200] if result.stdout else ''
+            stderr_msg = result.stderr.decode('utf-8', errors='replace')[:200] if result.stderr else ''
+            logger.info(f"audio_compat: ffmpeg succeeded. stdout: {stdout_msg}, stderr: {stderr_msg}")
+            
+            # Verify output file exists and has content
+            if not os.path.exists(output_file):
+                logger.error(f"audio_compat: Output file doesn't exist after ffmpeg!")
+                if source_file.startswith(tempfile.gettempdir()):
+                    try: os.unlink(source_file)
+                    except: pass
+                return jsonify({'error': 'Output file not created'}), 500
+            
+            output_size = os.path.getsize(output_file)
+            logger.info(f"audio_compat: Output file size: {output_size} bytes")
             
             # Read transcoded file
             with open(output_file, 'rb') as f:
                 audio_data = f.read()
             
             file_size = len(audio_data)
-            logger.info(f"audio_compat: Transcoded audio size: {file_size} bytes")
+            logger.info(f"audio_compat: Transcoded audio read, size: {file_size} bytes")
             
             if file_size == 0:
                 logger.error(f"audio_compat: Transcoded file is empty!")
@@ -10393,7 +10411,13 @@ def serve_audio_compat(filename):
                     except: pass
                 try: os.unlink(output_file)
                 except: pass
-                return redirect(f'/uploads/{filename}')
+                return jsonify({'error': 'Transcoded file is empty'}), 500
+            
+            # Verify it looks like a valid M4A file (starts with ftyp atom)
+            if len(audio_data) > 8:
+                header = audio_data[4:8]
+                if header != b'ftyp':
+                    logger.warning(f"audio_compat: File doesn't look like valid M4A, header: {header}")
             
             # Cleanup temp files
             try: os.unlink(output_file)
@@ -10403,12 +10427,12 @@ def serve_audio_compat(filename):
                 except: pass
             
             # Serve with proper headers for iOS audio playback
-            # Use audio/aac mimetype which iOS handles well
-            response = Response(audio_data, mimetype='audio/aac')
-            response.headers['Content-Type'] = 'audio/aac'
+            # Use audio/mp4 mimetype for M4A container (correct mimetype for AAC in M4A)
+            response = Response(audio_data, mimetype='audio/mp4')
+            response.headers['Content-Type'] = 'audio/mp4'
             response.headers['Content-Length'] = str(file_size)
             response.headers['Accept-Ranges'] = 'bytes'
-            response.headers['Cache-Control'] = 'public, max-age=86400'
+            response.headers['Cache-Control'] = 'no-cache'  # Don't cache transcoded audio
             logger.info(f"audio_compat: Serving transcoded audio for {filename}, size={file_size}")
             return response
             
