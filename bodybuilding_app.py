@@ -10352,24 +10352,17 @@ def serve_audio_compat(filename):
             with tempfile.NamedTemporaryFile(suffix='.m4a', delete=False) as tmp_out:
                 output_file = tmp_out.name
             
-            # Transcode using ffmpeg with iOS-optimized settings
-            # -vn: no video
-            # -c:a aac: use AAC codec (iOS native)
-            # -b:a 128k: bitrate
-            # -ar 44100: sample rate (iOS standard)
-            # -ac 1: mono (voice messages are typically mono)
-            # -profile:a aac_low: AAC-LC profile (most compatible)
-            # -movflags +faststart: optimize for streaming
+            # Transcode using ffmpeg with iOS-compatible settings
+            # Simple command that produces AAC audio in M4A container
             cmd = [
-                'ffmpeg', '-y', 
+                'ffmpeg', '-y',
                 '-i', source_file,
-                '-vn',  # No video
-                '-c:a', 'aac',
-                '-b:a', '128k',
-                '-ar', '44100',  # Standard sample rate
-                '-ac', '1',  # Mono for voice
-                '-profile:a', 'aac_low',  # AAC-LC profile - most compatible
-                '-movflags', '+faststart',
+                '-vn',              # No video
+                '-acodec', 'aac',   # AAC audio codec
+                '-b:a', '128k',     # Audio bitrate
+                '-ar', '44100',     # Sample rate
+                '-ac', '2',         # Stereo (iOS prefers stereo)
+                '-movflags', '+faststart',  # Optimize for streaming
                 output_file
             ]
             logger.info(f"audio_compat: Running ffmpeg: {' '.join(cmd)}")
@@ -10410,12 +10403,12 @@ def serve_audio_compat(filename):
                 except: pass
             
             # Serve with proper headers for iOS audio playback
-            response = Response(audio_data, mimetype='audio/mp4')
-            response.headers['Content-Type'] = 'audio/mp4'
+            # Use audio/aac mimetype which iOS handles well
+            response = Response(audio_data, mimetype='audio/aac')
+            response.headers['Content-Type'] = 'audio/aac'
             response.headers['Content-Length'] = str(file_size)
             response.headers['Accept-Ranges'] = 'bytes'
             response.headers['Cache-Control'] = 'public, max-age=86400'
-            response.headers['X-Content-Type-Options'] = 'nosniff'
             logger.info(f"audio_compat: Serving transcoded audio for {filename}, size={file_size}")
             return response
             
