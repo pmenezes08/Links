@@ -124,6 +124,13 @@ export default function PostDetail(){
   const [refreshHint, setRefreshHint] = useState(false)
   const [pullPx, setPullPx] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
+  const [isEditingPost, setIsEditingPost] = useState(false)
+  const [editPostText, setEditPostText] = useState('')
+  const [editMediaFile, setEditMediaFile] = useState<File | null>(null)
+  const [editMediaPreview, setEditMediaPreview] = useState<string | null>(null)
+  const [removeMedia, setRemoveMedia] = useState(false)
+  const editMediaInputRef = useRef<HTMLInputElement | null>(null)
+  const [activeInlineReplyFor, setActiveInlineReplyFor] = useState<number | null>(null)
   const viewRecordedRef = useRef(false)
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const defaultComposerPadding = 200
@@ -680,6 +687,101 @@ export default function PostDetail(){
     }catch{}
   }
 
+  function startEditPost() {
+    if (!post) return
+    setEditPostText(post.content)
+    setEditMediaFile(null)
+    setEditMediaPreview(null)
+    setRemoveMedia(false)
+    setIsEditingPost(true)
+  }
+
+  function cancelEditPost() {
+    setIsEditingPost(false)
+    setEditPostText('')
+    setEditMediaFile(null)
+    setEditMediaPreview(null)
+    setRemoveMedia(false)
+  }
+
+  function handleEditMediaChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setEditMediaFile(file)
+    setRemoveMedia(false)
+    const url = URL.createObjectURL(file)
+    setEditMediaPreview(url)
+  }
+
+  function clearEditMedia() {
+    if (editMediaPreview) {
+      try { URL.revokeObjectURL(editMediaPreview) } catch {}
+    }
+    setEditMediaFile(null)
+    setEditMediaPreview(null)
+    if (editMediaInputRef.current) editMediaInputRef.current.value = ''
+  }
+
+  async function saveEditPost() {
+    if (!post) return
+    const fd = new FormData()
+    fd.append('post_id', String(post.id))
+    fd.append('content', editPostText)
+    if (editMediaFile) {
+      fd.append('media', editMediaFile)
+    } else if (removeMedia) {
+      fd.append('remove_media', 'true')
+    }
+    try {
+      const r = await fetch('/edit_post', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        // Update local state
+        setPost(p => {
+          if (!p) return p
+          const updated = { ...p, content: editPostText }
+          if (j.image_path) {
+            (updated as any).image_path = j.image_path
+            ;(updated as any).video_path = null
+          } else if (j.video_path) {
+            (updated as any).video_path = j.video_path
+            ;(updated as any).image_path = null
+          } else if (removeMedia) {
+            (updated as any).image_path = null
+            ;(updated as any).video_path = null
+          }
+          return updated
+        })
+        clearEditMedia()
+        setRemoveMedia(false)
+        setIsEditingPost(false)
+      } else {
+        alert(j?.error || 'Failed to update post')
+      }
+    } catch {
+      alert('Failed to update post')
+    }
+  }
+
+  async function deletePost() {
+    if (!post) return
+    const ok = window.confirm('Delete this post?')
+    if (!ok) return
+    try {
+      const fd = new FormData()
+      fd.append('post_id', String(post.id))
+      const r = await fetch('/delete_post', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        navigate(-1)
+      } else {
+        alert(j?.error || 'Failed to delete post')
+      }
+    } catch {
+      alert('Failed to delete post')
+    }
+  }
+
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
@@ -733,56 +835,149 @@ export default function PostDetail(){
             <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} linkToProfile />
             <div className="font-medium">{post.username}</div>
             <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
+            {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
+              <div className="flex items-center gap-1">
+                <button
+                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
+                  title="Edit"
+                  onClick={() => startEditPost()}
+                >
+                  <i className="fa-regular fa-pen-to-square" />
+                </button>
+                <button
+                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
+                  title="Delete"
+                  onClick={() => deletePost()}
+                >
+                  <i className="fa-regular fa-trash-can" />
+                </button>
+              </div>
+            )}
           </div>
           <div className="py-2 space-y-2">
-            {(() => {
-              const videoEmbed = extractVideoEmbed(post.content)
-              const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
-              return (
-                <>
-                  {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent)}</div>}
-                  {videoEmbed && <VideoEmbed embed={videoEmbed} />}
-                </>
-              )
-            })()}
-          {post.image_path ? (
-            <div className="px-0">
-              <ImageLoader
-                src={normalizePath(post.image_path as string)}
-                alt="Post image"
-                className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
-                onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}
-              />
-            </div>
-          ) : post.video_path ? (
-            <div className="px-3">
-              <video
-                className="w-full max-h-[420px] rounded border border-white/10 bg-black"
-                src={normalizePath(post.video_path)}
-                controls
-                playsInline
-              />
-            </div>
-          ) : null}
-          {post.audio_path ? (
-            <div className="px-3 space-y-2">
-              {post.audio_summary && (
-                <EditableAISummary
-                  postId={post.id}
-                  initialSummary={post.audio_summary}
-                  isOwner={post.username === currentUser?.username}
-                  onSummaryUpdate={(newSummary) => {
-                    setPost(prev => prev ? {...prev, audio_summary: newSummary} as any : null);
-                  }}
+            {!isEditingPost ? (
+              <>
+                {(() => {
+                  const videoEmbed = extractVideoEmbed(post.content)
+                  const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
+                  return (
+                    <>
+                      {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent)}</div>}
+                      {videoEmbed && <VideoEmbed embed={videoEmbed} />}
+                    </>
+                  )
+                })()}
+                {post.image_path ? (
+                  <div className="px-0">
+                    <ImageLoader
+                      src={normalizePath(post.image_path as string)}
+                      alt="Post image"
+                      className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
+                      onClick={()=> setPreviewSrc(normalizePath(post.image_path as string))}
+                    />
+                  </div>
+                ) : post.video_path ? (
+                  <div className="px-3">
+                    <video
+                      className="w-full max-h-[420px] rounded border border-white/10 bg-black"
+                      src={normalizePath(post.video_path)}
+                      controls
+                      playsInline
+                    />
+                  </div>
+                ) : null}
+                {post.audio_path ? (
+                  <div className="px-3 space-y-2">
+                    {post.audio_summary && (
+                      <EditableAISummary
+                        postId={post.id}
+                        initialSummary={post.audio_summary}
+                        isOwner={post.username === currentUser?.username}
+                        onSummaryUpdate={(newSummary) => {
+                          setPost(prev => prev ? {...prev, audio_summary: newSummary} as any : null);
+                        }}
+                      />
+                    )}
+                    <audio controls className="w-full" playsInline webkit-playsinline="true" src={(() => {
+                      const path = normalizePath(post.audio_path as string);
+                      const separator = path.includes('?') ? '&' : '?';
+                      return `${path}${separator}_cb=${Date.now()}`;
+                    })()} />
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="px-3 space-y-2">
+                <textarea 
+                  className="w-full rounded-md bg-black border border-white/10 px-3 py-2 text-[16px] focus:border-teal-400/70 outline-none min-h-[100px]" 
+                  value={editPostText} 
+                  onChange={(e) => setEditPostText(e.target.value)} 
                 />
-              )}
-              <audio controls className="w-full" playsInline webkit-playsinline="true" src={(() => {
-                const path = normalizePath(post.audio_path as string);
-                const separator = path.includes('?') ? '&' : '?';
-                return `${path}${separator}_cb=${Date.now()}`;
-              })()} />
-            </div>
-          ) : null}
+                
+                {/* Current/New Media Preview */}
+                {!removeMedia && (editMediaPreview || post.image_path || post.video_path) && (
+                  <div style={{ position: 'relative' }} className="rounded-lg border border-white/10 overflow-hidden">
+                    {editMediaPreview ? (
+                      // New media preview
+                      editMediaFile?.type.startsWith('video/') ? (
+                        <video src={editMediaPreview} className="w-full max-h-48 object-contain bg-black block" controls />
+                      ) : (
+                        <img src={editMediaPreview} alt="New media" className="w-full max-h-48 object-contain block" />
+                      )
+                    ) : post.video_path ? (
+                      <video src={normalizePath(post.video_path)} className="w-full max-h-48 object-contain bg-black block" controls />
+                    ) : post.image_path ? (
+                      <img src={normalizePath(post.image_path as string)} alt="Current" className="w-full max-h-48 object-contain block" />
+                    ) : null}
+                    <button
+                      type="button"
+                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white hover:bg-black flex items-center justify-center"
+                      onClick={() => {
+                        clearEditMedia()
+                        setRemoveMedia(true)
+                      }}
+                      title="Remove media"
+                    >
+                      <i className="fa-solid fa-xmark text-xs" />
+                    </button>
+                  </div>
+                )}
+                
+                {/* Media buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 rounded-md border border-white/10 text-sm hover:bg-white/10"
+                    onClick={() => editMediaInputRef.current?.click()}
+                  >
+                    <i className="fa-solid fa-image mr-1" /> {editMediaFile ? 'Change' : 'Add'} Media
+                  </button>
+                  <input
+                    ref={editMediaInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    onChange={handleEditMediaChange}
+                    className="hidden"
+                  />
+                </div>
+                
+                {/* Save/Cancel buttons */}
+                <div className="flex gap-2">
+                  <button 
+                    className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black" 
+                    onClick={saveEditPost}
+                  >
+                    Save
+                  </button>
+                  <button 
+                    className="px-3 py-1.5 rounded-md border border-white/10" 
+                    onClick={cancelEditPost}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="flex items-center gap-2 text-xs">
               <Reaction icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction('heart')} />
               <Reaction icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> toggleReaction('thumbs-up')} />
@@ -804,6 +999,8 @@ export default function PostDetail(){
               inlineSendingFlag={!!inlineSending[r.id]}
               communityId={(post as any)?.community_id}
               postId={post?.id}
+              activeInlineReplyFor={activeInlineReplyFor}
+              onSetActiveInlineReply={setActiveInlineReplyFor}
             />
           ))}
         </div>
@@ -821,7 +1018,8 @@ export default function PostDetail(){
         </div>
       ) : null}
 
-      {/* Fixed-bottom reply composer */}
+      {/* Fixed-bottom reply composer - hidden when inline reply is active */}
+      {activeInlineReplyFor === null && (
       <div
         ref={composerRef}
         className="fixed left-0 right-0 z-[100]"
@@ -991,6 +1189,7 @@ export default function PostDetail(){
           }}
         />
       </div>
+      )}
       <GifPicker
         isOpen={gifPickerOpen}
         onClose={()=> setGifPickerOpen(false)}
@@ -1031,12 +1230,23 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   if (prev.inlineSendingFlag !== next.inlineSendingFlag) return false
   if (prev.currentUser !== next.currentUser) return false
   if (prev.depth !== next.depth) return false
+  if (prev.activeInlineReplyFor !== next.activeInlineReplyFor) return false
   return true
 })
 
-function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number }){
+function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, activeInlineReplyFor, onSetActiveInlineReply }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, activeInlineReplyFor?: number | null, onSetActiveInlineReply?: (id: number | null) => void }){
   const currentUser = currentUserName
-  const [showComposer, setShowComposer] = useState(false)
+  // Use parent's activeInlineReplyFor if provided, otherwise use local state
+  const [localShowComposer, setLocalShowComposer] = useState(false)
+  const showComposer = onSetActiveInlineReply ? activeInlineReplyFor === reply.id : localShowComposer
+  const setShowComposer = (val: boolean | ((prev: boolean) => boolean)) => {
+    if (onSetActiveInlineReply) {
+      const newVal = typeof val === 'function' ? val(showComposer) : val
+      onSetActiveInlineReply(newVal ? reply.id : null)
+    } else {
+      setLocalShowComposer(val)
+    }
+  }
   const [text, setText] = useState('')
   const [img, setImg] = useState<File|null>(null)
   const inlineFileRef = useRef<HTMLInputElement|null>(null)
@@ -1295,6 +1505,8 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               inlineSendingFlag={false}
               communityId={communityId}
               postId={postId}
+              activeInlineReplyFor={activeInlineReplyFor}
+              onSetActiveInlineReply={onSetActiveInlineReply}
             />
           ))}
         </div>
