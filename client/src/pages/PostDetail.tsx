@@ -1375,121 +1375,122 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               }}>Reply</button>
             </div>
           </div>
-          {showComposer ? (
-            <div className="mt-2 space-y-2 rounded-xl bg-[#0a0a0c] p-2">
-              {/* Attachment previews */}
-              {(img || inlineGif || inlinePreview) && (
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  {img && (
-                    <div className="flex items-center gap-1">
-                      <div className="w-10 h-10 rounded overflow-hidden border border-white/10">
-                        <img src={URL.createObjectURL(img)} alt="preview" className="w-full h-full object-cover" />
-                      </div>
-                      <button onClick={() => { setImg(null); setInlineGif(null); setGifFile(null); if (inlineFileRef.current) inlineFileRef.current.value = '' }} className="text-red-400 hover:text-red-300 text-xs"><i className="fa-solid fa-times" /></button>
-                    </div>
-                  )}
-                  {inlineGif && (
-                    <div className="flex items-center gap-1">
-                      <div className="w-10 h-10 rounded overflow-hidden border border-white/10">
-                        <img src={inlineGif.previewUrl} alt="GIF" className="w-full h-full object-cover" loading="lazy" />
-                      </div>
-                      <button onClick={() => { setInlineGif(null); setGifFile(null) }} className="text-red-400 hover:text-red-300 text-xs"><i className="fa-solid fa-times" /></button>
-                    </div>
-                  )}
-                  {inlinePreview && (
-                    <div className="flex items-center gap-1 flex-1 min-w-0">
-                      <audio controls className="flex-1 h-7" playsInline src={inlinePreview.url} />
-                      <button onClick={() => clearInlinePreview()} className="text-[#9fb0b5] hover:text-white text-xs"><i className="fa-regular fa-trash-can" /></button>
-                    </div>
-                  )}
-                </div>
-              )}
-              {/* Recording indicator */}
-              {rec && (
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
-                  <div className="flex-1 h-1.5 bg-white/10 rounded overflow-hidden">
-                    <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, recLevel*100))}%` }} />
-                  </div>
-                  <span className="text-[10px] text-white/70">{Math.min(60, Math.round((recMs||0)/1000))}s</span>
-                </div>
-              )}
-              {/* Input row */}
-              <div className="flex items-end gap-1.5">
-                <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => inlineFileRef.current?.click()}>
-                  <i className="fa-solid fa-image text-xs" style={{ color: img ? '#7fe7df' : '#fff' }} />
-                </button>
-                <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => setShowGifPicker(true)}>
-                  <i className="fa-solid fa-images text-xs" style={{ color: inlineGif ? '#7fe7df' : '#fff' }} />
-                </button>
-                <input ref={inlineFileRef} type="file" accept="image/*" onChange={(e) => { const next = (e.target as HTMLInputElement).files?.[0] || null; setImg(next); setInlineGif(null); setGifFile(null) }} className="hidden" />
-                <div className="flex-1 flex items-center rounded-lg border border-[#4db6ac] bg-white/5 overflow-hidden min-w-0">
-                  <MentionTextarea
-                    value={text}
-                    onChange={setText}
-                    communityId={communityId}
-                    postId={postId}
-                    placeholder={`Reply to @${reply.username}`}
-                    className="flex-1 bg-transparent px-2 py-1.5 text-[14px] text-white placeholder-white/50 outline-none resize-none max-h-20 min-h-[32px]"
-                    rows={1}
-                    autoExpand
-                  />
-                </div>
-                {!rec && !text.trim() && !img && !inlinePreview && !gifFile && (
-                  <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => startInlineRec()}>
-                    <i className="fa-solid fa-microphone text-xs text-white" />
-                  </button>
-                )}
-                {rec && (
-                  <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac]" onClick={() => stopInlineRec()}>
-                    <i className="fa-solid fa-stop text-xs text-white" />
-                  </button>
-                )}
-                {!rec && (text.trim() || img || inlinePreview || gifFile) && (
-                  <button 
-                    className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] disabled:opacity-50"
-                    disabled={inlineSendingFlag}
-                    onClick={() => {
-                      if (!text && !img && !inlinePreview && !gifFile) return
-                      const attachment = inlinePreview
-                        ? new File([inlinePreview.blob], inlinePreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm', { type: inlinePreview.blob.type })
-                        : (img || gifFile || undefined)
-                      onInlineReply(reply.id, text, attachment as any)
-                      setText('')
-                      setImg(null)
-                      setInlineGif(null)
-                      setGifFile(null)
-                      if (inlineFileRef.current) inlineFileRef.current.value = ''
-                      clearInlinePreview()
-                      setShowComposer(false)
-                    }}
-                  >
-                    {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin text-xs text-white" /> : <i className="fa-solid fa-paper-plane text-xs text-white" />}
-                  </button>
-                )}
-              </div>
-              <GifPicker
-                isOpen={showGifPicker}
-                onClose={()=> setShowGifPicker(false)}
-                onSelect={async (gif) => {
-                  try {
-                    const file = await gifSelectionToFile(gif, 'reply-gif')
-                    setInlineGif(gif)
-                    setGifFile(file)
-                    setImg(null)
-                    if (inlineFileRef.current) inlineFileRef.current.value = ''
-                  } catch (err) {
-                    console.error('Failed to prepare GIF for reply', err)
-                    alert('Unable to attach GIF. Please try again.')
-                  } finally {
-                    setShowGifPicker(false)
-                  }
-                }}
-              />
-            </div>
-          ) : null}
         </div>
       </div>
+      {/* Inline reply composer - full width outside the avatar+content flex */}
+      {showComposer ? (
+        <div className="mt-2 mx-3 space-y-2 rounded-xl bg-[#0a0a0c] p-3">
+          {/* Attachment previews */}
+          {(img || inlineGif || inlinePreview) && (
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              {img && (
+                <div className="flex items-center gap-1">
+                  <div className="w-10 h-10 rounded overflow-hidden border border-white/10">
+                    <img src={URL.createObjectURL(img)} alt="preview" className="w-full h-full object-cover" />
+                  </div>
+                  <button onClick={() => { setImg(null); setInlineGif(null); setGifFile(null); if (inlineFileRef.current) inlineFileRef.current.value = '' }} className="text-red-400 hover:text-red-300 text-xs"><i className="fa-solid fa-times" /></button>
+                </div>
+              )}
+              {inlineGif && (
+                <div className="flex items-center gap-1">
+                  <div className="w-10 h-10 rounded overflow-hidden border border-white/10">
+                    <img src={inlineGif.previewUrl} alt="GIF" className="w-full h-full object-cover" loading="lazy" />
+                  </div>
+                  <button onClick={() => { setInlineGif(null); setGifFile(null) }} className="text-red-400 hover:text-red-300 text-xs"><i className="fa-solid fa-times" /></button>
+                </div>
+              )}
+              {inlinePreview && (
+                <div className="flex items-center gap-1 flex-1 min-w-0">
+                  <audio controls className="flex-1 h-7" playsInline src={inlinePreview.url} />
+                  <button onClick={() => clearInlinePreview()} className="text-[#9fb0b5] hover:text-white text-xs"><i className="fa-regular fa-trash-can" /></button>
+                </div>
+              )}
+            </div>
+          )}
+          {/* Recording indicator */}
+          {rec && (
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2 h-2 bg-[#4db6ac] rounded-full animate-pulse" />
+              <div className="flex-1 h-1.5 bg-white/10 rounded overflow-hidden">
+                <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, recLevel*100))}%` }} />
+              </div>
+              <span className="text-[10px] text-white/70">{Math.min(60, Math.round((recMs||0)/1000))}s</span>
+            </div>
+          )}
+          {/* Input row */}
+          <div className="flex items-end gap-1.5">
+            <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => inlineFileRef.current?.click()}>
+              <i className="fa-solid fa-image text-xs" style={{ color: img ? '#7fe7df' : '#fff' }} />
+            </button>
+            <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => setShowGifPicker(true)}>
+              <i className="fa-solid fa-images text-xs" style={{ color: inlineGif ? '#7fe7df' : '#fff' }} />
+            </button>
+            <input ref={inlineFileRef} type="file" accept="image/*" onChange={(e) => { const next = (e.target as HTMLInputElement).files?.[0] || null; setImg(next); setInlineGif(null); setGifFile(null) }} className="hidden" />
+            <div className="flex-1 flex items-center rounded-lg border border-[#4db6ac] bg-white/5 overflow-hidden min-w-0">
+              <MentionTextarea
+                value={text}
+                onChange={setText}
+                communityId={communityId}
+                postId={postId}
+                placeholder={`Reply to @${reply.username}`}
+                className="flex-1 bg-transparent px-3 py-2 text-[14px] text-white placeholder-white/50 outline-none resize-none max-h-20 min-h-[36px]"
+                rows={1}
+                autoExpand
+              />
+            </div>
+            {!rec && !text.trim() && !img && !inlinePreview && !gifFile && (
+              <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => startInlineRec()}>
+                <i className="fa-solid fa-microphone text-xs text-white" />
+              </button>
+            )}
+            {rec && (
+              <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac]" onClick={() => stopInlineRec()}>
+                <i className="fa-solid fa-stop text-xs text-white" />
+              </button>
+            )}
+            {!rec && (text.trim() || img || inlinePreview || gifFile) && (
+              <button 
+                className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] disabled:opacity-50"
+                disabled={inlineSendingFlag}
+                onClick={() => {
+                  if (!text && !img && !inlinePreview && !gifFile) return
+                  const attachment = inlinePreview
+                    ? new File([inlinePreview.blob], inlinePreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm', { type: inlinePreview.blob.type })
+                    : (img || gifFile || undefined)
+                  onInlineReply(reply.id, text, attachment as any)
+                  setText('')
+                  setImg(null)
+                  setInlineGif(null)
+                  setGifFile(null)
+                  if (inlineFileRef.current) inlineFileRef.current.value = ''
+                  clearInlinePreview()
+                  setShowComposer(false)
+                }}
+              >
+                {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin text-xs text-white" /> : <i className="fa-solid fa-paper-plane text-xs text-white" />}
+              </button>
+            )}
+          </div>
+          <GifPicker
+            isOpen={showGifPicker}
+            onClose={()=> setShowGifPicker(false)}
+            onSelect={async (gif) => {
+              try {
+                const file = await gifSelectionToFile(gif, 'reply-gif')
+                setInlineGif(gif)
+                setGifFile(file)
+                setImg(null)
+                if (inlineFileRef.current) inlineFileRef.current.value = ''
+              } catch (err) {
+                console.error('Failed to prepare GIF for reply', err)
+                alert('Unable to attach GIF. Please try again.')
+              } finally {
+                setShowGifPicker(false)
+              }
+            }}
+          />
+        </div>
+      ) : null}
       {reply.children && reply.children.length ? (
         <div className="relative">
           {reply.children.map((ch) => (
