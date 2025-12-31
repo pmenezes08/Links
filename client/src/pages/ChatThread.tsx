@@ -2488,9 +2488,6 @@ export default function ChatThread(){
             <div className="mb-2 px-3 py-2.5 bg-white/5 rounded-lg">
               <div className="flex items-center gap-3">
                 <div className="flex-shrink-0">
-                  {videoUploadProgress.stage === 'compressing' && (
-                    <i className="fa-solid fa-compress text-[#4db6ac] animate-pulse" />
-                  )}
                   {videoUploadProgress.stage === 'uploading' && (
                     <i className="fa-solid fa-cloud-arrow-up text-[#4db6ac] animate-bounce" />
                   )}

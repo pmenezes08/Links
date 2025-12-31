@@ -1,6 +1,5 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { ChatMessage } from '../types/chat'
-import { compressVideo, shouldCompressVideo, formatBytes, type CompressionProgress } from '../utils/videoCompressor'
 
 interface BridgeRef {
   tempToServer: Map<string, string | number>
@@ -15,7 +14,7 @@ interface OptimisticEntry {
 type MessagesSetter = Dispatch<SetStateAction<ChatMessage[]>>
 
 export interface UploadProgress {
-  stage: 'compressing' | 'uploading' | 'done' | 'error'
+  stage: 'uploading' | 'done' | 'error'
   progress: number // 0-100
   message?: string
 }
@@ -179,33 +178,11 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
   setTimeout(scrollToBottom, 50)
 
   try {
-    // Step 1: Compress video if needed (for files > 5MB)
-    let videoToUpload = file
-    if (shouldCompressVideo(file)) {
-      onProgress?.({ stage: 'compressing', progress: 0, message: 'Compressing video...' })
-      
-      const compressionResult = await compressVideo(file, (progress: CompressionProgress) => {
-        onProgress?.({ 
-          stage: 'compressing', 
-          progress: progress.progress * 0.4, // Compression is 0-40% of total
-          message: progress.stage === 'loading' 
-            ? 'Loading video...' 
-            : `Compressing... ${Math.round(progress.progress)}%`
-        })
-      })
-      
-      videoToUpload = compressionResult.file
-      
-      if (compressionResult.compressionRatio > 1) {
-        console.log(`Video compressed: ${formatBytes(compressionResult.originalSize)} → ${formatBytes(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}x smaller)`)
-      }
-    }
-
-    // Step 2: Upload with progress tracking
-    onProgress?.({ stage: 'uploading', progress: 40, message: 'Uploading...' })
+    // Upload video directly without compression (preserves audio and is faster)
+    onProgress?.({ stage: 'uploading', progress: 0, message: 'Uploading...' })
     
     const formData = new FormData()
-    formData.append('video', videoToUpload)
+    formData.append('video', file)
     formData.append('recipient_id', String(otherUserId))
     formData.append('message', '')
 
@@ -215,8 +192,7 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
       
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          // Upload is 40-95% of total progress
-          const uploadProgress = 40 + (e.loaded / e.total) * 55
+          const uploadProgress = (e.loaded / e.total) * 95
           onProgress?.({ 
             stage: 'uploading', 
             progress: uploadProgress,
