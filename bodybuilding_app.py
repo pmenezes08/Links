@@ -18724,8 +18724,12 @@ def delete_community():
 
             # Get all members of communities being deleted BEFORE deleting
             affected_usernames: Set[str] = set()
+            # Always include the current user (who is deleting)
+            affected_usernames.add(username)
+            
             for target_id in descendant_ids:
                 placeholder = get_sql_placeholder()
+                # Get members from user_communities
                 c.execute(f"""
                     SELECT DISTINCT u.username 
                     FROM user_communities uc
@@ -18736,6 +18740,14 @@ def delete_community():
                     uname = row['username'] if hasattr(row, 'keys') else row[0]
                     if uname:
                         affected_usernames.add(uname)
+                
+                # Also get the creator of the community (may not be in user_communities)
+                c.execute(f"SELECT creator_username FROM communities WHERE id = {placeholder}", (target_id,))
+                creator_row = c.fetchone()
+                if creator_row:
+                    creator = creator_row['creator_username'] if hasattr(creator_row, 'keys') else creator_row[0]
+                    if creator:
+                        affected_usernames.add(creator)
             
             deleted_ids: List[int] = []
             for target_id in descendant_ids:
@@ -18744,10 +18756,16 @@ def delete_community():
             
             conn.commit()
             
-            # Invalidate dashboard cache for ALL affected users
+            # Invalidate ALL caches related to deleted communities and affected users
+            # 1. Invalidate community-specific caches
+            for target_id in deleted_ids:
+                invalidate_community_cache(target_id)
+            logger.info(f"Invalidated community cache for {len(deleted_ids)} communities: {deleted_ids}")
+            
+            # 2. Invalidate dashboard cache for ALL affected users (members + creators + current user)
             for affected_user in affected_usernames:
                 invalidate_user_cache(affected_user)
-            logger.info(f"Invalidated dashboard cache for {len(affected_usernames)} users after community deletion: {list(affected_usernames)[:5]}...")
+            logger.info(f"Invalidated user cache for {len(affected_usernames)} users: {list(affected_usernames)}")
             
             return jsonify({'success': True, 'message': 'Community deleted successfully', 'deleted_ids': deleted_ids})
             

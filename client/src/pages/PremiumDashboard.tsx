@@ -651,14 +651,23 @@ export default function PremiumDashboard() {
         </div>
 
         {/* Floating Action Button */}
-        <div className="fixed bottom-6 right-6 z-50">
+        <div className="fixed bottom-6 right-6 z-50" style={{ WebkitTapHighlightColor: 'transparent' }}>
           {fabOpen && (
-            <div className="mb-2 rounded-xl border border-white/10 bg:black/80 backdrop-blur p-2 w-48 shadow-lg">
-            <button className="w-full text-left px-3 py-2 rounded-lg hover:bg:white/5 text-sm" onClick={()=> { setFabOpen(false); setNewCommType('General'); setShowCreateModal(true) }}>Create Community</button>
+            <div className="mb-2 rounded-xl border border-white/10 bg-black/90 backdrop-blur p-2 w-48 shadow-lg">
+              <button 
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-white active:bg-white/20" 
+                onClick={()=> { setFabOpen(false); setNewCommType('General'); setShowCreateModal(true) }}
+              >
+                Create Community
+              </button>
             </div>
           )}
-          <button className="w-14 h-14 rounded-full bg-[#4db6ac] text-black shadow-lg hover:brightness-110 grid place-items-center border border-[#4db6ac]" onClick={()=> setFabOpen(v=>!v)} aria-label="Actions">
-            <i className="fa-solid fa-plus" />
+          <button 
+            className="w-14 h-14 rounded-full bg-[#4db6ac] text-black shadow-lg hover:brightness-110 active:scale-95 grid place-items-center border border-[#4db6ac] transition-transform touch-manipulation"
+            onClick={()=> setFabOpen(v=>!v)} 
+            aria-label="Actions"
+          >
+            <i className="fa-solid fa-plus text-lg" />
           </button>
         </div>
       </div>
