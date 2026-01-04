@@ -263,7 +263,7 @@ export default function PostDetail(){
     }
   }, [])
 
-  // Scroll content to bottom when keyboard opens to show latest replies
+  // Scroll inline reply composer into view when keyboard opens
   useEffect(() => {
     let lastHeight = window.innerHeight
     
@@ -273,18 +273,44 @@ export default function PostDetail(){
       if (newHeight !== lastHeight) {
         const keyboardOpened = newHeight < lastHeight
         lastHeight = newHeight
-        // Scroll to bottom when keyboard opens
-        if (contentRef.current && keyboardOpened) {
-          setTimeout(() => {
-            contentRef.current?.scrollTo({ top: contentRef.current.scrollHeight, behavior: 'smooth' })
-          }, 100)
+        
+        if (keyboardOpened) {
+          // If there's an active inline reply, scroll that into view
+          if (activeInlineReplyFor !== null) {
+            setTimeout(() => {
+              const composerEl = document.querySelector(`[data-inline-reply-id="${activeInlineReplyFor}"]`)
+              if (composerEl) {
+                composerEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              }
+            }, 150)
+          } else if (contentRef.current) {
+            // Otherwise scroll to bottom for main reply composer
+            setTimeout(() => {
+              contentRef.current?.scrollTo({ top: contentRef.current.scrollHeight, behavior: 'smooth' })
+            }, 100)
+          }
         }
       }
     }
     
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  }, [activeInlineReplyFor])
+  
+  // Scroll inline reply composer into view when activated
+  useEffect(() => {
+    if (activeInlineReplyFor === null) return
+    
+    // Small delay to let the composer render
+    const timeoutId = setTimeout(() => {
+      const composerEl = document.querySelector(`[data-inline-reply-id="${activeInlineReplyFor}"]`)
+      if (composerEl) {
+        composerEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }, 100)
+    
+    return () => clearTimeout(timeoutId)
+  }, [activeInlineReplyFor])
   
   useEffect(() => {
     if (!post_id) return
@@ -1379,7 +1405,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
       </div>
       {/* Inline reply composer - full width outside the avatar+content flex */}
       {showComposer ? (
-        <div className="mt-2 mx-3 space-y-2 rounded-xl bg-[#0a0a0c] p-3">
+        <div className="mt-2 mx-3 space-y-2 rounded-xl bg-[#0a0a0c] p-3" data-inline-reply-id={reply.id}>
           {/* Attachment previews */}
           {(img || inlineGif || inlinePreview) && (
             <div className="flex items-center gap-2 flex-wrap mb-1">
