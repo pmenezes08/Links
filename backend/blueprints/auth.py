@@ -492,9 +492,16 @@ def signup():
 @auth_bp.route("/logout", endpoint="logout")
 def logout():
     """Clear session and remember-me cookies."""
+    logger = current_app.logger
+    logger.info("Logout requested - clearing session and cookies")
+    
     session.clear()
     session.permanent = False
-    resp = make_response(redirect(url_for("public.index")))
+    
+    # Redirect to welcome page (root)
+    resp = make_response(redirect("/"))
+    
+    # Clear remember token cookie
     resp.set_cookie(
         "remember_token",
         "",
@@ -502,6 +509,23 @@ def logout():
         path="/",
         domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
     )
+    
+    # Also try to clear session cookie explicitly
+    session_cookie_name = current_app.config.get("SESSION_COOKIE_NAME", "session")
+    resp.set_cookie(
+        session_cookie_name,
+        "",
+        max_age=0,
+        path="/",
+        domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
+    )
+    
+    # Set cache control headers to prevent caching of logged-out state
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    
+    logger.info("Logout completed - redirecting to /")
     return resp
 
 
