@@ -9,8 +9,8 @@ import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import { renderTextWithLinks } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
-import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
-import { refreshDashboardCommunities } from '../utils/dashboardCache'
+import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { invalidateDashboardCache } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 
 type Community = { 
@@ -439,8 +439,22 @@ export default function Communities(){
                                     const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                                     const j = await r.json().catch(()=>null)
                                     if (j?.success) {
+                                      // Clear all community-related caches
+                                      clearDeviceCache(`community-feed:${c.id}`)
+                                      invalidateDashboardCache()
+                                      // Clear community management caches
+                                      const storage = window.localStorage
+                                      if (storage) {
+                                        const keysToRemove: string[] = []
+                                        for (let i = 0; i < storage.length; i++) {
+                                          const key = storage.key(i)
+                                          if (key && (key.startsWith('community-management:') || key.startsWith('community-feed:'))) {
+                                            keysToRemove.push(key)
+                                          }
+                                        }
+                                        keysToRemove.forEach(key => storage.removeItem(key))
+                                      }
                                       await triggerDashboardServerPull()
-                                      await refreshDashboardCommunities()
                                       window.location.reload()
                                     }
                                     else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)
@@ -615,8 +629,9 @@ export default function Communities(){
                             setShowCreateSubModal(false)
                             setNewSubName('')
                             setSelectedSubCommunityId('none')
+                            // Clear caches and refresh
+                            invalidateDashboardCache()
                             await triggerDashboardServerPull()
-                            await refreshDashboardCommunities()
                             // Refresh current view to show the new child
                             window.location.reload()
                           } else {
@@ -1608,8 +1623,22 @@ function NestedCommunities({
                 const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd })
                 const j = await r.json().catch(()=>null)
                 if (j?.success) {
+                  // Clear all community-related caches
+                  clearDeviceCache(`community-feed:${child.id}`)
+                  invalidateDashboardCache()
+                  // Clear community management caches
+                  const storage = window.localStorage
+                  if (storage) {
+                    const keysToRemove: string[] = []
+                    for (let i = 0; i < storage.length; i++) {
+                      const key = storage.key(i)
+                      if (key && (key.startsWith('community-management:') || key.startsWith('community-feed:'))) {
+                        keysToRemove.push(key)
+                      }
+                    }
+                    keysToRemove.forEach(key => storage.removeItem(key))
+                  }
                   await triggerDashboardServerPull()
-                  await refreshDashboardCommunities()
                   window.location.reload()
                 }
                 else alert(j?.error||`Error ${asDelete?'deleting':'leaving'} community`)

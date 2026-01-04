@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
-import { refreshDashboardCommunities } from '../utils/dashboardCache'
+import { invalidateDashboardCache } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
+import { clearDeviceCache } from '../utils/deviceCache'
 
 interface Stats {
   total_users: number
@@ -646,9 +647,23 @@ export default function AdminDashboard() {
       
       const data = await response.json()
       if (data.success) {
-        alert('Community deleted successfully.')
+        // Clear all community-related caches
+        clearDeviceCache(`community-feed:${communityId}`)
+        invalidateDashboardCache()
+        // Clear community management caches
+        const storage = window.localStorage
+        if (storage) {
+          const keysToRemove: string[] = []
+          for (let i = 0; i < storage.length; i++) {
+            const key = storage.key(i)
+            if (key && (key.startsWith('community-management:') || key.startsWith('community-feed:'))) {
+              keysToRemove.push(key)
+            }
+          }
+          keysToRemove.forEach(key => storage.removeItem(key))
+        }
         await triggerDashboardServerPull()
-        await refreshDashboardCommunities()
+        alert('Community deleted successfully.')
         await loadAdminData()
       } else {
         alert(data.error || 'Failed to delete community.')

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { clearDeviceCache } from '../utils/deviceCache'
-import { refreshDashboardCommunities } from '../utils/dashboardCache'
+import { invalidateDashboardCache } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 
 export default function EditCommunity(){
@@ -98,10 +98,34 @@ export default function EditCommunity(){
       const r = await fetch('/delete_community', { method:'POST', credentials:'include', body: fd })
       const j = await r.json().catch(()=>null)
       if (j?.success){
-        alert('Community deleted successfully')
+        // Clear ALL community-related caches to prevent stale data
+        // 1. Clear the deleted community's feed cache
+        clearDeviceCache(`community-feed:${community_id}`)
+        
+        // 2. Clear the dashboard cache completely (forces fresh fetch)
+        invalidateDashboardCache()
+        
+        // 3. Clear community management caches (they use dynamic keys based on location)
+        const storage = window.localStorage
+        if (storage) {
+          const keysToRemove: string[] = []
+          for (let i = 0; i < storage.length; i++) {
+            const key = storage.key(i)
+            if (key && (key.startsWith('community-management:') || key.startsWith('community-feed:'))) {
+              keysToRemove.push(key)
+            }
+          }
+          keysToRemove.forEach(key => storage.removeItem(key))
+        }
+        
+        // 4. Trigger server pull to refresh service worker cache
         await triggerDashboardServerPull()
-        await refreshDashboardCommunities()
-        navigate('/communities_react')
+        
+        alert('Community deleted successfully')
+        
+        // Navigate to dashboard (not communities_react) for cleaner UX
+        // Use replace to prevent back navigation to deleted community
+        navigate('/premium_dashboard', { replace: true })
       } else {
         alert(j?.error || 'Failed to delete community')
       }
