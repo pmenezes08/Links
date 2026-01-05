@@ -17696,11 +17696,6 @@ def welcome_cards():
     """
     try:
         cards = []
-        defaults = [
-            'welcome/default-1.jpg',
-            'welcome/default-2.jpg',
-            'welcome/default-3.jpg',
-        ]
         with get_db_connection() as conn:
             c = conn.cursor()
             try:
@@ -17718,18 +17713,36 @@ def welcome_cards():
                 r3 = c.fetchone()
             except Exception:
                 r3 = None
+        
         vals = [
             (get_scalar_result(r1, column_name='value') if r1 else None),
             (get_scalar_result(r2, column_name='value') if r2 else None),
             (get_scalar_result(r3, column_name='value') if r3 else None),
         ]
-        for idx, val in enumerate(vals):
-            rel = val if val else defaults[idx]
-            path = os.path.join('static', rel)
-            v = 0
-            try: v = int(os.path.getmtime(path))
-            except Exception: pass
-            cards.append(f"/static/{rel}?v={v}")
+        
+        for val in vals:
+            if val:
+                # Handle both old (welcome/card.jpg) and new (uploads/welcome/card.jpg) paths
+                if val.startswith('uploads/'):
+                    # New format: uploads/welcome/card-1.jpg
+                    file_path = val
+                    url_path = f"/{val}"
+                elif val.startswith('welcome/'):
+                    # Old format: welcome/card-1.jpg (stored in static/)
+                    file_path = os.path.join('static', val)
+                    url_path = f"/static/{val}"
+                else:
+                    # Assume it's a relative path
+                    file_path = val
+                    url_path = f"/{val}"
+                
+                # Add cache-buster based on file modification time
+                v = 0
+                try: 
+                    v = int(os.path.getmtime(file_path))
+                except Exception: 
+                    pass
+                cards.append(f"{url_path}?v={v}")
         
         resp = jsonify({'success': True, 'cards': cards})
         # Prevent browser caching so changes appear immediately
@@ -17744,6 +17757,10 @@ def welcome_cards():
 @app.route('/admin/upload_welcome_card', methods=['POST'])
 @login_required
 def admin_upload_welcome_card():
+    """
+    Upload welcome card images. Stores in uploads/welcome/ for persistence
+    (static/ folder can be ephemeral on some hosting platforms).
+    """
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
@@ -17763,31 +17780,36 @@ def admin_upload_welcome_card():
         ext = os.path.splitext(f.filename)[1].lower()
         if ext.replace('.', '') not in ALLOWED_EXTENSIONS:
             return jsonify({'success': False, 'error': 'Invalid file type'}), 400
-        os.makedirs(os.path.join('static','welcome'), exist_ok=True)
+        
+        # Save to uploads/welcome/ for persistence (static/ can be ephemeral)
+        upload_dir = os.path.join('uploads', 'welcome')
+        os.makedirs(upload_dir, exist_ok=True)
         filename = f"card-{idx}.jpg" if ext.lower() not in ('.webp',) else f"card-{idx}{ext}"
-        dest = os.path.join('static','welcome', filename)
+        dest = os.path.join(upload_dir, filename)
         f.save(dest)
         try:
             optimize_image(dest, max_width=1920, quality=82)
         except Exception:
             pass
+        
+        # Store path in database (relative to uploads/)
+        db_path = f"uploads/welcome/{filename}"
         key = f"welcome_card_{idx}"
-        # upsert
         with get_db_connection() as conn:
             c = conn.cursor()
             if USE_MYSQL:
                 c.execute("CREATE TABLE IF NOT EXISTS site_settings (`key` VARCHAR(191) PRIMARY KEY, `value` TEXT)")
-                c.execute("INSERT INTO site_settings (`key`,`value`) VALUES (%s,%s) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)", (key, f"welcome/{filename}"))
+                c.execute("INSERT INTO site_settings (`key`,`value`) VALUES (%s,%s) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)", (key, db_path))
             else:
                 c.execute("CREATE TABLE IF NOT EXISTS site_settings (key TEXT PRIMARY KEY, value TEXT)")
-                c.execute("INSERT INTO site_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, f"welcome/{filename}"))
+                c.execute("INSERT INTO site_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, db_path))
             conn.commit()
-            logger.info(f"✅ Welcome card {idx} saved to database: welcome/{filename}")
+            logger.info(f"✅ Welcome card {idx} saved to database: {db_path}")
         
         v = 0
         try: v = int(os.path.getmtime(dest))
         except Exception: pass
-        return jsonify({'success': True, 'url': f"/static/welcome/{filename}?v={v}"})
+        return jsonify({'success': True, 'url': f"/{db_path}?v={v}"})
     except Exception as e:
         logger.error(f"admin_upload_welcome_card error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
