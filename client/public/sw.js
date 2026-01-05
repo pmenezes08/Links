@@ -1,4 +1,4 @@
-const SW_VERSION = '2.19.0'
+const SW_VERSION = '2.20.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
@@ -16,8 +16,9 @@ const STATIC_ASSETS = [
 ]
 
 const STATIC_ASSET_PATHS = new Set(STATIC_ASSETS)
+// These endpoints use stale-while-revalidate (show cached first, update in background)
+// NOTE: /api/profile_me is NOT here - it must always be network-first for proper login/logout
 const STALE_API_ENDPOINTS = new Set([
-  '/api/profile_me',
   '/api/user_communities_hierarchical',
   '/get_user_communities_with_members',
   '/api/premium_dashboard_summary',

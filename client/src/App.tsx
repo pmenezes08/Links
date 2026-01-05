@@ -348,6 +348,53 @@ function AppRoutes(){
         }
 
         const username = (profile as any)?.username
+        
+        // Detect user change and clear stale caches from previous user
+        const previousUsername = localStorage.getItem('current_username')
+        if (username && previousUsername && previousUsername !== username) {
+          console.log(`👤 User changed from ${previousUsername} to ${username} - clearing caches`)
+          
+          // Clear localStorage items that might have old user data
+          const keysToRemove = ['home-timeline', 'communityManagementShowNested']
+          const prefixesToClear = ['community_', 'chat_', 'dashboard-', 'community-feed:', 'group-feed:']
+          
+          try {
+            keysToRemove.forEach(key => localStorage.removeItem(key))
+            Object.keys(localStorage).forEach(key => {
+              if (prefixesToClear.some(prefix => key.startsWith(prefix))) {
+                localStorage.removeItem(key)
+              }
+            })
+          } catch (e) {
+            console.warn('Error clearing localStorage for user change:', e)
+          }
+          
+          // Clear service worker caches
+          if ('caches' in window) {
+            caches.keys().then(names => {
+              names.forEach(name => {
+                if (name.includes('runtime') || name.includes('cp-')) {
+                  caches.delete(name)
+                }
+              })
+            }).catch(() => {})
+          }
+          
+          // Clear IndexedDB for encryption (different user = different keys)
+          try {
+            indexedDB.deleteDatabase('chat-encryption')
+            indexedDB.deleteDatabase('signal-protocol')
+            indexedDB.deleteDatabase('signal-store')
+          } catch (e) {
+            console.warn('Error clearing IndexedDB for user change:', e)
+          }
+        }
+        
+        // Store current username for future comparison
+        if (username) {
+          localStorage.setItem('current_username', username)
+        }
+        
         if (username && encryptionUserRef.current !== username) {
           try {
             // Initialize Signal Protocol (multi-device E2E encryption)
