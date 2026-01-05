@@ -14,11 +14,6 @@ export default function OnboardingWelcome(){
     'Share your thoughts, images, and connect through meaningful conversations.',
     'Connect with your world'
   ]
-  const fallbackSlides = [
-    'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?q=80&w=1600&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1520975916090-3105956dac38?q=80&w=1600&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1517423440428-a5a00ad493e8?q=80&w=1600&auto=format&fit=crop'
-  ]
 
   // no modal state
 
