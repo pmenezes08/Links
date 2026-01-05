@@ -16552,6 +16552,18 @@ def add_calendar_event():
                             VALUES ({ph}, {ph}, {ph}, {ph}, 0, {ph}, 'event_invitation', {ph})
                         """, (invited_user, username, notification_message, datetime.now().isoformat(), notification_link, community_id))
                         
+                        # Send push notification to the invited user
+                        try:
+                            send_push_to_user(invited_user, {
+                                'title': 'Event Invitation',
+                                'body': f'{username} invited you to: {title}',
+                                'url': notification_link,
+                                'tag': f'event-invite-{event_id}-{invited_user}'
+                            })
+                            logger.info(f"📅 Sent event invitation push to {invited_user} for event {event_id}")
+                        except Exception as push_err:
+                            logger.warning(f"Failed to send push notification for event invite to {invited_user}: {push_err}")
+                        
                     except Exception as inv_err:
                         # Skip if already invited or other error
                         logger.warning(f"Failed to invite {invited_user}: {inv_err}")
