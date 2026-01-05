@@ -86,14 +86,20 @@ export default function OnboardingWelcome(){
               <div className="absolute inset-0 flex transition-transform duration-500"
                    style={{ transform: `translateX(calc(-${cardIndex * 100}% + ${touchDeltaX}px))` }}>
                 {((cards && cards.length) ? cards : fallbackSlides).map((src, i) => (
-                  <div key={i} className="min-w-full h-full">
+                  <div key={i} className="min-w-full h-full bg-gradient-to-br from-[#1a1a2e] to-[#16213e]">
                     <img 
                       src={src} 
                       alt="welcome"
                       className="w-full h-full object-cover"
                       loading="eager"
                       decoding="async"
-                      crossOrigin="anonymous"
+                      onError={(e) => {
+                        // If image fails to load, try fallback
+                        const target = e.target as HTMLImageElement
+                        if (!target.src.includes('unsplash.com')) {
+                          target.src = fallbackSlides[i % fallbackSlides.length]
+                        }
+                      }}
                     />
                   </div>
                 ))}

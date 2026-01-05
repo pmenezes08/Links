@@ -97,17 +97,23 @@ export async function performLogout(): Promise<void> {
     }
   }
 
-  // 5. Clear service worker caches (images, API responses, etc.)
+  // 5. Clear service worker caches (only user-specific data, NOT app shell or welcome images)
   try {
     if ('caches' in window) {
       const cacheNames = await caches.keys()
       await Promise.all(
-        cacheNames.map(cacheName => {
-          console.log(`🗑️ Deleting cache: ${cacheName}`)
-          return caches.delete(cacheName)
-        })
+        cacheNames
+          .filter(cacheName => {
+            // Only clear runtime caches that contain user data
+            // Keep app shell cache (static assets) and don't touch media cache
+            return cacheName.includes('runtime')
+          })
+          .map(cacheName => {
+            console.log(`🗑️ Deleting cache: ${cacheName}`)
+            return caches.delete(cacheName)
+          })
       )
-      console.log('✅ Service worker caches cleared')
+      console.log('✅ Service worker user caches cleared')
     }
   } catch (e) {
     console.warn('Error clearing service worker caches:', e)
