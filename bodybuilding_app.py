@@ -8361,7 +8361,12 @@ def api_profile_me():
     cached_profile = cache.get(cache_key)
     if cached_profile:
         logger.debug(f"🚀 Cache hit: profile for {username}")
-        return jsonify({'success': True, 'profile': cached_profile})
+        resp = jsonify({'success': True, 'profile': cached_profile})
+        # Prevent browser caching so profile picture changes appear immediately
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+        return resp
     
     try:
         with get_db_connection() as conn:
@@ -8446,7 +8451,12 @@ def api_profile_me():
             cache.set(cache_key, profile, USER_CACHE_TTL)  # Optimized TTL
             logger.debug(f"💾 Cached profile for {username}")
             
-            return jsonify({ 'success': True, 'profile': profile })
+            resp = jsonify({ 'success': True, 'profile': profile })
+            # Prevent browser caching so profile picture changes appear immediately
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+            return resp
     except Exception as e:
         logger.error(f"Error in api_profile_me: {e}")
         logger.error(f"Error details: {str(e)}")

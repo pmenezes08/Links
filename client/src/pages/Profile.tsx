@@ -430,10 +430,16 @@ export default function Profile() {
       profile.personal_country,
       profile.personalCountry,
     )
+    // Add cache-buster to profile picture URL to ensure fresh image loads
+    const rawProfilePic = coalesceString(profile.profile_picture, profile.profilePicture) || null
+    const profilePicWithCacheBuster = rawProfilePic 
+      ? (rawProfilePic.includes('?') ? rawProfilePic : `${rawProfilePic}?v=${Date.now()}`)
+      : null
+    
     setSummary({
       username: coalesceString(profile.username),
       subscription: coalesceString(profile.subscription, profile.plan),
-      profile_picture: coalesceString(profile.profile_picture, profile.profilePicture) || null,
+      profile_picture: profilePicWithCacheBuster,
       cover_photo: coalesceString(profile.cover_photo, profile.coverPhoto) || null,
       display_name:
         coalesceString(

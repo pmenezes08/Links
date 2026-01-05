@@ -289,7 +289,12 @@ function AppRoutes(){
     setProfileLoading(true)
     setProfileError(null)
     try {
-      const response = await fetch('/api/profile_me', { credentials: 'include' })
+      // Add cache-buster to prevent browser caching, ensuring profile picture updates appear immediately
+      const response = await fetch(`/api/profile_me?_t=${Date.now()}`, { 
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
       if (response.status === 401) {
         setProfileData(null)
         setIsVerified(null)
@@ -421,7 +426,11 @@ function AppRoutes(){
     if (profileData) {
       const username = (profileData as any)?.username
       const displayName = (profileData as any)?.display_name || username
-      const avatarUrl = (profileData as any)?.profile_picture || null
+      const rawAvatarUrl = (profileData as any)?.profile_picture || null
+      // Add cache-buster to avatar URL to ensure fresh image loads after upload
+      const avatarUrl = rawAvatarUrl 
+        ? (rawAvatarUrl.includes('?') ? rawAvatarUrl : `${rawAvatarUrl}?v=${Date.now()}`)
+        : null
       setUserMeta({ username, displayName, avatarUrl })
     } else {
       setUserMeta({})
