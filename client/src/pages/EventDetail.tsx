@@ -16,6 +16,7 @@ type EventData = {
   community_name?: string
   user_rsvp?: string|null
   rsvp_counts?: { going: number; maybe: number; not_going: number; no_response?: number }
+  creator_username?: string|null
 }
 
 type RSVPDetails = {
@@ -34,8 +35,28 @@ export default function EventDetail(){
   const [rsvpDetails, setRsvpDetails] = useState<RSVPDetails| null>(null)
   const [showAttendees, setShowAttendees] = useState(false)
   const [attendeeFilter, setAttendeeFilter] = useState<'going'|'maybe'|'not_going'|'no_response'>('going')
+  const [currentUser, setCurrentUser] = useState<string|null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   useEffect(() => { setTitle('Event Details') }, [setTitle])
+  
+  // Load current user
+  useEffect(() => {
+    let mounted = true
+    async function loadUser(){
+      try{
+        const r = await fetch('/api/home_timeline', { credentials:'include' })
+        const j = await r.json().catch(()=>null)
+        if (!mounted) return
+        if (j?.success && j.username) {
+          setCurrentUser(j.username)
+        }
+      }catch{}
+    }
+    loadUser()
+    return () => { mounted = false }
+  }, [])
 
   async function loadEvent(){
     try{
@@ -80,16 +101,65 @@ export default function EventDetail(){
     }catch{}
   }
 
+  async function deleteEvent(){
+    if (!event_id || deleting) return
+    setDeleting(true)
+    try{
+      const formData = new FormData()
+      formData.append('event_id', String(event_id))
+      const r = await fetch('/delete_calendar_event', { 
+        method: 'POST', 
+        credentials: 'include',
+        body: formData
+      })
+      const j = await r.json().catch(()=>null)
+      if (j?.success){
+        // Navigate back to calendar or community
+        if (event?.community_id) {
+          navigate(`/community/${event.community_id}/calendar_react`)
+        } else {
+          navigate(-1)
+        }
+      } else {
+        alert(j?.message || 'Failed to delete event')
+      }
+    }catch(err){
+      console.error('Error deleting event:', err)
+      alert('Failed to delete event')
+    } finally {
+      setDeleting(false)
+      setShowDeleteConfirm(false)
+    }
+  }
+  
+  // Check if current user can delete the event
+  const canDelete = currentUser && event && (
+    currentUser === event.username || // Event creator
+    currentUser === 'admin' || // App admin
+    currentUser === event.creator_username // Community owner
+  )
+
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading event…</div>
   if (!event) return <div className="p-4 text-red-400">Event not found</div>
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="fixed left-0 right-0 top-0 h-14 border-b border-white/10 bg-black/70 backdrop-blur flex items-center px-3 z-40">
-        <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(-1)}>
-          <i className="fa-solid fa-arrow-left" />
-        </button>
-        <div className="ml-2 font-semibold">Event Details</div>
+      <div className="fixed left-0 right-0 top-0 h-14 border-b border-white/10 bg-black/70 backdrop-blur flex items-center justify-between px-3 z-40">
+        <div className="flex items-center">
+          <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(-1)}>
+            <i className="fa-solid fa-arrow-left" />
+          </button>
+          <div className="ml-2 font-semibold">Event Details</div>
+        </div>
+        {canDelete && (
+          <button 
+            className="px-3 py-2 rounded-full text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+            onClick={() => setShowDeleteConfirm(true)}
+            title="Delete Event"
+          >
+            <i className="fa-solid fa-trash" />
+          </button>
+        )}
       </div>
 
       <div className="max-w-2xl mx-auto pt-16 px-3 pb-24">
@@ -297,6 +367,42 @@ export default function EventDetail(){
                 )
               })()
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-[110] bg-black/80 backdrop-blur flex items-center justify-center px-4"
+          onClick={(e)=> e.currentTarget===e.target && setShowDeleteConfirm(false)}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                <i className="fa-solid fa-trash text-red-400" />
+              </div>
+              <div className="font-semibold text-lg text-white">Delete Event?</div>
+            </div>
+            <p className="text-sm text-[#9fb0b5] mb-5">
+              Are you sure you want to delete "{event?.title}"? This action cannot be undone and will remove all RSVPs.
+            </p>
+            <div className="flex gap-3">
+              <button
+                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-colors"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50"
+                onClick={deleteEvent}
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

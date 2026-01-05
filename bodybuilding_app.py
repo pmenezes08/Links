@@ -17344,6 +17344,29 @@ def delete_calendar_event():
                 logger.warning(f"User {username} tried to delete event owned by {event_owner}")
                 return jsonify({'success': False, 'message': 'You do not have permission to delete this event'})
             
+            # Delete related data first
+            # Delete RSVPs
+            try:
+                c.execute("DELETE FROM event_rsvps WHERE event_id = ?", (event_id,))
+                logger.info(f"Deleted RSVPs for event {event_id}")
+            except Exception as rsvp_err:
+                logger.warning(f"Error deleting RSVPs for event {event_id}: {rsvp_err}")
+            
+            # Delete invitations
+            try:
+                c.execute("DELETE FROM event_invitations WHERE event_id = ?", (event_id,))
+                logger.info(f"Deleted invitations for event {event_id}")
+            except Exception as inv_err:
+                logger.warning(f"Error deleting invitations for event {event_id}: {inv_err}")
+            
+            # Delete related notifications (event_invitation type with link pointing to this event)
+            try:
+                event_link = f"/event/{event_id}"
+                c.execute("DELETE FROM notifications WHERE type = 'event_invitation' AND link = ?", (event_link,))
+                logger.info(f"Deleted event_invitation notifications for event {event_id}")
+            except Exception as notif_err:
+                logger.warning(f"Error deleting notifications for event {event_id}: {notif_err}")
+            
             # Delete the event
             c.execute("DELETE FROM calendar_events WHERE id = ?", (event_id,))
             deleted_count = c.rowcount
