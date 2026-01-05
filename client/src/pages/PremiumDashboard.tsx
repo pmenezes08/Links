@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
+import { useUserProfile } from '../contexts/UserProfileContext'
 import { useNavigate } from 'react-router-dom'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
 import {
@@ -19,6 +20,7 @@ const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
 // type Community = { id: number; name: string; type: string }
 
 export default function PremiumDashboard() {
+  const { refresh: refreshUserProfile } = useUserProfile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [communities, setCommunities] = useState<Array<{id: number, name: string, type: string}>>([])
@@ -764,6 +766,8 @@ export default function PremiumDashboard() {
                   }
                   setHasProfilePic(true)
                   setPicFile(null)
+                  // Refresh user profile context so header avatar updates
+                  try { await refreshUserProfile() } catch {}
                   setOnbStep(4)
                 }catch{ alert('Network error') } finally { setUploadingPic(false) }
               }}>{uploadingPic ? 'Uploading…' : 'Upload & continue'}</button>
