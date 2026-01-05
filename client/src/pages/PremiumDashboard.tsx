@@ -21,7 +21,7 @@ const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
 // type Community = { id: number; name: string; type: string }
 
 export default function PremiumDashboard() {
-  const { refresh: refreshUserProfile } = useUserProfile()
+  const { setProfile: setContextProfile } = useUserProfile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [communities, setCommunities] = useState<Array<{id: number, name: string, type: string}>>([])
@@ -767,11 +767,15 @@ export default function PremiumDashboard() {
                     const cacheBustedUrl = `${uploadedPath}?v=${Date.now()}`
                     setExistingProfilePic(cacheBustedUrl)
                     setPicPreview(cacheBustedUrl)
+                    // Directly update the context profile with new picture URL
+                    // This avoids refetching from potentially stale server cache
+                    setContextProfile(prev => {
+                      if (!prev) return prev
+                      return { ...prev, profile_picture: cacheBustedUrl }
+                    })
                   }
                   setHasProfilePic(true)
                   setPicFile(null)
-                  // Refresh user profile context so header avatar updates
-                  try { await refreshUserProfile() } catch {}
                   setOnbStep(4)
                 }catch{ alert('Network error') } finally { setUploadingPic(false) }
               }}>{uploadingPic ? 'Uploading…' : 'Upload & continue'}</button>

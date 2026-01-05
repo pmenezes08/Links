@@ -306,6 +306,7 @@ export default function Profile() {
   const [interestInput, setInterestInput] = useState('')
   const {
     profile: cachedProfile,
+    setProfile: setContextProfile,
     loading: cachedProfileLoading,
     error: cachedProfileError,
     refresh: refreshUserProfile,
@@ -431,15 +432,23 @@ export default function Profile() {
       profile.personalCountry,
     )
     // Add cache-buster to profile picture URL to ensure fresh image loads
-    const rawProfilePic = coalesceString(profile.profile_picture, profile.profilePicture) || null
-    const profilePicWithCacheBuster = rawProfilePic 
-      ? (rawProfilePic.includes('?') ? rawProfilePic : `${rawProfilePic}?v=${Date.now()}`)
-      : null
+    // BUT if we just uploaded a new picture, use that instead of the (potentially stale) server data
+    let profilePicToUse: string | null
+    if (justUploadedPicRef.current) {
+      profilePicToUse = justUploadedPicRef.current
+      // Clear the ref after using it once (so future syncs work normally)
+      justUploadedPicRef.current = null
+    } else {
+      const rawProfilePic = coalesceString(profile.profile_picture, profile.profilePicture) || null
+      profilePicToUse = rawProfilePic 
+        ? (rawProfilePic.includes('?') ? rawProfilePic : `${rawProfilePic}?v=${Date.now()}`)
+        : null
+    }
     
     setSummary({
       username: coalesceString(profile.username),
       subscription: coalesceString(profile.subscription, profile.plan),
-      profile_picture: profilePicWithCacheBuster,
+      profile_picture: profilePicToUse,
       cover_photo: coalesceString(profile.cover_photo, profile.coverPhoto) || null,
       display_name:
         coalesceString(
@@ -764,6 +773,8 @@ export default function Profile() {
 
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const [localPhotoPreview, setLocalPhotoPreview] = useState<string | null>(null)
+  // Track when we've just uploaded to prevent useEffect from overwriting our new picture
+  const justUploadedPicRef = useRef<string | null>(null)
 
   async function handlePhotoUpload(file: File) {
     // Show immediate local preview
@@ -784,14 +795,20 @@ export default function Profile() {
         }
         // Add cache-busting timestamp to force avatar refresh across the app
         const cacheBustedUrl = `${payload.profile_picture}?v=${Date.now()}`
+        
+        // Mark that we just uploaded - this prevents useEffect from overwriting
+        justUploadedPicRef.current = cacheBustedUrl
+        
         setSummary(prev => prev ? { ...prev, profile_picture: cacheBustedUrl } : prev)
         setLocalPhotoPreview(null) // Clear local preview, use server URL
         setFeedback('Profile picture updated')
-        try {
-          await refreshUserProfile()
-        } catch {
-          // Ignore refresh errors; context will retry on navigation
-        }
+        
+        // Directly update the context profile with new picture URL
+        // This avoids refetching from potentially stale server cache
+        setContextProfile(prev => {
+          if (!prev) return prev
+          return { ...prev, profile_picture: cacheBustedUrl }
+        })
       } else {
         setLocalPhotoPreview(null) // Revert to old image on error
         setFeedback(payload?.error || 'Unable to upload picture')
