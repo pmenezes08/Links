@@ -8,14 +8,12 @@ export default function OnboardingWelcome(){
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const [touchDeltaX, setTouchDeltaX] = useState(0)
   const [loaded, setLoaded] = useState(false)
-  // Remove onboarding modals logic from welcome (now handled on dashboard)
+  
   const sentences = [
     'Enter the network where ideas connect people.',
     'Share your thoughts, images, and connect through meaningful conversations.',
     'Connect with your world'
   ]
-
-  // no modal state
 
   useEffect(() => {
     // Client instrumentation: log when onboarding is shown
@@ -36,7 +34,9 @@ export default function OnboardingWelcome(){
         })
         const j = await r.json().catch(()=>null)
         if (j && j.success && Array.isArray(j.cards)){
-          setCards(j.cards.filter(Boolean))
+          // Filter out any empty strings and use only server-provided cards
+          const validCards = j.cards.filter((c: string) => c && c.trim())
+          setCards(validCards)
         }
       }catch{} finally {
         setLoaded(true)
@@ -44,12 +44,10 @@ export default function OnboardingWelcome(){
     })()
   }, [])
 
-  // No profile gating on welcome
-
-  // Manual scroll only (no autoplay)
-
   function onGetStarted(){ navigate('/login') }
-  // no join/profile picture or resend flows
+
+  // Only show carousel if we have cards
+  const hasCards = cards && cards.length > 0
 
   return (
     <div className="h-screen overflow-hidden bg-black text-white flex items-center justify-center" style={{ height: '100dvh' }}>
@@ -57,19 +55,22 @@ export default function OnboardingWelcome(){
         <div className="mb-3">
           <div className="text-2xl font-bold">Welcome to Connection Point</div>
         </div>
-        <div className="text-sm text-[#9fb0b5] mb-3" style={{ minHeight: '32px' }}>{sentences[cardIndex % sentences.length]}</div>
+        <div className="text-sm text-[#9fb0b5] mb-3" style={{ minHeight: '32px' }}>
+          {sentences[cardIndex % sentences.length]}
+        </div>
 
         <div className="rounded-2xl border border-white/10 overflow-hidden bg-white/[0.03]">
           {!loaded ? (
+            // Loading state
             <div className="w-full h-[46vh] bg-white/[0.06] animate-pulse" />
-          ) : (
+          ) : hasCards ? (
+            // Show carousel with server-provided cards
             <div className="relative w-full h-[46vh]"
                  onTouchStart={(e)=>{ try{ setTouchStartX(e.touches[0].clientX); setTouchDeltaX(0) }catch{} }}
                  onTouchMove={(e)=>{ try{ if (touchStartX!=null){ setTouchDeltaX(e.touches[0].clientX - touchStartX) } }catch{} }}
                  onTouchEnd={()=>{
                    try{
-                     const slides = (cards && cards.length) ? cards : fallbackSlides
-                     const total = slides.length
+                     const total = cards.length
                      if (Math.abs(touchDeltaX) > 40){
                        if (touchDeltaX < 0){ setCardIndex(i => (i + 1) % total) }
                        else { setCardIndex(i => (i - 1 + total) % total) }
@@ -80,7 +81,7 @@ export default function OnboardingWelcome(){
                  }}>
               <div className="absolute inset-0 flex transition-transform duration-500"
                    style={{ transform: `translateX(calc(-${cardIndex * 100}% + ${touchDeltaX}px))` }}>
-                {((cards && cards.length) ? cards : fallbackSlides).map((src, i) => (
+                {cards.map((src, i) => (
                   <div key={i} className="min-w-full h-full bg-gradient-to-br from-[#1a1a2e] to-[#16213e]">
                     <img 
                       src={src} 
@@ -88,20 +89,13 @@ export default function OnboardingWelcome(){
                       className="w-full h-full object-cover"
                       loading="eager"
                       decoding="async"
-                      onError={(e) => {
-                        // If image fails to load, try fallback
-                        const target = e.target as HTMLImageElement
-                        if (!target.src.includes('unsplash.com')) {
-                          target.src = fallbackSlides[i % fallbackSlides.length]
-                        }
-                      }}
                     />
                   </div>
                 ))}
               </div>
-              {(((cards && cards.length) ? cards : fallbackSlides).length) > 1 && (
+              {cards.length > 1 && (
                 <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2">
-                  {((cards && cards.length) ? cards : fallbackSlides).map((_, i) => (
+                  {cards.map((_, i) => (
                     <button key={i}
                             aria-label={`Go to slide ${i+1}`}
                             onClick={() => setCardIndex(i)}
@@ -110,14 +104,20 @@ export default function OnboardingWelcome(){
                 </div>
               )}
             </div>
+          ) : (
+            // Placeholder when no cards are uploaded
+            <div className="w-full h-[46vh] bg-gradient-to-br from-[#1a1a2e] to-[#16213e] flex items-center justify-center">
+              <div className="text-center text-white/40">
+                <i className="fa-solid fa-images text-4xl mb-2" />
+                <p className="text-sm">Welcome images coming soon</p>
+              </div>
+            </div>
           )}
         </div>
         <div className="mt-4">
           <button className="px-4 py-3 rounded-xl bg-[#4db6ac] text-black font-semibold" onClick={onGetStarted}>Get started</button>
         </div>
-
       </div>
     </div>
   )
 }
-
