@@ -97,7 +97,23 @@ export async function performLogout(): Promise<void> {
     }
   }
 
-  // 5. Clear any cached data in memory by reloading the page after logout
+  // 5. Clear service worker caches (images, API responses, etc.)
+  try {
+    if ('caches' in window) {
+      const cacheNames = await caches.keys()
+      await Promise.all(
+        cacheNames.map(cacheName => {
+          console.log(`🗑️ Deleting cache: ${cacheName}`)
+          return caches.delete(cacheName)
+        })
+      )
+      console.log('✅ Service worker caches cleared')
+    }
+  } catch (e) {
+    console.warn('Error clearing service worker caches:', e)
+  }
+
+  // 6. Clear any cached data in memory by reloading the page after logout
   console.log('🚪 Navigating to /logout endpoint...')
   
   // Navigate to logout endpoint - use replace to prevent back button issues
