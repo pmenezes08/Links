@@ -17,6 +17,23 @@ type AvatarProps = {
 // Global cache of loaded images to prevent re-fetching during session
 const imageCache = new Map<string, boolean>()
 
+// Export function to clear image cache for a user (called when profile picture changes)
+export function clearImageCache(username?: string) {
+  if (username) {
+    // Clear entries that contain this username
+    const keysToDelete: string[] = []
+    imageCache.forEach((_, key) => {
+      if (key.toLowerCase().includes(username.toLowerCase())) {
+        keysToDelete.push(key)
+      }
+    })
+    keysToDelete.forEach(key => imageCache.delete(key))
+  } else {
+    // Clear all
+    imageCache.clear()
+  }
+}
+
 function ImageWithLoader({ src, alt, style, fallbacks = [] as string[], initials, username, fontSize }: { src: string; alt: string; style: React.CSSProperties, fallbacks?: string[], initials?: string, username?: string, fontSize?: number }) {
   // Check if already loaded this session
   const alreadyLoaded = imageCache.has(src)

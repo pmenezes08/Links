@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
-import Avatar from '../components/Avatar'
+import Avatar, { clearImageCache } from '../components/Avatar'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useNavigate } from 'react-router-dom'
 import { clearAvatarCache } from '../utils/avatarCache'
@@ -756,20 +756,30 @@ export default function Profile() {
     }
   }
 
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [localPhotoPreview, setLocalPhotoPreview] = useState<string | null>(null)
+
   async function handlePhotoUpload(file: File) {
+    // Show immediate local preview
+    const previewUrl = URL.createObjectURL(file)
+    setLocalPhotoPreview(previewUrl)
+    setUploadingPhoto(true)
+    
     const form = new FormData()
     form.append('profile_picture', file)
     try {
       const response = await fetch('/upload_profile_picture', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success && payload.profile_picture) {
-        // Clear avatar cache so the new image loads fresh
+        // Clear ALL avatar caches so the new image loads fresh everywhere
         if (summary?.username) {
           clearAvatarCache(summary.username)
+          clearImageCache(summary.username)
         }
         // Add cache-busting timestamp to force avatar refresh across the app
         const cacheBustedUrl = `${payload.profile_picture}?v=${Date.now()}`
         setSummary(prev => prev ? { ...prev, profile_picture: cacheBustedUrl } : prev)
+        setLocalPhotoPreview(null) // Clear local preview, use server URL
         setFeedback('Profile picture updated')
         try {
           await refreshUserProfile()
@@ -777,10 +787,16 @@ export default function Profile() {
           // Ignore refresh errors; context will retry on navigation
         }
       } else {
+        setLocalPhotoPreview(null) // Revert to old image on error
         setFeedback(payload?.error || 'Unable to upload picture')
       }
     } catch {
+      setLocalPhotoPreview(null) // Revert to old image on error
       setFeedback('Unable to upload picture')
+    } finally {
+      setUploadingPhoto(false)
+      // Clean up the blob URL
+      URL.revokeObjectURL(previewUrl)
     }
   }
 
@@ -821,7 +837,22 @@ export default function Profile() {
 
         <div className="flex flex-wrap items-center gap-4">
           <div className="relative">
-            <Avatar username={summary.username} url={summary.profile_picture || undefined} size={64} />
+            {/* Show local preview immediately, then server URL after upload */}
+            {localPhotoPreview ? (
+              <div 
+                className="rounded-full overflow-hidden bg-white/10 border border-white/10 flex items-center justify-center"
+                style={{ width: 64, height: 64 }}
+              >
+                <img src={localPhotoPreview} alt="Preview" className="w-full h-full object-cover" />
+                {uploadingPhoto && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
+                    <i className="fa-solid fa-spinner fa-spin text-white" />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Avatar username={summary.username} url={summary.profile_picture || undefined} size={64} />
+            )}
             <button
               className="absolute -right-1 -bottom-1 w-7 h-7 rounded-full bg-[#4db6ac] text-black text-xs flex items-center justify-center border border-black"
               onClick={() => fileInputRef.current?.click()}

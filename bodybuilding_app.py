@@ -8366,11 +8366,13 @@ def api_profile_me():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            # Include professional fields in the query
             c.execute("""
                 SELECT u.username, u.email, u.subscription, u.email_verified, u.email_verified_at,
                        u.first_name, u.last_name, u.gender, u.country, u.city, u.date_of_birth, u.age,
                        p.display_name, p.bio, p.location, p.website,
-                       p.instagram, p.twitter, p.profile_picture, p.cover_photo
+                       p.instagram, p.twitter, p.profile_picture, p.cover_photo,
+                       u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username = ?
@@ -8388,6 +8390,18 @@ def api_profile_me():
                         return row[key_or_idx]
                 except Exception:
                     return None
+            
+            # Parse interests from JSON or comma-separated string
+            interests_raw = get_val('professional_interests') if hasattr(row, 'keys') else get_val(25)
+            interests_list = []
+            if interests_raw:
+                try:
+                    decoded = json.loads(interests_raw)
+                    if isinstance(decoded, list):
+                        interests_list = [str(i).strip() for i in decoded if i and str(i).strip()]
+                except (json.JSONDecodeError, TypeError):
+                    interests_list = [part.strip() for part in str(interests_raw).split(',') if part and part.strip()]
+            
             profile = {
                 'username': username,
                 'email': get_val('email') if hasattr(row, 'keys') else row[1],
@@ -8411,10 +8425,19 @@ def api_profile_me():
                 'cover_photo': get_val('cover_photo') if hasattr(row, 'keys') else row[19],
                 'personal': {
                     'display_name': (get_val('display_name') if hasattr(row, 'keys') else row[12]) or username,
+                    'bio': get_val('bio') if hasattr(row, 'keys') else row[13],
                     'date_of_birth': get_val('date_of_birth') if hasattr(row, 'keys') else row[10],
                     'gender': get_val('gender') if hasattr(row, 'keys') else row[7],
                     'country': get_val('country') if hasattr(row, 'keys') else row[8],
                     'city': get_val('city') if hasattr(row, 'keys') else row[9],
+                },
+                'professional': {
+                    'role': get_val('role') if hasattr(row, 'keys') else get_val(20),
+                    'company': get_val('company') if hasattr(row, 'keys') else get_val(21),
+                    'industry': get_val('industry') if hasattr(row, 'keys') else get_val(22),
+                    'linkedin': get_val('linkedin') if hasattr(row, 'keys') else get_val(23),
+                    'about': get_val('professional_about') if hasattr(row, 'keys') else get_val(24),
+                    'interests': interests_list,
                 }
             }
             
@@ -8991,6 +9014,12 @@ def update_professional():
                 interests_payload, professional_share_community_id, username
             ))
             conn.commit()
+        
+        # Invalidate user cache so clients see updates immediately
+        try:
+            invalidate_user_cache(username)
+        except Exception as cache_err:
+            logger.warning(f"Failed to invalidate user cache for {username}: {cache_err}")
         
         return jsonify({'success': True})
     except Exception as e:
