@@ -17691,8 +17691,8 @@ def admin_communities_list():
 @app.route('/welcome_cards')
 def welcome_cards():
     """
-    Return welcome card images. No server-side caching to avoid multi-worker
-    cache inconsistency issues. Query is lightweight so caching not needed.
+    Return welcome card images. Supports R2 CDN URLs and local paths.
+    No server-side caching to avoid multi-worker cache inconsistency issues.
     """
     try:
         cards = []
@@ -17722,27 +17722,19 @@ def welcome_cards():
         
         for val in vals:
             if val:
-                # Handle both old (welcome/card.jpg) and new (uploads/welcome/card.jpg) paths
-                if val.startswith('uploads/'):
-                    # New format: uploads/welcome/card-1.jpg
-                    file_path = val
-                    url_path = f"/{val}"
+                # Handle different storage formats
+                if val.startswith('http://') or val.startswith('https://'):
+                    # R2 CDN URL - use directly with cache-buster
+                    cards.append(f"{val}?v={int(datetime.now().timestamp())}")
+                elif val.startswith('uploads/'):
+                    # Local uploads path
+                    cards.append(f"/{val}?v={int(datetime.now().timestamp())}")
                 elif val.startswith('welcome/'):
                     # Old format: welcome/card-1.jpg (stored in static/)
-                    file_path = os.path.join('static', val)
-                    url_path = f"/static/{val}"
+                    cards.append(f"/static/{val}?v={int(datetime.now().timestamp())}")
                 else:
                     # Assume it's a relative path
-                    file_path = val
-                    url_path = f"/{val}"
-                
-                # Add cache-buster based on file modification time
-                v = 0
-                try: 
-                    v = int(os.path.getmtime(file_path))
-                except Exception: 
-                    pass
-                cards.append(f"{url_path}?v={v}")
+                    cards.append(f"/{val}?v={int(datetime.now().timestamp())}")
         
         resp = jsonify({'success': True, 'cards': cards})
         # Prevent browser caching so changes appear immediately
@@ -17758,8 +17750,8 @@ def welcome_cards():
 @login_required
 def admin_upload_welcome_card():
     """
-    Upload welcome card images. Stores in uploads/welcome/ for persistence
-    (static/ folder can be ephemeral on some hosting platforms).
+    Upload welcome card images to Cloudflare R2 CDN for persistence.
+    Falls back to local uploads/ if R2 is not configured.
     """
     username = session.get('username')
     if not is_app_admin(username):
@@ -17777,39 +17769,34 @@ def admin_upload_welcome_card():
         f = request.files['image']
         if not f or f.filename == '':
             return jsonify({'success': False, 'error': 'No file selected'}), 400
-        ext = os.path.splitext(f.filename)[1].lower()
-        if ext.replace('.', '') not in ALLOWED_EXTENSIONS:
-            return jsonify({'success': False, 'error': 'Invalid file type'}), 400
         
-        # Save to uploads/welcome/ for persistence (static/ can be ephemeral)
-        upload_dir = os.path.join('uploads', 'welcome')
-        os.makedirs(upload_dir, exist_ok=True)
-        filename = f"card-{idx}.jpg" if ext.lower() not in ('.webp',) else f"card-{idx}{ext}"
-        dest = os.path.join(upload_dir, filename)
-        f.save(dest)
-        try:
-            optimize_image(dest, max_width=1920, quality=82)
-        except Exception:
-            pass
+        # Use save_uploaded_file which handles R2 CDN upload
+        # This saves locally, optimizes, then uploads to Cloudflare R2
+        saved_path = save_uploaded_file(f, subfolder='welcome')
         
-        # Store path in database (relative to uploads/)
-        db_path = f"uploads/welcome/{filename}"
+        if not saved_path:
+            return jsonify({'success': False, 'error': 'Failed to upload file'}), 500
+        
+        # Store the path/URL in database
         key = f"welcome_card_{idx}"
         with get_db_connection() as conn:
             c = conn.cursor()
             if USE_MYSQL:
                 c.execute("CREATE TABLE IF NOT EXISTS site_settings (`key` VARCHAR(191) PRIMARY KEY, `value` TEXT)")
-                c.execute("INSERT INTO site_settings (`key`,`value`) VALUES (%s,%s) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)", (key, db_path))
+                c.execute("INSERT INTO site_settings (`key`,`value`) VALUES (%s,%s) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)", (key, saved_path))
             else:
                 c.execute("CREATE TABLE IF NOT EXISTS site_settings (key TEXT PRIMARY KEY, value TEXT)")
-                c.execute("INSERT INTO site_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, db_path))
+                c.execute("INSERT INTO site_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, saved_path))
             conn.commit()
-            logger.info(f"✅ Welcome card {idx} saved to database: {db_path}")
+            logger.info(f"✅ Welcome card {idx} saved to database: {saved_path}")
         
-        v = 0
-        try: v = int(os.path.getmtime(dest))
-        except Exception: pass
-        return jsonify({'success': True, 'url': f"/{db_path}?v={v}"})
+        # Return the URL (either R2 CDN URL or local path)
+        if saved_path.startswith('http'):
+            url = saved_path
+        else:
+            url = f"/{saved_path}?v={int(datetime.now().timestamp())}"
+        
+        return jsonify({'success': True, 'url': url})
     except Exception as e:
         logger.error(f"admin_upload_welcome_card error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
