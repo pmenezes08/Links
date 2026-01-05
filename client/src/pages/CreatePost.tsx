@@ -305,9 +305,12 @@ export default function CreatePost(){
           </div>
         </div>
       )}
-      <div className="fixed left-0 right-0 top-14 h-12 border-b border-white/10 bg-black/70 backdrop-blur flex items-center justify-between px-3 z-40">
+      <div 
+        className="fixed left-0 right-0 h-12 border-b border-white/10 bg-black/90 backdrop-blur flex items-center justify-between px-3 z-50"
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 56px)' }}
+      >
         <button 
-          className="flex items-center gap-2 px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac] hover:bg-white/5 transition-colors" 
+          className="flex items-center gap-2 px-3 py-2 rounded-full text-white hover:text-[#4db6ac] hover:bg-white/10 transition-colors" 
           onClick={() => {
             if (groupId) navigate(`/group_feed_react/${groupId}`)
             else if (communityId) navigate(`/community_feed_react/${communityId}`)
@@ -316,10 +319,10 @@ export default function CreatePost(){
           aria-label="Back"
         >
           <i className="fa-solid fa-arrow-left" />
-          <span className="text-sm">Back</span>
+          <span className="text-sm font-medium">Back</span>
         </button>
-        <span className="text-sm font-medium text-white/70">Create Post</span>
-        <div className="w-16" /> {/* Spacer for centering */}
+        <span className="text-sm font-semibold text-white">Create Post</span>
+        <div className="w-20" /> {/* Spacer for centering */}
       </div>
       <div className="app-content px-0" style={{ paddingTop: contentPaddingTop, paddingBottom: contentPaddingBottom }}>
         <div
