@@ -87,8 +87,14 @@ export default function OnboardingWelcome(){
                    style={{ transform: `translateX(calc(-${cardIndex * 100}% + ${touchDeltaX}px))` }}>
                 {((cards && cards.length) ? cards : fallbackSlides).map((src, i) => (
                   <div key={i} className="min-w-full h-full">
-                    <img src={src} alt="welcome"
-                         className="w-full h-full object-cover" />
+                    <img 
+                      src={src} 
+                      alt="welcome"
+                      className="w-full h-full object-cover"
+                      loading="eager"
+                      decoding="async"
+                      crossOrigin="anonymous"
+                    />
                   </div>
                 ))}
               </div>

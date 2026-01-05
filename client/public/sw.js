@@ -1,4 +1,4 @@
-const SW_VERSION = '2.18.0'
+const SW_VERSION = '2.19.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
@@ -198,6 +198,13 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin === self.location.origin && url.pathname.startsWith('/static/icons/')){
     event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
+    return
+  }
+
+  // Welcome card images should always be fetched fresh (admin can update them anytime)
+  if (url.origin === self.location.origin && url.pathname.startsWith('/static/welcome/')){
+    // Network-first for welcome images to ensure fresh content
+    event.respondWith(networkFirst(request, RUNTIME_CACHE))
     return
   }
 
