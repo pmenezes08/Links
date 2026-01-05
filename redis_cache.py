@@ -368,6 +368,7 @@ def invalidate_user_cache(username):
     """Invalidate all user-related cache"""
     cache.delete(user_cache_key(username))
     cache.delete(user_profile_cache_key(username))
+    cache.delete(f"profile:{username}")  # Used by /api/profile_me endpoint
     cache.delete(chat_threads_cache_key(username))
     cache.delete(user_communities_cache_key(username))
     cache.delete(user_parent_dashboard_cache_key(username))
