@@ -17668,7 +17668,23 @@ def admin_communities_list():
 # === Welcome cards API ===
 @app.route('/welcome_cards')
 def welcome_cards():
+    """
+    Return welcome card images. Uses server-side caching for performance
+    but adds no-cache headers so browser always gets fresh data.
+    """
+    WELCOME_CARDS_CACHE_KEY = 'welcome_cards_data'
     try:
+        # Check server-side cache first
+        cached = cache.get(WELCOME_CARDS_CACHE_KEY)
+        if cached:
+            logger.debug("🚀 Cache hit: welcome_cards")
+            resp = jsonify({'success': True, 'cards': cached})
+            # Prevent browser caching so changes appear immediately
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+            return resp
+        
         cards = []
         defaults = [
             'welcome/default-1.jpg',
@@ -17704,7 +17720,17 @@ def welcome_cards():
             try: v = int(os.path.getmtime(path))
             except Exception: pass
             cards.append(f"/static/{rel}?v={v}")
-        return jsonify({'success': True, 'cards': cards})
+        
+        # Cache for 5 minutes (will be invalidated on upload)
+        cache.set(WELCOME_CARDS_CACHE_KEY, cards, 300)
+        logger.debug(f"💾 Cached welcome_cards: {cards}")
+        
+        resp = jsonify({'success': True, 'cards': cards})
+        # Prevent browser caching so changes appear immediately
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+        return resp
     except Exception as e:
         logger.error(f"welcome_cards error: {e}")
         return jsonify({'success': False, 'cards': []}), 500
@@ -17750,6 +17776,14 @@ def admin_upload_welcome_card():
                 c.execute("CREATE TABLE IF NOT EXISTS site_settings (key TEXT PRIMARY KEY, value TEXT)")
                 c.execute("INSERT INTO site_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, f"welcome/{filename}"))
             conn.commit()
+        
+        # Invalidate welcome cards cache so changes appear immediately
+        try:
+            cache.delete('welcome_cards_data')
+            logger.info(f"🗑️ Invalidated welcome_cards cache after uploading card {idx}")
+        except Exception as cache_err:
+            logger.warning(f"Failed to invalidate welcome_cards cache: {cache_err}")
+        
         v = 0
         try: v = int(os.path.getmtime(dest))
         except Exception: pass

@@ -248,7 +248,12 @@ export default function AdminDashboard() {
   const loadWelcomeCards = useCallback(async () => {
     setWelcomeStatus('loading')
     try {
-      const response = await fetch('/welcome_cards', { credentials: 'include' })
+      // Add cache-buster to prevent browser caching
+      const response = await fetch(`/welcome_cards?_t=${Date.now()}`, { 
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
       const data = await response.json()
       if (data?.success && Array.isArray(data.cards)) {
         setWelcomeCards(data.cards)

@@ -34,7 +34,11 @@ export default function OnboardingWelcome(){
   useEffect(() => {
     ;(async () => {
       try{
-        const r = await fetch('/welcome_cards')
+        // Add cache-buster to prevent browser/service worker caching
+        const r = await fetch(`/welcome_cards?_t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        })
         const j = await r.json().catch(()=>null)
         if (j && j.success && Array.isArray(j.cards)){
           setCards(j.cards.filter(Boolean))
