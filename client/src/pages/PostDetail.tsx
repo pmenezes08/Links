@@ -842,6 +842,7 @@ export default function PostDetail(){
           setShowHideModal(false)
           setShowReportModal(true)
         } else {
+          alert('Post hidden. You can manage hidden posts in Settings → Privacy & Security.')
           navigate(-1)
         }
       } else {
@@ -899,7 +900,7 @@ export default function PostDetail(){
       })
       const j = await res.json().catch(() => null)
       if (j?.success) {
-        alert(j.message || `@${post.username} has been blocked`)
+        alert(`@${post.username} has been blocked. You can manage blocked users in Settings → Privacy & Security.`)
         setShowBlockModal(false)
         setBlockReason('')
         navigate(-1)
@@ -1448,8 +1449,9 @@ export default function PostDetail(){
             </p>
             <ul className="text-sm text-[#9fb0b5] mb-4 space-y-1 pl-4">
               <li>• Hide all their posts from your feed</li>
+              <li>• Prevent messaging between you</li>
               <li>• Notify our moderation team</li>
-              <li>• You can unblock them later in settings</li>
+              <li>• You can manage this in Settings → Privacy</li>
             </ul>
             
             <div className="mb-4">

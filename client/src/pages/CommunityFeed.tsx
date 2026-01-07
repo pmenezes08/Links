@@ -1469,6 +1469,11 @@ export default function CommunityFeed() {
         alert(j?.error || 'Failed to hide post')
         return
       }
+      
+      // Show success message (unless also reporting, which has its own flow)
+      if (!alsoReport) {
+        alert('Post hidden. You can manage hidden posts in Settings → Privacy & Security.')
+      }
 
       // If also reporting, open report modal
       if (alsoReport) {
@@ -2976,8 +2981,9 @@ export default function CommunityFeed() {
             </p>
             <ul className="text-sm text-[#9fb0b5] mb-4 space-y-1 pl-4">
               <li>• Hide all their posts from your feed</li>
+              <li>• Prevent messaging between you</li>
               <li>• Notify our moderation team</li>
-              <li>• You can unblock them later in settings</li>
+              <li>• You can manage this in Settings → Privacy</li>
             </ul>
             
             <div className="mb-4">
