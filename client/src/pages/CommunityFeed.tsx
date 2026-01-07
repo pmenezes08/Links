@@ -3111,6 +3111,16 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
   const [linkDisplayName, setLinkDisplayName] = useState('')
+  const [showMoreMenu, setShowMoreMenu] = useState<number | null>(null)
+  
+  // Close more menu when clicking outside
+  useEffect(() => {
+    if (!showMoreMenu) return
+    const handleClickOutside = () => setShowMoreMenu(null)
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [showMoreMenu])
+  
   const [replyText, setReplyText] = useState('')
   const [replyGif, setReplyGif] = useState<GifSelection | null>(null)
   const [sendingReply, setSendingReply] = useState(false)
@@ -3322,22 +3332,60 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   <i className="fa-regular fa-pen-to-square" />
                 </button>
               )}
-              {/* Hide, Report, and Block buttons - available to all users for other people's posts */}
+              {/* More menu (Hide, Report, Block) - available to all users for other people's posts */}
               {post.username !== currentUser && (
-                <>
-                  <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-orange-400" title="Hide post"
-                    onClick={(e)=> { e.stopPropagation(); onHidePost?.(post) }}>
-                    <i className="fa-solid fa-eye-slash" />
+                <div className="relative">
+                  <button 
+                    className="px-2 py-1 rounded-full text-[#6c757d] hover:text-white"
+                    title="More options"
+                    onClick={(e) => { 
+                      e.stopPropagation()
+                      setShowMoreMenu(showMoreMenu === post.id ? null : post.id)
+                    }}
+                  >
+                    <i className="fa-solid fa-ellipsis-vertical" />
                   </button>
-                  <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400" title="Report post"
-                    onClick={(e)=> { e.stopPropagation(); onReportPost?.(post) }}>
-                    <i className="fa-solid fa-flag" />
-                  </button>
-                  <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-500" title="Block user"
-                    onClick={(e)=> { e.stopPropagation(); onBlockUser?.({ username: post.username, postId: post.id }) }}>
-                    <i className="fa-solid fa-ban" />
-                  </button>
-                </>
+                  {showMoreMenu === post.id && (
+                    <div 
+                      className="absolute right-0 top-8 z-50 w-44 bg-[#1a1f25] border border-white/10 rounded-xl shadow-xl overflow-hidden"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                        onClick={(e) => { 
+                          e.stopPropagation()
+                          setShowMoreMenu(null)
+                          onHidePost?.(post)
+                        }}
+                      >
+                        <i className="fa-solid fa-eye-slash text-orange-400 w-4" />
+                        Hide post
+                      </button>
+                      <button
+                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                        onClick={(e) => { 
+                          e.stopPropagation()
+                          setShowMoreMenu(null)
+                          onReportPost?.(post)
+                        }}
+                      >
+                        <i className="fa-solid fa-flag text-red-400 w-4" />
+                        Report post
+                      </button>
+                      <button
+                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3 border-t border-white/10"
+                        onClick={(e) => { 
+                          e.stopPropagation()
+                          setShowMoreMenu(null)
+                          onBlockUser?.({ username: post.username, postId: post.id })
+                        }}
+                      >
+                        <i className="fa-solid fa-ban text-red-500 w-4" />
+                        Block @{post.username}
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>

@@ -148,11 +148,20 @@ export default function PostDetail(){
   const [showHideModal, setShowHideModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
   const [showBlockModal, setShowBlockModal] = useState(false)
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
   const [reportReason, setReportReason] = useState('')
   const [reportDetails, setReportDetails] = useState('')
   const [reportSubmitting, setReportSubmitting] = useState(false)
   const [blockReason, setBlockReason] = useState('')
   const [blockSubmitting, setBlockSubmitting] = useState(false)
+  
+  // Close more menu when clicking outside
+  useEffect(() => {
+    if (!showMoreMenu) return
+    const handleClickOutside = () => setShowMoreMenu(false)
+    document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [showMoreMenu])
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
@@ -975,30 +984,50 @@ export default function PostDetail(){
                 </button>
               </div>
             )}
-            {/* Hide, Report, and Block buttons for other users' posts */}
+            {/* More menu (Hide, Report, Block) for other users' posts */}
             {currentUser?.username && currentUser.username !== post.username && (
-              <div className="flex items-center gap-1">
-                <button
-                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-orange-400"
-                  title="Hide post"
-                  onClick={() => setShowHideModal(true)}
+              <div className="relative">
+                <button 
+                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-white"
+                  title="More options"
+                  onClick={() => setShowMoreMenu(!showMoreMenu)}
                 >
-                  <i className="fa-solid fa-eye-slash" />
+                  <i className="fa-solid fa-ellipsis-vertical" />
                 </button>
-                <button
-                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
-                  title="Report post"
-                  onClick={() => setShowReportModal(true)}
-                >
-                  <i className="fa-solid fa-flag" />
-                </button>
-                <button
-                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-500"
-                  title="Block user"
-                  onClick={() => setShowBlockModal(true)}
-                >
-                  <i className="fa-solid fa-ban" />
-                </button>
+                {showMoreMenu && (
+                  <div className="absolute right-0 top-8 z-50 w-44 bg-[#1a1f25] border border-white/10 rounded-xl shadow-xl overflow-hidden">
+                    <button
+                      className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                      onClick={() => {
+                        setShowMoreMenu(false)
+                        setShowHideModal(true)
+                      }}
+                    >
+                      <i className="fa-solid fa-eye-slash text-orange-400 w-4" />
+                      Hide post
+                    </button>
+                    <button
+                      className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                      onClick={() => {
+                        setShowMoreMenu(false)
+                        setShowReportModal(true)
+                      }}
+                    >
+                      <i className="fa-solid fa-flag text-red-400 w-4" />
+                      Report post
+                    </button>
+                    <button
+                      className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3 border-t border-white/10"
+                      onClick={() => {
+                        setShowMoreMenu(false)
+                        setShowBlockModal(true)
+                      }}
+                    >
+                      <i className="fa-solid fa-ban text-red-500 w-4" />
+                      Block @{post.username}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
