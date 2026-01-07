@@ -258,7 +258,7 @@ export default function Notifications(){
     console.log('Notification clicked:', { id: n.id, type: n.type, link: n.link, url })
     if (url.startsWith('http') || url.startsWith('/')){
       // Use SPA navigation for known in-app routes
-      if (url.startsWith('/post/') || url.startsWith('/community_feed_react/') || url.startsWith('/event/') || url.includes('/tasks_react') || url.includes('/polls_react')){
+      if (url.startsWith('/post/') || url.startsWith('/community_feed_react/') || url.startsWith('/event/') || url.includes('/tasks_react') || url.includes('/polls_react') || url.startsWith('/admin_dashboard')){
         console.log('Using SPA navigation to:', url)
         navigate(url)
       } else {

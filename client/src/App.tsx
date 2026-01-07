@@ -581,6 +581,7 @@ function AppRoutes(){
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/admin_dashboard" element={<AdminDashboard />} />
+                <Route path="/admin_dashboard_react" element={<AdminDashboard />} />
                 <Route path="/admin_profile_react" element={<AdminProfile />} />
                 <Route path="/home" element={<HomeTimeline />} />
                 <Route path="/workout_tracking" element={<WorkoutTracking />} />
