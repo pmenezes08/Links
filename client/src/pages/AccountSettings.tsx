@@ -284,7 +284,7 @@ export default function AccountSettings(){
             <div className="space-y-2">
               <h2 className="text-lg font-semibold">Privacy &amp; Security</h2>
               <p className="text-sm text-white/60">
-                Update your password, manage encryption keys, and adjust privacy controls from a dedicated workspace.
+                Update your password and adjust privacy controls from a dedicated workspace.
               </p>
             </div>
             <button

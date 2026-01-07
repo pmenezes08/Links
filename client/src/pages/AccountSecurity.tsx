@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 export default function AccountSecurity() {
   const { setTitle } = useHeader()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'security' | 'encryption' | 'privacy'>('security')
+  const [activeTab, setActiveTab] = useState<'security' | 'privacy'>('security')
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -65,14 +65,13 @@ export default function AccountSecurity() {
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">Privacy &amp; Security</p>
             <h1 className="text-xl font-semibold text-white">Keep your data protected</h1>
             <p className="text-sm text-white/60">
-              Update your password, manage encryption keys, and review privacy controls.
+              Update your password and review privacy controls.
             </p>
           </div>
 
           <div className="flex gap-1 rounded-full border border-white/10 bg-white/5 p-1 overflow-hidden">
             {[
               { key: 'security', label: 'Security' },
-              { key: 'encryption', label: 'Encryption' },
               { key: 'privacy', label: 'Privacy' },
             ].map(tab => {
               const isActive = activeTab === tab.key
@@ -145,24 +144,6 @@ export default function AccountSecurity() {
                   </button>
                 </div>
               </>
-            ) : activeTab === 'encryption' ? (
-              <div className="rounded-xl border border-white/10 bg-black/40 p-4">
-                <p className="text-sm text-white/70">
-                  Manage end-to-end encryption keys for your conversations. Export backups, regenerate secrets, or review
-                  linked devices.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => navigate('/encryption_settings')}
-                  className="mt-4 flex w-full items-center justify-between rounded-lg border border-white/10 bg-white/5 p-4 transition-colors hover:bg-white/10"
-                >
-                  <div>
-                    <div className="font-semibold text-white">Encryption Settings</div>
-                    <div className="text-sm text-white/60">Open the encryption control center.</div>
-                  </div>
-                  <i className="fa-solid fa-chevron-right text-white/40" />
-                </button>
-              </div>
             ) : (
               <div className="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-white/70">
                 <p>
