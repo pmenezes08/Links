@@ -1540,7 +1540,7 @@ export default function CommunityFeed() {
           const posts = Array.isArray(prev.posts) ? prev.posts : []
           return { ...prev, posts: posts.filter((p: any) => p.username !== blockModalUser.username) }
         })
-        alert(j.message || `@${blockModalUser.username} has been blocked`)
+        alert(`@${blockModalUser.username} has been blocked. You can manage blocked users in Settings → Privacy & Security.`)
         setBlockModalUser(null)
         setBlockReason('')
       } else {

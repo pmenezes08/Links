@@ -1,21 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
-
-type BlockedUser = {
-  username: string
-  reason: string | null
-  blocked_at: string
-  profile_picture: string | null
-}
-
-type HiddenPost = {
-  post_id: number
-  hidden_at: string
-  preview: string
-  author: string
-  image_path: string | null
-}
 
 type ProfileData = {
   username: string
@@ -39,100 +24,12 @@ export default function AccountSettings(){
   // Removed saving state since only email updates are handled here now
   const [message, setMessage] = useState<{type: 'success'|'error', text: string}|null>(null)
   const [showVerifyModal, setShowVerifyModal] = useState(false)
-  
-  // Blocked users state
-  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([])
-  const [blockedUsersLoading, setBlockedUsersLoading] = useState(false)
-  const [unblocking, setUnblocking] = useState<string | null>(null)
-  
-  // Hidden posts state
-  const [hiddenPosts, setHiddenPosts] = useState<HiddenPost[]>([])
-  const [hiddenPostsLoading, setHiddenPostsLoading] = useState(false)
-  const [unhiding, setUnhiding] = useState<number | null>(null)
 
   useEffect(() => { setTitle('Account Settings') }, [setTitle])
 
-  const loadBlockedUsers = useCallback(async () => {
-    setBlockedUsersLoading(true)
-    try {
-      const res = await fetch('/api/blocked_users', { credentials: 'include' })
-      const j = await res.json()
-      if (j?.success) {
-        setBlockedUsers(j.blocked_users || [])
-      }
-    } catch (e) {
-      console.error('Failed to load blocked users:', e)
-    } finally {
-      setBlockedUsersLoading(false)
-    }
-  }, [])
-
-  async function handleUnblock(username: string) {
-    setUnblocking(username)
-    try {
-      const res = await fetch('/api/unblock_user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ blocked_username: username })
-      })
-      const j = await res.json()
-      if (j?.success) {
-        setBlockedUsers(prev => prev.filter(u => u.username !== username))
-        setMessage({ type: 'success', text: `@${username} has been unblocked` })
-      } else {
-        setMessage({ type: 'error', text: j?.error || 'Failed to unblock user' })
-      }
-    } catch {
-      setMessage({ type: 'error', text: 'Network error' })
-    } finally {
-      setUnblocking(null)
-    }
-  }
-
-  const loadHiddenPosts = useCallback(async () => {
-    setHiddenPostsLoading(true)
-    try {
-      const res = await fetch('/api/hidden_posts', { credentials: 'include' })
-      const j = await res.json()
-      if (j?.success) {
-        setHiddenPosts(j.hidden_posts || [])
-      }
-    } catch (e) {
-      console.error('Failed to load hidden posts:', e)
-    } finally {
-      setHiddenPostsLoading(false)
-    }
-  }, [])
-
-  async function handleUnhide(postId: number) {
-    setUnhiding(postId)
-    try {
-      const res = await fetch('/api/unhide_post', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ post_id: postId })
-      })
-      const j = await res.json()
-      if (j?.success) {
-        setHiddenPosts(prev => prev.filter(p => p.post_id !== postId))
-        setMessage({ type: 'success', text: 'Post unhidden' })
-      } else {
-        setMessage({ type: 'error', text: j?.error || 'Failed to unhide post' })
-      }
-    } catch {
-      setMessage({ type: 'error', text: 'Network error' })
-    } finally {
-      setUnhiding(null)
-    }
-  }
-
   useEffect(() => {
     loadProfile()
-    loadBlockedUsers()
-    loadHiddenPosts()
-  }, [loadBlockedUsers, loadHiddenPosts])
+  }, [])
 
   function loadProfile() {
     setLoading(true)
@@ -325,123 +222,6 @@ export default function AccountSettings(){
                 Manage your subscription
               </button>
             </div>
-          </div>
-
-          {/* Blocked Users */}
-          <div className="glass-section space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">Blocked Users</h2>
-              <p className="text-sm text-white/60">
-                Users you've blocked won't appear in your feed. You can unblock them here.
-              </p>
-            </div>
-            
-            {blockedUsersLoading ? (
-              <div className="text-center py-4">
-                <i className="fa-solid fa-spinner fa-spin text-white/60" />
-              </div>
-            ) : blockedUsers.length === 0 ? (
-              <div className="text-center py-4 text-white/60 text-sm">
-                <i className="fa-solid fa-check-circle mr-2 text-green-400" />
-                You haven't blocked anyone
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {blockedUsers.map(user => (
-                  <div 
-                    key={user.username}
-                    className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-white/10 overflow-hidden">
-                        {user.profile_picture ? (
-                          <img 
-                            src={user.profile_picture} 
-                            alt={user.username}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-white/60">
-                            <i className="fa-solid fa-user" />
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <div className="font-medium">@{user.username}</div>
-                        {user.reason && (
-                          <div className="text-xs text-white/50">Reason: {user.reason}</div>
-                        )}
-                        <div className="text-xs text-white/40">
-                          Blocked {new Date(user.blocked_at).toLocaleDateString()}
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleUnblock(user.username)}
-                      disabled={unblocking === user.username}
-                      className="px-3 py-1.5 text-sm rounded-lg border border-white/20 text-white hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {unblocking === user.username ? (
-                        <i className="fa-solid fa-spinner fa-spin" />
-                      ) : (
-                        'Unblock'
-                      )}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Hidden Posts */}
-          <div className="glass-section space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">Hidden Posts</h2>
-              <p className="text-sm text-white/60">
-                Posts you've hidden from your feed. Unhide them to see them again.
-              </p>
-            </div>
-            
-            {hiddenPostsLoading ? (
-              <div className="text-center py-4">
-                <i className="fa-solid fa-spinner fa-spin text-white/60" />
-              </div>
-            ) : hiddenPosts.length === 0 ? (
-              <div className="text-center py-4 text-white/60 text-sm">
-                <i className="fa-solid fa-check-circle mr-2 text-green-400" />
-                You haven't hidden any posts
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {hiddenPosts.map(post => (
-                  <div 
-                    key={post.post_id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-[#4db6ac]">@{post.author}</span>
-                        <span className="text-xs text-white/40">
-                          Hidden {new Date(post.hidden_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <div className="text-sm text-white/70 truncate">{post.preview}</div>
-                    </div>
-                    <button
-                      onClick={() => handleUnhide(post.post_id)}
-                      disabled={unhiding === post.post_id}
-                      className="ml-3 px-3 py-1.5 text-sm rounded-lg border border-white/20 text-white hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-                    >
-                      {unhiding === post.post_id ? (
-                        <i className="fa-solid fa-spinner fa-spin" />
-                      ) : (
-                        'Unhide'
-                      )}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Danger Zone */}
