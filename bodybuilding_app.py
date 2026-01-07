@@ -9718,6 +9718,18 @@ def send_message():
             
             recipient_username = recipient['username'] if hasattr(recipient, 'keys') else recipient[0]
             
+            # Check if either user has blocked the other
+            try:
+                c.execute("""
+                    SELECT 1 FROM blocked_users 
+                    WHERE (blocker_username = ? AND blocked_username = ?)
+                    OR (blocker_username = ? AND blocked_username = ?)
+                """, (username, recipient_username, recipient_username, username))
+                if c.fetchone():
+                    return jsonify({'success': False, 'error': 'Unable to send message to this user'})
+            except Exception as block_check_err:
+                logger.warning(f"Could not check blocked status: {block_check_err}")
+            
             # Check for duplicate message in last 5 seconds to prevent double-sends
             if USE_MYSQL:
                 c.execute("""
@@ -10058,6 +10070,18 @@ def send_photo_message():
                 return jsonify({'success': False, 'error': 'Recipient not found'})
             
             recipient_username = recipient['username'] if hasattr(recipient, 'keys') else recipient[0]
+            
+            # Check if either user has blocked the other
+            try:
+                c.execute("""
+                    SELECT 1 FROM blocked_users 
+                    WHERE (blocker_username = ? AND blocked_username = ?)
+                    OR (blocker_username = ? AND blocked_username = ?)
+                """, (username, recipient_username, recipient_username, username))
+                if c.fetchone():
+                    return jsonify({'success': False, 'error': 'Unable to send message to this user'})
+            except Exception as block_check_err:
+                logger.warning(f"Could not check blocked status: {block_check_err}")
             
             # Save the photo using R2-enabled media service
             stored_path = save_uploaded_file(
@@ -10782,6 +10806,21 @@ def api_chat_threads():
             )
             counterpart_rows = c.fetchall()
 
+            # Get list of blocked users (both directions)
+            blocked_set = set()
+            try:
+                c.execute(f"""
+                    SELECT blocked_username FROM blocked_users WHERE blocker_username = {ph}
+                    UNION
+                    SELECT blocker_username FROM blocked_users WHERE blocked_username = {ph}
+                """, (username, username))
+                blocked_set = set(
+                    r['blocked_username'] if hasattr(r, 'keys') else r[0]
+                    for r in c.fetchall()
+                )
+            except Exception as blocked_err:
+                logger.warning(f"Could not get blocked users for chat threads: {blocked_err}")
+
             threads = []
             for row in counterpart_rows:
                 try:
@@ -10789,6 +10828,10 @@ def api_chat_threads():
                     
                     # Skip archived chats
                     if other_username in archived_set:
+                        continue
+                    
+                    # Skip blocked users
+                    if other_username in blocked_set:
                         continue
 
                     # Last message in either direction (preview)
