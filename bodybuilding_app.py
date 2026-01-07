@@ -17702,17 +17702,48 @@ def report_post():
             if post_author == username:
                 return jsonify({'success': False, 'error': 'You cannot report your own post'}), 400
             
-            # Insert report (or update if already reported)
+            # Ensure post_reports table exists
             try:
-                c.execute(f"""
-                    INSERT INTO post_reports (post_id, reporter_username, reason, details, status)
-                    VALUES ({ph}, {ph}, {ph}, {ph}, 'pending')
-                """, (post_id, username, reason, details))
-            except Exception as dup_err:
-                # Already reported by this user
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS post_reports
+                                 (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                  post_id INTEGER NOT NULL,
+                                  reporter_username VARCHAR(191) NOT NULL,
+                                  reason TEXT NOT NULL,
+                                  details TEXT,
+                                  status VARCHAR(50) DEFAULT 'pending',
+                                  reviewed_by VARCHAR(191),
+                                  reviewed_at TIMESTAMP NULL,
+                                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                  UNIQUE KEY unique_report (post_id, reporter_username))''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS post_reports
+                                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                  post_id INTEGER NOT NULL,
+                                  reporter_username TEXT NOT NULL,
+                                  reason TEXT NOT NULL,
+                                  details TEXT,
+                                  status TEXT DEFAULT 'pending',
+                                  reviewed_by TEXT,
+                                  reviewed_at TIMESTAMP NULL,
+                                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                  UNIQUE(post_id, reporter_username))''')
+                conn.commit()
+            except Exception as table_err:
+                logger.warning(f"Could not ensure post_reports table: {table_err}")
+            
+            # Check if user already reported this post
+            c.execute(f"SELECT id FROM post_reports WHERE post_id = {ph} AND reporter_username = {ph}", (post_id, username))
+            existing_report = c.fetchone()
+            if existing_report:
                 logger.info(f"User {username} already reported post {post_id}")
                 return jsonify({'success': True, 'message': 'You have already reported this post'})
             
+            # Insert new report
+            c.execute(f"""
+                INSERT INTO post_reports (post_id, reporter_username, reason, details, status)
+                VALUES ({ph}, {ph}, {ph}, {ph}, 'pending')
+            """, (post_id, username, reason, details))
             conn.commit()
             
             # Create notification for all app admins
