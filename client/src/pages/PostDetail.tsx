@@ -1656,6 +1656,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
   const [showGifPicker, setShowGifPicker] = useState(false)
   const [inlineGif, setInlineGif] = useState<GifSelection | null>(null)
   const [gifFile, setGifFile] = useState<File | null>(null)
+  const [showInlineAttachMenu, setShowInlineAttachMenu] = useState(false)
   const hasChildren = reply.children && reply.children.length > 0
   useEffect(() => {
     if (!showComposer){
@@ -1663,10 +1664,24 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
       setInlineGif(null)
       setGifFile(null)
       setImg(null)
+      setShowInlineAttachMenu(false)
       if (inlineFileRef.current) inlineFileRef.current.value = ''
       clearInlinePreview()
     }
   }, [showComposer, clearInlinePreview])
+  
+  // Close inline attach menu when clicking outside
+  useEffect(() => {
+    if (!showInlineAttachMenu) return
+    const handleClickOutside = () => setShowInlineAttachMenu(false)
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 10)
+    return () => {
+      clearTimeout(timeoutId)
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showInlineAttachMenu])
   return (
     <div data-reply-node className={`relative py-2 ${depth === 0 ? 'border-b border-white/10' : ''}`}>
       <div className="relative flex items-start gap-2 px-3">
@@ -1819,13 +1834,46 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
           )}
           {/* Input row */}
           <div className="flex items-end gap-1.5">
-            <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => inlineFileRef.current?.click()}>
-              <i className="fa-solid fa-image text-xs" style={{ color: img ? '#7fe7df' : '#fff' }} />
-            </button>
-            <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => setShowGifPicker(true)}>
-              <i className="fa-solid fa-images text-xs" style={{ color: inlineGif ? '#7fe7df' : '#fff' }} />
-            </button>
-            <input ref={inlineFileRef} type="file" accept="image/*" onChange={(e) => { const next = (e.target as HTMLInputElement).files?.[0] || null; setImg(next); setInlineGif(null); setGifFile(null) }} className="hidden" />
+            {/* + button with dropdown */}
+            <div className="relative">
+              <button 
+                type="button" 
+                className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20"
+                onClick={() => setShowInlineAttachMenu(!showInlineAttachMenu)}
+              >
+                <i className={`fa-solid ${showInlineAttachMenu ? 'fa-times' : 'fa-plus'} text-xs`} style={{ color: (img || inlineGif) ? '#7fe7df' : '#fff' }} />
+              </button>
+              
+              {showInlineAttachMenu && (
+                <div className="absolute bottom-full left-0 mb-2 w-36 rounded-xl bg-[#1a1a1c] border border-white/10 shadow-xl overflow-hidden z-10">
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-white/10 transition-colors text-left"
+                    onClick={() => {
+                      inlineFileRef.current?.click()
+                      setShowInlineAttachMenu(false)
+                    }}
+                  >
+                    <i className="fa-solid fa-image text-[#4db6ac] text-xs" />
+                    <span className="text-xs text-white">Photo / Video</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-white/10 transition-colors text-left border-t border-white/5"
+                    onClick={() => {
+                      setShowGifPicker(true)
+                      setShowInlineAttachMenu(false)
+                    }}
+                  >
+                    <i className="fa-solid fa-images text-[#4db6ac] text-xs" />
+                    <span className="text-xs text-white">GIF</span>
+                  </button>
+                </div>
+              )}
+            </div>
+            
+            <input ref={inlineFileRef} type="file" accept="image/*,video/*" onChange={(e) => { const next = (e.target as HTMLInputElement).files?.[0] || null; setImg(next); setInlineGif(null); setGifFile(null) }} className="hidden" />
+            
             <div className="flex-1 flex items-center rounded-lg border border-[#4db6ac] bg-white/5 overflow-hidden min-w-0">
               <MentionTextarea
                 value={text}
@@ -1838,37 +1886,46 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 autoExpand
               />
             </div>
-            {!rec && !text.trim() && !img && !inlinePreview && !gifFile && (
-              <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => startInlineRec()}>
-                <i className="fa-solid fa-microphone text-xs text-white" />
-              </button>
-            )}
+            
+            {/* Recording in progress - show stop button */}
             {rec && (
               <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac]" onClick={() => stopInlineRec()}>
                 <i className="fa-solid fa-stop text-xs text-white" />
               </button>
             )}
-            {!rec && (text.trim() || img || inlinePreview || gifFile) && (
-              <button 
-                className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] disabled:opacity-50"
-                disabled={inlineSendingFlag}
-                onClick={() => {
-                  if (!text && !img && !inlinePreview && !gifFile) return
-                  const attachment = inlinePreview
-                    ? new File([inlinePreview.blob], inlinePreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm', { type: inlinePreview.blob.type })
-                    : (img || gifFile || undefined)
-                  onInlineReply(reply.id, text, attachment as any)
-                  setText('')
-                  setImg(null)
-                  setInlineGif(null)
-                  setGifFile(null)
-                  if (inlineFileRef.current) inlineFileRef.current.value = ''
-                  clearInlinePreview()
-                  setShowComposer(false)
-                }}
-              >
-                {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin text-xs text-white" /> : <i className="fa-solid fa-paper-plane text-xs text-white" />}
-              </button>
+            
+            {/* Not recording - show mic or send based on content */}
+            {!rec && (
+              <>
+                {/* Has content - show send button */}
+                {(text.trim() || img || inlinePreview || gifFile) ? (
+                  <button 
+                    className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] disabled:opacity-50"
+                    disabled={inlineSendingFlag}
+                    onClick={() => {
+                      if (!text && !img && !inlinePreview && !gifFile) return
+                      const attachment = inlinePreview
+                        ? new File([inlinePreview.blob], inlinePreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm', { type: inlinePreview.blob.type })
+                        : (img || gifFile || undefined)
+                      onInlineReply(reply.id, text, attachment as any)
+                      setText('')
+                      setImg(null)
+                      setInlineGif(null)
+                      setGifFile(null)
+                      if (inlineFileRef.current) inlineFileRef.current.value = ''
+                      clearInlinePreview()
+                      setShowComposer(false)
+                    }}
+                  >
+                    {inlineSendingFlag ? <i className="fa-solid fa-spinner fa-spin text-xs text-white" /> : <i className="fa-solid fa-paper-plane text-xs text-white" />}
+                  </button>
+                ) : (
+                  /* No content - show mic button */
+                  <button type="button" className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20" onClick={() => startInlineRec()}>
+                    <i className="fa-solid fa-microphone text-xs text-white" />
+                  </button>
+                )}
+              </>
             )}
           </div>
           <GifPicker
