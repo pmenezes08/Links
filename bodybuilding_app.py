@@ -17746,6 +17746,45 @@ def hide_post():
         return jsonify({'success': False, 'error': 'Failed to hide post'}), 500
 
 
+@app.route('/api/hidden_posts', methods=['GET'])
+@login_required
+def get_hidden_posts():
+    """Get list of posts hidden by the current user"""
+    username = session['username']
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            c.execute(f"""
+                SELECT hp.post_id, hp.hidden_at, p.content, p.username as author, p.image_path
+                FROM hidden_posts hp
+                JOIN posts p ON hp.post_id = p.id
+                WHERE hp.username = {ph}
+                ORDER BY hp.hidden_at DESC
+            """, (username,))
+            
+            hidden = []
+            for row in c.fetchall():
+                content = row['content'] if hasattr(row, 'keys') else row[2]
+                # Truncate content for preview
+                preview = content[:100] + '...' if len(content) > 100 else content
+                hidden.append({
+                    'post_id': row['post_id'] if hasattr(row, 'keys') else row[0],
+                    'hidden_at': row['hidden_at'] if hasattr(row, 'keys') else row[1],
+                    'preview': preview,
+                    'author': row['author'] if hasattr(row, 'keys') else row[3],
+                    'image_path': row['image_path'] if hasattr(row, 'keys') else row[4]
+                })
+            
+            return jsonify({'success': True, 'hidden_posts': hidden})
+    
+    except Exception as e:
+        logger.error(f"Error getting hidden posts: {e}")
+        return jsonify({'success': False, 'error': 'Failed to get hidden posts'}), 500
+
+
 @app.route('/api/unhide_post', methods=['POST'])
 @login_required
 def unhide_post():
