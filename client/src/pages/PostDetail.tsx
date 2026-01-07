@@ -156,12 +156,18 @@ export default function PostDetail(){
   const [blockReason, setBlockReason] = useState('')
   const [blockSubmitting, setBlockSubmitting] = useState(false)
   
-  // Close more menu when clicking outside
+  // Close more menu when clicking outside (with delay to prevent immediate close)
   useEffect(() => {
     if (!showMoreMenu) return
     const handleClickOutside = () => setShowMoreMenu(false)
-    document.addEventListener('click', handleClickOutside)
-    return () => document.removeEventListener('click', handleClickOutside)
+    // Small delay to prevent the same click that opened the menu from closing it
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 10)
+    return () => {
+      clearTimeout(timeoutId)
+      document.removeEventListener('click', handleClickOutside)
+    }
   }, [showMoreMenu])
 
   useLayoutEffect(() => {
