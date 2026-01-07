@@ -144,12 +144,15 @@ export default function PostDetail(){
   const [viewportLift, setViewportLift] = useState(0)
   const contentRef = useRef<HTMLDivElement | null>(null)
   
-  // Report/Hide post state
+  // Report/Hide/Block post state
   const [showHideModal, setShowHideModal] = useState(false)
   const [showReportModal, setShowReportModal] = useState(false)
+  const [showBlockModal, setShowBlockModal] = useState(false)
   const [reportReason, setReportReason] = useState('')
   const [reportDetails, setReportDetails] = useState('')
   const [reportSubmitting, setReportSubmitting] = useState(false)
+  const [blockReason, setBlockReason] = useState('')
+  const [blockSubmitting, setBlockSubmitting] = useState(false)
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
@@ -871,6 +874,36 @@ export default function PostDetail(){
     }
   }
 
+  async function blockUser(alsoReport: boolean = false) {
+    if (!post) return
+    setBlockSubmitting(true)
+    try {
+      const res = await fetch('/api/block_user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          blocked_username: post.username,
+          reason: blockReason,
+          also_report: alsoReport
+        })
+      })
+      const j = await res.json().catch(() => null)
+      if (j?.success) {
+        alert(j.message || `@${post.username} has been blocked`)
+        setShowBlockModal(false)
+        setBlockReason('')
+        navigate(-1)
+      } else {
+        alert(j?.error || 'Failed to block user')
+      }
+    } catch {
+      alert('Network error. Could not block user.')
+    } finally {
+      setBlockSubmitting(false)
+    }
+  }
+
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
@@ -942,7 +975,7 @@ export default function PostDetail(){
                 </button>
               </div>
             )}
-            {/* Hide and Report buttons for other users' posts */}
+            {/* Hide, Report, and Block buttons for other users' posts */}
             {currentUser?.username && currentUser.username !== post.username && (
               <div className="flex items-center gap-1">
                 <button
@@ -958,6 +991,13 @@ export default function PostDetail(){
                   onClick={() => setShowReportModal(true)}
                 >
                   <i className="fa-solid fa-flag" />
+                </button>
+                <button
+                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-500"
+                  title="Block user"
+                  onClick={() => setShowBlockModal(true)}
+                >
+                  <i className="fa-solid fa-ban" />
                 </button>
               </div>
             )}
@@ -1325,26 +1365,98 @@ export default function PostDetail(){
               <div className="font-semibold text-lg text-white">Hide Post</div>
             </div>
             <p className="text-sm text-[#9fb0b5] mb-5">
-              This post will be hidden from your feed. Would you also like to report it?
+              This post will be hidden from your feed. You can also report or block the user.
             </p>
             <div className="flex flex-col gap-2">
               <button
                 className="w-full py-2.5 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 font-medium hover:bg-red-500/30 transition-colors"
                 onClick={() => hidePost(true)}
               >
-                Hide & Report
+                Hide & Report Post
+              </button>
+              <button
+                className="w-full py-2.5 rounded-lg bg-red-600/20 text-red-300 border border-red-600/30 font-medium hover:bg-red-600/30 transition-colors"
+                onClick={() => {
+                  setShowHideModal(false)
+                  setShowBlockModal(true)
+                }}
+              >
+                <i className="fa-solid fa-ban mr-2" />
+                Block @{post.username}
               </button>
               <button
                 className="w-full py-2.5 rounded-lg bg-white/10 text-white border border-white/10 font-medium hover:bg-white/15 transition-colors"
                 onClick={() => hidePost(false)}
               >
-                Just Hide
+                Just Hide This Post
               </button>
               <button
                 className="w-full py-2.5 rounded-lg text-[#9fb0b5] hover:text-white transition-colors"
                 onClick={() => setShowHideModal(false)}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Block User Modal */}
+      {showBlockModal && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          onClick={(e) => e.currentTarget === e.target && !blockSubmitting && setShowBlockModal(false)}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                <i className="fa-solid fa-ban text-red-400" />
+              </div>
+              <div className="font-semibold text-lg text-white">Block @{post.username}</div>
+            </div>
+            <p className="text-sm text-[#9fb0b5] mb-4">
+              Blocking this user will:
+            </p>
+            <ul className="text-sm text-[#9fb0b5] mb-4 space-y-1 pl-4">
+              <li>• Hide all their posts from your feed</li>
+              <li>• Notify our moderation team</li>
+              <li>• You can unblock them later in settings</li>
+            </ul>
+            
+            <div className="mb-4">
+              <label className="block text-sm text-[#9fb0b5] mb-2">Reason for blocking (optional)</label>
+              <select
+                value={blockReason}
+                onChange={(e) => setBlockReason(e.target.value)}
+                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-red-500/50"
+                disabled={blockSubmitting}
+              >
+                <option value="">Select a reason...</option>
+                <option value="Harassment">Harassment or bullying</option>
+                <option value="Spam">Spam or scam</option>
+                <option value="Offensive content">Offensive content</option>
+                <option value="Threats">Threats or violence</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-colors"
+                onClick={() => {
+                  setShowBlockModal(false)
+                  setBlockReason('')
+                }}
+                disabled={blockSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => blockUser(!!blockReason)}
+                disabled={blockSubmitting}
+              >
+                {blockSubmitting ? 'Blocking...' : 'Block User'}
               </button>
             </div>
           </div>

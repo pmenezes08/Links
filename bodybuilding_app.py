@@ -3421,6 +3421,20 @@ def init_db():
                           UNIQUE KEY unique_hidden (post_id, username))''')
             c.execute("CREATE INDEX IF NOT EXISTS idx_hidden_posts_user ON hidden_posts(username)")
             
+            # Create blocked_users table for user blocking feature
+            logger.info("Creating blocked_users table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS blocked_users
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          blocker_username VARCHAR(191) NOT NULL,
+                          blocked_username VARCHAR(191) NOT NULL,
+                          reason TEXT,
+                          blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          FOREIGN KEY (blocker_username) REFERENCES users(username),
+                          FOREIGN KEY (blocked_username) REFERENCES users(username),
+                          UNIQUE KEY unique_block (blocker_username, blocked_username))''')
+            c.execute("CREATE INDEX IF NOT EXISTS idx_blocked_users_blocker ON blocked_users(blocker_username)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_blocked_users_blocked ON blocked_users(blocked_username)")
+            
             # Add is_active columns to users and communities if they don't exist
             logger.info("Adding is_active columns...")
             
@@ -5825,6 +5839,113 @@ def is_app_admin(username):
         return bool(username) and username.lower() == 'admin'
     except Exception:
         return False
+
+
+# Content filtering for objectionable content (Apple App Store requirement)
+OBJECTIONABLE_WORDS = [
+    # Profanity and slurs - basic list, can be expanded
+    'fuck', 'shit', 'ass', 'bitch', 'bastard', 'damn', 'crap',
+    'dick', 'cock', 'pussy', 'cunt', 'whore', 'slut', 'fag',
+    'nigger', 'nigga', 'retard', 'spic', 'chink', 'kike',
+    # Violence
+    'kill yourself', 'kys', 'die', 'murder', 'rape',
+    # Drugs
+    'cocaine', 'heroin', 'meth',
+]
+
+# Compile regex patterns for efficient matching
+OBJECTIONABLE_PATTERNS = [
+    re.compile(r'\b' + re.escape(word) + r'\b', re.IGNORECASE) 
+    for word in OBJECTIONABLE_WORDS
+]
+
+def check_content_for_objectionable_material(content):
+    """
+    Check content for objectionable material.
+    Returns (is_clean, flagged_words) tuple.
+    If is_clean is False, the content should be flagged or rejected.
+    """
+    if not content:
+        return True, []
+    
+    flagged_words = []
+    content_lower = content.lower()
+    
+    for i, pattern in enumerate(OBJECTIONABLE_PATTERNS):
+        if pattern.search(content):
+            flagged_words.append(OBJECTIONABLE_WORDS[i])
+    
+    # Also check for common obfuscation patterns
+    obfuscation_patterns = [
+        (r'f+u+c+k+', 'fuck'),
+        (r's+h+i+t+', 'shit'),
+        (r'f+[@4a]+g+', 'fag'),
+        (r'n+[i1!]+g+', 'nig'),
+        (r'k+y+s+', 'kys'),
+    ]
+    
+    for pattern, word in obfuscation_patterns:
+        if re.search(pattern, content_lower):
+            if word not in flagged_words:
+                flagged_words.append(word)
+    
+    is_clean = len(flagged_words) == 0
+    return is_clean, flagged_words
+
+
+def filter_objectionable_content(content):
+    """
+    Filter/censor objectionable content by replacing with asterisks.
+    Returns the filtered content string.
+    """
+    if not content:
+        return content
+    
+    filtered = content
+    for pattern in OBJECTIONABLE_PATTERNS:
+        filtered = pattern.sub(lambda m: '*' * len(m.group()), filtered)
+    
+    return filtered
+
+
+def auto_flag_content_if_needed(post_id, content, username, community_id):
+    """
+    Automatically flag content if it contains objectionable material.
+    Creates a report entry for admin review.
+    """
+    is_clean, flagged_words = check_content_for_objectionable_material(content)
+    
+    if not is_clean:
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = '?' if not USE_MYSQL else '%s'
+                
+                # Create automatic report
+                c.execute(f"""
+                    INSERT INTO post_reports (post_id, reporter_username, reason, details, status)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, 'pending')
+                """, (post_id, 'system', 'Auto-flagged: Objectionable content', 
+                      f"Flagged words: {', '.join(flagged_words)}"))
+                conn.commit()
+                
+                # Notify admin
+                try:
+                    create_notification('admin', 'system', 'content_flagged', post_id, community_id,
+                                       f"⚠️ Post auto-flagged for objectionable content: {', '.join(flagged_words[:3])}",
+                                       link='/admin_dashboard_react?tab=content_review')
+                    send_push_to_user('admin', {
+                        'title': 'Content Auto-Flagged',
+                        'body': f'Post by @{username} flagged for: {", ".join(flagged_words[:3])}',
+                        'url': '/admin_dashboard_react?tab=content_review',
+                        'tag': f'auto-flag-{post_id}'
+                    })
+                except Exception as notif_err:
+                    logger.warning(f"Failed to notify admin about auto-flagged content: {notif_err}")
+                    
+                logger.info(f"Auto-flagged post {post_id} for objectionable content: {flagged_words}")
+        except Exception as e:
+            logger.error(f"Error auto-flagging content: {e}")
 @app.route('/delete_account', methods=['POST'])
 @login_required
 def delete_account():
@@ -13232,6 +13353,12 @@ def post_status():
             conn.commit()
             post_id = c.lastrowid
             logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")
+            
+            # Auto-flag content if it contains objectionable material (Apple App Store requirement)
+            try:
+                auto_flag_content_if_needed(post_id, content, username, community_id)
+            except Exception as flag_err:
+                logger.warning(f"Error in content auto-flagging: {flag_err}")
             # Also set created_at to match timestamp for feeds that rely on created_at
             try:
                 c.execute("UPDATE posts SET created_at = ? WHERE id = ?", (timestamp, post_id))
@@ -13644,6 +13771,12 @@ def create_poll():
             c.execute("INSERT INTO posts (username, content, image_path, timestamp, community_id) VALUES (?, ?, ?, ?, ?)",
                       (username, content, None, timestamp, community_id))
             post_id = c.lastrowid
+            
+            # Auto-flag content if it contains objectionable material (Apple App Store requirement)
+            try:
+                auto_flag_content_if_needed(post_id, content, username, community_id)
+            except Exception as flag_err:
+                logger.warning(f"Error in content auto-flagging: {flag_err}")
             
             # Get single vote setting
             single_vote_raw = request.form.get('single_vote', 'true')
@@ -17802,6 +17935,189 @@ def admin_delete_reported_post():
         return jsonify({'success': False, 'error': 'Failed to delete post'}), 500
 
 
+# ==================== USER BLOCKING ENDPOINTS ====================
+
+@app.route('/api/block_user', methods=['POST'])
+@login_required
+def block_user():
+    """Block a user - hides all their content and notifies admin"""
+    username = session['username']
+    data = request.get_json() if request.is_json else {}
+    blocked_username = data.get('blocked_username', '').strip()
+    reason = data.get('reason', '').strip()
+    also_report = data.get('also_report', False)
+    
+    if not blocked_username:
+        return jsonify({'success': False, 'error': 'Username to block is required'}), 400
+    
+    if blocked_username == username:
+        return jsonify({'success': False, 'error': 'You cannot block yourself'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Check if user exists
+            c.execute(f"SELECT username FROM users WHERE username = {ph}", (blocked_username,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            
+            # Insert block record
+            try:
+                c.execute(f"""
+                    INSERT INTO blocked_users (blocker_username, blocked_username, reason)
+                    VALUES ({ph}, {ph}, {ph})
+                """, (username, blocked_username, reason))
+            except Exception:
+                # Already blocked
+                return jsonify({'success': True, 'message': 'User already blocked'})
+            
+            conn.commit()
+            
+            # Notify admin about the block (Apple requirement)
+            try:
+                admin_notification_message = f"⚠️ @{username} blocked @{blocked_username}"
+                if reason:
+                    admin_notification_message += f": {reason}"
+                
+                # Notify admin
+                create_notification('admin', username, 'user_blocked', None, None, admin_notification_message, link='/admin_dashboard_react?tab=content_review')
+                send_push_to_user('admin', {
+                    'title': 'User Blocked',
+                    'body': f'{username} blocked {blocked_username}' + (f': {reason}' if reason else ''),
+                    'url': '/admin_dashboard_react?tab=content_review',
+                    'tag': f'user-block-{username}-{blocked_username}'
+                })
+            except Exception as notif_err:
+                logger.warning(f"Failed to notify admin about block: {notif_err}")
+            
+            # If also reporting, create a report for the user's recent posts
+            if also_report and reason:
+                try:
+                    # Get the blocked user's most recent posts
+                    c.execute(f"""
+                        SELECT id FROM posts WHERE username = {ph}
+                        ORDER BY id DESC LIMIT 5
+                    """, (blocked_username,))
+                    recent_posts = c.fetchall()
+                    
+                    for post_row in recent_posts:
+                        post_id = post_row['id'] if hasattr(post_row, 'keys') else post_row[0]
+                        try:
+                            c.execute(f"""
+                                INSERT INTO post_reports (post_id, reporter_username, reason, details, status)
+                                VALUES ({ph}, {ph}, {ph}, {ph}, 'pending')
+                            """, (post_id, username, f"User blocked: {reason}", f"User {username} blocked {blocked_username} and reported their content"))
+                        except:
+                            pass  # Skip if already reported
+                    conn.commit()
+                except Exception as report_err:
+                    logger.warning(f"Failed to report blocked user's posts: {report_err}")
+            
+            logger.info(f"User {username} blocked {blocked_username}")
+            return jsonify({'success': True, 'message': f'@{blocked_username} has been blocked'})
+    
+    except Exception as e:
+        logger.error(f"Error blocking user: {e}")
+        return jsonify({'success': False, 'error': 'Failed to block user'}), 500
+
+
+@app.route('/api/unblock_user', methods=['POST'])
+@login_required
+def unblock_user():
+    """Unblock a previously blocked user"""
+    username = session['username']
+    data = request.get_json() if request.is_json else {}
+    blocked_username = data.get('blocked_username', '').strip()
+    
+    if not blocked_username:
+        return jsonify({'success': False, 'error': 'Username to unblock is required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            c.execute(f"DELETE FROM blocked_users WHERE blocker_username = {ph} AND blocked_username = {ph}", 
+                     (username, blocked_username))
+            conn.commit()
+            
+            logger.info(f"User {username} unblocked {blocked_username}")
+            return jsonify({'success': True, 'message': f'@{blocked_username} has been unblocked'})
+    
+    except Exception as e:
+        logger.error(f"Error unblocking user: {e}")
+        return jsonify({'success': False, 'error': 'Failed to unblock user'}), 500
+
+
+@app.route('/api/blocked_users', methods=['GET'])
+@login_required
+def get_blocked_users():
+    """Get list of users blocked by the current user"""
+    username = session['username']
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            c.execute(f"""
+                SELECT bu.blocked_username, bu.reason, bu.blocked_at,
+                       up.profile_picture
+                FROM blocked_users bu
+                LEFT JOIN user_profiles up ON bu.blocked_username = up.username
+                WHERE bu.blocker_username = {ph}
+                ORDER BY bu.blocked_at DESC
+            """, (username,))
+            
+            blocked = []
+            for row in c.fetchall():
+                blocked.append({
+                    'username': row['blocked_username'] if hasattr(row, 'keys') else row[0],
+                    'reason': row['reason'] if hasattr(row, 'keys') else row[1],
+                    'blocked_at': row['blocked_at'] if hasattr(row, 'keys') else row[2],
+                    'profile_picture': row['profile_picture'] if hasattr(row, 'keys') else row[3]
+                })
+            
+            return jsonify({'success': True, 'blocked_users': blocked})
+    
+    except Exception as e:
+        logger.error(f"Error getting blocked users: {e}")
+        return jsonify({'success': False, 'error': 'Failed to get blocked users'}), 500
+
+
+@app.route('/api/is_blocked', methods=['GET'])
+@login_required
+def is_user_blocked():
+    """Check if a specific user is blocked"""
+    username = session['username']
+    check_username = request.args.get('username', '').strip()
+    
+    if not check_username:
+        return jsonify({'success': False, 'error': 'Username required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            c.execute(f"""
+                SELECT 1 FROM blocked_users 
+                WHERE blocker_username = {ph} AND blocked_username = {ph}
+            """, (username, check_username))
+            
+            is_blocked = c.fetchone() is not None
+            return jsonify({'success': True, 'is_blocked': is_blocked})
+    
+    except Exception as e:
+        logger.error(f"Error checking blocked status: {e}")
+        return jsonify({'success': False, 'error': 'Failed to check blocked status'}), 500
+
+
+# ==================== END USER BLOCKING ENDPOINTS ====================
+
+
 # ==================== END POST REPORT/HIDE ENDPOINTS ====================
 
 
@@ -20815,17 +21131,20 @@ def api_community_feed(community_id):
             # Limit initial posts returned to reduce payload; clients can paginate if needed
             # Exclude posts with pending videos (talking avatar still generating)
             # Exclude posts hidden by the current user
+            # Exclude posts from blocked users
             c.execute(
                 """
                 SELECT p.* FROM posts p
                 LEFT JOIN hidden_posts hp ON p.id = hp.post_id AND hp.username = ?
+                LEFT JOIN blocked_users bu ON p.username = bu.blocked_username AND bu.blocker_username = ?
                 WHERE p.community_id = ? 
                 AND (p.video_path IS NULL OR p.video_path != 'pending')
                 AND hp.id IS NULL
+                AND bu.id IS NULL
                 ORDER BY p.id DESC
                 LIMIT 100
                 """,
-                (username, community_id)
+                (username, username, community_id)
             )
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]

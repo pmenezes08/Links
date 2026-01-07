@@ -169,12 +169,15 @@ export default function CommunityFeed() {
   // const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
   // const [storyEditorNewText, setStoryEditorNewText] = useState('')
   
-  // Report/Hide post state
+  // Report/Hide/Block post state
   const [reportModalPost, setReportModalPost] = useState<Post | null>(null)
   const [hideModalPost, setHideModalPost] = useState<Post | null>(null)
+  const [blockModalUser, setBlockModalUser] = useState<{ username: string; postId?: number } | null>(null)
   const [reportReason, setReportReason] = useState('')
   const [reportDetails, setReportDetails] = useState('')
   const [reportSubmitting, setReportSubmitting] = useState(false)
+  const [blockReason, setBlockReason] = useState('')
+  const [blockSubmitting, setBlockSubmitting] = useState(false)
 
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
@@ -1513,6 +1516,43 @@ export default function CommunityFeed() {
     }
   }
 
+  // Block user - hides all their content and notifies admin
+  async function handleBlockUser(alsoReport: boolean = false) {
+    if (!blockModalUser) return
+    setBlockSubmitting(true)
+
+    try {
+      const res = await fetch('/api/block_user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          blocked_username: blockModalUser.username,
+          reason: blockReason,
+          also_report: alsoReport
+        })
+      })
+      const j = await res.json().catch(() => null)
+      if (j?.success) {
+        // Remove all posts from blocked user from the feed immediately
+        setData((prev: any) => {
+          if (!prev) return prev
+          const posts = Array.isArray(prev.posts) ? prev.posts : []
+          return { ...prev, posts: posts.filter((p: any) => p.username !== blockModalUser.username) }
+        })
+        alert(j.message || `@${blockModalUser.username} has been blocked`)
+        setBlockModalUser(null)
+        setBlockReason('')
+      } else {
+        alert(j?.error || 'Failed to block user')
+      }
+    } catch {
+      alert('Network error. Could not block user.')
+    } finally {
+      setBlockSubmitting(false)
+    }
+  }
+
   // Optimistic poll delete
   async function handleDeletePoll(postId: number, pollId: number) {
     const originalPost = postsOnly.find((p: Post) => p.id === postId)
@@ -1994,6 +2034,7 @@ export default function CommunityFeed() {
                   onDeletePoll={handleDeletePoll}
                   onHidePost={(post: Post) => setHideModalPost(post)}
                   onReportPost={(post: Post) => setReportModalPost(post)}
+                  onBlockUser={(data) => setBlockModalUser(data)}
                 />
                 {/* Dark overlay for all posts except first one during reaction highlight */}
                 {highlightStep === 'reaction' && idx !== 0 && (
@@ -2858,7 +2899,7 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Hide Post Modal - Ask if user wants to also report */}
+      {/* Hide Post Modal - Ask if user wants to also report or block */}
       {hideModalPost && (
         <div 
           className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
@@ -2872,7 +2913,7 @@ export default function CommunityFeed() {
               <div className="font-semibold text-lg text-white">Hide Post</div>
             </div>
             <p className="text-sm text-[#9fb0b5] mb-5">
-              This post will be hidden from your feed. Would you also like to report it?
+              This post will be hidden from your feed. You can also report or block the user.
             </p>
             <div className="flex flex-col gap-2">
               <button
@@ -2883,7 +2924,18 @@ export default function CommunityFeed() {
                   handleHidePost(post.id, true) // Hide and report
                 }}
               >
-                Hide & Report
+                Hide & Report Post
+              </button>
+              <button
+                className="w-full py-2.5 rounded-lg bg-red-600/20 text-red-300 border border-red-600/30 font-medium hover:bg-red-600/30 transition-colors"
+                onClick={() => {
+                  const post = hideModalPost
+                  setHideModalPost(null)
+                  setBlockModalUser({ username: post.username, postId: post.id })
+                }}
+              >
+                <i className="fa-solid fa-ban mr-2" />
+                Block @{hideModalPost.username}
               </button>
               <button
                 className="w-full py-2.5 rounded-lg bg-white/10 text-white border border-white/10 font-medium hover:bg-white/15 transition-colors"
@@ -2893,13 +2945,75 @@ export default function CommunityFeed() {
                   handleHidePost(post.id, false) // Just hide
                 }}
               >
-                Just Hide
+                Just Hide This Post
               </button>
               <button
                 className="w-full py-2.5 rounded-lg text-[#9fb0b5] hover:text-white transition-colors"
                 onClick={() => setHideModalPost(null)}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Block User Modal */}
+      {blockModalUser && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          onClick={(e) => e.currentTarget === e.target && !blockSubmitting && setBlockModalUser(null)}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                <i className="fa-solid fa-ban text-red-400" />
+              </div>
+              <div className="font-semibold text-lg text-white">Block @{blockModalUser.username}</div>
+            </div>
+            <p className="text-sm text-[#9fb0b5] mb-4">
+              Blocking this user will:
+            </p>
+            <ul className="text-sm text-[#9fb0b5] mb-4 space-y-1 pl-4">
+              <li>• Hide all their posts from your feed</li>
+              <li>• Notify our moderation team</li>
+              <li>• You can unblock them later in settings</li>
+            </ul>
+            
+            <div className="mb-4">
+              <label className="block text-sm text-[#9fb0b5] mb-2">Reason for blocking (optional)</label>
+              <select
+                value={blockReason}
+                onChange={(e) => setBlockReason(e.target.value)}
+                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-red-500/50"
+                disabled={blockSubmitting}
+              >
+                <option value="">Select a reason...</option>
+                <option value="Harassment">Harassment or bullying</option>
+                <option value="Spam">Spam or scam</option>
+                <option value="Offensive content">Offensive content</option>
+                <option value="Threats">Threats or violence</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-colors"
+                onClick={() => {
+                  setBlockModalUser(null)
+                  setBlockReason('')
+                }}
+                disabled={blockSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => handleBlockUser(!!blockReason)}
+                disabled={blockSubmitting}
+              >
+                {blockSubmitting ? 'Blocking...' : 'Block User'}
               </button>
             </div>
           </div>
@@ -2985,7 +3099,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost, onBlockUser }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void, onBlockUser?: (data: { username: string; postId?: number }) => void }) {
   const cardRef = useRef<HTMLDivElement | null>(null)
   const mediaInputRef = useRef<HTMLInputElement | null>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -3208,7 +3322,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   <i className="fa-regular fa-pen-to-square" />
                 </button>
               )}
-              {/* Hide and Report buttons - available to all users for other people's posts */}
+              {/* Hide, Report, and Block buttons - available to all users for other people's posts */}
               {post.username !== currentUser && (
                 <>
                   <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-orange-400" title="Hide post"
@@ -3218,6 +3332,10 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400" title="Report post"
                     onClick={(e)=> { e.stopPropagation(); onReportPost?.(post) }}>
                     <i className="fa-solid fa-flag" />
+                  </button>
+                  <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-500" title="Block user"
+                    onClick={(e)=> { e.stopPropagation(); onBlockUser?.({ username: post.username, postId: post.id }) }}>
+                    <i className="fa-solid fa-ban" />
                   </button>
                 </>
               )}
