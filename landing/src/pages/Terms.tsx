@@ -110,10 +110,10 @@ const Terms = () => {
               and accept this responsibility.
             </p>
             <p className="text-white/80 leading-relaxed font-semibold">
-              C-POINT IS NOT RESPONSIBLE OR LIABLE FOR ANY USER-GENERATED CONTENT, INCLUDING BUT NOT 
-              LIMITED TO POSTS, COMMENTS, IMAGES, VIDEOS, POLLS, OR ANY OTHER CONTENT UPLOADED OR SHARED 
-              BY USERS. C-POINT ACTS SOLELY AS A PLATFORM PROVIDER AND DOES NOT ENDORSE, VERIFY, OR 
-              ASSUME RESPONSIBILITY FOR ANY CONTENT CREATED BY USERS OR COMMUNITY ADMINISTRATORS.
+              C-Point is not responsible or liable for any user-generated content, including but not 
+              limited to posts, comments, images, videos, polls, or any other content uploaded or shared 
+              by users. C-Point acts solely as a platform provider and does not endorse, verify, or 
+              assume responsibility for any content created by users or community administrators.
             </p>
           </section>
 
@@ -137,20 +137,20 @@ const Terms = () => {
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">10. Disclaimer of Warranties</h2>
             <p className="text-white/80 leading-relaxed">
-              THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, 
-              EITHER EXPRESS OR IMPLIED. WE DO NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, 
-              SECURE, OR ERROR-FREE.
+              The Service is provided "as is" and "as available" without warranties of any kind, 
+              either express or implied. We do not warrant that the Service will be uninterrupted, 
+              secure, or error-free.
             </p>
           </section>
 
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">11. Limitation of Liability</h2>
             <p className="text-white/80 leading-relaxed mb-4">
-              TO THE MAXIMUM EXTENT PERMITTED BY LAW, C-POINT SHALL NOT BE LIABLE FOR ANY INDIRECT, 
-              INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING FROM YOUR USE OF THE SERVICE.
+              To the maximum extent permitted by law, C-Point shall not be liable for any indirect, 
+              incidental, special, consequential, or punitive damages arising from your use of the Service.
             </p>
             <p className="text-white/80 leading-relaxed mb-4">
-              WITHOUT LIMITING THE FOREGOING, C-POINT SHALL NOT BE LIABLE FOR:
+              Without limiting the foregoing, C-Point shall not be liable for:
             </p>
             <ul className="list-disc list-inside text-white/80 space-y-2 ml-4">
               <li>Any user-generated content, including posts, comments, images, videos, or other materials uploaded by users</li>
