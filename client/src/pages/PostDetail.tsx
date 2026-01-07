@@ -1201,11 +1201,14 @@ export default function PostDetail(){
     </div>
       {/* Image preview modal */}
           {previewSrc ? (
-        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewSrc(null)}>
-          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center" onClick={()=> setPreviewSrc(null)} aria-label="Close preview">
+        <div 
+          className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex items-center justify-center" 
+          onClick={() => setPreviewSrc(null)}
+        >
+          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center z-10" onClick={()=> setPreviewSrc(null)} aria-label="Close preview">
             <i className="fa-solid fa-xmark" />
           </button>
-          <div className="w-[94vw] h-[86vh] max-w-4xl">
+          <div className="w-[94vw] h-[86vh] max-w-4xl" onClick={(e) => e.stopPropagation()}>
             <ZoomableImage src={previewSrc} alt="preview" className="w-full h-full" onRequestClose={()=> setPreviewSrc(null)} />
           </div>
         </div>
