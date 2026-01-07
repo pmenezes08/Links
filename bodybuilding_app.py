@@ -12459,7 +12459,7 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
                     send_push_to_user(target, {
                         'title': f'New reply from {from_user}',
                         'body': 'Tap to view the conversation',
-                        'url': f'/community/{community_id}/polls_react',
+                        'url': f'/post/{post_id}',
                         'tag': f'post-reply-{post_id}-{target}'
                     })
                 except Exception as pe:
