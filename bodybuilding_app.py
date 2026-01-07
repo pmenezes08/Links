@@ -5933,11 +5933,11 @@ def auto_flag_content_if_needed(post_id, content, username, community_id):
                 try:
                     create_notification('admin', 'system', 'content_flagged', post_id, community_id,
                                        f"⚠️ Post auto-flagged for objectionable content: {', '.join(flagged_words[:3])}",
-                                       link='/admin_dashboard_react?tab=content_review')
+                                       link='/admin_dashboard?tab=content_review')
                     send_push_to_user('admin', {
                         'title': 'Content Auto-Flagged',
                         'body': f'Post by @{username} flagged for: {", ".join(flagged_words[:3])}',
-                        'url': '/admin_dashboard_react?tab=content_review',
+                        'url': '/admin_dashboard?tab=content_review',
                         'tag': f'auto-flag-{post_id}'
                     })
                 except Exception as notif_err:
@@ -17757,7 +17757,7 @@ def report_post():
                 for admin_row in admins:
                     admin_username = admin_row['username'] if hasattr(admin_row, 'keys') else admin_row[0]
                     notification_message = f"⚠️ Post reported: {reason}"
-                    notification_link = f"/admin_dashboard_react?tab=content_review"
+                    notification_link = f"/admin_dashboard?tab=content_review"
                     
                     try:
                         create_notification(admin_username, username, 'post_report', post_id, community_id, notification_message, link=notification_link)
@@ -18095,11 +18095,11 @@ def block_user():
                     admin_notification_message += f": {reason}"
                 
                 # Notify admin
-                create_notification('admin', username, 'user_blocked', None, None, admin_notification_message, link='/admin_dashboard_react?tab=blocked_users')
+                create_notification('admin', username, 'user_blocked', None, None, admin_notification_message, link='/admin_dashboard?tab=blocked_users')
                 send_push_to_user('admin', {
                     'title': 'User Blocked',
                     'body': f'{username} blocked {blocked_username}' + (f': {reason}' if reason else ''),
-                    'url': '/admin_dashboard_react?tab=blocked_users',
+                    'url': '/admin_dashboard?tab=blocked_users',
                     'tag': f'user-block-{username}-{blocked_username}'
                 })
             except Exception as notif_err:
