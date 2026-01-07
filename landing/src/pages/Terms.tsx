@@ -15,7 +15,11 @@ const Terms = () => {
       {/* Content */}
       <main className="container mx-auto px-4 py-12 max-w-4xl">
         <h1 className="text-4xl font-bold mb-8">Terms of Service</h1>
-        <p className="text-white/60 mb-8">Last updated: December 2024</p>
+        <p className="text-white/60 mb-4">Last updated: January 2026</p>
+        <div className="bg-[#4db6ac]/10 border border-[#4db6ac]/30 rounded-lg p-4 mb-8">
+          <p className="text-[#4db6ac] font-semibold">Age Rating: 16+</p>
+          <p className="text-white/70 text-sm">This app is intended for users aged 16 and older.</p>
+        </div>
 
         <div className="prose prose-invert prose-lg max-w-none space-y-8">
           <section>
@@ -38,7 +42,7 @@ const Terms = () => {
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">3. User Accounts</h2>
             <ul className="list-disc list-inside text-white/80 space-y-2 ml-4">
-              <li>You must be at least 13 years old to create an account</li>
+              <li>You must be at least 16 years old to create an account</li>
               <li>You are responsible for maintaining the security of your account</li>
               <li>You must provide accurate and complete information</li>
               <li>You may not use another person's account without permission</li>
