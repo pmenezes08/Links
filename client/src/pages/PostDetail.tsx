@@ -114,6 +114,7 @@ export default function PostDetail(){
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
   const [replyGif, setReplyGif] = useState<GifSelection | null>(null)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [currentUser, setCurrentUser] = useState<{username: string; profile_picture?: string | null} | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
@@ -281,6 +282,20 @@ export default function PostDetail(){
       hideSub?.remove()
     }
   }, [])
+
+  // Close attachment menu when clicking outside
+  useEffect(() => {
+    if (!showAttachMenu) return
+    const handleClickOutside = () => setShowAttachMenu(false)
+    // Small delay to prevent immediate close on the click that opened it
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 10)
+    return () => {
+      clearTimeout(timeoutId)
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showAttachMenu])
 
   // Scroll inline reply composer into view when keyboard opens
   useEffect(() => {
@@ -1274,29 +1289,51 @@ export default function PostDetail(){
 
           {/* Main input row */}
           <div className="flex items-end gap-1.5">
-            {/* Attachment buttons */}
-            <button 
-              type="button" 
-              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Add image"
-            >
-              <i className="fa-solid fa-image text-sm" style={{ color: file ? '#7fe7df' : '#fff' }} />
-            </button>
-            <button 
-              type="button" 
-              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
-              onClick={() => setGifPickerOpen(true)}
-              aria-label="Add GIF"
-            >
-              <i className="fa-solid fa-images text-sm" style={{ color: replyGif ? '#7fe7df' : '#fff' }} />
-            </button>
+            {/* Attachment + button with dropdown */}
+            <div className="relative">
+              <button 
+                type="button" 
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/12 hover:bg-white/22 active:bg-white/28 transition-all"
+                onClick={() => setShowAttachMenu(!showAttachMenu)}
+                aria-label="Add attachment"
+              >
+                <i className={`fa-solid ${showAttachMenu ? 'fa-times' : 'fa-plus'} text-sm`} style={{ color: (file || replyGif) ? '#7fe7df' : '#fff' }} />
+              </button>
+              
+              {/* Attachment dropdown menu */}
+              {showAttachMenu && (
+                <div className="absolute bottom-full left-0 mb-2 w-40 rounded-xl bg-[#1a1a1c] border border-white/10 shadow-xl overflow-hidden z-10">
+                  <button
+                    type="button"
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left"
+                    onClick={() => {
+                      fileInputRef.current?.click()
+                      setShowAttachMenu(false)
+                    }}
+                  >
+                    <i className="fa-solid fa-image text-[#4db6ac]" />
+                    <span className="text-sm text-white">Photo / Video</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/10 transition-colors text-left border-t border-white/5"
+                    onClick={() => {
+                      setGifPickerOpen(true)
+                      setShowAttachMenu(false)
+                    }}
+                  >
+                    <i className="fa-solid fa-images text-[#4db6ac]" />
+                    <span className="text-sm text-white">GIF</span>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Hidden file input */}
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               onChange={(e) => {
                 const next = (e.target as HTMLInputElement).files?.[0] || null
                 setFile(next)
