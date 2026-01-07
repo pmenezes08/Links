@@ -21132,21 +21132,62 @@ def api_community_feed(community_id):
             # Exclude posts with pending videos (talking avatar still generating)
             # Exclude posts hidden by the current user
             # Exclude posts from blocked users
-            c.execute(
-                """
-                SELECT p.* FROM posts p
-                LEFT JOIN hidden_posts hp ON p.id = hp.post_id AND hp.username = ?
-                LEFT JOIN blocked_users bu ON p.username = bu.blocked_username AND bu.blocker_username = ?
-                WHERE p.community_id = ? 
-                AND (p.video_path IS NULL OR p.video_path != 'pending')
-                AND hp.id IS NULL
-                AND bu.id IS NULL
-                ORDER BY p.id DESC
-                LIMIT 100
-                """,
-                (username, username, community_id)
-            )
-            posts_raw = c.fetchall()
+            
+            # First ensure blocked_users table exists (use appropriate syntax for MySQL vs SQLite)
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS blocked_users
+                                 (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                  blocker_username VARCHAR(191) NOT NULL,
+                                  blocked_username VARCHAR(191) NOT NULL,
+                                  reason TEXT,
+                                  blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                  UNIQUE KEY unique_block (blocker_username, blocked_username))''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS blocked_users
+                                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                  blocker_username TEXT NOT NULL,
+                                  blocked_username TEXT NOT NULL,
+                                  reason TEXT,
+                                  blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                  UNIQUE(blocker_username, blocked_username))''')
+                conn.commit()
+            except Exception as table_err:
+                logger.warning(f"Could not ensure blocked_users table: {table_err}")
+            
+            # Try query with blocked_users filter, fall back to simpler query if table doesn't exist
+            try:
+                c.execute(
+                    """
+                    SELECT p.* FROM posts p
+                    LEFT JOIN hidden_posts hp ON p.id = hp.post_id AND hp.username = ?
+                    LEFT JOIN blocked_users bu ON p.username = bu.blocked_username AND bu.blocker_username = ?
+                    WHERE p.community_id = ? 
+                    AND (p.video_path IS NULL OR p.video_path != 'pending')
+                    AND hp.id IS NULL
+                    AND bu.id IS NULL
+                    ORDER BY p.id DESC
+                    LIMIT 100
+                    """,
+                    (username, username, community_id)
+                )
+                posts_raw = c.fetchall()
+            except Exception as blocked_err:
+                logger.warning(f"blocked_users query failed, falling back: {blocked_err}")
+                # Fallback query without blocked_users
+                c.execute(
+                    """
+                    SELECT p.* FROM posts p
+                    LEFT JOIN hidden_posts hp ON p.id = hp.post_id AND hp.username = ?
+                    WHERE p.community_id = ? 
+                    AND (p.video_path IS NULL OR p.video_path != 'pending')
+                    AND hp.id IS NULL
+                    ORDER BY p.id DESC
+                    LIMIT 100
+                    """,
+                    (username, community_id)
+                )
+                posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]
             post_ids = [post['id'] for post in posts]
             
