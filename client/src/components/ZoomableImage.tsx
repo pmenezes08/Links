@@ -24,6 +24,7 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   const [isPanning, setIsPanning] = useState(false)
   const panStartRef = useRef<{ x: number; y: number } | null>(null)
   const translateStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // For pinch gestures
   const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map())
@@ -125,6 +126,11 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    // Cancel single-tap-to-close timer
+    if (singleTapTimerRef.current) {
+      clearTimeout(singleTapTimerRef.current)
+      singleTapTimerRef.current = null
+    }
     const alreadyZoomed = scale > minScale + 0.001
     const targetScale = alreadyZoomed ? minScale : clamp(minScale * 1.6, minScale, maxScale)
     if (!containerRef.current) {
@@ -237,7 +243,11 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
         const dx = lx - prev.x
         const dy = ly - prev.y
         if ((dx*dx + dy*dy) < 1000) {
-          // Treat as double tap
+          // Treat as double tap - cancel single-tap-to-close timer
+          if (singleTapTimerRef.current) {
+            clearTimeout(singleTapTimerRef.current)
+            singleTapTimerRef.current = null
+          }
           const alreadyZoomed = scale > minScale + 0.001
           const targetScale = alreadyZoomed ? minScale : clamp(minScale * 1.6, minScale, maxScale)
           const rect = containerRef.current?.getBoundingClientRect()
@@ -308,7 +318,21 @@ export default function ZoomableImage({ src, alt = 'image', className = '', maxS
       style={{ touchAction: 'none' }}
       onWheel={handleWheel}
       onDoubleClick={handleDoubleClick}
-      onClick={(e)=> e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation()
+        // Single tap to close when not zoomed (with delay to allow double-tap)
+        if (scale <= minScale + 0.001 && onRequestClose) {
+          // Clear any existing timer
+          if (singleTapTimerRef.current) {
+            clearTimeout(singleTapTimerRef.current)
+            singleTapTimerRef.current = null
+          }
+          // Set timer - if not cancelled by double-tap, close
+          singleTapTimerRef.current = setTimeout(() => {
+            onRequestClose()
+          }, 250)
+        }
+      }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUpOrCancel}
