@@ -137,6 +137,9 @@ export default function ChatThread(){
   const [showMicPermissionModal, setShowMicPermissionModal] = useState(false)
   const [showPermissionGuide, setShowPermissionGuide] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const [showBlockModal, setShowBlockModal] = useState(false)
+  const [blockReason, setBlockReason] = useState('')
+  const [blockSubmitting, setBlockSubmitting] = useState(false)
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const [videoUploadProgress, setVideoUploadProgress] = useState<UploadProgress | null>(null)
@@ -2045,6 +2048,37 @@ export default function ChatThread(){
     }
   }
 
+  // Block user function
+  async function handleBlockUser() {
+    if (!username) return
+    setBlockSubmitting(true)
+    try {
+      const res = await fetch('/api/block_user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          blocked_username: username,
+          reason: blockReason,
+          also_report: !!blockReason
+        })
+      })
+      const j = await res.json().catch(() => null)
+      if (j?.success) {
+        alert(`@${username} has been blocked. You can manage blocked users in Settings → Privacy & Security.`)
+        setShowBlockModal(false)
+        setBlockReason('')
+        navigate('/user_chat')
+      } else {
+        alert(j?.error || 'Failed to block user')
+      }
+    } catch {
+      alert('Network error. Could not block user.')
+    } finally {
+      setBlockSubmitting(false)
+    }
+  }
+
   return (
     <>
     {/* Main container with overflow:hidden */}
@@ -2157,6 +2191,16 @@ export default function ChatThread(){
                   <i className="fa-solid fa-user text-xs text-[#4db6ac]" />
                   <span>View Profile</span>
                 </Link>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10 transition-colors"
+                  onClick={() => {
+                    setHeaderMenuOpen(false)
+                    setShowBlockModal(true)
+                  }}
+                >
+                  <i className="fa-solid fa-ban text-xs" />
+                  <span>Block User</span>
+                </button>
               </div>
             </div>
           )}
@@ -3182,6 +3226,69 @@ export default function ChatThread(){
                 You've been added to <span className="font-medium text-[#4db6ac]">{joinedCommunity.name}</span>
               </p>
               <p className="text-xs text-white/50">Redirecting to community...</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Block User Modal */}
+      {showBlockModal && (
+        <div 
+          className="fixed inset-0 z-[10000] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          onClick={(e) => e.currentTarget === e.target && !blockSubmitting && setShowBlockModal(false)}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                <i className="fa-solid fa-ban text-red-400" />
+              </div>
+              <div className="font-semibold text-lg text-white">Block @{username}</div>
+            </div>
+            <p className="text-sm text-[#9fb0b5] mb-4">
+              Blocking this user will:
+            </p>
+            <ul className="text-sm text-[#9fb0b5] mb-4 space-y-1 pl-4">
+              <li>• Hide all their posts from your feed</li>
+              <li>• Prevent messaging between you</li>
+              <li>• Notify our moderation team</li>
+              <li>• You can manage this in Settings → Privacy</li>
+            </ul>
+            
+            <div className="mb-4">
+              <label className="block text-sm text-[#9fb0b5] mb-2">Reason for blocking (optional)</label>
+              <select
+                value={blockReason}
+                onChange={(e) => setBlockReason(e.target.value)}
+                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-red-500/50"
+                disabled={blockSubmitting}
+              >
+                <option value="">Select a reason...</option>
+                <option value="Harassment">Harassment or bullying</option>
+                <option value="Spam">Spam or scam</option>
+                <option value="Offensive content">Offensive content</option>
+                <option value="Threats">Threats or violence</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-colors"
+                onClick={() => {
+                  setShowBlockModal(false)
+                  setBlockReason('')
+                }}
+                disabled={blockSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => handleBlockUser()}
+                disabled={blockSubmitting}
+              >
+                {blockSubmitting ? 'Blocking...' : 'Block User'}
+              </button>
             </div>
           </div>
         </div>
