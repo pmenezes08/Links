@@ -18095,11 +18095,11 @@ def block_user():
                     admin_notification_message += f": {reason}"
                 
                 # Notify admin
-                create_notification('admin', username, 'user_blocked', None, None, admin_notification_message, link='/admin_dashboard_react?tab=content_review')
+                create_notification('admin', username, 'user_blocked', None, None, admin_notification_message, link='/admin_dashboard_react?tab=blocked_users')
                 send_push_to_user('admin', {
                     'title': 'User Blocked',
                     'body': f'{username} blocked {blocked_username}' + (f': {reason}' if reason else ''),
-                    'url': '/admin_dashboard_react?tab=content_review',
+                    'url': '/admin_dashboard_react?tab=blocked_users',
                     'tag': f'user-block-{username}-{blocked_username}'
                 })
             except Exception as notif_err:
@@ -18229,6 +18229,111 @@ def is_user_blocked():
 
 
 # ==================== END USER BLOCKING ENDPOINTS ====================
+
+
+# ==================== ADMIN BLOCKED USERS MANAGEMENT ====================
+
+@app.route('/api/admin/all_blocked_users', methods=['GET'])
+@login_required
+def admin_get_all_blocked_users():
+    """Get all blocked user relationships for admin review"""
+    username = session['username']
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # First ensure the table exists
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS blocked_users
+                                 (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                  blocker_username VARCHAR(191) NOT NULL,
+                                  blocked_username VARCHAR(191) NOT NULL,
+                                  reason TEXT,
+                                  blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                  UNIQUE KEY unique_block (blocker_username, blocked_username))''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS blocked_users
+                                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                  blocker_username TEXT NOT NULL,
+                                  blocked_username TEXT NOT NULL,
+                                  reason TEXT,
+                                  blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                  UNIQUE(blocker_username, blocked_username))''')
+                conn.commit()
+            except Exception as table_err:
+                logger.warning(f"Could not ensure blocked_users table: {table_err}")
+            
+            c.execute("""
+                SELECT bu.id, bu.blocker_username, bu.blocked_username, bu.reason, bu.blocked_at,
+                       up1.profile_picture as blocker_picture,
+                       up2.profile_picture as blocked_picture
+                FROM blocked_users bu
+                LEFT JOIN user_profiles up1 ON bu.blocker_username = up1.username
+                LEFT JOIN user_profiles up2 ON bu.blocked_username = up2.username
+                ORDER BY bu.blocked_at DESC
+            """)
+            
+            blocked_list = []
+            for row in c.fetchall():
+                blocked_list.append({
+                    'id': row['id'] if hasattr(row, 'keys') else row[0],
+                    'blocker_username': row['blocker_username'] if hasattr(row, 'keys') else row[1],
+                    'blocked_username': row['blocked_username'] if hasattr(row, 'keys') else row[2],
+                    'reason': row['reason'] if hasattr(row, 'keys') else row[3],
+                    'blocked_at': row['blocked_at'] if hasattr(row, 'keys') else row[4],
+                    'blocker_picture': row['blocker_picture'] if hasattr(row, 'keys') else row[5],
+                    'blocked_picture': row['blocked_picture'] if hasattr(row, 'keys') else row[6]
+                })
+            
+            return jsonify({'success': True, 'blocked_users': blocked_list})
+    
+    except Exception as e:
+        logger.error(f"Error getting all blocked users: {e}")
+        return jsonify({'success': False, 'error': 'Failed to get blocked users'}), 500
+
+
+@app.route('/api/admin/unblock_user', methods=['POST'])
+@login_required
+def admin_unblock_user():
+    """Admin can unblock any user relationship"""
+    username = session['username']
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json() if request.is_json else {}
+    block_id = data.get('block_id')
+    blocker_username = data.get('blocker_username')
+    blocked_username = data.get('blocked_username')
+    
+    if not block_id and not (blocker_username and blocked_username):
+        return jsonify({'success': False, 'error': 'Block ID or both usernames required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            if block_id:
+                c.execute(f"DELETE FROM blocked_users WHERE id = {ph}", (block_id,))
+            else:
+                c.execute(f"DELETE FROM blocked_users WHERE blocker_username = {ph} AND blocked_username = {ph}", 
+                         (blocker_username, blocked_username))
+            
+            conn.commit()
+            
+            logger.info(f"Admin {username} unblocked relationship: {blocker_username} -> {blocked_username} (id: {block_id})")
+            return jsonify({'success': True, 'message': 'Block removed successfully'})
+    
+    except Exception as e:
+        logger.error(f"Error admin unblocking user: {e}")
+        return jsonify({'success': False, 'error': 'Failed to unblock user'}), 500
+
+
+# ==================== END ADMIN BLOCKED USERS MANAGEMENT ====================
 
 
 # ==================== END POST REPORT/HIDE ENDPOINTS ====================

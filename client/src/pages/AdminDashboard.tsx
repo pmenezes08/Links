@@ -139,7 +139,7 @@ export default function AdminDashboard() {
     [communityChildrenMap]
   )
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review' | 'blocked_users'>('overview')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'premium' | 'free'>('all')
@@ -199,6 +199,20 @@ export default function AdminDashboard() {
   const [reportedPosts, setReportedPosts] = useState<ReportedPost[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportsFilter, setReportsFilter] = useState<'pending' | 'reviewed' | 'dismissed' | 'all'>('pending')
+
+  // Blocked users state
+  type BlockedUserEntry = {
+    id: number
+    blocker_username: string
+    blocked_username: string
+    reason: string | null
+    blocked_at: string
+    blocker_picture: string | null
+    blocked_picture: string | null
+  }
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUserEntry[]>([])
+  const [blockedUsersLoading, setBlockedUsersLoading] = useState(false)
+  const [unblockingId, setUnblockingId] = useState<number | null>(null)
 
   // New user form
   const [newUser, setNewUser] = useState({
@@ -316,6 +330,48 @@ export default function AdminDashboard() {
     }
   }, [])
 
+  const loadBlockedUsers = useCallback(async () => {
+    setBlockedUsersLoading(true)
+    try {
+      const response = await fetch('/api/admin/all_blocked_users', {
+        credentials: 'include'
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setBlockedUsers(data.blocked_users || [])
+      } else {
+        setBlockedUsers([])
+      }
+    } catch (error) {
+      console.error('Error loading blocked users:', error)
+      setBlockedUsers([])
+    } finally {
+      setBlockedUsersLoading(false)
+    }
+  }, [])
+
+  const handleAdminUnblock = async (blockId: number) => {
+    setUnblockingId(blockId)
+    try {
+      const response = await fetch('/api/admin/unblock_user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ block_id: blockId })
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setBlockedUsers(prev => prev.filter(b => b.id !== blockId))
+      } else {
+        alert(data?.error || 'Failed to unblock')
+      }
+    } catch (error) {
+      alert('Network error')
+    } finally {
+      setUnblockingId(null)
+    }
+  }
+
   const handleReviewReport = async (reportId: number, action: 'dismiss' | 'reviewed') => {
     try {
       const response = await fetch('/api/admin/review_report', {
@@ -402,11 +458,21 @@ export default function AdminDashboard() {
     }
   }, [activeTab, reportsFilter, loadReportedPosts])
 
-  // Check URL for content_review tab parameter
+  // Load blocked users when blocked_users tab is active
+  useEffect(() => {
+    if (activeTab === 'blocked_users') {
+      loadBlockedUsers()
+    }
+  }, [activeTab, loadBlockedUsers])
+
+  // Check URL for tab parameter
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('tab') === 'content_review') {
+    const tab = params.get('tab')
+    if (tab === 'content_review') {
       setActiveTab('content_review')
+    } else if (tab === 'blocked_users') {
+      setActiveTab('blocked_users')
     }
   }, [])
 
@@ -863,6 +929,15 @@ export default function AdminDashboard() {
           >
             <div className="pt-2">Reports</div>
             <div className={`h-0.5 ${activeTab === 'content_review' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+          </button>
+          <button 
+            onClick={() => setActiveTab('blocked_users')}
+            className={`flex-1 text-center text-sm font-medium ${
+              activeTab === 'blocked_users' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
+            }`}
+          >
+            <div className="pt-2">Blocks</div>
+            <div className={`h-0.5 ${activeTab === 'blocked_users' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
         </div>
       </div>
@@ -1531,6 +1606,118 @@ export default function AdminDashboard() {
                           {report.reviewed_at && ` on ${new Date(report.reviewed_at).toLocaleDateString()}`}
                         </div>
                       )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Blocked Users Tab */}
+        {activeTab === 'blocked_users' && (
+          <div className="space-y-4">
+            <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-[#4db6ac]">
+                  <i className="fa-solid fa-ban mr-2" />
+                  Blocked Users
+                </h3>
+                <button
+                  onClick={loadBlockedUsers}
+                  className="text-xs text-[#4db6ac] hover:underline"
+                >
+                  <i className="fa-solid fa-refresh mr-1" />
+                  Refresh
+                </button>
+              </div>
+
+              {blockedUsersLoading ? (
+                <div className="text-center py-8 text-white/60">Loading blocked users...</div>
+              ) : blockedUsers.length === 0 ? (
+                <div className="text-center py-8 text-white/60">
+                  <i className="fa-solid fa-check-circle text-2xl mb-2 text-green-400" />
+                  <div>No blocked users</div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {blockedUsers.map(block => (
+                    <div key={block.id} className="bg-black/30 border border-white/10 rounded-xl p-4">
+                      {/* Block Header */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          {/* Blocker */}
+                          <div className="flex items-center gap-2">
+                            {block.blocker_picture ? (
+                              <img 
+                                src={block.blocker_picture} 
+                                alt="" 
+                                className="w-8 h-8 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 bg-[#4db6ac]/30 rounded-full flex items-center justify-center text-xs font-bold text-[#4db6ac]">
+                                {block.blocker_username[0]?.toUpperCase()}
+                              </div>
+                            )}
+                            <span className="text-sm font-medium text-white/90">@{block.blocker_username}</span>
+                          </div>
+
+                          <i className="fa-solid fa-arrow-right text-red-400 text-sm" />
+
+                          {/* Blocked */}
+                          <div className="flex items-center gap-2">
+                            {block.blocked_picture ? (
+                              <img 
+                                src={block.blocked_picture} 
+                                alt="" 
+                                className="w-8 h-8 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 bg-red-500/30 rounded-full flex items-center justify-center text-xs font-bold text-red-400">
+                                {block.blocked_username[0]?.toUpperCase()}
+                              </div>
+                            )}
+                            <span className="text-sm font-medium text-white/90">@{block.blocked_username}</span>
+                          </div>
+                        </div>
+
+                        <div className="text-xs text-white/50">
+                          {new Date(block.blocked_at).toLocaleDateString()}
+                        </div>
+                      </div>
+
+                      {/* Block Reason */}
+                      {block.reason && (
+                        <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+                          <div className="text-sm text-white/70">
+                            <i className="fa-solid fa-quote-left mr-2 text-xs text-red-400/60" />
+                            {block.reason}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => navigate(`/profile/${block.blocker_username}`)}
+                          className="flex-1 py-2 text-xs rounded-lg bg-white/5 border border-white/10 hover:bg-white/10"
+                        >
+                          View @{block.blocker_username}
+                        </button>
+                        <button
+                          onClick={() => navigate(`/profile/${block.blocked_username}`)}
+                          className="flex-1 py-2 text-xs rounded-lg bg-white/5 border border-white/10 hover:bg-white/10"
+                        >
+                          View @{block.blocked_username}
+                        </button>
+                        <button
+                          onClick={() => handleAdminUnblock(block.id)}
+                          disabled={unblockingId === block.id}
+                          className="flex-1 py-2 text-xs rounded-lg bg-green-500/20 border border-green-500/30 text-green-400 hover:bg-green-500/30 disabled:opacity-50"
+                        >
+                          {unblockingId === block.id ? 'Unblocking...' : 'Unblock'}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
