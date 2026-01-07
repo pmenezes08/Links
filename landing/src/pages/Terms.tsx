@@ -47,14 +47,20 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">4. User Content</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">4. User Content & Liability</h2>
             <p className="text-white/80 leading-relaxed mb-4">
               You retain ownership of content you post on C-Point. By posting content, you grant us a 
               non-exclusive, worldwide, royalty-free license to use, display, and distribute your content 
               in connection with the Service.
             </p>
+            <p className="text-white/80 leading-relaxed mb-4">
+              <strong>You are solely responsible for your content and the consequences of posting it.</strong> This 
+              includes any legal liability, claims, or damages that may arise from your content.
+            </p>
             <p className="text-white/80 leading-relaxed">
-              You are solely responsible for your content and the consequences of posting it.
+              C-Point does not pre-screen, monitor, or endorse user-generated content. We are not responsible 
+              for any content posted by users, including content that may be offensive, harmful, inaccurate, 
+              or otherwise objectionable.
             </p>
           </section>
 
@@ -91,11 +97,23 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">7. Community Guidelines</h2>
+            <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">7. Community Administration & Content Responsibility</h2>
             <p className="text-white/80 leading-relaxed mb-4">
-              Community owners and administrators are responsible for moderating their communities. 
-              They may establish additional rules for their communities, provided they do not conflict 
-              with these Terms.
+              <strong>Community owners and administrators bear full responsibility for monitoring, moderating, 
+              reporting, and managing all content posted within their communities.</strong> This includes but 
+              is not limited to: reviewing posts, removing inappropriate content, responding to user reports, 
+              enforcing community rules, and taking action against users who violate guidelines.
+            </p>
+            <p className="text-white/80 leading-relaxed mb-4">
+              Community administrators may establish additional rules for their communities, provided they 
+              do not conflict with these Terms. By creating or administering a community, you acknowledge 
+              and accept this responsibility.
+            </p>
+            <p className="text-white/80 leading-relaxed font-semibold">
+              C-POINT IS NOT RESPONSIBLE OR LIABLE FOR ANY USER-GENERATED CONTENT, INCLUDING BUT NOT 
+              LIMITED TO POSTS, COMMENTS, IMAGES, VIDEOS, POLLS, OR ANY OTHER CONTENT UPLOADED OR SHARED 
+              BY USERS. C-POINT ACTS SOLELY AS A PLATFORM PROVIDER AND DOES NOT ENDORSE, VERIFY, OR 
+              ASSUME RESPONSIBILITY FOR ANY CONTENT CREATED BY USERS OR COMMUNITY ADMINISTRATORS.
             </p>
           </section>
 
@@ -127,10 +145,20 @@ const Terms = () => {
 
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-[#4db6ac]">11. Limitation of Liability</h2>
-            <p className="text-white/80 leading-relaxed">
+            <p className="text-white/80 leading-relaxed mb-4">
               TO THE MAXIMUM EXTENT PERMITTED BY LAW, C-POINT SHALL NOT BE LIABLE FOR ANY INDIRECT, 
               INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING FROM YOUR USE OF THE SERVICE.
             </p>
+            <p className="text-white/80 leading-relaxed mb-4">
+              WITHOUT LIMITING THE FOREGOING, C-POINT SHALL NOT BE LIABLE FOR:
+            </p>
+            <ul className="list-disc list-inside text-white/80 space-y-2 ml-4">
+              <li>Any user-generated content, including posts, comments, images, videos, or other materials uploaded by users</li>
+              <li>Any actions taken by community administrators or moderators</li>
+              <li>Any disputes between users or between users and community administrators</li>
+              <li>Any harm resulting from content posted within communities</li>
+              <li>Any failure by community administrators to properly moderate their communities</li>
+            </ul>
           </section>
 
           <section>
