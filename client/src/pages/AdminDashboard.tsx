@@ -139,7 +139,7 @@ export default function AdminDashboard() {
     [communityChildrenMap]
   )
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review'>('overview')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'premium' | 'free'>('all')
@@ -175,6 +175,30 @@ export default function AdminDashboard() {
   const [broadcastSending, setBroadcastSending] = useState(false)
   const [broadcastSuccess, setBroadcastSuccess] = useState<string | null>(null)
   const [broadcastError, setBroadcastError] = useState<string | null>(null)
+
+  // Content Review state
+  type ReportedPost = {
+    report_id: number
+    post_id: number
+    reporter_username: string
+    reason: string
+    details?: string
+    status: string
+    reviewed_by?: string
+    reviewed_at?: string
+    reported_at: string
+    post_author: string
+    post_content: string
+    image_path?: string
+    video_path?: string
+    post_timestamp: string
+    community_id?: number
+    community_name?: string
+    report_count: number
+  }
+  const [reportedPosts, setReportedPosts] = useState<ReportedPost[]>([])
+  const [reportsLoading, setReportsLoading] = useState(false)
+  const [reportsFilter, setReportsFilter] = useState<'pending' | 'reviewed' | 'dismissed' | 'all'>('pending')
 
   // New user form
   const [newUser, setNewUser] = useState({
@@ -272,6 +296,68 @@ export default function AdminDashboard() {
     }
   }, [])
 
+  const loadReportedPosts = useCallback(async (status: string = 'pending') => {
+    setReportsLoading(true)
+    try {
+      const response = await fetch(`/api/admin/reported_posts?status=${status}`, {
+        credentials: 'include'
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setReportedPosts(data.reports || [])
+      } else {
+        setReportedPosts([])
+      }
+    } catch (error) {
+      console.error('Error loading reported posts:', error)
+      setReportedPosts([])
+    } finally {
+      setReportsLoading(false)
+    }
+  }, [])
+
+  const handleReviewReport = async (reportId: number, action: 'dismiss' | 'reviewed') => {
+    try {
+      const response = await fetch('/api/admin/review_report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ report_id: reportId, action })
+      })
+      const data = await response.json()
+      if (data?.success) {
+        loadReportedPosts(reportsFilter)
+      } else {
+        alert(data?.error || 'Failed to review report')
+      }
+    } catch (error) {
+      console.error('Error reviewing report:', error)
+      alert('Error reviewing report')
+    }
+  }
+
+  const handleDeleteReportedPost = async (postId: number) => {
+    if (!confirm('Are you sure you want to delete this post? This cannot be undone.')) return
+    try {
+      const response = await fetch('/api/admin/delete_reported_post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ post_id: postId })
+      })
+      const data = await response.json()
+      if (data?.success) {
+        alert('Post deleted successfully')
+        loadReportedPosts(reportsFilter)
+      } else {
+        alert(data?.error || 'Failed to delete post')
+      }
+    } catch (error) {
+      console.error('Error deleting post:', error)
+      alert('Error deleting post')
+    }
+  }
+
   const handleWelcomeCardUpload = async (cardIndex: number, file: File) => {
     setWelcomeUploadingIndex(cardIndex)
     setWelcomeError('')
@@ -308,6 +394,21 @@ export default function AdminDashboard() {
     loadCurrentLogo()
     loadWelcomeCards()
   }, [setTitle, loadWelcomeCards])
+
+  // Load reported posts when content_review tab is active
+  useEffect(() => {
+    if (activeTab === 'content_review') {
+      loadReportedPosts(reportsFilter)
+    }
+  }, [activeTab, reportsFilter, loadReportedPosts])
+
+  // Check URL for content_review tab parameter
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('tab') === 'content_review') {
+      setActiveTab('content_review')
+    }
+  }, [])
 
   const handleLogoUpload = async (file: File) => {
     const formData = new FormData()
@@ -753,6 +854,15 @@ export default function AdminDashboard() {
           >
             <div className="pt-2">Key Metrics</div>
             <div className={`h-0.5 ${activeTab === 'metrics' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+          </button>
+          <button 
+            onClick={() => setActiveTab('content_review')}
+            className={`flex-1 text-center text-sm font-medium ${
+              activeTab === 'content_review' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
+            }`}
+          >
+            <div className="pt-2">Reports</div>
+            <div className={`h-0.5 ${activeTab === 'content_review' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
         </div>
       </div>
@@ -1306,6 +1416,125 @@ export default function AdminDashboard() {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Content Review Tab */}
+        {activeTab === 'content_review' && (
+          <div className="space-y-4">
+            <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-[#4db6ac]">Reported Posts</h3>
+                <select
+                  value={reportsFilter}
+                  onChange={(e) => setReportsFilter(e.target.value as any)}
+                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-[#4db6ac]"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="dismissed">Dismissed</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
+
+              {reportsLoading ? (
+                <div className="text-center py-8 text-white/60">Loading reports...</div>
+              ) : reportedPosts.length === 0 ? (
+                <div className="text-center py-8 text-white/60">
+                  <i className="fa-solid fa-check-circle text-2xl mb-2 text-green-400" />
+                  <div>No {reportsFilter === 'all' ? '' : reportsFilter} reports</div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {reportedPosts.map(report => (
+                    <div key={report.report_id} className="bg-black/30 border border-white/10 rounded-xl p-4">
+                      {/* Report Header */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                            report.status === 'pending' ? 'bg-orange-500/20 text-orange-400' :
+                            report.status === 'reviewed' ? 'bg-green-500/20 text-green-400' :
+                            'bg-white/10 text-white/60'
+                          }`}>
+                            {report.status.toUpperCase()}
+                          </div>
+                          <span className="text-xs text-white/60">
+                            {report.report_count} report{report.report_count !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <div className="text-xs text-white/50">
+                          {new Date(report.reported_at).toLocaleDateString()}
+                        </div>
+                      </div>
+
+                      {/* Report Reason */}
+                      <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded-lg">
+                        <div className="text-sm font-medium text-red-400 mb-1">
+                          <i className="fa-solid fa-flag mr-2" />
+                          {report.reason}
+                        </div>
+                        {report.details && (
+                          <div className="text-xs text-white/60">{report.details}</div>
+                        )}
+                        <div className="text-[11px] text-white/40 mt-1">
+                          Reported by: @{report.reporter_username}
+                        </div>
+                      </div>
+
+                      {/* Post Preview */}
+                      <div className="border border-white/10 rounded-lg p-3 mb-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-6 h-6 bg-[#4db6ac]/30 rounded-full flex items-center justify-center text-[10px] font-bold text-[#4db6ac]">
+                            {report.post_author[0]?.toUpperCase()}
+                          </div>
+                          <span className="text-sm font-medium text-white/80">@{report.post_author}</span>
+                          {report.community_name && (
+                            <span className="text-xs text-[#4db6ac]">in {report.community_name}</span>
+                          )}
+                        </div>
+                        <div className="text-sm text-white/70 line-clamp-3">{report.post_content}</div>
+                        {(report.image_path || report.video_path) && (
+                          <div className="mt-2 text-xs text-white/50">
+                            <i className={`fa-solid ${report.video_path ? 'fa-video' : 'fa-image'} mr-1`} />
+                            Has media attachment
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      {report.status === 'pending' && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => navigate(`/post/${report.post_id}`)}
+                            className="flex-1 py-2 text-xs rounded-lg bg-white/5 border border-white/10 hover:bg-white/10"
+                          >
+                            View Post
+                          </button>
+                          <button
+                            onClick={() => handleReviewReport(report.report_id, 'dismiss')}
+                            className="flex-1 py-2 text-xs rounded-lg bg-white/10 border border-white/20 hover:bg-white/15"
+                          >
+                            Dismiss
+                          </button>
+                          <button
+                            onClick={() => handleDeleteReportedPost(report.post_id)}
+                            className="flex-1 py-2 text-xs rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30"
+                          >
+                            Delete Post
+                          </button>
+                        </div>
+                      )}
+                      {report.status !== 'pending' && report.reviewed_by && (
+                        <div className="text-xs text-white/40">
+                          {report.status === 'dismissed' ? 'Dismissed' : 'Reviewed'} by @{report.reviewed_by}
+                          {report.reviewed_at && ` on ${new Date(report.reviewed_at).toLocaleDateString()}`}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

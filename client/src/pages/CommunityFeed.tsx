@@ -168,6 +168,13 @@ export default function CommunityFeed() {
   const storyReplyInputRef = useRef<HTMLInputElement | null>(null)
   // const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
   // const [storyEditorNewText, setStoryEditorNewText] = useState('')
+  
+  // Report/Hide post state
+  const [reportModalPost, setReportModalPost] = useState<Post | null>(null)
+  const [hideModalPost, setHideModalPost] = useState<Post | null>(null)
+  const [reportReason, setReportReason] = useState('')
+  const [reportDetails, setReportDetails] = useState('')
+  const [reportSubmitting, setReportSubmitting] = useState(false)
 
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
@@ -1429,6 +1436,83 @@ export default function CommunityFeed() {
     }
   }
 
+  // Hide post - removes from user's feed
+  async function handleHidePost(postId: number, alsoReport: boolean = false) {
+    const hiddenPost = postsOnly.find((p: Post) => p.id === postId)
+    if (!hiddenPost) return
+
+    // Optimistically remove from state
+    setData((prev: any) => {
+      if (!prev) return prev
+      const posts = Array.isArray(prev.posts) ? prev.posts : []
+      return { ...prev, posts: posts.filter((p: any) => p.id !== postId) }
+    })
+
+    try {
+      const res = await fetch('/api/hide_post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ post_id: postId })
+      })
+      const j = await res.json().catch(() => null)
+      if (!j?.success) {
+        // Restore on failure
+        setData((prev: any) => {
+          if (!prev) return prev
+          const posts = Array.isArray(prev.posts) ? prev.posts : []
+          return { ...prev, posts: [hiddenPost, ...posts] }
+        })
+        alert(j?.error || 'Failed to hide post')
+        return
+      }
+
+      // If also reporting, open report modal
+      if (alsoReport) {
+        setReportModalPost(hiddenPost)
+      }
+    } catch {
+      setData((prev: any) => {
+        if (!prev) return prev
+        const posts = Array.isArray(prev.posts) ? prev.posts : []
+        return { ...prev, posts: [hiddenPost, ...posts] }
+      })
+      alert('Network error. Could not hide post.')
+    }
+  }
+
+  // Report post
+  async function handleReportPost() {
+    if (!reportModalPost || !reportReason) return
+    setReportSubmitting(true)
+
+    try {
+      const res = await fetch('/api/report_post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          post_id: reportModalPost.id,
+          reason: reportReason,
+          details: reportDetails
+        })
+      })
+      const j = await res.json().catch(() => null)
+      if (j?.success) {
+        alert(j.message || 'Post reported successfully')
+        setReportModalPost(null)
+        setReportReason('')
+        setReportDetails('')
+      } else {
+        alert(j?.error || 'Failed to report post')
+      }
+    } catch {
+      alert('Network error. Could not report post.')
+    } finally {
+      setReportSubmitting(false)
+    }
+  }
+
   // Optimistic poll delete
   async function handleDeletePoll(postId: number, pollId: number) {
     const originalPost = postsOnly.find((p: Post) => p.id === postId)
@@ -1908,6 +1992,8 @@ export default function CommunityFeed() {
                   onMarkViewed={markPostViewed}
                   onDeletePost={handleDeletePost}
                   onDeletePoll={handleDeletePoll}
+                  onHidePost={(post: Post) => setHideModalPost(post)}
+                  onReportPost={(post: Post) => setReportModalPost(post)}
                 />
                 {/* Dark overlay for all posts except first one during reaction highlight */}
                 {highlightStep === 'reaction' && idx !== 0 && (
@@ -2771,6 +2857,126 @@ export default function CommunityFeed() {
           </div>
         </div>
       )}
+
+      {/* Hide Post Modal - Ask if user wants to also report */}
+      {hideModalPost && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          onClick={(e) => e.currentTarget === e.target && setHideModalPost(null)}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
+                <i className="fa-solid fa-eye-slash text-orange-400" />
+              </div>
+              <div className="font-semibold text-lg text-white">Hide Post</div>
+            </div>
+            <p className="text-sm text-[#9fb0b5] mb-5">
+              This post will be hidden from your feed. Would you also like to report it?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="w-full py-2.5 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 font-medium hover:bg-red-500/30 transition-colors"
+                onClick={() => {
+                  const post = hideModalPost
+                  setHideModalPost(null)
+                  handleHidePost(post.id, true) // Hide and report
+                }}
+              >
+                Hide & Report
+              </button>
+              <button
+                className="w-full py-2.5 rounded-lg bg-white/10 text-white border border-white/10 font-medium hover:bg-white/15 transition-colors"
+                onClick={() => {
+                  const post = hideModalPost
+                  setHideModalPost(null)
+                  handleHidePost(post.id, false) // Just hide
+                }}
+              >
+                Just Hide
+              </button>
+              <button
+                className="w-full py-2.5 rounded-lg text-[#9fb0b5] hover:text-white transition-colors"
+                onClick={() => setHideModalPost(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report Post Modal */}
+      {reportModalPost && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          onClick={(e) => e.currentTarget === e.target && !reportSubmitting && setReportModalPost(null)}
+        >
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0b0f10] p-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                <i className="fa-solid fa-flag text-red-400" />
+              </div>
+              <div className="font-semibold text-lg text-white">Report Post</div>
+            </div>
+            <p className="text-sm text-[#9fb0b5] mb-4">
+              Please select a reason for reporting this post. Our team will review it.
+            </p>
+            
+            <div className="space-y-2 mb-4">
+              {['Spam or misleading', 'Harassment or bullying', 'Hate speech', 'Violence or threats', 'Explicit content', 'Other'].map(reason => (
+                <button
+                  key={reason}
+                  className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+                    reportReason === reason 
+                      ? 'border-red-500/50 bg-red-500/10 text-white' 
+                      : 'border-white/10 bg-white/5 text-[#9fb0b5] hover:bg-white/10'
+                  }`}
+                  onClick={() => setReportReason(reason)}
+                  disabled={reportSubmitting}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
+
+            {reportReason && (
+              <div className="mb-4">
+                <label className="block text-sm text-[#9fb0b5] mb-2">Additional details (optional)</label>
+                <textarea
+                  value={reportDetails}
+                  onChange={(e) => setReportDetails(e.target.value)}
+                  placeholder="Provide more context about why you're reporting this post..."
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/40 focus:outline-none focus:border-red-500/50 resize-none"
+                  rows={3}
+                  disabled={reportSubmitting}
+                />
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-colors"
+                onClick={() => {
+                  setReportModalPost(null)
+                  setReportReason('')
+                  setReportDetails('')
+                }}
+                disabled={reportSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleReportPost}
+                disabled={!reportReason || reportSubmitting}
+              >
+                {reportSubmitting ? 'Submitting...' : 'Submit Report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2779,7 +2985,7 @@ export default function CommunityFeed() {
 
 // Ad components removed
 
-function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void }) {
+function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onToggleReaction, onPollVote, onPollClick, onOpenVoters, communityId, navigate, onAddReply, onOpenReactions, onPreviewImage, onSummaryUpdate, onMarkViewed, onDeletePost, onDeletePoll, onHidePost, onReportPost }: { post: Post & { display_timestamp?: string }, idx: number, currentUser: string, isAdmin: boolean, highlightStep: 'reaction' | 'post' | null, onOpen: ()=>void, onToggleReaction: (postId:number, reaction:string)=>void, onPollVote?: (postId:number, pollId:number, optionId:number)=>void, onPollClick?: ()=>void, onOpenVoters?: (pollId:number)=>void, communityId?: string, navigate?: any, onAddReply?: (postId:number, reply: Reply)=>void, onOpenReactions?: ()=>void, onPreviewImage?: (src:string)=>void, onSummaryUpdate?: (postId: number, summary: string) => void, onMarkViewed?: (postId: number, alreadyViewed?: boolean) => void, onDeletePost?: (postId: number) => void, onDeletePoll?: (postId: number, pollId: number) => void, onHidePost?: (post: Post) => void, onReportPost?: (post: Post) => void }) {
   const cardRef = useRef<HTMLDivElement | null>(null)
   const mediaInputRef = useRef<HTMLInputElement | null>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -3001,6 +3207,19 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   onClick={(e)=> { e.stopPropagation(); setIsEditing(true) }}>
                   <i className="fa-regular fa-pen-to-square" />
                 </button>
+              )}
+              {/* Hide and Report buttons - available to all users for other people's posts */}
+              {post.username !== currentUser && (
+                <>
+                  <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-orange-400" title="Hide post"
+                    onClick={(e)=> { e.stopPropagation(); onHidePost?.(post) }}>
+                    <i className="fa-solid fa-eye-slash" />
+                  </button>
+                  <button className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400" title="Report post"
+                    onClick={(e)=> { e.stopPropagation(); onReportPost?.(post) }}>
+                    <i className="fa-solid fa-flag" />
+                  </button>
+                </>
               )}
             </div>
           </div>

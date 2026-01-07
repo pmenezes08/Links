@@ -3391,6 +3391,36 @@ def init_db():
                           FOREIGN KEY (appointed_by) REFERENCES users (username),
                           UNIQUE(community_id, username))''')
             
+            # Create post_reports table for content moderation
+            logger.info("Creating post_reports table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS post_reports
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          post_id INTEGER NOT NULL,
+                          reporter_username VARCHAR(191) NOT NULL,
+                          reason TEXT NOT NULL,
+                          details TEXT,
+                          status VARCHAR(50) DEFAULT 'pending',
+                          reviewed_by VARCHAR(191),
+                          reviewed_at TIMESTAMP NULL,
+                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                          FOREIGN KEY (reporter_username) REFERENCES users(username),
+                          UNIQUE KEY unique_report (post_id, reporter_username))''')
+            c.execute("CREATE INDEX IF NOT EXISTS idx_post_reports_status ON post_reports(status)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_post_reports_post ON post_reports(post_id)")
+            
+            # Create hidden_posts table for user-hidden content
+            logger.info("Creating hidden_posts table...")
+            c.execute('''CREATE TABLE IF NOT EXISTS hidden_posts
+                         (id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          post_id INTEGER NOT NULL,
+                          username VARCHAR(191) NOT NULL,
+                          hidden_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users(username),
+                          UNIQUE KEY unique_hidden (post_id, username))''')
+            c.execute("CREATE INDEX IF NOT EXISTS idx_hidden_posts_user ON hidden_posts(username)")
+            
             # Add is_active columns to users and communities if they don't exist
             logger.info("Adding is_active columns...")
             
@@ -17460,6 +17490,321 @@ def delete_post():
         logger.error(f"Error deleting post {post_id} for {username}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
+
+# ==================== POST REPORT/HIDE ENDPOINTS ====================
+
+@app.route('/api/report_post', methods=['POST'])
+@login_required
+def report_post():
+    """Report a post for content moderation"""
+    username = session['username']
+    data = request.get_json() if request.is_json else {}
+    post_id = data.get('post_id') or request.form.get('post_id', type=int)
+    reason = data.get('reason', '').strip() or request.form.get('reason', '').strip()
+    details = data.get('details', '').strip() or request.form.get('details', '').strip()
+    
+    if not post_id:
+        return jsonify({'success': False, 'error': 'Post ID is required'}), 400
+    if not reason:
+        return jsonify({'success': False, 'error': 'Reason is required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Check if post exists
+            c.execute(f"SELECT id, username, community_id FROM posts WHERE id = {ph}", (post_id,))
+            post = c.fetchone()
+            if not post:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            
+            post_author = post['username'] if hasattr(post, 'keys') else post[1]
+            community_id = post['community_id'] if hasattr(post, 'keys') else post[2]
+            
+            # Don't allow users to report their own posts
+            if post_author == username:
+                return jsonify({'success': False, 'error': 'You cannot report your own post'}), 400
+            
+            # Insert report (or update if already reported)
+            try:
+                c.execute(f"""
+                    INSERT INTO post_reports (post_id, reporter_username, reason, details, status)
+                    VALUES ({ph}, {ph}, {ph}, {ph}, 'pending')
+                """, (post_id, username, reason, details))
+            except Exception as dup_err:
+                # Already reported by this user
+                logger.info(f"User {username} already reported post {post_id}")
+                return jsonify({'success': True, 'message': 'You have already reported this post'})
+            
+            conn.commit()
+            
+            # Create notification for all app admins
+            try:
+                c.execute("SELECT username FROM users WHERE username = 'admin' OR subscription = 'admin'")
+                admins = c.fetchall()
+                if not admins:
+                    # Fallback to just 'admin' user
+                    admins = [{'username': 'admin'}]
+                
+                for admin_row in admins:
+                    admin_username = admin_row['username'] if hasattr(admin_row, 'keys') else admin_row[0]
+                    notification_message = f"⚠️ Post reported: {reason}"
+                    notification_link = f"/admin_dashboard_react?tab=content_review"
+                    
+                    try:
+                        create_notification(admin_username, username, 'post_report', post_id, community_id, notification_message, link=notification_link)
+                        send_push_to_user(admin_username, {
+                            'title': 'Post Reported',
+                            'body': f'{username} reported a post: {reason}',
+                            'url': notification_link,
+                            'tag': f'post-report-{post_id}'
+                        })
+                    except Exception as notif_err:
+                        logger.warning(f"Failed to notify admin {admin_username} about report: {notif_err}")
+            except Exception as admin_err:
+                logger.warning(f"Failed to notify admins about reported post: {admin_err}")
+            
+            logger.info(f"Post {post_id} reported by {username} for: {reason}")
+            return jsonify({'success': True, 'message': 'Post reported successfully. Our team will review it.'})
+    
+    except Exception as e:
+        logger.error(f"Error reporting post: {e}")
+        return jsonify({'success': False, 'error': 'Failed to report post'}), 500
+
+
+@app.route('/api/hide_post', methods=['POST'])
+@login_required
+def hide_post():
+    """Hide a post from the user's feed"""
+    username = session['username']
+    data = request.get_json() if request.is_json else {}
+    post_id = data.get('post_id') or request.form.get('post_id', type=int)
+    
+    if not post_id:
+        return jsonify({'success': False, 'error': 'Post ID is required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Check if post exists
+            c.execute(f"SELECT id FROM posts WHERE id = {ph}", (post_id,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            
+            # Insert hidden post record
+            try:
+                c.execute(f"""
+                    INSERT INTO hidden_posts (post_id, username)
+                    VALUES ({ph}, {ph})
+                """, (post_id, username))
+                conn.commit()
+            except Exception:
+                # Already hidden
+                return jsonify({'success': True, 'message': 'Post already hidden'})
+            
+            logger.info(f"Post {post_id} hidden by {username}")
+            return jsonify({'success': True, 'message': 'Post hidden'})
+    
+    except Exception as e:
+        logger.error(f"Error hiding post: {e}")
+        return jsonify({'success': False, 'error': 'Failed to hide post'}), 500
+
+
+@app.route('/api/unhide_post', methods=['POST'])
+@login_required
+def unhide_post():
+    """Unhide a previously hidden post"""
+    username = session['username']
+    data = request.get_json() if request.is_json else {}
+    post_id = data.get('post_id') or request.form.get('post_id', type=int)
+    
+    if not post_id:
+        return jsonify({'success': False, 'error': 'Post ID is required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            c.execute(f"DELETE FROM hidden_posts WHERE post_id = {ph} AND username = {ph}", (post_id, username))
+            conn.commit()
+            
+            logger.info(f"Post {post_id} unhidden by {username}")
+            return jsonify({'success': True, 'message': 'Post unhidden'})
+    
+    except Exception as e:
+        logger.error(f"Error unhiding post: {e}")
+        return jsonify({'success': False, 'error': 'Failed to unhide post'}), 500
+
+
+@app.route('/api/admin/reported_posts', methods=['GET'])
+@login_required
+def admin_get_reported_posts():
+    """Get all reported posts for admin review"""
+    username = session['username']
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    status_filter = request.args.get('status', 'pending')  # pending, reviewed, dismissed, all
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Build query based on status filter
+            if status_filter == 'all':
+                status_clause = ""
+                params = ()
+            else:
+                status_clause = f"WHERE r.status = {ph}"
+                params = (status_filter,)
+            
+            query = f"""
+                SELECT r.id as report_id, r.post_id, r.reporter_username, r.reason, r.details,
+                       r.status, r.reviewed_by, r.reviewed_at, r.created_at as reported_at,
+                       p.username as post_author, p.content as post_content, p.image_path, p.video_path,
+                       p.timestamp as post_timestamp, p.community_id,
+                       c.name as community_name,
+                       (SELECT COUNT(*) FROM post_reports pr WHERE pr.post_id = r.post_id) as report_count
+                FROM post_reports r
+                JOIN posts p ON r.post_id = p.id
+                LEFT JOIN communities c ON p.community_id = c.id
+                {status_clause}
+                ORDER BY r.created_at DESC
+            """
+            c.execute(query, params)
+            reports_raw = c.fetchall()
+            
+            reports = []
+            for row in reports_raw:
+                report = dict(row) if hasattr(row, 'keys') else {
+                    'report_id': row[0], 'post_id': row[1], 'reporter_username': row[2],
+                    'reason': row[3], 'details': row[4], 'status': row[5],
+                    'reviewed_by': row[6], 'reviewed_at': row[7], 'reported_at': row[8],
+                    'post_author': row[9], 'post_content': row[10], 'image_path': row[11],
+                    'video_path': row[12], 'post_timestamp': row[13], 'community_id': row[14],
+                    'community_name': row[15], 'report_count': row[16]
+                }
+                reports.append(report)
+            
+            return jsonify({'success': True, 'reports': reports})
+    
+    except Exception as e:
+        logger.error(f"Error getting reported posts: {e}")
+        return jsonify({'success': False, 'error': 'Failed to get reported posts'}), 500
+
+
+@app.route('/api/admin/review_report', methods=['POST'])
+@login_required
+def admin_review_report():
+    """Mark a report as reviewed or dismissed"""
+    username = session['username']
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json() if request.is_json else {}
+    report_id = data.get('report_id')
+    action = data.get('action', 'dismiss')  # dismiss, reviewed
+    
+    if not report_id:
+        return jsonify({'success': False, 'error': 'Report ID is required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            new_status = 'dismissed' if action == 'dismiss' else 'reviewed'
+            
+            if USE_MYSQL:
+                c.execute(f"""
+                    UPDATE post_reports 
+                    SET status = {ph}, reviewed_by = {ph}, reviewed_at = NOW()
+                    WHERE id = {ph}
+                """, (new_status, username, report_id))
+            else:
+                c.execute(f"""
+                    UPDATE post_reports 
+                    SET status = {ph}, reviewed_by = {ph}, reviewed_at = datetime('now')
+                    WHERE id = {ph}
+                """, (new_status, username, report_id))
+            
+            conn.commit()
+            
+            logger.info(f"Report {report_id} {new_status} by {username}")
+            return jsonify({'success': True, 'message': f'Report {new_status}'})
+    
+    except Exception as e:
+        logger.error(f"Error reviewing report: {e}")
+        return jsonify({'success': False, 'error': 'Failed to review report'}), 500
+
+
+@app.route('/api/admin/delete_reported_post', methods=['POST'])
+@login_required
+def admin_delete_reported_post():
+    """Delete a reported post and mark all its reports as reviewed"""
+    username = session['username']
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    data = request.get_json() if request.is_json else {}
+    post_id = data.get('post_id')
+    
+    if not post_id:
+        return jsonify({'success': False, 'error': 'Post ID is required'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Get post info for cache invalidation
+            c.execute(f"SELECT community_id FROM posts WHERE id = {ph}", (post_id,))
+            post = c.fetchone()
+            community_id = post['community_id'] if post and hasattr(post, 'keys') else (post[0] if post else None)
+            
+            # Mark all reports for this post as reviewed
+            if USE_MYSQL:
+                c.execute(f"""
+                    UPDATE post_reports 
+                    SET status = 'reviewed', reviewed_by = {ph}, reviewed_at = NOW()
+                    WHERE post_id = {ph}
+                """, (username, post_id))
+            else:
+                c.execute(f"""
+                    UPDATE post_reports 
+                    SET status = 'reviewed', reviewed_by = {ph}, reviewed_at = datetime('now')
+                    WHERE post_id = {ph}
+                """, (username, post_id))
+            
+            # Delete the post (this will cascade to delete related data)
+            c.execute(f"DELETE FROM replies WHERE post_id = {ph}", (post_id,))
+            c.execute(f"DELETE FROM posts WHERE id = {ph}", (post_id,))
+            
+            conn.commit()
+            
+            # Invalidate cache
+            if community_id:
+                try:
+                    invalidate_community_cache(community_id)
+                except Exception as cache_err:
+                    logger.warning(f"Failed to invalidate cache: {cache_err}")
+            
+            logger.info(f"Reported post {post_id} deleted by admin {username}")
+            return jsonify({'success': True, 'message': 'Post deleted successfully'})
+    
+    except Exception as e:
+        logger.error(f"Error deleting reported post: {e}")
+        return jsonify({'success': False, 'error': 'Failed to delete post'}), 500
+
+
+# ==================== END POST REPORT/HIDE ENDPOINTS ====================
+
+
 @app.route('/edit_post', methods=['POST'])
 @login_required
 def edit_post():
@@ -20469,15 +20814,18 @@ def api_community_feed(community_id):
             # Posts - OPTIMIZED with batch queries to avoid N+1 problem
             # Limit initial posts returned to reduce payload; clients can paginate if needed
             # Exclude posts with pending videos (talking avatar still generating)
+            # Exclude posts hidden by the current user
             c.execute(
                 """
-                SELECT * FROM posts 
-                WHERE community_id = ? 
-                AND (video_path IS NULL OR video_path != 'pending')
-                ORDER BY id DESC
+                SELECT p.* FROM posts p
+                LEFT JOIN hidden_posts hp ON p.id = hp.post_id AND hp.username = ?
+                WHERE p.community_id = ? 
+                AND (p.video_path IS NULL OR p.video_path != 'pending')
+                AND hp.id IS NULL
+                ORDER BY p.id DESC
                 LIMIT 100
                 """,
-                (community_id,)
+                (username, community_id)
             )
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]

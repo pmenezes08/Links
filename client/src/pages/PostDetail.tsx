@@ -143,6 +143,13 @@ export default function PostDetail(){
   const viewportBaseRef = useRef<number | null>(null)
   const [viewportLift, setViewportLift] = useState(0)
   const contentRef = useRef<HTMLDivElement | null>(null)
+  
+  // Report/Hide post state
+  const [showHideModal, setShowHideModal] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportReason, setReportReason] = useState('')
+  const [reportDetails, setReportDetails] = useState('')
+  const [reportSubmitting, setReportSubmitting] = useState(false)
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
@@ -808,6 +815,62 @@ export default function PostDetail(){
     }
   }
 
+  async function hidePost(alsoReport: boolean = false) {
+    if (!post) return
+    try {
+      const res = await fetch('/api/hide_post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ post_id: post.id })
+      })
+      const j = await res.json().catch(() => null)
+      if (j?.success) {
+        if (alsoReport) {
+          setShowHideModal(false)
+          setShowReportModal(true)
+        } else {
+          navigate(-1)
+        }
+      } else {
+        alert(j?.error || 'Failed to hide post')
+      }
+    } catch {
+      alert('Network error. Could not hide post.')
+    }
+  }
+
+  async function reportPost() {
+    if (!post || !reportReason) return
+    setReportSubmitting(true)
+    try {
+      const res = await fetch('/api/report_post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          post_id: post.id,
+          reason: reportReason,
+          details: reportDetails
+        })
+      })
+      const j = await res.json().catch(() => null)
+      if (j?.success) {
+        alert(j.message || 'Post reported successfully')
+        setShowReportModal(false)
+        setReportReason('')
+        setReportDetails('')
+        navigate(-1)
+      } else {
+        alert(j?.error || 'Failed to report post')
+      }
+    } catch {
+      alert('Network error. Could not report post.')
+    } finally {
+      setReportSubmitting(false)
+    }
+  }
+
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
@@ -876,6 +939,25 @@ export default function PostDetail(){
                   onClick={() => deletePost()}
                 >
                   <i className="fa-regular fa-trash-can" />
+                </button>
+              </div>
+            )}
+            {/* Hide and Report buttons for other users' posts */}
+            {currentUser?.username && currentUser.username !== post.username && (
+              <div className="flex items-center gap-1">
+                <button
+                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-orange-400"
+                  title="Hide post"
+                  onClick={() => setShowHideModal(true)}
+                >
+                  <i className="fa-solid fa-eye-slash" />
+                </button>
+                <button
+                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
+                  title="Report post"
+                  onClick={() => setShowReportModal(true)}
+                >
+                  <i className="fa-solid fa-flag" />
                 </button>
               </div>
             )}
@@ -1228,6 +1310,118 @@ export default function PostDetail(){
           if (fileInputRef.current) fileInputRef.current.value = ''
         }}
       />
+
+      {/* Hide Post Modal */}
+      {showHideModal && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          onClick={(e) => e.currentTarget === e.target && setShowHideModal(false)}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0b0f10] p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center">
+                <i className="fa-solid fa-eye-slash text-orange-400" />
+              </div>
+              <div className="font-semibold text-lg text-white">Hide Post</div>
+            </div>
+            <p className="text-sm text-[#9fb0b5] mb-5">
+              This post will be hidden from your feed. Would you also like to report it?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                className="w-full py-2.5 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 font-medium hover:bg-red-500/30 transition-colors"
+                onClick={() => hidePost(true)}
+              >
+                Hide & Report
+              </button>
+              <button
+                className="w-full py-2.5 rounded-lg bg-white/10 text-white border border-white/10 font-medium hover:bg-white/15 transition-colors"
+                onClick={() => hidePost(false)}
+              >
+                Just Hide
+              </button>
+              <button
+                className="w-full py-2.5 rounded-lg text-[#9fb0b5] hover:text-white transition-colors"
+                onClick={() => setShowHideModal(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report Post Modal */}
+      {showReportModal && (
+        <div 
+          className="fixed inset-0 z-[200] bg-black/80 backdrop-blur flex items-center justify-center p-4"
+          onClick={(e) => e.currentTarget === e.target && !reportSubmitting && setShowReportModal(false)}
+        >
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0b0f10] p-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
+                <i className="fa-solid fa-flag text-red-400" />
+              </div>
+              <div className="font-semibold text-lg text-white">Report Post</div>
+            </div>
+            <p className="text-sm text-[#9fb0b5] mb-4">
+              Please select a reason for reporting this post. Our team will review it.
+            </p>
+            
+            <div className="space-y-2 mb-4">
+              {['Spam or misleading', 'Harassment or bullying', 'Hate speech', 'Violence or threats', 'Explicit content', 'Other'].map(reason => (
+                <button
+                  key={reason}
+                  className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+                    reportReason === reason 
+                      ? 'border-red-500/50 bg-red-500/10 text-white' 
+                      : 'border-white/10 bg-white/5 text-[#9fb0b5] hover:bg-white/10'
+                  }`}
+                  onClick={() => setReportReason(reason)}
+                  disabled={reportSubmitting}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
+
+            {reportReason && (
+              <div className="mb-4">
+                <label className="block text-sm text-[#9fb0b5] mb-2">Additional details (optional)</label>
+                <textarea
+                  value={reportDetails}
+                  onChange={(e) => setReportDetails(e.target.value)}
+                  placeholder="Provide more context about why you're reporting this post..."
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/40 focus:outline-none focus:border-red-500/50 resize-none"
+                  rows={3}
+                  disabled={reportSubmitting}
+                />
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                className="flex-1 py-2.5 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-colors"
+                onClick={() => {
+                  setShowReportModal(false)
+                  setReportReason('')
+                  setReportDetails('')
+                }}
+                disabled={reportSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 py-2.5 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={reportPost}
+                disabled={!reportReason || reportSubmitting}
+              >
+                {reportSubmitting ? 'Submitting...' : 'Submit Report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )
