@@ -1836,7 +1836,43 @@ export default function CommunityFeed() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white pb-safe">
+    <div className="min-h-screen bg-black text-white pb-safe flex flex-col" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
+      {/* Fixed Header */}
+      <div
+        className="flex-shrink-0 border-b border-white/10"
+        style={{
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          background: '#000',
+        }}
+      >
+        <div className="h-14 flex items-center gap-2 px-3">
+          <button 
+            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            onClick={() => {
+              const rootParentId = data?.root_parent_id
+              const targetId = rootParentId || data?.community?.parent_community_id || community_id
+              navigate(`/communities?parent_id=${targetId}`)
+            }} 
+            aria-label="Back"
+          >
+            <i className="fa-solid fa-arrow-left text-white" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold truncate text-white text-sm">{data?.community?.name || 'Community'}</div>
+            {data?.community?.description && (
+              <div className="text-xs text-[#9fb0b5] truncate">{data.community.description}</div>
+            )}
+          </div>
+          <button 
+            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            aria-label="Search"
+            onClick={() => { setShowSearch(true); setTimeout(() => { try { (document.getElementById('hashtag-input') as HTMLInputElement)?.focus() } catch {} }, 50) }}
+          >
+            <i className="fa-solid fa-magnifying-glass text-white" />
+          </button>
+        </div>
+      </div>
+
       {(refreshHint || isRefreshing) && (
         <div 
           className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none transition-transform duration-150"
@@ -1860,10 +1896,10 @@ export default function CommunityFeed() {
             </div>
         </div>
       )}
-      {/* Scrollable content area below fixed global header */}
+      {/* Scrollable content area */}
       <div
         ref={scrollRef}
-        className={`app-content max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
+        className={`flex-1 overflow-y-auto max-w-2xl mx-auto w-full ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
@@ -1873,24 +1909,6 @@ export default function CommunityFeed() {
         }}
       >
         <div className="space-y-3">
-          {/* Back button + Search */}
-          <div className="flex items-center gap-2">
-            <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
-              onClick={()=> {
-                // Navigate to the root parent's timeline page
-                // Use root_parent_id to always go to the top-level parent community
-                const rootParentId = data?.root_parent_id
-                const targetId = rootParentId || data?.community?.parent_community_id || community_id
-                navigate(`/communities?parent_id=${targetId}`)
-              }}
-            >
-              <i className="fa-solid fa-arrow-left mr-1" /> Back to Community
-            </button>
-            <button className="ml-auto p-2 rounded-full border border-white/10 hover:bg-white/10" aria-label="Search"
-              onClick={()=> { setShowSearch(true); setTimeout(()=>{ try{ (document.getElementById('hashtag-input') as HTMLInputElement)?.focus() }catch{} }, 50) }}>
-              <i className="fa-solid fa-magnifying-glass" />
-            </button>
-          </div>
           <input
             ref={storyFileInputRef}
             type="file"
