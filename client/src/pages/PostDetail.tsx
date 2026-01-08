@@ -155,6 +155,18 @@ export default function PostDetail(){
   const [reportSubmitting, setReportSubmitting] = useState(false)
   const [blockReason, setBlockReason] = useState('')
   const [blockSubmitting, setBlockSubmitting] = useState(false)
+
+  // Star state
+  const [starring, setStarring] = useState(false)
+
+  // Viewers/Reactors modal state
+  type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
+  type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
+  const [showReactorsModal, setShowReactorsModal] = useState(false)
+  const [reactorsLoading, setReactorsLoading] = useState(false)
+  const [reactorGroups, setReactorGroups] = useState<ReactionGroup[]>([])
+  const [reactorViewers, setReactorViewers] = useState<PostViewer[]>([])
+  const [reactorViewCount, setReactorViewCount] = useState<number | null>(null)
   
   // Close more menu when clicking outside (with delay to prevent immediate close)
   useEffect(() => {
@@ -935,6 +947,113 @@ export default function PostDetail(){
     }
   }
 
+  // Toggle personal star
+  async function toggleStar() {
+    if (!post || starring) return
+    setStarring(true)
+    try {
+      const prev = (post as any).is_starred
+      setPost((p: any) => p ? { ...p, is_starred: !prev } : p)
+      const fd = new URLSearchParams({ post_id: String(post.id) })
+      const r = await fetch('/api/toggle_key_post', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
+      const j = await r.json().catch(() => null)
+      if (!j?.success) {
+        setPost((p: any) => p ? { ...p, is_starred: prev } : p)
+        alert(j?.error || 'Failed to update')
+      } else {
+        setPost((p: any) => p ? { ...p, is_starred: !!j.starred } : p)
+      }
+    } finally {
+      setStarring(false)
+    }
+  }
+
+  // Toggle community star (for admins)
+  async function toggleCommunityStar() {
+    if (!post || starring) return
+    setStarring(true)
+    try {
+      const prev = (post as any).is_community_starred
+      setPost((p: any) => p ? { ...p, is_community_starred: !prev } : p)
+      const fd = new URLSearchParams({ post_id: String(post.id) })
+      const r = await fetch('/api/toggle_community_key_post', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
+      const j = await r.json().catch(() => null)
+      if (!j?.success) {
+        setPost((p: any) => p ? { ...p, is_community_starred: prev } : p)
+        alert(j?.error || 'Failed to update')
+      } else {
+        setPost((p: any) => p ? { ...p, is_community_starred: !!j.starred } : p)
+      }
+    } finally {
+      setStarring(false)
+    }
+  }
+
+  // Format relative time for viewers
+  function formatViewerRelative(value?: string | null) {
+    if (!value) return ''
+    try {
+      const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+      const date = new Date(normalized)
+      if (Number.isNaN(date.getTime())) return ''
+      const diffMs = Date.now() - date.getTime()
+      const diffSeconds = Math.floor(diffMs / 1000)
+      if (diffSeconds < 60) return 'just now'
+      const diffMinutes = Math.floor(diffSeconds / 60)
+      if (diffMinutes < 60) return `${diffMinutes}m ago`
+      const diffHours = Math.floor(diffMinutes / 60)
+      if (diffHours < 24) return `${diffHours}h ago`
+      const diffDays = Math.floor(diffHours / 24)
+      if (diffDays < 7) return `${diffDays}d ago`
+      return date.toLocaleDateString()
+    } catch {
+      return ''
+    }
+  }
+
+  // Open viewers/reactors modal
+  async function openReactorsModal() {
+    if (!post) return
+    setShowReactorsModal(true)
+    setReactorsLoading(true)
+    setReactorGroups([])
+    setReactorViewers([])
+    setReactorViewCount(null)
+    try {
+      const r = await fetch(`/get_post_reactors/${post.id}`, { credentials: 'include' })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        setReactorGroups(Array.isArray(j.groups) ? j.groups : [])
+        const viewerList: PostViewer[] = Array.isArray(j.viewers)
+          ? (j.viewers as Array<any>)
+              .map((v) => ({
+                username: v?.username,
+                profile_picture: v?.profile_picture ?? null,
+                viewed_at: v?.viewed_at ?? null,
+              }))
+              .filter((v) => typeof v.username === 'string' && v.username.length > 0)
+          : []
+        setReactorViewers(viewerList)
+        if (typeof j.view_count === 'number') {
+          setReactorViewCount(j.view_count)
+        } else if (viewerList.length > 0) {
+          setReactorViewCount(viewerList.length)
+        } else {
+          setReactorViewCount(null)
+        }
+      }
+    } finally {
+      setReactorsLoading(false)
+    }
+  }
+
+  function closeReactorsModal() {
+    setShowReactorsModal(false)
+    setReactorGroups([])
+    setReactorViewers([])
+    setReactorViewCount(null)
+  }
+
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
   if (error || !post) return <div className="p-4 text-red-400">{error||'Error'}</div>
@@ -975,81 +1094,99 @@ export default function PostDetail(){
           >
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
-          <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={36} linkToProfile />
+          <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} linkToProfile />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold truncate text-white text-sm">{post.username}</div>
-            <div className="text-xs text-[#9fb0b5] flex items-center gap-2">
-              <span>{formatSmartTime((post as any).display_timestamp || post.timestamp)}</span>
-              <span className="flex items-center gap-1">
-                <i className="fa-regular fa-eye text-[10px]" />
-                {typeof post.view_count === 'number' ? post.view_count : 0}
-              </span>
-            </div>
+            <div className="font-medium tracking-[-0.01em] text-sm">{post.username}</div>
+            <div className="text-xs text-[#9fb0b5] tabular-nums">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
           </div>
-          {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
-            <div className="flex items-center">
-              <button
-                className="p-2 rounded-full text-[#9fb0b5] hover:text-[#4db6ac] hover:bg-white/10"
-                title="Edit"
-                onClick={() => startEditPost()}
+          <div className="flex items-center gap-1">
+            {/* Personal star (turquoise when selected) */}
+            <button 
+              className="px-2 py-1 rounded-full" 
+              title={(post as any).is_starred ? 'Unstar (yours)' : 'Star (yours)'} 
+              onClick={toggleStar} 
+              aria-label="Star post (yours)"
+            >
+              <i className={`${(post as any).is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_starred ? '#4db6ac' : '#6c757d' }} />
+            </button>
+            {/* Community star (yellow) for owner/admins */}
+            {(currentUser?.username === 'admin' || (post as any).is_community_admin) && (
+              <button 
+                className="px-2 py-1 rounded-full" 
+                title={(post as any).is_community_starred ? 'Unfeature (community)' : 'Feature (community)'} 
+                onClick={toggleCommunityStar} 
+                aria-label="Star post (community)"
               >
-                <i className="fa-regular fa-pen-to-square" />
+                <i className={`${(post as any).is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_community_starred ? '#ffd54f' : '#6c757d' }} />
               </button>
-              <button
-                className="p-2 rounded-full text-[#9fb0b5] hover:text-red-400 hover:bg-white/10"
+            )}
+            {/* Delete button for owner/admin */}
+            {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
+              <button 
+                className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400" 
                 title="Delete"
-                onClick={() => deletePost()}
+                onClick={deletePost}
               >
                 <i className="fa-regular fa-trash-can" />
               </button>
-            </div>
-          )}
-          {/* More menu (Hide, Report, Block) for other users' posts */}
-          {currentUser?.username && currentUser.username !== post.username && (
-            <div className="relative">
+            )}
+            {/* Edit button for owner/admin */}
+            {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
               <button 
-                className="p-2 rounded-full text-[#9fb0b5] hover:text-white hover:bg-white/10"
-                title="More options"
-                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
+                title="Edit"
+                onClick={startEditPost}
               >
-                <i className="fa-solid fa-ellipsis-vertical" />
+                <i className="fa-regular fa-pen-to-square" />
               </button>
-              {showMoreMenu && (
-                <div className="absolute right-0 top-10 z-50 w-44 bg-[#1a1f25] border border-white/10 rounded-xl shadow-xl overflow-hidden">
-                  <button
-                    className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
-                    onClick={() => {
-                      setShowMoreMenu(false)
-                      setShowHideModal(true)
-                    }}
-                  >
-                    <i className="fa-solid fa-eye-slash text-orange-400 w-4" />
-                    Hide post
-                  </button>
-                  <button
-                    className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
-                    onClick={() => {
-                      setShowMoreMenu(false)
-                      setShowReportModal(true)
-                    }}
-                  >
-                    <i className="fa-solid fa-flag text-red-400 w-4" />
-                    Report post
-                  </button>
-                  <button
-                    className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3 border-t border-white/10"
-                    onClick={() => {
-                      setShowMoreMenu(false)
-                      setShowBlockModal(true)
-                    }}
-                  >
-                    <i className="fa-solid fa-ban text-red-500 w-4" />
-                    Block @{post.username}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+            )}
+            {/* More menu (Hide, Report, Block) for other users' posts */}
+            {currentUser?.username && currentUser.username !== post.username && (
+              <div className="relative">
+                <button 
+                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-white"
+                  title="More options"
+                  onClick={() => setShowMoreMenu(!showMoreMenu)}
+                >
+                  <i className="fa-solid fa-ellipsis-vertical" />
+                </button>
+                {showMoreMenu && (
+                  <div className="absolute right-0 top-8 z-50 w-44 bg-[#1a1f25] border border-white/10 rounded-xl shadow-xl overflow-hidden">
+                    <button
+                      className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                      onClick={() => {
+                        setShowMoreMenu(false)
+                        setShowHideModal(true)
+                      }}
+                    >
+                      <i className="fa-solid fa-eye-slash text-orange-400 w-4" />
+                      Hide post
+                    </button>
+                    <button
+                      className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                      onClick={() => {
+                        setShowMoreMenu(false)
+                        setShowReportModal(true)
+                      }}
+                    >
+                      <i className="fa-solid fa-flag text-red-400 w-4" />
+                      Report post
+                    </button>
+                    <button
+                      className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3 border-t border-white/10"
+                      onClick={() => {
+                        setShowMoreMenu(false)
+                        setShowBlockModal(true)
+                      }}
+                    >
+                      <i className="fa-solid fa-ban text-red-500 w-4" />
+                      Block @{post.username}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1196,10 +1333,19 @@ export default function PostDetail(){
                 </div>
               </div>
             )}
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-2 text-xs px-3">
               <Reaction icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction('heart')} />
               <Reaction icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> toggleReaction('thumbs-up')} />
               <Reaction icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> toggleReaction('thumbs-down')} />
+              {/* View count - opens viewers/reactors modal */}
+              <button 
+                className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-[#9fb0b5] hover:text-white hover:bg-white/10 transition-colors"
+                onClick={openReactorsModal}
+                title="View reactions & viewers"
+              >
+                <i className="fa-regular fa-eye text-[11px]" />
+                <span>{typeof post.view_count === 'number' ? post.view_count : 0}</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1627,6 +1773,80 @@ export default function PostDetail(){
                 {reportSubmitting ? 'Submitting...' : 'Submit Report'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Viewers/Reactors Modal */}
+      {showReactorsModal && (
+        <div
+          className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
+          onClick={(e) => e.currentTarget === e.target && closeReactorsModal()}
+        >
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold">Views & Reactions</div>
+              <button
+                className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-sm text-white/80 hover:bg-white/10"
+                onClick={closeReactorsModal}
+                aria-label="Close"
+              >
+                <span className="leading-none">✕</span>
+              </button>
+            </div>
+            {reactorsLoading ? (
+              <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading...</div>
+            ) : (
+              <div className="space-y-3 max-h-[420px] overflow-y-auto">
+                {/* Views section */}
+                <div className="rounded-lg border border-white/10 p-2">
+                  <div className="flex items-center justify-between text-xs text-white/80 uppercase tracking-wide">
+                    <span>Views</span>
+                    <span className="text-sm font-semibold text-white">{reactorViewCount ?? 0}</span>
+                  </div>
+                  {reactorViewers.length === 0 ? (
+                    <div className="mt-2 text-xs text-[#9fb0b5]">No views yet.</div>
+                  ) : (
+                    <div className="mt-2 flex flex-col gap-1">
+                      {reactorViewers.map((viewer) => {
+                        const viewedLabel = formatViewerRelative(viewer.viewed_at)
+                        return (
+                          <div
+                            key={`viewer-${viewer.username}-${viewer.viewed_at ?? ''}`}
+                            className="flex items-center gap-2 text-xs text-[#9fb0b5]"
+                          >
+                            <Avatar
+                              username={viewer.username}
+                              url={viewer.profile_picture || undefined}
+                              size={18}
+                              linkToProfile
+                            />
+                            <div className="flex-1 truncate">@{viewer.username}</div>
+                            {viewedLabel && <div className="text-[10px] text-white/40">{viewedLabel}</div>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+                {/* Reactions section */}
+                {reactorGroups.length === 0 ? (
+                  <div className="text-sm text-[#9fb0b5]">No reactions yet.</div>
+                ) : reactorGroups.map((group) => (
+                  <div key={group.reaction_type} className="rounded-lg border border-white/10 p-2">
+                    <div className="text-xs text-white/80 mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
+                    <div className="flex flex-col gap-1">
+                      {(group.users || []).map((u) => (
+                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                          <Avatar username={u.username} url={u.profile_picture || undefined} size={18} linkToProfile />
+                          <div className="flex-1 truncate">@{u.username}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
