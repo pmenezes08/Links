@@ -193,6 +193,39 @@ export default function CommunityFeed() {
   const currentUsername = (userProfile as any)?.username || ''
   const currentDisplayName = (userProfile as any)?.display_name || currentUsername
 
+  // Unread counts for header icons
+  const [unreadMsgs, setUnreadMsgs] = useState(0)
+  const [unreadNotifs, setUnreadNotifs] = useState(0)
+
+  // Poll for unread counts
+  useEffect(() => {
+    let mounted = true
+    const poll = async () => {
+      if (!mounted) return
+      try {
+        const m = await fetch('/check_unread_messages', { credentials: 'include' })
+        const mj = await m.json().catch(() => null)
+        if (mounted && mj && typeof mj.unread_count === 'number') {
+          setUnreadMsgs(mj.unread_count)
+        }
+      } catch {}
+      try {
+        const n = await fetch('/api/notifications', { credentials: 'include' })
+        const nj = await n.json().catch(() => null)
+        if (mounted && nj?.success && Array.isArray(nj.notifications)) {
+          const cnt = nj.notifications.filter((x: any) => x && x.is_read === false && x.type !== 'message' && x.type !== 'reaction').length
+          setUnreadNotifs(cnt)
+        }
+      } catch {}
+    }
+    poll()
+    const interval = setInterval(poll, 10000)
+    return () => {
+      mounted = false
+      clearInterval(interval)
+    }
+  }, [])
+
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
     try {
@@ -1886,13 +1919,39 @@ export default function CommunityFeed() {
               <div className="text-xs text-[#9fb0b5] truncate">{data.community.description}</div>
             )}
           </div>
-          <button 
-            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            aria-label="Search"
-            onClick={() => { setShowSearch(true); setTimeout(() => { try { (document.getElementById('hashtag-input') as HTMLInputElement)?.focus() } catch {} }, 50) }}
-          >
-            <i className="fa-solid fa-magnifying-glass text-white" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button 
+              className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+              aria-label="Search"
+              onClick={() => { setShowSearch(true); setTimeout(() => { try { (document.getElementById('hashtag-input') as HTMLInputElement)?.focus() } catch {} }, 50) }}
+            >
+              <i className="fa-solid fa-magnifying-glass text-white" />
+            </button>
+            <button 
+              className="relative p-2 rounded-full hover:bg-white/10 transition-colors" 
+              onClick={() => navigate('/user_chat')} 
+              aria-label="Messages"
+            >
+              <i className="fa-solid fa-comments text-white" />
+              {unreadMsgs > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">
+                  {unreadMsgs > 99 ? '99+' : unreadMsgs}
+                </span>
+              )}
+            </button>
+            <button 
+              className="relative p-2 rounded-full hover:bg-white/10 transition-colors" 
+              onClick={() => navigate('/notifications')} 
+              aria-label="Notifications"
+            >
+              <i className="fa-regular fa-bell text-white" />
+              {unreadNotifs > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#4db6ac] text-black text-[10px] flex items-center justify-center">
+                  {unreadNotifs > 99 ? '99+' : unreadNotifs}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
