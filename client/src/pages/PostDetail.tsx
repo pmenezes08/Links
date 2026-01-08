@@ -959,35 +959,26 @@ export default function PostDetail(){
         bottom: 0,
       }}
     >
-      {(refreshHint || refreshing) ? (
-        <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
-            <i className="fa-solid fa-rotate fa-spin" />
-          </div>
-        </div>
-      ) : null}
-      {/* Scrollable content area - shrinks when keyboard appears */}
+      {/* Fixed Header */}
       <div
-        ref={contentRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden min-h-0"
+        className="flex-shrink-0 border-b border-white/10"
         style={{
-          // Add a touch more breathing room so the back button doesn't hug the header
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + 56px + var(--app-content-gap, 8px) + ${pullPx}px)`,
-          WebkitOverflowScrolling: 'touch' as any,
-          overscrollBehaviorY: 'auto' as any,
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          background: '#000',
         }}
       >
-        <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: contentPaddingBottom }}>
-        <div className="mb-2">
-          <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
-            <i className="fa-solid fa-arrow-left mr-1" /> Back
+        <div className="h-14 flex items-center gap-2 px-3">
+          <button 
+            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            onClick={() => navigate(-1)} 
+            aria-label="Back"
+          >
+            <i className="fa-solid fa-arrow-left text-white" />
           </button>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
-          <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-            <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} linkToProfile />
-            <div className="font-medium">{post.username}</div>
-            <div className="text-xs text-[#9fb0b5] ml-auto flex items-center gap-2">
+          <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={36} linkToProfile />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold truncate text-white text-sm">{post.username}</div>
+            <div className="text-xs text-[#9fb0b5] flex items-center gap-2">
               <span>{formatSmartTime((post as any).display_timestamp || post.timestamp)}</span>
               {typeof post.view_count === 'number' && (
                 <span className="flex items-center gap-1">
@@ -996,71 +987,93 @@ export default function PostDetail(){
                 </span>
               )}
             </div>
-            {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
-              <div className="flex items-center gap-1">
-                <button
-                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
-                  title="Edit"
-                  onClick={() => startEditPost()}
-                >
-                  <i className="fa-regular fa-pen-to-square" />
-                </button>
-                <button
-                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
-                  title="Delete"
-                  onClick={() => deletePost()}
-                >
-                  <i className="fa-regular fa-trash-can" />
-                </button>
-              </div>
-            )}
-            {/* More menu (Hide, Report, Block) for other users' posts */}
-            {currentUser?.username && currentUser.username !== post.username && (
-              <div className="relative">
-                <button 
-                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-white"
-                  title="More options"
-                  onClick={() => setShowMoreMenu(!showMoreMenu)}
-                >
-                  <i className="fa-solid fa-ellipsis-vertical" />
-                </button>
-                {showMoreMenu && (
-                  <div className="absolute right-0 top-8 z-50 w-44 bg-[#1a1f25] border border-white/10 rounded-xl shadow-xl overflow-hidden">
-                    <button
-                      className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
-                      onClick={() => {
-                        setShowMoreMenu(false)
-                        setShowHideModal(true)
-                      }}
-                    >
-                      <i className="fa-solid fa-eye-slash text-orange-400 w-4" />
-                      Hide post
-                    </button>
-                    <button
-                      className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
-                      onClick={() => {
-                        setShowMoreMenu(false)
-                        setShowReportModal(true)
-                      }}
-                    >
-                      <i className="fa-solid fa-flag text-red-400 w-4" />
-                      Report post
-                    </button>
-                    <button
-                      className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3 border-t border-white/10"
-                      onClick={() => {
-                        setShowMoreMenu(false)
-                        setShowBlockModal(true)
-                      }}
-                    >
-                      <i className="fa-solid fa-ban text-red-500 w-4" />
-                      Block @{post.username}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
+          {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
+            <div className="flex items-center">
+              <button
+                className="p-2 rounded-full text-[#9fb0b5] hover:text-[#4db6ac] hover:bg-white/10"
+                title="Edit"
+                onClick={() => startEditPost()}
+              >
+                <i className="fa-regular fa-pen-to-square" />
+              </button>
+              <button
+                className="p-2 rounded-full text-[#9fb0b5] hover:text-red-400 hover:bg-white/10"
+                title="Delete"
+                onClick={() => deletePost()}
+              >
+                <i className="fa-regular fa-trash-can" />
+              </button>
+            </div>
+          )}
+          {/* More menu (Hide, Report, Block) for other users' posts */}
+          {currentUser?.username && currentUser.username !== post.username && (
+            <div className="relative">
+              <button 
+                className="p-2 rounded-full text-[#9fb0b5] hover:text-white hover:bg-white/10"
+                title="More options"
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+              >
+                <i className="fa-solid fa-ellipsis-vertical" />
+              </button>
+              {showMoreMenu && (
+                <div className="absolute right-0 top-10 z-50 w-44 bg-[#1a1f25] border border-white/10 rounded-xl shadow-xl overflow-hidden">
+                  <button
+                    className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                    onClick={() => {
+                      setShowMoreMenu(false)
+                      setShowHideModal(true)
+                    }}
+                  >
+                    <i className="fa-solid fa-eye-slash text-orange-400 w-4" />
+                    Hide post
+                  </button>
+                  <button
+                    className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                    onClick={() => {
+                      setShowMoreMenu(false)
+                      setShowReportModal(true)
+                    }}
+                  >
+                    <i className="fa-solid fa-flag text-red-400 w-4" />
+                    Report post
+                  </button>
+                  <button
+                    className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3 border-t border-white/10"
+                    onClick={() => {
+                      setShowMoreMenu(false)
+                      setShowBlockModal(true)
+                    }}
+                  >
+                    <i className="fa-solid fa-ban text-red-500 w-4" />
+                    Block @{post.username}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {(refreshHint || refreshing) ? (
+        <div className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="px-2 py-1 text-xs rounded-full bg-white/10 border border-white/15 text-white/80 flex items-center gap-2">
+            <i className="fa-solid fa-rotate fa-spin" />
+          </div>
+        </div>
+      ) : null}
+      {/* Scrollable content area */}
+      <div
+        ref={contentRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden min-h-0"
+        style={{
+          paddingTop: `calc(var(--app-content-gap, 8px) + ${pullPx}px)`,
+          WebkitOverflowScrolling: 'touch' as any,
+          overscrollBehaviorY: 'auto' as any,
+        }}
+      >
+        <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: contentPaddingBottom }}>
+        <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
           <div className="py-2 space-y-2">
             {!isEditingPost ? (
               <>
