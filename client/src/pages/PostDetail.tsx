@@ -1127,9 +1127,8 @@ export default function PostDetail(){
           >
             <i className="fa-solid fa-arrow-left text-white" />
           </button>
-          <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} linkToProfile />
           <div className="flex-1 min-w-0">
-            <div className="font-medium tracking-[-0.01em] text-sm">{post.username}</div>
+            <div className="font-semibold tracking-[-0.01em] text-sm">Post</div>
           </div>
           <div className="flex items-center gap-1">
             {/* Messages icon */}

@@ -215,6 +215,17 @@ export default function PublicProfile() {
 
   return (
     <div className="glass-page min-h-screen text-white pb-10">
+      {/* Back button header */}
+      <div className="max-w-3xl mx-auto px-4 pt-2 pb-2">
+        <button 
+          className="flex items-center gap-2 text-[#9fb0b5] hover:text-white transition-colors"
+          onClick={() => navigate(-1)}
+          aria-label="Go back"
+        >
+          <i className="fa-solid fa-arrow-left" />
+          <span className="text-sm">Back</span>
+        </button>
+      </div>
       <div className="glass-card glass-card--plain max-w-3xl mx-auto px-4 py-4 space-y-4">
 
         <section className="glass-section">
