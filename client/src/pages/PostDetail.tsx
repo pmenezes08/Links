@@ -1061,7 +1061,7 @@ export default function PostDetail(){
                   const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
                   return (
                     <>
-                      {displayContent && <div className="px-2 whitespace-pre-wrap text-[15px] break-words">{renderRichText(displayContent)}</div>}
+                      {displayContent && <div className="px-2 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent)}</div>}
                       {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                     </>
                   )
