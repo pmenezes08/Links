@@ -16,6 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY bodybuilding_app.py .
+COPY redis_cache.py .
+COPY encryption_endpoints.py .
+COPY signal_endpoints.py .
 COPY backend/ ./backend/
 COPY templates/ ./templates/
 COPY static/ ./static/
