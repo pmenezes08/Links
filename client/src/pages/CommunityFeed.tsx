@@ -2020,7 +2020,7 @@ export default function CommunityFeed() {
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + 56px + var(--app-content-gap, 8px) + ${pullPx}px)`,
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + 56px + ${pullPx}px)`,
           paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
         }}
       >
