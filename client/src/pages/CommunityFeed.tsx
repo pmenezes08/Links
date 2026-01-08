@@ -2030,9 +2030,10 @@ export default function CommunityFeed() {
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
           paddingTop: `calc(var(--app-content-gap, 8px) + ${pullPx}px)`,
+          paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
         }}
       >
-        <div className="max-w-2xl mx-auto pb-4 px-3">
+        <div className="max-w-2xl mx-auto px-3">
         <div className="space-y-3">
           <input
             ref={storyFileInputRef}
@@ -2869,7 +2870,7 @@ export default function CommunityFeed() {
 
       {/* Bottom navigation bar */}
       <div 
-        className="flex-shrink-0 px-3 sm:px-6"
+        className="fixed bottom-0 left-0 right-0 z-50 px-3 sm:px-6"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
       >
         <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
