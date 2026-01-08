@@ -2032,7 +2032,7 @@ export default function CommunityFeed() {
           paddingTop: `calc(var(--app-content-gap, 8px) + ${pullPx}px)`,
         }}
       >
-        <div className="max-w-2xl mx-auto pb-24 px-3">
+        <div className="max-w-2xl mx-auto pb-4 px-3">
         <div className="space-y-3">
           <input
             ref={storyFileInputRef}
@@ -2867,15 +2867,15 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Bottom navigation bar - fixed at bottom like WhatsApp */}
+      {/* Bottom navigation bar */}
       <div 
-        className="fixed bottom-0 left-0 right-0 z-[100] px-3 sm:px-6"
+        className="flex-shrink-0 px-3 sm:px-6"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
       >
         <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
           <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
-            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <i className="fa-solid fa-house text-lg" />
+            <button className="p-3 rounded-full bg-white/10 transition-colors" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <i className="fa-solid fa-house text-lg text-[#4db6ac]" />
           </button>
             <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
             <i className="fa-solid fa-users text-lg" />
