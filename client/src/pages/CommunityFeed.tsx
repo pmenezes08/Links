@@ -1883,19 +1883,10 @@ export default function CommunityFeed() {
   }
 
   return (
-    <div 
-      className="min-h-screen bg-black text-white flex flex-col overflow-hidden"
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-      }}
-    >
-      {/* Header */}
+    <div className="min-h-screen bg-black text-white pb-safe">
+      {/* Fixed Header */}
       <div
-        className="flex-shrink-0 border-b border-white/10"
+        className="fixed left-0 right-0 top-0 z-[1000] border-b border-white/10"
         style={{
           paddingTop: 'env(safe-area-inset-top, 0px)',
           background: '#000',
@@ -2020,20 +2011,18 @@ export default function CommunityFeed() {
             </div>
         </div>
       )}
-      {/* Scrollable content area */}
+      {/* Scrollable content area below fixed header */}
       <div
         ref={scrollRef}
-        className={`flex-1 overflow-y-auto overflow-x-hidden min-h-0 ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar`}
+        className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(var(--app-content-gap, 8px) + ${pullPx}px)`,
-          paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + 56px + ${pullPx}px)`,
         }}
       >
-        <div className="max-w-2xl mx-auto px-3">
         <div className="space-y-3">
           <input
             ref={storyFileInputRef}
@@ -2201,7 +2190,6 @@ export default function CommunityFeed() {
                 </button>
               </div>
             )}
-        </div>
         </div>
       </div>
 
@@ -2867,70 +2855,51 @@ export default function CommunityFeed() {
           </div>
         </div>
       )}
-        </div>
-        </div>
-      </div>
 
-      {/* Bottom navigation bar - fixed at bottom like PostDetail's composer */}
+      {/* Bottom navigation bar - fixed at bottom */}
       <div 
-        className="fixed left-0 right-0 z-[100]"
-        style={{ 
-          bottom: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          touchAction: 'manipulation',
-        }}
+        className="fixed bottom-0 left-0 right-0 z-[100] px-3 sm:px-6"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
       >
-        {/* Nav card */}
-        <div className="px-3 sm:px-6">
-          <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto">
-            <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
-              <button className="p-3 rounded-full bg-white/10 transition-colors" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
-                <i className="fa-solid fa-house text-lg text-[#4db6ac]" />
-              </button>
-              <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
-                <i className="fa-solid fa-users text-lg" />
-              </button>
-              <button 
-                className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
-                aria-label="New Post" 
-                onClick={()=> { 
-                  const isFromOnboarding = highlightStep === 'post'
-                  if (isFromOnboarding) {
-                    setHighlightStep(null);
-                    // Mark onboarding as complete
-                    try { 
-                      const username = data?.username || '';
-                      const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done';
-                      localStorage.setItem(doneKey, '1');
-                    } catch {}
-                  }
-                  // Add first_post param if from onboarding
-                  navigate(`/compose?community_id=${community_id}${isFromOnboarding ? '&first_post=true' : ''}`);
-                }}
-              >
-                <i className="fa-solid fa-plus" />
-              </button>
-              <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
-                <span className="relative inline-block">
-                  <i className="fa-solid fa-bullhorn text-lg" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
-                  {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
-                </span>
-              </button>
-              <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="More" onClick={()=> setMoreOpen(true)}>
-                <i className="fa-solid fa-ellipsis text-lg" />
-              </button>
-            </div>
+        <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
+          <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
+            <button className="p-3 rounded-full bg-white/10 transition-colors" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <i className="fa-solid fa-house text-lg text-[#4db6ac]" />
+          </button>
+            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Members" onClick={()=> navigate(`/community/${community_id}/members`)}>
+            <i className="fa-solid fa-users text-lg" />
+          </button>
+          <button 
+              className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
+            aria-label="New Post" 
+            onClick={()=> { 
+              const isFromOnboarding = highlightStep === 'post'
+              if (isFromOnboarding) {
+                setHighlightStep(null);
+                // Mark onboarding as complete
+                try { 
+                  const username = data?.username || '';
+                  const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done';
+                  localStorage.setItem(doneKey, '1');
+                } catch {}
+              }
+              // Add first_post param if from onboarding
+              navigate(`/compose?community_id=${community_id}${isFromOnboarding ? '&first_post=true' : ''}`);
+            }}
+          >
+            <i className="fa-solid fa-plus" />
+          </button>
+            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Announcements" onClick={()=> { fetchAnnouncements() }}>
+            <span className="relative inline-block">
+              <i className="fa-solid fa-bullhorn text-lg" style={hasUnseenAnnouncements ? { color:'#4db6ac' } : undefined} />
+              {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
+            </span>
+          </button>
+            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="More" onClick={()=> setMoreOpen(true)}>
+            <i className="fa-solid fa-ellipsis text-lg" />
+          </button>
           </div>
         </div>
-        {/* Safe area spacer - exactly like PostDetail */}
-        <div 
-          style={{
-            height: 'env(safe-area-inset-bottom, 0px)',
-            background: '#000',
-            flexShrink: 0,
-          }}
-        />
       </div>
 
       {/* Bottom sheet for More - appears above bottom nav */}
