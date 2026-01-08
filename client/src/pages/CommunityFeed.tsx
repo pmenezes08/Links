@@ -1883,19 +1883,10 @@ export default function CommunityFeed() {
   }
 
   return (
-    <div 
-      className="min-h-screen bg-black text-white flex flex-col overflow-hidden"
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-      }}
-    >
-      {/* Header */}
+    <div className="min-h-screen bg-black text-white pb-safe">
+      {/* Fixed Header */}
       <div
-        className="flex-shrink-0 border-b border-white/10"
+        className="fixed left-0 right-0 top-0 z-[1000] border-b border-white/10"
         style={{
           paddingTop: 'env(safe-area-inset-top, 0px)',
           background: '#000',
@@ -2023,13 +2014,13 @@ export default function CommunityFeed() {
       {/* Scrollable content area */}
       <div
         ref={scrollRef}
-        className={`flex-1 overflow-y-auto overflow-x-hidden min-h-0 ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar`}
+        className={`${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(var(--app-content-gap, 8px) + ${pullPx}px)`,
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + 56px + var(--app-content-gap, 8px) + ${pullPx}px)`,
           paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
         }}
       >
@@ -2868,9 +2859,9 @@ export default function CommunityFeed() {
         </div>
       )}
 
-      {/* Bottom navigation bar */}
+      {/* Bottom navigation bar - fixed at bottom */}
       <div 
-        className="fixed bottom-0 left-0 right-0 z-50 px-3 sm:px-6"
+        className="fixed bottom-0 left-0 right-0 z-[100] px-3 sm:px-6"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
       >
         <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
