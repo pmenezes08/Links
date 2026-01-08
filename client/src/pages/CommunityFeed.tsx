@@ -2014,7 +2014,7 @@ export default function CommunityFeed() {
       {/* Scrollable content area below fixed header */}
       <div
         ref={scrollRef}
-        className={`app-content max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
+        className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
