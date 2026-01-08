@@ -977,14 +977,14 @@ export default function PostDetail(){
           overscrollBehaviorY: 'auto' as any,
         }}
       >
-        <div className="px-3" style={{ paddingBottom: contentPaddingBottom }}>
+        <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: contentPaddingBottom }}>
         <div className="mb-2">
-          <button className="px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
+          <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)} aria-label="Back">
             <i className="fa-solid fa-arrow-left mr-1" /> Back
           </button>
         </div>
         <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
-          <div className="px-2 py-2 border-b border-white/10 flex items-center gap-2">
+          <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
             <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} linkToProfile />
             <div className="font-medium">{post.username}</div>
             <div className="text-xs text-[#9fb0b5] ml-auto">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</div>
@@ -1061,7 +1061,7 @@ export default function PostDetail(){
                   const displayContent = videoEmbed ? removeVideoUrlFromText(post.content, videoEmbed) : post.content
                   return (
                     <>
-                      {displayContent && <div className="px-2 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent)}</div>}
+                      {displayContent && <div className="px-3 whitespace-pre-wrap text-[14px] break-words">{renderRichText(displayContent)}</div>}
                       {videoEmbed && <VideoEmbed embed={videoEmbed} />}
                     </>
                   )
@@ -1076,7 +1076,7 @@ export default function PostDetail(){
                     />
                   </div>
                 ) : post.video_path ? (
-                  <div className="px-2">
+                  <div className="px-3">
                     <video
                       className="w-full max-h-[420px] rounded border border-white/10 bg-black"
                       src={normalizePath(post.video_path)}
@@ -1086,7 +1086,7 @@ export default function PostDetail(){
                   </div>
                 ) : null}
                 {post.audio_path ? (
-                  <div className="px-2 space-y-2">
+                  <div className="px-3 space-y-2">
                     {post.audio_summary && (
                       <EditableAISummary
                         postId={post.id}
@@ -1234,7 +1234,7 @@ export default function PostDetail(){
         {/* Composer card */}
         <div
           ref={composerCardRef}
-          className="relative w-[calc(100%-24px)] mx-auto rounded-[16px] px-2.5 py-3"
+          className="relative max-w-2xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2.5 py-3"
           style={{ background: '#0a0a0c' }}
         >
           {/* Attachment previews - show above input row when files attached */}
