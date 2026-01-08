@@ -1883,10 +1883,19 @@ export default function CommunityFeed() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white pb-safe">
-      {/* Fixed Header */}
+    <div 
+      className="min-h-screen bg-black text-white pb-safe flex flex-col overflow-hidden"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+      }}
+    >
+      {/* Header */}
       <div
-        className="fixed left-0 right-0 top-0 z-[1000] border-b border-white/10"
+        className="flex-shrink-0 border-b border-white/10"
         style={{
           paddingTop: 'env(safe-area-inset-top, 0px)',
           background: '#000',
@@ -2011,18 +2020,19 @@ export default function CommunityFeed() {
             </div>
         </div>
       )}
-      {/* Scrollable content area below fixed header */}
+      {/* Scrollable content area */}
       <div
         ref={scrollRef}
-        className={`max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
+        className={`flex-1 overflow-y-auto overflow-x-hidden min-h-0 ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + 56px + ${pullPx}px)`,
+          paddingTop: `calc(var(--app-content-gap, 8px) + ${pullPx}px)`,
         }}
       >
+        <div className="max-w-2xl mx-auto pb-24 px-3">
         <div className="space-y-3">
           <input
             ref={storyFileInputRef}
@@ -2190,6 +2200,7 @@ export default function CommunityFeed() {
                 </button>
               </div>
             )}
+        </div>
         </div>
       </div>
 
