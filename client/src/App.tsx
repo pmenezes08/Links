@@ -520,7 +520,8 @@ function AppRoutes(){
     currentPath === '/login' ||
     currentPath === '/signup' ||
     currentPath === '/signup_react' ||
-    currentPath.startsWith('/user_chat/chat/')  // Chat thread has its own header
+    currentPath.startsWith('/user_chat/chat/') ||  // Chat thread has its own header
+    currentPath.startsWith('/post/')  // Post detail has its own header
   const showHeader = !hideHeader
   const headerHeightValue = showHeader ? 'calc(56px + env(safe-area-inset-top, 0px))' : 'env(safe-area-inset-top, 0px)'
   const contentOffsetValue = headerHeightValue
