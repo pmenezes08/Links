@@ -980,12 +980,10 @@ export default function PostDetail(){
             <div className="font-semibold truncate text-white text-sm">{post.username}</div>
             <div className="text-xs text-[#9fb0b5] flex items-center gap-2">
               <span>{formatSmartTime((post as any).display_timestamp || post.timestamp)}</span>
-              {typeof post.view_count === 'number' && (
-                <span className="flex items-center gap-1">
-                  <i className="fa-regular fa-eye text-[10px]" />
-                  {post.view_count}
-                </span>
-              )}
+              <span className="flex items-center gap-1">
+                <i className="fa-regular fa-eye text-[10px]" />
+                {typeof post.view_count === 'number' ? post.view_count : 0}
+              </span>
             </div>
           </div>
           {(currentUser?.username === post.username || currentUser?.username === 'admin') && (

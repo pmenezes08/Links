@@ -18869,6 +18869,15 @@ def get_post():
                 for row in ai_videos_raw
             ]
 
+            # Add view count
+            try:
+                c.execute("SELECT COUNT(*) as cnt FROM post_views WHERE post_id = ?", (post_id,))
+                view_row = c.fetchone()
+                post['view_count'] = view_row['cnt'] if view_row and hasattr(view_row, 'keys') else (view_row[0] if view_row else 0)
+            except Exception as view_err:
+                logger.warning(f"Failed to get view count for post {post_id}: {view_err}")
+                post['view_count'] = 0
+
             return jsonify({'success': True, 'post': post})
             
     except Exception as e:
