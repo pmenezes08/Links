@@ -17,6 +17,8 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import LazyVideo from '../components/LazyVideo'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { useUserProfile } from '../contexts/UserProfileContext'
+import { handleLogoutClick } from '../utils/logout'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
@@ -178,6 +180,18 @@ export default function CommunityFeed() {
   const [reportSubmitting, setReportSubmitting] = useState(false)
   const [blockReason, setBlockReason] = useState('')
   const [blockSubmitting, setBlockSubmitting] = useState(false)
+
+  // Burger menu state
+  const [menuOpen, setMenuOpen] = useState(false)
+  const { profile: userProfile } = useUserProfile()
+  const userAvatar = useMemo(() => {
+    const rawUrl = (userProfile as any)?.profile_picture || null
+    if (!rawUrl) return null
+    if (rawUrl.startsWith('http') || rawUrl.startsWith('/static')) return rawUrl
+    return `/static/${rawUrl}`
+  }, [userProfile])
+  const currentUsername = (userProfile as any)?.username || ''
+  const currentDisplayName = (userProfile as any)?.display_name || currentUsername
 
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
@@ -1836,16 +1850,25 @@ export default function CommunityFeed() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white pb-safe flex flex-col" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
+    <div className="min-h-screen bg-black text-white pb-safe">
       {/* Fixed Header */}
       <div
-        className="flex-shrink-0 border-b border-white/10"
+        className="fixed left-0 right-0 top-0 z-[1000] border-b border-white/10"
         style={{
           paddingTop: 'env(safe-area-inset-top, 0px)',
           background: '#000',
         }}
       >
         <div className="h-14 flex items-center gap-2 px-3">
+          {/* Avatar - opens burger menu */}
+          <button 
+            className="flex-shrink-0" 
+            onClick={() => setMenuOpen(true)} 
+            aria-label="Menu"
+          >
+            <Avatar username={currentUsername} url={userAvatar} size={32} />
+          </button>
+          {/* Back button */}
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
             onClick={() => {
@@ -1873,10 +1896,43 @@ export default function CommunityFeed() {
         </div>
       </div>
 
+      {/* Burger Menu Overlay */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-[1001] flex bg-black/50" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <div className="w-[90%] h-full bg-black/95 backdrop-blur border-r border-white/10 p-4 space-y-3 text-white overflow-y-auto overscroll-auto" style={{ paddingTop: '1rem', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+            <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+              <Avatar username={currentUsername} url={userAvatar} size={40} />
+              <div className="font-medium truncate">{currentDisplayName}</div>
+            </div>
+            {currentUsername === 'admin' ? (
+              <>
+                <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/admin_profile_react">Admin Profile</a>
+                <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/admin">Admin Dashboard</a>
+              </>
+            ) : null}
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/premium_dashboard">Dashboard</a>
+            <button
+              className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white"
+              onClick={() => {
+                setMenuOpen(false)
+                if (currentUsername) navigate(`/profile/${encodeURIComponent(currentUsername)}`)
+                else navigate('/profile')
+              }}
+            >
+              My Profile
+            </button>
+            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>Followers</button>
+            <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={handleLogoutClick}>Logout</button>
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">Settings & Privacy</a>
+          </div>
+          <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />
+        </div>
+      )}
+
       {(refreshHint || isRefreshing) && (
         <div 
-          className="fixed top-[72px] left-0 right-0 z-50 flex items-center justify-center pointer-events-none transition-transform duration-150"
-          style={{ transform: `translateY(${Math.min(pullPx * 0.3, 20)}px)` }}
+          className="fixed left-0 right-0 z-50 flex items-center justify-center pointer-events-none transition-transform duration-150"
+          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 56px + 16px)', transform: `translateY(${Math.min(pullPx * 0.3, 20)}px)` }}
         >
             <div className="px-3 py-1.5 text-xs rounded-full bg-black/80 border border-white/15 text-white/80 flex items-center gap-2">
               {isRefreshing ? (
@@ -1896,16 +1952,16 @@ export default function CommunityFeed() {
             </div>
         </div>
       )}
-      {/* Scrollable content area */}
+      {/* Scrollable content area below fixed header */}
       <div
         ref={scrollRef}
-        className={`flex-1 overflow-y-auto max-w-2xl mx-auto w-full ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
+        className={`app-content max-w-2xl mx-auto ${highlightStep === 'reaction' ? 'overflow-hidden' : ''} no-scrollbar pb-24 px-3`}
         style={{
           WebkitOverflowScrolling: 'touch' as any,
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(var(--app-content-gap, 8px) + ${pullPx}px)`,
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + 56px + var(--app-content-gap, 8px) + ${pullPx}px)`,
         }}
       >
         <div className="space-y-3">
