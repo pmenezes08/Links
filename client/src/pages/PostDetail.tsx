@@ -1181,6 +1181,101 @@ export default function PostDetail(){
       >
         <div className="max-w-2xl mx-auto px-3" style={{ paddingBottom: contentPaddingBottom }}>
         <div className="rounded-2xl border border-white/10 bg-black shadow-sm shadow-black/20">
+          {/* Post Header with avatar, username, date, and action buttons */}
+          <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+            <Avatar username={post.username} url={(post as any).profile_picture || undefined} size={32} linkToProfile />
+            <div className="font-medium tracking-[-0.01em]">{post.username}</div>
+            <div className="ml-auto flex items-center gap-1">
+              {/* Date */}
+              <span className="text-xs text-[#9fb0b5] tabular-nums mr-1">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</span>
+              {/* Personal star (turquoise when selected) */}
+              <button 
+                className="px-2 py-1 rounded-full" 
+                title={(post as any).is_starred ? 'Unstar (yours)' : 'Star (yours)'} 
+                onClick={toggleStar} 
+                aria-label="Star post (yours)"
+              >
+                <i className={`${(post as any).is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_starred ? '#4db6ac' : '#6c757d' }} />
+              </button>
+              {/* Community star (yellow) for owner/admins */}
+              {(currentUser?.username === 'admin' || (post as any).is_community_admin) && (
+                <button 
+                  className="px-2 py-1 rounded-full" 
+                  title={(post as any).is_community_starred ? 'Unfeature (community)' : 'Feature (community)'} 
+                  onClick={toggleCommunityStar} 
+                  aria-label="Star post (community)"
+                >
+                  <i className={`${(post as any).is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_community_starred ? '#ffd54f' : '#6c757d' }} />
+                </button>
+              )}
+              {/* Delete button for owner/admin */}
+              {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
+                <button 
+                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400" 
+                  title="Delete"
+                  onClick={deletePost}
+                >
+                  <i className="fa-regular fa-trash-can" />
+                </button>
+              )}
+              {/* Edit button for owner/admin */}
+              {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
+                <button 
+                  className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
+                  title="Edit"
+                  onClick={startEditPost}
+                >
+                  <i className="fa-regular fa-pen-to-square" />
+                </button>
+              )}
+              {/* More menu (Hide, Report, Block) for other users' posts */}
+              {currentUser?.username && currentUser.username !== post.username && (
+                <div className="relative">
+                  <button 
+                    className="px-2 py-1 rounded-full text-[#6c757d] hover:text-white"
+                    title="More options"
+                    onClick={() => setShowMoreMenu(!showMoreMenu)}
+                  >
+                    <i className="fa-solid fa-ellipsis-vertical" />
+                  </button>
+                  {showMoreMenu && (
+                    <div className="absolute right-0 top-8 z-50 w-44 bg-[#1a1f25] border border-white/10 rounded-xl shadow-xl overflow-hidden">
+                      <button
+                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                        onClick={() => {
+                          setShowMoreMenu(false)
+                          setShowHideModal(true)
+                        }}
+                      >
+                        <i className="fa-solid fa-eye-slash text-orange-400 w-4" />
+                        Hide post
+                      </button>
+                      <button
+                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                        onClick={() => {
+                          setShowMoreMenu(false)
+                          setShowReportModal(true)
+                        }}
+                      >
+                        <i className="fa-solid fa-flag text-red-400 w-4" />
+                        Report post
+                      </button>
+                      <button
+                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3 border-t border-white/10"
+                        onClick={() => {
+                          setShowMoreMenu(false)
+                          setShowBlockModal(true)
+                        }}
+                      >
+                        <i className="fa-solid fa-ban text-red-500 w-4" />
+                        Block @{post.username}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
           <div className="py-2 space-y-2">
             {!isEditingPost ? (
               <>
@@ -1305,113 +1400,20 @@ export default function PostDetail(){
                 </div>
               </div>
             )}
-            <div className="flex items-center gap-1 text-xs px-3 flex-wrap">
+            <div className="flex items-center gap-2 text-xs px-3">
               {/* Reactions */}
               <Reaction icon="fa-regular fa-heart" count={post.reactions?.['heart']||0} active={post.user_reaction==='heart'} onClick={()=> toggleReaction('heart')} />
               <Reaction icon="fa-regular fa-thumbs-up" count={post.reactions?.['thumbs-up']||0} active={post.user_reaction==='thumbs-up'} onClick={()=> toggleReaction('thumbs-up')} />
               <Reaction icon="fa-regular fa-thumbs-down" count={post.reactions?.['thumbs-down']||0} active={post.user_reaction==='thumbs-down'} onClick={()=> toggleReaction('thumbs-down')} />
               {/* View count - opens viewers/reactors modal */}
               <button 
-                className="flex items-center gap-1 px-2 py-1 rounded text-[#9fb0b5] hover:text-white hover:bg-white/10 transition-colors"
+                className="ml-auto flex items-center gap-1 px-2 py-1 rounded text-[#9fb0b5] hover:text-white hover:bg-white/10 transition-colors"
                 onClick={openReactorsModal}
                 title="View reactions & viewers"
               >
                 <i className="fa-regular fa-eye text-[11px]" />
                 <span>{typeof post.view_count === 'number' ? post.view_count : 0}</span>
               </button>
-              
-              {/* Spacer to push right-side items */}
-              <div className="flex-1" />
-              
-              {/* Date */}
-              <span className="text-[#9fb0b5] tabular-nums text-[11px]">{formatSmartTime((post as any).display_timestamp || post.timestamp)}</span>
-              
-              {/* Personal star (turquoise when selected) */}
-              <button 
-                className="px-1.5 py-1 rounded-full" 
-                title={(post as any).is_starred ? 'Unstar (yours)' : 'Star (yours)'} 
-                onClick={toggleStar} 
-                aria-label="Star post (yours)"
-              >
-                <i className={`${(post as any).is_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_starred ? '#4db6ac' : '#6c757d' }} />
-              </button>
-              {/* Community star (yellow) for owner/admins */}
-              {(currentUser?.username === 'admin' || (post as any).is_community_admin) && (
-                <button 
-                  className="px-1.5 py-1 rounded-full" 
-                  title={(post as any).is_community_starred ? 'Unfeature (community)' : 'Feature (community)'} 
-                  onClick={toggleCommunityStar} 
-                  aria-label="Star post (community)"
-                >
-                  <i className={`${(post as any).is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_community_starred ? '#ffd54f' : '#6c757d' }} />
-                </button>
-              )}
-              {/* Delete button for owner/admin */}
-              {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
-                <button 
-                  className="px-1.5 py-1 rounded-full text-[#6c757d] hover:text-red-400" 
-                  title="Delete"
-                  onClick={deletePost}
-                >
-                  <i className="fa-regular fa-trash-can" />
-                </button>
-              )}
-              {/* Edit button for owner/admin */}
-              {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
-                <button 
-                  className="px-1.5 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]" 
-                  title="Edit"
-                  onClick={startEditPost}
-                >
-                  <i className="fa-regular fa-pen-to-square" />
-                </button>
-              )}
-              {/* More menu (Hide, Report, Block) for other users' posts */}
-              {currentUser?.username && currentUser.username !== post.username && (
-                <div className="relative">
-                  <button 
-                    className="px-1.5 py-1 rounded-full text-[#6c757d] hover:text-white"
-                    title="More options"
-                    onClick={() => setShowMoreMenu(!showMoreMenu)}
-                  >
-                    <i className="fa-solid fa-ellipsis-vertical" />
-                  </button>
-                  {showMoreMenu && (
-                    <div className="absolute right-0 bottom-8 z-50 w-44 bg-[#1a1f25] border border-white/10 rounded-xl shadow-xl overflow-hidden">
-                      <button
-                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
-                        onClick={() => {
-                          setShowMoreMenu(false)
-                          setShowHideModal(true)
-                        }}
-                      >
-                        <i className="fa-solid fa-eye-slash text-orange-400 w-4" />
-                        Hide post
-                      </button>
-                      <button
-                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
-                        onClick={() => {
-                          setShowMoreMenu(false)
-                          setShowReportModal(true)
-                        }}
-                      >
-                        <i className="fa-solid fa-flag text-red-400 w-4" />
-                        Report post
-                      </button>
-                      <button
-                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3 border-t border-white/10"
-                        onClick={() => {
-                          setShowMoreMenu(false)
-                          setShowBlockModal(true)
-                        }}
-                      >
-                        <i className="fa-solid fa-ban text-red-500 w-4" />
-                        Block @{post.username}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         </div>
