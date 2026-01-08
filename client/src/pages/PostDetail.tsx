@@ -950,7 +950,7 @@ export default function PostDetail(){
 
   return (
     <div
-      className="glass-page flex flex-col overflow-hidden text-white"
+      className="min-h-screen bg-black text-white flex flex-col overflow-hidden"
       style={{
         position: 'fixed',
         top: 0,
