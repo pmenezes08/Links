@@ -1884,7 +1884,7 @@ export default function CommunityFeed() {
 
   return (
     <div 
-      className="min-h-screen bg-black text-white pb-safe flex flex-col overflow-hidden"
+      className="min-h-screen bg-black text-white flex flex-col overflow-hidden"
       style={{
         position: 'fixed',
         top: 0,
