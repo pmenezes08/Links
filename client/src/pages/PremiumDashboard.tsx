@@ -643,12 +643,6 @@ export default function PremiumDashboard() {
                 />
               )
               })}
-              {/* Shortcut: Product Development (pinned at bottom) */}
-              <Card 
-                iconClass="fa-solid fa-flask"
-                title="Product Development"
-                onClick={()=> navigate('/product_development')}
-              />
             </div>
             )}
         </div>

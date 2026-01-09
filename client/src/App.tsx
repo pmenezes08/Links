@@ -49,7 +49,6 @@ import Signup from './pages/Signup'
 import Notifications from './pages/Notifications'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminProfile from './pages/AdminProfile'
-import ProductDevelopment from './pages/ProductDevelopment'
 import KeyPosts from './pages/KeyPosts'
 import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
@@ -601,7 +600,6 @@ function AppRoutes(){
                 <Route path="/event/:event_id" element={<EventDetail />} />
                 <Route path="/post/:post_id" element={<PostDetail />} />
                 <Route path="/compose" element={<CreatePost />} />
-                <Route path="/product_development" element={<ProductDevelopment />} />
                 <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
                 <Route path="/encryption_settings" element={<EncryptionSettings />} />
                 <Route path="*" element={<PremiumDashboard />} />
