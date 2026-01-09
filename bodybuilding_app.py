@@ -4729,13 +4729,40 @@ def admin_profile():
 
 @app.route('/logout')
 def logout():
+    # Get username before clearing session for cache invalidation
+    username = session.get('username')
+    
     # Explicitly clear and mark session non-permanent
     session.clear()
     session.permanent = False
-    # Clear remember token cookie
+    
+    # Invalidate user cache in Redis
+    if username:
+        try:
+            from redis_cache import invalidate_user_cache
+            invalidate_user_cache(username)
+        except Exception:
+            pass
+    
+    # Clear all session-related cookies
     from flask import make_response
     resp = make_response(redirect(url_for('public.index')))
-    resp.set_cookie('remember_token', '', max_age=0, path='/', domain=app.config.get('SESSION_COOKIE_DOMAIN') or None)
+    
+    # Get cookie domain
+    cookie_domain = app.config.get('SESSION_COOKIE_DOMAIN') or None
+    
+    # Clear remember token
+    resp.set_cookie('remember_token', '', max_age=0, path='/', domain=cookie_domain)
+    
+    # Clear session cookie explicitly
+    session_cookie_name = app.config.get('SESSION_COOKIE_NAME', 'session')
+    resp.set_cookie(session_cookie_name, '', max_age=0, path='/', domain=cookie_domain)
+    
+    # Add cache control headers
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    resp.headers['Expires'] = '0'
+    
     return resp
 # Removed duplicate /login_password route - using auth blueprint version in backend/blueprints/auth.py instead
 

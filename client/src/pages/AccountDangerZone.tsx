@@ -1,12 +1,24 @@
 import { useEffect, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
+import { Preferences } from '@capacitor/preferences'
 
 // Comprehensive cache clearing for account deletion
 async function clearAllUserData(): Promise<void> {
   console.log('🗑️ Clearing all user data after account deletion...')
   
-  // 1. Clear all localStorage
+  // 1. Clear Capacitor Preferences (iOS Keychain / native storage) - CRITICAL for Capacitor apps
+  try {
+    if (Capacitor.isNativePlatform()) {
+      await Preferences.clear()
+      console.log('✅ Capacitor Preferences (native storage) cleared')
+    }
+  } catch (e) {
+    console.warn('Error clearing Capacitor Preferences:', e)
+  }
+
+  // 2. Clear all localStorage
   try {
     localStorage.clear()
     console.log('✅ localStorage cleared')
@@ -14,7 +26,7 @@ async function clearAllUserData(): Promise<void> {
     console.warn('Error clearing localStorage:', e)
   }
 
-  // 2. Clear sessionStorage
+  // 3. Clear sessionStorage
   try {
     sessionStorage.clear()
     console.log('✅ sessionStorage cleared')
@@ -22,7 +34,7 @@ async function clearAllUserData(): Promise<void> {
     console.warn('Error clearing sessionStorage:', e)
   }
 
-  // 3. Clear IndexedDB databases
+  // 4. Clear IndexedDB databases
   const dbsToDelete = [
     'chat-encryption',
     'signal-protocol',
@@ -46,7 +58,7 @@ async function clearAllUserData(): Promise<void> {
     }
   }
 
-  // 4. Clear ALL service worker caches (not just runtime - full cleanup for deleted account)
+  // 5. Clear ALL service worker caches (not just runtime - full cleanup for deleted account)
   try {
     if ('caches' in window) {
       const cacheNames = await caches.keys()
@@ -62,7 +74,7 @@ async function clearAllUserData(): Promise<void> {
     console.warn('Error clearing service worker caches:', e)
   }
 
-  // 5. Unregister service workers
+  // 6. Unregister service workers
   try {
     if ('serviceWorker' in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations()
@@ -73,6 +85,17 @@ async function clearAllUserData(): Promise<void> {
     }
   } catch (e) {
     console.warn('Error unregistering service workers:', e)
+  }
+
+  // 7. Clear cookies by calling logout endpoint with cache-busting
+  try {
+    await fetch('/logout?_=' + Date.now(), { 
+      credentials: 'include',
+      cache: 'no-store'
+    })
+    console.log('✅ Server session cleared via /logout')
+  } catch (e) {
+    console.warn('Error calling logout:', e)
   }
 }
 
@@ -106,18 +129,14 @@ export default function AccountDangerZone() {
       if (json?.success) {
         setFeedback({ type: 'success', text: 'Account deleted. Clearing data…' })
         
-        // Clear all user data (localStorage, sessionStorage, IndexedDB, service worker caches)
+        // Clear all user data (localStorage, sessionStorage, IndexedDB, Capacitor Preferences, service worker caches)
         await clearAllUserData()
         
-        // Call logout endpoint to clear server session
-        try {
-          await fetch('/logout', { credentials: 'include' })
-        } catch {}
-        
-        // Redirect to signup page with a hard reload
+        // Force redirect to signup page with cache busting
+        // Use replace to prevent back button issues
         setTimeout(() => {
-          window.location.href = '/signup'
-        }, 500)
+          window.location.replace('/signup?cleared=' + Date.now())
+        }, 800)
       } else {
         setFeedback({ type: 'error', text: json?.error || 'Failed to delete account' })
         setLoading(false)

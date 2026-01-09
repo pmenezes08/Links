@@ -2,8 +2,26 @@
  * Proper logout utility that clears all client-side state before navigating to /logout
  */
 
+// Dynamic import for Capacitor to avoid issues on web
+async function clearCapacitorStorage(): Promise<void> {
+  try {
+    const { Capacitor } = await import('@capacitor/core')
+    if (Capacitor.isNativePlatform()) {
+      const { Preferences } = await import('@capacitor/preferences')
+      await Preferences.clear()
+      console.log('✅ Capacitor Preferences cleared')
+    }
+  } catch (e) {
+    // Not on native platform or Capacitor not available
+    console.log('Capacitor not available or not on native platform')
+  }
+}
+
 export async function performLogout(): Promise<void> {
   console.log('🚪 Starting logout process...')
+  
+  // 0. Clear Capacitor native storage first (critical for iOS apps)
+  await clearCapacitorStorage()
   
   // 1. Stop any polling intervals
   try {
