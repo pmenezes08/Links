@@ -266,6 +266,30 @@ export default function MobileLogin() {
           </>
         )}
 
+        {/* Terms and Privacy Policy */}
+        <div className="mt-4 text-center">
+          <p className="text-white/40 text-xs">
+            By signing in, you agree to our{' '}
+            <a 
+              href="https://www.c-point.co/terms" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-teal-300 hover:underline"
+            >
+              Terms of Service
+            </a>{' '}
+            and{' '}
+            <a 
+              href="https://www.c-point.co/privacy" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-teal-300 hover:underline"
+            >
+              Privacy Policy
+            </a>
+          </p>
+        </div>
+
         {/* Install app UI removed */}
       </div>
 

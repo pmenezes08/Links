@@ -347,7 +347,24 @@ export default function Signup(){
         {/* Terms */}
         <div className="mt-4 text-center">
           <p className="text-white/40 text-xs">
-            By creating an account, you agree to our Terms of Service and Privacy Policy
+            By creating an account, you agree to our{' '}
+            <a 
+              href="https://www.c-point.co/terms" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-[#4db6ac] hover:underline"
+            >
+              Terms of Service
+            </a>{' '}
+            and{' '}
+            <a 
+              href="https://www.c-point.co/privacy" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-[#4db6ac] hover:underline"
+            >
+              Privacy Policy
+            </a>
           </p>
         </div>
 
