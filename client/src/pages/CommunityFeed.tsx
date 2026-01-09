@@ -1982,7 +1982,7 @@ export default function CommunityFeed() {
             </button>
             <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={()=> { setMenuOpen(false); navigate('/followers') }}>Followers</button>
             <button className="block w-full text-left px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={handleLogoutClick}>Logout</button>
-            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">Settings & Privacy</a>
+            <a className="block px-4 py-3 rounded-xl hover:bg-white/5 text-white" href="/account_settings">Account Settings</a>
           </div>
           <div className="flex-1 h-full" onClick={()=> setMenuOpen(false)} />
         </div>
