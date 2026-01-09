@@ -59,6 +59,13 @@ export default function MobileLogin() {
     
     async function check(){
       try{
+        // CRITICAL: First clear any stale sessions (from deleted accounts)
+        await fetch('/api/clear_stale_session', { 
+          method: 'POST', 
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' }
+        })
+        
         const r = await fetch('/api/profile_me', { credentials:'include' })
         if (r.status === 403){
           navigate('/verify_required', { replace: true })

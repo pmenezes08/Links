@@ -215,6 +215,30 @@ def login_required(f):
             except Exception:
                 pass
             return redirect(url_for('auth.login'))
+        
+        # CRITICAL: Verify user still exists in database (handles deleted accounts)
+        username = session.get('username')
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                c.execute("SELECT id FROM users WHERE username=?", (username,))
+                user_exists = c.fetchone() is not None
+                if not user_exists:
+                    logger.warning(f"User {username} no longer exists in database, clearing session")
+                    # Clear the ghost session
+                    session.clear()
+                    session.permanent = False
+                    # Invalidate any cached data
+                    try:
+                        invalidate_user_cache(username)
+                    except Exception:
+                        pass
+                    return redirect(url_for('auth.login'))
+        except Exception as e:
+            logger.error(f"Error verifying user exists: {e}")
+            # On error, allow through but log it
+            pass
+        
         return f(*args, **kwargs)
     return decorated_function
 
@@ -435,7 +459,7 @@ def _block_unverified_users():
         if path in ('/', '/welcome', '/login', '/login_password', '/signup', '/signup_react', '/verify_email', '/resend_verification', '/logout', '/verify_required', '/onboarding', '/resend_verification_pending'):
             return None
         # Allow login flow API endpoints (no auth required)
-        if path in ('/api/check_pending_login', '/api/invitation/verify'):
+        if path in ('/api/check_pending_login', '/api/invitation/verify', '/api/clear_stale_session'):
             return None
         # Health and misc
         if path in ('/health', '/vite.svg', '/favicon.svg', '/manifest.webmanifest') or path.startswith('/icons/'):
@@ -4873,6 +4897,40 @@ def api_check_pending_login():
     except Exception as e:
         logger.error(f"Error in api_check_pending_login: {e}")
         return jsonify({'success': False, 'pending_username': None, 'error': str(e)})
+
+@app.route('/api/clear_stale_session', methods=['POST'])
+def api_clear_stale_session():
+    """
+    Clear session if user no longer exists in database.
+    Called by login page to prevent ghost sessions after account deletion.
+    """
+    try:
+        username = session.get('username')
+        if not username:
+            return jsonify({'success': True, 'cleared': False, 'reason': 'no_session'})
+        
+        # Check if user exists
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM users WHERE username=?", (username,))
+            user_exists = c.fetchone() is not None
+        
+        if not user_exists:
+            logger.info(f"Clearing stale session for deleted user: {username}")
+            # User doesn't exist anymore - clear the session
+            session.clear()
+            session.permanent = False
+            # Invalidate cache
+            try:
+                invalidate_user_cache(username)
+            except Exception:
+                pass
+            return jsonify({'success': True, 'cleared': True, 'reason': 'user_deleted'})
+        
+        return jsonify({'success': True, 'cleared': False, 'reason': 'user_exists'})
+    except Exception as e:
+        logger.error(f"Error in api_clear_stale_session: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/debug/login_test', methods=['POST'])
 def api_debug_login_test():

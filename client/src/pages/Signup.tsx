@@ -322,7 +322,13 @@ export default function Signup(){
             Already have an account?{' '}
             <button 
               className="text-[#4db6ac] hover:text-[#45a99c] transition-colors text-xs"
-              onClick={() => navigate('/login')}
+              onClick={async () => {
+                // Clear any stale session before navigating to login
+                try {
+                  await fetch('/api/clear_stale_session', { method: 'POST', credentials: 'include' })
+                } catch {}
+                navigate('/login')
+              }}
             >
               Sign in
             </button>
