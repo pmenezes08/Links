@@ -2,6 +2,80 @@ import { useEffect, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 
+// Comprehensive cache clearing for account deletion
+async function clearAllUserData(): Promise<void> {
+  console.log('🗑️ Clearing all user data after account deletion...')
+  
+  // 1. Clear all localStorage
+  try {
+    localStorage.clear()
+    console.log('✅ localStorage cleared')
+  } catch (e) {
+    console.warn('Error clearing localStorage:', e)
+  }
+
+  // 2. Clear sessionStorage
+  try {
+    sessionStorage.clear()
+    console.log('✅ sessionStorage cleared')
+  } catch (e) {
+    console.warn('Error clearing sessionStorage:', e)
+  }
+
+  // 3. Clear IndexedDB databases
+  const dbsToDelete = [
+    'chat-encryption',
+    'signal-protocol',
+    'signal-store',
+  ]
+  
+  for (const dbName of dbsToDelete) {
+    try {
+      await new Promise<void>((resolve) => {
+        const request = indexedDB.deleteDatabase(dbName)
+        request.onsuccess = () => {
+          console.log(`✅ Deleted IndexedDB: ${dbName}`)
+          resolve()
+        }
+        request.onerror = () => resolve()
+        request.onblocked = () => resolve()
+        setTimeout(resolve, 1000)
+      })
+    } catch (e) {
+      console.warn(`Error deleting IndexedDB ${dbName}:`, e)
+    }
+  }
+
+  // 4. Clear ALL service worker caches (not just runtime - full cleanup for deleted account)
+  try {
+    if ('caches' in window) {
+      const cacheNames = await caches.keys()
+      await Promise.all(
+        cacheNames.map(cacheName => {
+          console.log(`🗑️ Deleting cache: ${cacheName}`)
+          return caches.delete(cacheName)
+        })
+      )
+      console.log('✅ All service worker caches cleared')
+    }
+  } catch (e) {
+    console.warn('Error clearing service worker caches:', e)
+  }
+
+  // 5. Unregister service workers
+  try {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      for (const registration of registrations) {
+        await registration.unregister()
+        console.log('✅ Service worker unregistered')
+      }
+    }
+  } catch (e) {
+    console.warn('Error unregistering service workers:', e)
+  }
+}
+
 export default function AccountDangerZone() {
   const { setTitle } = useHeader()
   const navigate = useNavigate()
@@ -21,18 +95,7 @@ export default function AccountDangerZone() {
     setFeedback(null)
     setLoading(true)
     try {
-      try {
-        const keys = Object.keys(localStorage)
-        keys.forEach(key => {
-          if (key.includes('onboarding') || key.includes('first_login')) {
-            localStorage.removeItem(key)
-          }
-        })
-        localStorage.clear()
-      } catch (e) {
-        console.error('Failed clearing localStorage', e)
-      }
-
+      // First, delete the account on the server
       const resp = await fetch('/delete_account', { method: 'POST', credentials: 'include' })
       if (!resp.ok) {
         setFeedback({ type: 'error', text: `Server error (${resp.status})` })
@@ -41,10 +104,20 @@ export default function AccountDangerZone() {
       }
       const json = await resp.json().catch(() => null)
       if (json?.success) {
-        setFeedback({ type: 'success', text: 'Account deleted. Redirecting…' })
+        setFeedback({ type: 'success', text: 'Account deleted. Clearing data…' })
+        
+        // Clear all user data (localStorage, sessionStorage, IndexedDB, service worker caches)
+        await clearAllUserData()
+        
+        // Call logout endpoint to clear server session
+        try {
+          await fetch('/logout', { credentials: 'include' })
+        } catch {}
+        
+        // Redirect to signup page with a hard reload
         setTimeout(() => {
-          window.location.replace('/signup')
-        }, 1200)
+          window.location.href = '/signup'
+        }, 500)
       } else {
         setFeedback({ type: 'error', text: json?.error || 'Failed to delete account' })
         setLoading(false)

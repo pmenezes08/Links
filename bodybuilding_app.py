@@ -5995,8 +5995,20 @@ def delete_account():
             conn.commit()
         # Clear session
         session.clear()
+        
+        # Invalidate user cache in Redis
+        try:
+            from redis_cache import invalidate_user_cache
+            invalidate_user_cache(username)
+        except Exception:
+            pass
+        
         # Return success with instruction to clear localStorage
-        return jsonify({'success': True, 'clear_storage': True})
+        resp = jsonify({'success': True, 'clear_storage': True})
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+        return resp
     except Exception as e:
         try:
             logger.error(f"delete_account error for {username}: {e}")
