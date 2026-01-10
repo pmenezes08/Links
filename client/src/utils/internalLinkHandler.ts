@@ -64,6 +64,13 @@ export function isLandingPageLink(url: string): boolean {
 export function extractInviteToken(url: string): string | null {
   try {
     const parsed = new URL(url)
+    
+    // Check for /invite/TOKEN path format (new smart redirect)
+    const pathMatch = parsed.pathname.match(/^\/invite\/([a-zA-Z0-9_-]+)$/)
+    if (pathMatch) {
+      return pathMatch[1]
+    }
+    
     // Check for both /login?invite=TOKEN and /signup?invite=TOKEN patterns
     const inviteParam = parsed.searchParams.get('invite')
     if (inviteParam) {

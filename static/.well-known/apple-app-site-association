@@ -7,8 +7,16 @@
         ],
         "components": [
           {
+            "/": "/invite/*",
+            "comment": "Community invite links - opens app directly"
+          },
+          {
             "/": "/login*",
             "comment": "Login page with invite tokens"
+          },
+          {
+            "/": "/signup*",
+            "comment": "Signup page with invite tokens"
           },
           {
             "/": "/community_feed_react/*",

@@ -6,6 +6,7 @@
 	<string>production</string>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
+		<string>applinks:app.c-point.co</string>
 		<string>applinks:www.c-point.co</string>
 		<string>applinks:c-point.co</string>
 	</array>
