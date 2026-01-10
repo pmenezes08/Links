@@ -24110,11 +24110,17 @@ def get_user_parent_community():
     """Get communities to display on dashboard - SIMPLIFIED"""
     username = session.get('username')
     logger.info(f"Getting dashboard communities for user: {username}")
+    
+    # Allow cache bypass with ?_nocache or ?refresh parameter
+    bypass_cache = request.args.get('_nocache') or request.args.get('refresh')
+    
     cache_key = user_parent_dashboard_cache_key(username)
-    if cache_key:
+    if cache_key and not bypass_cache:
         cached = cache.get(cache_key)
         if cached:
-            return jsonify(cached)
+            resp = jsonify(cached)
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            return resp
     
     try:
         with get_db_connection() as conn:
@@ -24312,12 +24318,20 @@ def get_user_parent_community():
                 'communities': communities_list,
                 'parentCommunity': communities_list[0] if communities_list else None  # Keep backward compatibility
             }
-            if cache_key:
+            # Only use cache if not explicitly bypassed
+            bypass_cache = request.args.get('_nocache') or request.args.get('refresh')
+            if cache_key and not bypass_cache:
                 try:
                     cache.set(cache_key, response_payload, COMMUNITY_CACHE_TTL)
                 except Exception:
                     pass
-            return jsonify(response_payload)
+            
+            # Add no-cache headers to prevent browser caching
+            resp = jsonify(response_payload)
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+            return resp
                 
     except Exception as e:
         logger.error(f"Error getting parent community for {username}: {str(e)}")
