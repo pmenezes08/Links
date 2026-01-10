@@ -1,11 +1,10 @@
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Apple, Play, X } from "lucide-react";
+import { Apple, Play } from "lucide-react";
 import heroImage from "@/assets/hero-community.jpg";
 
-export const Hero = () => {
-  const [showPopup, setShowPopup] = useState(false);
+const APP_STORE_URL = "https://apps.apple.com/us/app/cpoint/id6755534074";
 
+export const Hero = () => {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Background Image with Overlay */}
@@ -32,10 +31,12 @@ export const Hero = () => {
               variant="hero" 
               size="lg" 
               className="text-lg"
-              onClick={() => setShowPopup(true)}
+              asChild
             >
-              <Apple className="mr-2" size={24} />
-              Download App
+              <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer">
+                <Apple className="mr-2" size={24} />
+                Download App
+              </a>
             </Button>
             <Button variant="secondary" size="lg" className="text-lg" asChild>
               <a href="https://app.c-point.co/signup">
@@ -53,45 +54,6 @@ export const Hero = () => {
           <div className="w-1.5 h-3 bg-primary-foreground/50 rounded-full" />
         </div>
       </div>
-
-      {/* iOS Coming Soon Popup */}
-      {showPopup && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setShowPopup(false)}
-        >
-          <div 
-            className="bg-white rounded-2xl p-8 mx-4 max-w-md text-center shadow-2xl animate-fade-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button 
-              onClick={() => setShowPopup(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-            >
-              <X size={24} />
-            </button>
-            <div className="w-16 h-16 bg-black rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Apple className="text-white" size={32} />
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">
-              iOS App Coming Soon!
-            </h3>
-            <p className="text-gray-600 mb-6">
-              We're putting the finishing touches on our iOS app. In the meantime, you can use our web app for the full C-Point experience.
-            </p>
-            <Button 
-              variant="default" 
-              size="lg" 
-              className="w-full bg-black hover:bg-gray-800 text-white"
-              asChild
-            >
-              <a href="https://app.c-point.co/signup">
-                Open Web App Instead
-              </a>
-            </Button>
-          </div>
-        </div>
-      )}
     </section>
   );
 };

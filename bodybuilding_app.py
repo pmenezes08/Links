@@ -20305,6 +20305,148 @@ def debug_posts():
         logger.error(f"Error in debug_posts: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
+APP_STORE_URL = "https://apps.apple.com/us/app/cpoint/id6755534074"
+
+@app.route('/invite/<token>')
+def invite_landing(token):
+    """Smart invite landing page - redirects iOS users to App Store, others to web"""
+    user_agent = request.headers.get('User-Agent', '').lower()
+    is_ios = 'iphone' in user_agent or 'ipad' in user_agent or 'ipod' in user_agent
+    
+    # Build the web invite URL
+    base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
+    web_url = f"{base_url}/login?invite={token}"
+    
+    # Verify the invitation exists
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT c.name as community_name, ci.invited_by_username, ci.used
+                FROM community_invitations ci
+                JOIN communities c ON ci.community_id = c.id
+                WHERE ci.token = ?
+            """, (token,))
+            invitation = c.fetchone()
+            
+            if not invitation:
+                return redirect(web_url)  # Let the web app handle invalid tokens
+            
+            community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[0]
+            invited_by = invitation['invited_by_username'] if hasattr(invitation, 'keys') else invitation[1]
+            used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
+            
+            if used:
+                return redirect(web_url)  # Let the web app handle used invitations
+                
+    except Exception as e:
+        logger.error(f"Error in invite_landing: {e}")
+        return redirect(web_url)
+    
+    # For iOS users, show a landing page with options
+    if is_ios:
+        return f'''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Join {community_name} on CPoint</title>
+            <style>
+                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: #000;
+                    color: #fff;
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 20px;
+                }}
+                .container {{
+                    max-width: 400px;
+                    text-align: center;
+                }}
+                .logo {{
+                    width: 80px;
+                    height: 80px;
+                    background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%);
+                    border-radius: 20px;
+                    margin: 0 auto 24px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 36px;
+                    font-weight: bold;
+                }}
+                h1 {{
+                    font-size: 24px;
+                    margin-bottom: 12px;
+                }}
+                .invite-info {{
+                    color: #4db6ac;
+                    font-size: 18px;
+                    margin-bottom: 8px;
+                }}
+                .invited-by {{
+                    color: #888;
+                    font-size: 14px;
+                    margin-bottom: 32px;
+                }}
+                .btn {{
+                    display: block;
+                    width: 100%;
+                    padding: 16px 24px;
+                    border-radius: 12px;
+                    text-decoration: none;
+                    font-weight: 600;
+                    font-size: 16px;
+                    margin-bottom: 12px;
+                    transition: opacity 0.2s;
+                }}
+                .btn:active {{ opacity: 0.8; }}
+                .btn-primary {{
+                    background: #4db6ac;
+                    color: #000;
+                }}
+                .btn-secondary {{
+                    background: #1a1a1a;
+                    color: #fff;
+                    border: 1px solid #333;
+                }}
+                .note {{
+                    color: #666;
+                    font-size: 12px;
+                    margin-top: 24px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="logo">C</div>
+                <h1>You're Invited!</h1>
+                <p class="invite-info">Join <strong>{community_name}</strong></p>
+                <p class="invited-by">Invited by {invited_by}</p>
+                
+                <a href="{APP_STORE_URL}" class="btn btn-primary">
+                    Download CPoint App
+                </a>
+                <a href="{web_url}" class="btn btn-secondary">
+                    Continue in Browser
+                </a>
+                
+                <p class="note">
+                    For the best experience, we recommend using the CPoint app.
+                </p>
+            </div>
+        </body>
+        </html>
+        '''
+    
+    # For non-iOS users, redirect directly to web
+    return redirect(web_url)
+
 @app.route('/api/invitation/verify', methods=['GET'])
 def verify_invitation():
     """Verify invitation token and return invitation details"""
@@ -20411,9 +20553,9 @@ def generate_invite_link():
             ))
             conn.commit()
             
-            # Generate invitation URL (to login page for both existing and new users)
+            # Generate invitation URL (smart redirect that detects iOS)
             base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-            invite_url = f"{base_url}/login?invite={token}"
+            invite_url = f"{base_url}/invite/{token}"
             
             return jsonify({
                 'success': True, 
@@ -20875,10 +21017,10 @@ Go to C.Point: https://www.c-point.co/login
                 """, (community_id, invited_email, username, token, json.dumps(include_nested_ids), json.dumps(parent_ids_to_join)))
                 conn.commit()
                 
-                # Send invitation email with signup link
+                # Send invitation email with smart redirect URL (detects iOS)
                 # Use current domain or configured base URL
                 base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-                invite_url = f"{base_url}/signup?invite={token}"
+                invite_url = f"{base_url}/invite/{token}"
             
             html = f"""
             <!DOCTYPE html>
@@ -20930,6 +21072,16 @@ Go to C.Point: https://www.c-point.co/login
                                         <p style="margin: 10px 0 0 0; font-size: 13px; word-break: break-all; color: #4db6ac;">
                                             {invite_url}
                                         </p>
+                                        
+                                        <!-- Download App Section -->
+                                        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #2a2a2a;">
+                                            <p style="margin: 0 0 15px 0; font-size: 14px; color: #b0b0b0;">
+                                                Get the best experience with our iOS app:
+                                            </p>
+                                            <a href="https://apps.apple.com/us/app/cpoint/id6755534074" style="display: inline-block; padding: 12px 24px; background-color: #000000; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px; border-radius: 8px; border: 1px solid #333333;">
+                                                &#63743; Download CPoint
+                                            </a>
+                                        </div>
                                     </td>
                                 </tr>
                                 
