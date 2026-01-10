@@ -205,9 +205,14 @@ export default function PremiumDashboard() {
     }
   }
 
-  async function fetchJson(url: string){
+  async function fetchJson(url: string, bypassCache = false){
     try{
-      const r = await fetch(url, { credentials:'include' })
+      // Add cache-busting parameter if requested
+      const fetchUrl = bypassCache ? `${url}${url.includes('?') ? '&' : '?'}_nocache=${Date.now()}` : url
+      const r = await fetch(fetchUrl, { 
+        credentials:'include',
+        cache: bypassCache ? 'no-store' : 'default'
+      })
       const ct = r.headers.get('content-type')||''
       let bodyText = ''
       try{ bodyText = await r.clone().text() }catch{}
@@ -222,7 +227,7 @@ export default function PremiumDashboard() {
     }
   }
 
-  const loadUserData = useCallback(async () => {
+  const loadUserData = useCallback(async (forceRefresh = false) => {
     let profileSnapshot: DashboardCachePayload['profile'] | null = null
     let cachedCommunities: Array<{ id: number; name: string; type: string }> = []
     let hasGymAccessFlag = false
@@ -230,7 +235,8 @@ export default function PremiumDashboard() {
     try {
       // Profile (email verification status)
       try{
-        const r = await fetch('/api/profile_me', { credentials:'include' })
+        const profileUrl = forceRefresh ? `/api/profile_me?_nocache=${Date.now()}` : '/api/profile_me'
+        const r = await fetch(profileUrl, { credentials:'include', cache: forceRefresh ? 'no-store' : 'default' })
         if (r.status === 403){ navigate('/verify_required', { replace: true }); return }
         const me = await r.json().catch(()=>null)
         if (me?.success && me.profile){
@@ -259,13 +265,13 @@ export default function PremiumDashboard() {
       }catch{ setEmailVerified(null) }
 
       // Check gym membership
-      const gymData = await fetchJson('/api/check_gym_membership')
+      const gymData = await fetchJson('/api/check_gym_membership', forceRefresh)
       hasGymAccessFlag = !!(gymData?.hasGymAccess)
       setHasGymAccess(hasGymAccessFlag)
       
       // Check if user is app admin
       try {
-        const adminCheck = await fetchJson('/api/check_admin')
+        const adminCheck = await fetchJson('/api/check_admin', forceRefresh)
         isAdminFlag = !!(adminCheck?.is_admin)
         setIsAppAdmin(isAdminFlag)
       } catch {
@@ -274,7 +280,7 @@ export default function PremiumDashboard() {
       }
 
       // Get all user communities and decide using the fetched value (avoid stale state)
-      const parentData = await fetchJson('/api/user_parent_community')
+      const parentData = await fetchJson('/api/user_parent_community', forceRefresh)
       console.log('Dashboard: Parent communities API response:', parentData)
       const resolvedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
       cachedCommunities = resolvedCommunities
@@ -317,7 +323,8 @@ export default function PremiumDashboard() {
     setPullHint('refreshing')
     try{
       await triggerDashboardServerPull()
-      await loadUserData()
+      // Force refresh to bypass all caches (server + device)
+      await loadUserData(true)
       lastScrollRefreshRef.current = Date.now()
     }catch(err){
       console.warn('Dashboard auto-refresh failed', err)

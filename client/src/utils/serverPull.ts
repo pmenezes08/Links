@@ -42,10 +42,13 @@ function createRequestId() {
 }
 
 async function fallbackNetworkFetch(urls: string[]) {
+  const timestamp = Date.now()
   await Promise.all(
     urls.map(async (url) => {
       try {
-        await fetch(url, { credentials: 'include', cache: 'reload' })
+        // Add cache-busting query parameter
+        const bustUrl = `${url}${url.includes('?') ? '&' : '?'}_nocache=${timestamp}`
+        await fetch(bustUrl, { credentials: 'include', cache: 'no-store' })
       } catch {
         // ignore
       }

@@ -37,11 +37,18 @@ export function invalidateDashboardCache() {
   clearDeviceCache(DASHBOARD_DEVICE_CACHE_KEY)
 }
 
-export async function refreshDashboardCommunities(communities?: DashboardCommunity[]): Promise<DashboardCommunity[] | null> {
+export async function refreshDashboardCommunities(communities?: DashboardCommunity[], forceRefresh = false): Promise<DashboardCommunity[] | null> {
   try {
     let resolved: DashboardCommunity[] | null = communities ?? null
     if (!resolved) {
-      const resp = await fetch('/api/user_parent_community', { credentials: 'include' })
+      // Add cache-busting when force refresh is requested
+      const url = forceRefresh 
+        ? `/api/user_parent_community?_nocache=${Date.now()}` 
+        : '/api/user_parent_community'
+      const resp = await fetch(url, { 
+        credentials: 'include',
+        cache: forceRefresh ? 'no-store' : 'default'
+      })
       const data = await resp.json().catch(() => null)
       if (!(data?.success && Array.isArray(data.communities))) {
         return null
