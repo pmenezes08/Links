@@ -26,7 +26,7 @@ export default function UsefulLinks(){
   const [docs, setDocs] = useState<DocItem[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'list'|'add'>('list')
-  // Preview modal removed - documents now open directly in new tab
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const urlRef = useRef<HTMLInputElement|null>(null)
   const descRef = useRef<HTMLInputElement|null>(null)
@@ -34,6 +34,11 @@ export default function UsefulLinks(){
   const pdfInputRef = useRef<HTMLInputElement|null>(null)
 
   useEffect(() => { setTitle('Useful Links & Docs') }, [setTitle])
+
+  function showToast(message: string, type: 'success' | 'error' = 'success') {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 3000)
+  }
 
   async function load(){
     setLoading(true)
@@ -57,7 +62,13 @@ export default function UsefulLinks(){
     if (community_id) body.append('community_id', String(community_id))
     const r = await fetch('/add_link', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body })
     const j = await r.json().catch(()=>null)
-    if (j?.success){ if (urlRef.current) urlRef.current.value=''; if (descRef.current) descRef.current.value=''; load() }
+    if (j?.success){ 
+      if (urlRef.current) urlRef.current.value=''
+      if (descRef.current) descRef.current.value=''
+      showToast('Link added successfully!')
+      setActiveTab('list')
+      load()
+    }
     else alert(j?.error || j?.message || 'Failed to add link')
   }
 
@@ -72,7 +83,13 @@ export default function UsefulLinks(){
     if (community_id) fd.append('community_id', String(community_id))
     const r = await fetch('/upload_doc', { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
-    if (j?.success){ if (pdfInputRef.current) pdfInputRef.current.value=''; if (pdfDescRef.current) pdfDescRef.current.value=''; load() }
+    if (j?.success){ 
+      if (pdfInputRef.current) pdfInputRef.current.value=''
+      if (pdfDescRef.current) pdfDescRef.current.value=''
+      showToast('Document uploaded successfully!')
+      setActiveTab('list')
+      load()
+    }
     else alert(j?.error || 'Failed to upload')
   }
 
@@ -201,6 +218,20 @@ export default function UsefulLinks(){
           </div>
         )}
       </div>
+
+      {/* Success/Error Toast */}
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 animate-fade-in">
+          <div className={`px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 ${
+            toast.type === 'success' 
+              ? 'bg-[#4db6ac] text-black' 
+              : 'bg-red-500 text-white'
+          }`}>
+            <i className={`fa-solid ${toast.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}`} />
+            <span className="font-medium">{toast.message}</span>
+          </div>
+        </div>
+      )}
 
     </div>
   )
