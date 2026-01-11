@@ -2946,8 +2946,13 @@ export default function CommunityFeed() {
               {hasUnseenAnnouncements ? (<span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />) : null}
             </span>
           </button>
-            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="More" onClick={()=> setMoreOpen(true)}>
-            <i className="fa-solid fa-ellipsis text-lg" />
+            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="More" onClick={()=> setMoreOpen(true)}>
+            <span className="relative inline-block">
+              <i className="fa-solid fa-ellipsis text-lg" />
+              {(hasUnansweredPolls || hasUnseenDocs || hasPendingRsvps) && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />
+              )}
+            </span>
           </button>
           </div>
         </div>
