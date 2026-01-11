@@ -27,6 +27,9 @@ export default function UsefulLinks(){
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'list'|'add'>('list')
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [currentUser, setCurrentUser] = useState<string | null>(null)
+  const [editingDocId, setEditingDocId] = useState<number | null>(null)
+  const [editingName, setEditingName] = useState('')
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const urlRef = useRef<HTMLInputElement|null>(null)
   const descRef = useRef<HTMLInputElement|null>(null)
@@ -59,6 +62,19 @@ export default function UsefulLinks(){
       }
     }finally{ setLoading(false) }
   }
+  
+  // Fetch current user
+  useEffect(() => {
+    async function fetchUser() {
+      try {
+        const r = await fetch('/api/profile_me', { credentials: 'include' })
+        const j = await r.json()
+        if (j?.username) setCurrentUser(j.username)
+      } catch {}
+    }
+    fetchUser()
+  }, [])
+  
   useEffect(()=>{ load() }, [community_id])
 
   async function addLink(){
@@ -116,6 +132,24 @@ export default function UsefulLinks(){
     const j = await r.json().catch(()=>null)
     if (j?.success){ setDocs(prev => prev.filter(x => x.id !== id)) }
     else alert(j?.error || j?.message || 'Failed to delete')
+  }
+
+  async function renameDoc(id: number, newName: string) {
+    if (!newName.trim()) {
+      showToast('Name cannot be empty', 'error')
+      return
+    }
+    const body = new URLSearchParams({ doc_id: String(id), new_name: newName.trim() })
+    const r = await fetch('/rename_doc', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body })
+    const j = await r.json().catch(() => null)
+    if (j?.success) {
+      setDocs(prev => prev.map(d => d.id === id ? { ...d, description: newName.trim() } : d))
+      setEditingDocId(null)
+      setEditingName('')
+      showToast('Document renamed!')
+    } else {
+      showToast(j?.error || 'Failed to rename', 'error')
+    }
   }
 
   return (
@@ -201,23 +235,73 @@ export default function UsefulLinks(){
                     docs.map(d => {
                       // Extract filename from file_path if no description
                       const displayName = d.description || (d.file_path ? d.file_path.split('/').pop()?.replace(/^\d+_/, '') : 'PDF Document')
+                      const canEdit = currentUser === d.username
+                      const isEditing = editingDocId === d.id
+                      
                       return (
-                      <div key={d.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 flex items-center justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="text-white/90 text-sm truncate">{displayName}</div>
-                          <div className="text-xs text-[#9fb0b5]">{d.username} • {new Date(d.created_at).toLocaleString()}</div>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <a 
-                            href={resolveDocUrl(d.file_path)} 
-                            target="_blank" 
-                            rel="noreferrer"
-                            className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
-                          >
-                            <i className="fa-solid fa-external-link mr-1.5" />
-                            Open
-                          </a>
-                          <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> removeDoc(d.id)}>Delete</button>
+                      <div key={d.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            {isEditing ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={editingName}
+                                  onChange={(e) => setEditingName(e.target.value)}
+                                  className="flex-1 rounded-md bg-black border border-white/20 px-2 py-1 text-sm focus:border-teal-400/70 outline-none"
+                                  placeholder="Document name"
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') renameDoc(d.id, editingName)
+                                    if (e.key === 'Escape') { setEditingDocId(null); setEditingName('') }
+                                  }}
+                                />
+                                <button 
+                                  className="px-2 py-1 rounded-md bg-[#4db6ac] text-black text-xs hover:brightness-110"
+                                  onClick={() => renameDoc(d.id, editingName)}
+                                >
+                                  Save
+                                </button>
+                                <button 
+                                  className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs"
+                                  onClick={() => { setEditingDocId(null); setEditingName('') }}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="text-white/90 text-sm truncate">{displayName}</div>
+                                <div className="text-xs text-[#9fb0b5]">{d.username} • {new Date(d.created_at).toLocaleString()}</div>
+                              </>
+                            )}
+                          </div>
+                          {!isEditing && (
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <a 
+                                href={resolveDocUrl(d.file_path)} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
+                              >
+                                <i className="fa-solid fa-external-link mr-1.5" />
+                                Open
+                              </a>
+                              {canEdit && (
+                                <button 
+                                  className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
+                                  onClick={() => { setEditingDocId(d.id); setEditingName(d.description || '') }}
+                                >
+                                  <i className="fa-solid fa-pen text-xs" />
+                                </button>
+                              )}
+                              {canEdit && (
+                                <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> removeDoc(d.id)}>
+                                  <i className="fa-solid fa-trash text-xs" />
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )})

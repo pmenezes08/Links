@@ -17176,6 +17176,42 @@ def delete_doc():
         logger.error(f"Error deleting doc: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
 
+@app.route('/rename_doc', methods=['POST'])
+@login_required
+def rename_doc():
+    """Rename a document's description/display name"""
+    try:
+        username = session.get('username')
+        doc_id = request.form.get('doc_id')
+        new_name = request.form.get('new_name', '').strip()
+        
+        if not doc_id:
+            return jsonify({'success': False, 'error': 'doc_id required'})
+        if not new_name:
+            return jsonify({'success': False, 'error': 'new_name required'})
+        if len(new_name) > 200:
+            return jsonify({'success': False, 'error': 'Name too long (max 200 characters)'})
+            
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Check ownership
+            c.execute("SELECT username FROM useful_docs WHERE id = ?", (doc_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Document not found'})
+            owner = row['username'] if hasattr(row, 'keys') else row[0]
+            if username != owner and username != 'admin':
+                return jsonify({'success': False, 'error': 'Only the uploader can rename this document'})
+            
+            # Update description
+            c.execute("UPDATE useful_docs SET description = ? WHERE id = ?", (new_name, doc_id))
+            conn.commit()
+            
+        return jsonify({'success': True, 'message': 'Document renamed'})
+    except Exception as e:
+        logger.error(f"Error renaming doc: {e}")
+        return jsonify({'success': False, 'error': 'Server error'})
+
 # Docs served by web server static mapping (/uploads/docs -> uploads/docs)
 
 @app.route('/delete_link', methods=['POST'])
