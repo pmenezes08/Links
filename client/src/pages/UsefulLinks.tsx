@@ -27,9 +27,9 @@ export default function UsefulLinks(){
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'list'|'add'>('list')
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
-  const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [editingDocId, setEditingDocId] = useState<number | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [swipedDocId, setSwipedDocId] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement|null>(null)
   const urlRef = useRef<HTMLInputElement|null>(null)
   const descRef = useRef<HTMLInputElement|null>(null)
@@ -62,18 +62,6 @@ export default function UsefulLinks(){
       }
     }finally{ setLoading(false) }
   }
-  
-  // Fetch current user
-  useEffect(() => {
-    async function fetchUser() {
-      try {
-        const r = await fetch('/api/profile_me', { credentials: 'include' })
-        const j = await r.json()
-        if (j?.username) setCurrentUser(j.username)
-      } catch {}
-    }
-    fetchUser()
-  }, [])
   
   useEffect(()=>{ load() }, [community_id])
 
@@ -229,81 +217,32 @@ export default function UsefulLinks(){
                 </div>
                 <div className="pt-2">
                   <div className="text-sm font-semibold mb-2">Documents</div>
+                  <div className="text-xs text-[#9fb0b5] mb-2">← Swipe left on your documents to edit or delete</div>
                   {docs.length === 0 ? (
                     <div className="text-[#9fb0b5]">No documents yet.</div>
                   ) : (
                     docs.map(d => {
                       // Extract filename from file_path if no description
-                      const displayName = d.description || (d.file_path ? d.file_path.split('/').pop()?.replace(/^\d+_/, '') : 'PDF Document')
-                      const canEdit = currentUser === d.username
+                      const displayName = d.description || (d.file_path ? (d.file_path.split('/').pop()?.replace(/^\d+_/, '') || 'PDF Document') : 'PDF Document')
                       const isEditing = editingDocId === d.id
+                      const isSwiped = swipedDocId === d.id
                       
                       return (
-                      <div key={d.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 space-y-2">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            {isEditing ? (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  value={editingName}
-                                  onChange={(e) => setEditingName(e.target.value)}
-                                  className="flex-1 rounded-md bg-black border border-white/20 px-2 py-1 text-sm focus:border-teal-400/70 outline-none"
-                                  placeholder="Document name"
-                                  autoFocus
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') renameDoc(d.id, editingName)
-                                    if (e.key === 'Escape') { setEditingDocId(null); setEditingName('') }
-                                  }}
-                                />
-                                <button 
-                                  className="px-2 py-1 rounded-md bg-[#4db6ac] text-black text-xs hover:brightness-110"
-                                  onClick={() => renameDoc(d.id, editingName)}
-                                >
-                                  Save
-                                </button>
-                                <button 
-                                  className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs"
-                                  onClick={() => { setEditingDocId(null); setEditingName('') }}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="text-white/90 text-sm truncate">{displayName}</div>
-                                <div className="text-xs text-[#9fb0b5]">{d.username} • {new Date(d.created_at).toLocaleString()}</div>
-                              </>
-                            )}
-                          </div>
-                          {!isEditing && (
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <a 
-                                href={resolveDocUrl(d.file_path)} 
-                                target="_blank" 
-                                rel="noreferrer"
-                                className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
-                              >
-                                <i className="fa-solid fa-external-link mr-1.5" />
-                                Open
-                              </a>
-                              {canEdit && (
-                                <button 
-                                  className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm"
-                                  onClick={() => { setEditingDocId(d.id); setEditingName(d.description || '') }}
-                                >
-                                  <i className="fa-solid fa-pen text-xs" />
-                                </button>
-                              )}
-                              {canEdit && (
-                                <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> removeDoc(d.id)}>
-                                  <i className="fa-solid fa-trash text-xs" />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      <SwipeableDocCard
+                        key={d.id}
+                        doc={d}
+                        displayName={displayName}
+                        isEditing={isEditing}
+                        isSwiped={isSwiped}
+                        editingName={editingName}
+                        onSwipe={(swiped) => setSwipedDocId(swiped ? d.id : null)}
+                        onEditStart={() => { setEditingDocId(d.id); setEditingName(d.description || ''); setSwipedDocId(null) }}
+                        onEditCancel={() => { setEditingDocId(null); setEditingName('') }}
+                        onEditSave={() => renameDoc(d.id, editingName)}
+                        onEditNameChange={setEditingName}
+                        onDelete={() => removeDoc(d.id)}
+                        resolveDocUrl={resolveDocUrl}
+                      />
                     )})
                   )}
                 </div>
@@ -327,6 +266,157 @@ export default function UsefulLinks(){
         </div>
       )}
 
+    </div>
+  )
+}
+
+// Swipeable document card component
+function SwipeableDocCard({ 
+  doc, 
+  displayName, 
+  isEditing, 
+  isSwiped,
+  editingName,
+  onSwipe,
+  onEditStart, 
+  onEditCancel, 
+  onEditSave,
+  onEditNameChange,
+  onDelete,
+  resolveDocUrl 
+}: {
+  doc: DocItem
+  displayName: string
+  isEditing: boolean
+  isSwiped: boolean
+  editingName: string
+  onSwipe: (swiped: boolean) => void
+  onEditStart: () => void
+  onEditCancel: () => void
+  onEditSave: () => void
+  onEditNameChange: (name: string) => void
+  onDelete: () => void
+  resolveDocUrl: (path: string) => string
+}) {
+  const touchRef = useRef<{ startX: number; startY: number; startTime: number } | null>(null)
+  const [translateX, setTranslateX] = useState(0)
+  const actionWidth = 140 // Width of action buttons area
+  
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (isEditing) return
+    touchRef.current = {
+      startX: e.touches[0].clientX,
+      startY: e.touches[0].clientY,
+      startTime: Date.now()
+    }
+  }
+  
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchRef.current || isEditing) return
+    const deltaX = e.touches[0].clientX - touchRef.current.startX
+    const deltaY = e.touches[0].clientY - touchRef.current.startY
+    
+    // If scrolling vertically, don't swipe
+    if (Math.abs(deltaY) > Math.abs(deltaX)) return
+    
+    // Only allow left swipe (negative deltaX)
+    const newX = isSwiped ? Math.max(-actionWidth, Math.min(0, deltaX - actionWidth)) : Math.max(-actionWidth, Math.min(0, deltaX))
+    setTranslateX(newX)
+  }
+  
+  const handleTouchEnd = () => {
+    if (!touchRef.current || isEditing) return
+    // Snap to open or closed position
+    if (translateX < -actionWidth / 2) {
+      setTranslateX(-actionWidth)
+      onSwipe(true)
+    } else {
+      setTranslateX(0)
+      onSwipe(false)
+    }
+    touchRef.current = null
+  }
+  
+  // Reset position when isSwiped changes externally
+  useEffect(() => {
+    if (!isSwiped) setTranslateX(0)
+    else setTranslateX(-actionWidth)
+  }, [isSwiped])
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl mb-2">
+      {/* Action buttons behind */}
+      <div className="absolute right-0 top-0 bottom-0 flex items-stretch" style={{ width: actionWidth }}>
+        <button 
+          className="flex-1 bg-blue-500 flex items-center justify-center text-white"
+          onClick={onEditStart}
+        >
+          <i className="fa-solid fa-pen" />
+        </button>
+        <button 
+          className="flex-1 bg-red-500 flex items-center justify-center text-white"
+          onClick={onDelete}
+        >
+          <i className="fa-solid fa-trash" />
+        </button>
+      </div>
+      
+      {/* Main content - slides */}
+      <div 
+        className="relative bg-white/[0.035] border border-white/10 rounded-2xl p-3 transition-transform"
+        style={{ 
+          transform: `translateX(${translateX}px)`,
+          transitionDuration: touchRef.current ? '0ms' : '200ms'
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {isEditing ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={editingName}
+              onChange={(e) => onEditNameChange(e.target.value)}
+              className="flex-1 rounded-md bg-black border border-white/20 px-2 py-1 text-sm focus:border-teal-400/70 outline-none"
+              placeholder="Document name"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onEditSave()
+                if (e.key === 'Escape') onEditCancel()
+              }}
+            />
+            <button 
+              className="px-2 py-1 rounded-md bg-[#4db6ac] text-black text-xs hover:brightness-110"
+              onClick={onEditSave}
+            >
+              Save
+            </button>
+            <button 
+              className="px-2 py-1 rounded-md border border-white/10 hover:bg-white/5 text-xs"
+              onClick={onEditCancel}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="text-white/90 text-sm truncate">{displayName}</div>
+              <div className="text-xs text-[#9fb0b5]">{doc.username} • {new Date(doc.created_at).toLocaleString()}</div>
+            </div>
+            <a 
+              href={resolveDocUrl(doc.file_path)} 
+              target="_blank" 
+              rel="noreferrer"
+              className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm flex-shrink-0"
+            >
+              <i className="fa-solid fa-external-link mr-1.5" />
+              Open
+            </a>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
