@@ -184,13 +184,8 @@ export default function UsefulLinks(){
       {/* Preview overlay; click outside closes */}
       {previewDoc && (
         <div 
-          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={(e) => {
-            // Close when clicking the backdrop (not the content)
-            if (e.target === e.currentTarget) {
-              setPreviewDoc(null)
-            }
-          }}
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm"
+          onClick={() => setPreviewDoc(null)}
         >
           {/* Close button - more prominent */}
           <button 
@@ -207,17 +202,20 @@ export default function UsefulLinks(){
             target="_blank"
             rel="noreferrer"
             className="absolute top-4 left-4 z-[110] px-4 py-2 rounded-full border border-white/30 text-sm text-white hover:bg-white/10 transition-colors"
+            onClick={(e) => e.stopPropagation()}
           >
             <i className="fa-solid fa-external-link mr-2" />
             Open in new tab
           </a>
           
-          {/* PDF Viewer */}
-          <div 
-            className="w-full h-full max-w-4xl max-h-[85vh] flex items-center justify-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <PdfScrollViewer url={`/uploads/${previewDoc.file_path}`} />
+          {/* PDF Viewer - centered with padding for click-outside area */}
+          <div className="absolute inset-0 flex items-center justify-center p-8 pt-16 pointer-events-none">
+            <div 
+              className="w-full max-w-3xl h-full max-h-[80vh] pointer-events-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <PdfScrollViewer url={`/uploads/${previewDoc.file_path}`} />
+            </div>
           </div>
         </div>
       )}
@@ -233,42 +231,69 @@ function PdfScrollViewer({ url }:{ url: string }){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [numPages, setNumPages] = useState(0)
+  const pdfDocRef = useRef<any>(null)
   
   // Pinch zoom state
   const pinchRef = useRef({ startDist: 0, startZoom: 1, isPinching: false })
 
+  // Load PDF document once
   useEffect(() => {
     let mounted = true
-    async function load(){
+    async function loadPdf(){
       setLoading(true)
       setError(null)
-      try{
+      try {
         const pdfjsLib: any = await import('pdfjs-dist')
-        try{
-          // @ts-ignore
-          const workerEntry = await import('pdfjs-dist/build/pdf.worker.mjs')
-          pdfjsLib.GlobalWorkerOptions.workerSrc = (workerEntry as any)
-        }catch{
-          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js'
+        
+        // Set up worker
+        if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+          try {
+            // @ts-ignore
+            const workerEntry = await import('pdfjs-dist/build/pdf.worker.mjs')
+            pdfjsLib.GlobalWorkerOptions.workerSrc = workerEntry
+          } catch {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js'
+          }
         }
         
-        const pdf = await pdfjsLib.getDocument(url).promise
+        console.log('Loading PDF from:', url)
+        const loadingTask = pdfjsLib.getDocument({ url, withCredentials: true })
+        const pdf = await loadingTask.promise
+        
         if (!mounted) return
-        
-        const cont = containerRef.current
-        if (!cont) return
-        cont.innerHTML = ''
+        pdfDocRef.current = pdf
         setNumPages(pdf.numPages)
-        
-        // Get container width for scaling
-        const containerWidth = scrollRef.current?.clientWidth || window.innerWidth - 32
-        
-        for (let i = 1; i <= pdf.numPages; i++){
+        setLoading(false)
+      } catch (err: any) {
+        console.error('PDF load error:', err)
+        if (!mounted) return
+        setError(`Failed to load PDF: ${err?.message || 'Unknown error'}`)
+        setLoading(false)
+      }
+    }
+    loadPdf()
+    return () => { mounted = false }
+  }, [url])
+
+  // Render pages when PDF is loaded or zoom changes
+  useEffect(() => {
+    if (!pdfDocRef.current || loading) return
+    
+    let mounted = true
+    async function renderPages() {
+      const pdf = pdfDocRef.current
+      const cont = containerRef.current
+      if (!pdf || !cont) return
+      
+      cont.innerHTML = ''
+      const containerWidth = scrollRef.current?.clientWidth || 350
+      
+      for (let i = 1; i <= pdf.numPages; i++) {
+        if (!mounted) return
+        try {
           const page = await pdf.getPage(i)
-          
-          // Calculate scale to fit width while maintaining aspect ratio
           const originalViewport = page.getViewport({ scale: 1 })
-          const fitScale = (containerWidth - 16) / originalViewport.width
+          const fitScale = (containerWidth - 32) / originalViewport.width
           const viewport = page.getViewport({ scale: fitScale * zoom })
           
           const canvas = document.createElement('canvas')
@@ -276,23 +301,23 @@ function PdfScrollViewer({ url }:{ url: string }){
           canvas.style.margin = '0 auto 8px auto'
           canvas.style.borderRadius = '4px'
           canvas.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)'
+          canvas.style.backgroundColor = '#fff'
           canvas.width = viewport.width
           canvas.height = viewport.height
           cont.appendChild(canvas)
           
           const ctx = canvas.getContext('2d')
-          await page.render({ canvasContext: ctx as any, viewport }).promise
+          if (ctx) {
+            await page.render({ canvasContext: ctx, viewport }).promise
+          }
+        } catch (pageErr) {
+          console.error(`Error rendering page ${i}:`, pageErr)
         }
-        setLoading(false)
-      }catch(err){
-        console.error('PDF load error:', err)
-        setError('Failed to load PDF')
-        setLoading(false)
       }
     }
-    load()
+    renderPages()
     return () => { mounted = false }
-  }, [url, zoom])
+  }, [loading, zoom])
 
   // Get distance between two touch points
   function getDistance(t1: React.Touch, t2: React.Touch): number {
@@ -372,8 +397,16 @@ function PdfScrollViewer({ url }:{ url: string }){
       
       {/* Error state */}
       {error && (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-red-400">{error}</div>
+        <div className="flex flex-col items-center justify-center py-20 px-4">
+          <div className="text-red-400 text-center mb-4">{error}</div>
+          <a 
+            href={url} 
+            target="_blank" 
+            rel="noreferrer"
+            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-white text-sm"
+          >
+            Open PDF directly
+          </a>
         </div>
       )}
       
