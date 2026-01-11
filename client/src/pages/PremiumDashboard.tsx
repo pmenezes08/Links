@@ -25,7 +25,6 @@ export default function PremiumDashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [communities, setCommunities] = useState<Array<{id: number, name: string, type: string}>>([])
-  const [fabOpen, setFabOpen] = useState(false)
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [joinCode, setJoinCode] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -697,24 +696,15 @@ export default function PremiumDashboard() {
             )}
         </div>
 
-        {/* Floating Action Button */}
-        <div className="fixed bottom-6 right-6 z-50" style={{ WebkitTapHighlightColor: 'transparent' }}>
-          {fabOpen && (
-            <div className="mb-2 rounded-xl border border-white/10 bg-black/90 backdrop-blur p-2 w-48 shadow-lg">
-              <button 
-                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-white active:bg-white/20" 
-                onClick={()=> { setFabOpen(false); setNewCommType('General'); setShowCreateModal(true) }}
-              >
-                Create Community
-              </button>
-            </div>
-          )}
+        {/* Create Community Button */}
+        <div className="fixed bottom-0 left-0 right-0 z-50 flex justify-center pb-safe" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}>
           <button 
-            className="w-14 h-14 rounded-full bg-[#4db6ac] text-black shadow-lg hover:brightness-110 active:scale-95 grid place-items-center border border-[#4db6ac] transition-transform touch-manipulation"
-            onClick={()=> setFabOpen(v=>!v)} 
-            aria-label="Actions"
+            className="px-6 py-3 rounded-full bg-[#4db6ac] text-black font-semibold shadow-lg hover:brightness-110 active:scale-95 transition-transform touch-manipulation flex items-center gap-2"
+            onClick={()=> { setNewCommType('General'); setShowCreateModal(true) }}
+            style={{ WebkitTapHighlightColor: 'transparent' }}
           >
-            <i className="fa-solid fa-plus text-lg" />
+            Create Your Community
+            <i className="fa-solid fa-arrow-right" />
           </button>
         </div>
       </div>
@@ -928,7 +918,6 @@ export default function PremiumDashboard() {
                         onClick={() => {
                             clearPendingInviteTarget()
                             clearOnboardingProfileHint()
-                          setFabOpen(false)
                           setShowCreateModal(true)
                           setOnbStep(0)
                         }}
