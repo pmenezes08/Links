@@ -5,6 +5,19 @@ import { useHeader } from '../contexts/HeaderContext'
 type LinkItem = { id:number; username:string; url:string; description:string; created_at:string; can_delete?:boolean }
 type DocItem = { id:number; username:string; file_path:string; description:string; created_at:string }
 
+// Helper to resolve document URL - handles both CDN URLs and local paths
+function resolveDocUrl(filePath: string): string {
+  if (!filePath) return ''
+  // If it's already a full URL (CDN), return as-is
+  if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+    return filePath
+  }
+  // Otherwise prepend /uploads/ for local files
+  if (filePath.startsWith('/uploads/')) return filePath
+  if (filePath.startsWith('uploads/')) return `/${filePath}`
+  return `/uploads/${filePath}`
+}
+
 export default function UsefulLinks(){
   const { community_id } = useParams()
   const { setTitle } = useHeader()
@@ -198,7 +211,7 @@ export default function UsefulLinks(){
           
           {/* Open in new tab */}
           <a
-            href={`/uploads/${previewDoc.file_path}`}
+            href={resolveDocUrl(previewDoc.file_path)}
             target="_blank"
             rel="noreferrer"
             className="absolute top-4 left-4 z-[110] px-4 py-2 rounded-full border border-white/30 text-sm text-white hover:bg-white/10 transition-colors"
@@ -214,7 +227,7 @@ export default function UsefulLinks(){
               className="w-full max-w-3xl h-full max-h-[80vh] pointer-events-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <PdfScrollViewer url={`/uploads/${previewDoc.file_path}`} />
+              <PdfScrollViewer url={resolveDocUrl(previewDoc.file_path)} />
             </div>
           </div>
         </div>

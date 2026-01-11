@@ -17065,8 +17065,10 @@ def add_link():
 @app.route('/upload_doc', methods=['POST'])
 @login_required
 def upload_doc():
-    """Upload a PDF document for Useful Links & Docs"""
+    """Upload a PDF document for Useful Links & Docs - uses Cloudflare R2 CDN"""
     try:
+        from backend.services.r2_storage import R2_ENABLED, upload_file_to_r2, R2_PUBLIC_URL
+        
         username = session['username']
         community_id = request.form.get('community_id')
         description = (request.form.get('description') or '').strip()
@@ -17081,23 +17083,46 @@ def upload_doc():
         ext = orig.rsplit('.', 1)[-1].lower() if '.' in orig else ''
         if ext != 'pdf':
             return jsonify({'success': False, 'error': 'Only PDF files are allowed'})
+        
         safe_name = f"doc_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{username}.pdf"
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        upload_dir = os.path.join(base_dir, 'uploads', 'docs')
-        os.makedirs(upload_dir, exist_ok=True)
-        file_path = os.path.join(upload_dir, safe_name)
-        try:
-            f.save(file_path)
-        except Exception as se:
-            logger.error(f"upload save error: {se}")
-            return jsonify({'success': False, 'error': 'Could not save file on server'})
-        rel_path = f"docs/{safe_name}"
+        r2_key = f"docs/{safe_name}"
+        
+        # Try to upload to R2 CDN first
+        if R2_ENABLED:
+            success, r2_url = upload_file_to_r2(f, r2_key, 'application/pdf')
+            if success and r2_url:
+                # Store the full R2 URL in the database
+                file_path = r2_url
+                logger.info(f"Document uploaded to R2: {r2_url}")
+            else:
+                logger.warning("R2 upload failed, falling back to local storage")
+                # Fall back to local storage
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                upload_dir = os.path.join(base_dir, 'uploads', 'docs')
+                os.makedirs(upload_dir, exist_ok=True)
+                local_path = os.path.join(upload_dir, safe_name)
+                f.seek(0)
+                f.save(local_path)
+                file_path = f"docs/{safe_name}"
+        else:
+            # R2 not enabled, use local storage
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            upload_dir = os.path.join(base_dir, 'uploads', 'docs')
+            os.makedirs(upload_dir, exist_ok=True)
+            local_path = os.path.join(upload_dir, safe_name)
+            try:
+                f.save(local_path)
+            except Exception as se:
+                logger.error(f"upload save error: {se}")
+                return jsonify({'success': False, 'error': 'Could not save file on server'})
+            file_path = f"docs/{safe_name}"
+        
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute("""
                 INSERT INTO useful_docs (community_id, username, file_path, description, created_at)
                 VALUES (?, ?, ?, ?, ?)
-            """, (community_id if community_id else None, username, rel_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            """, (community_id if community_id else None, username, file_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             
             # Send notifications to community members
             if community_id:
@@ -17105,7 +17130,12 @@ def upload_doc():
                 notify_community_new_resource(community_id, username, 'doc', doc_description, conn)
             
             conn.commit()
-        return jsonify({'success': True, 'message': 'Document uploaded', 'path': f"/uploads/{rel_path}"})
+        
+        # Return appropriate path based on storage type
+        if file_path.startswith('http'):
+            return jsonify({'success': True, 'message': 'Document uploaded to CDN', 'path': file_path})
+        else:
+            return jsonify({'success': True, 'message': 'Document uploaded', 'path': f"/uploads/{file_path}"})
     except Exception as e:
         logger.error(f"upload_doc error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
