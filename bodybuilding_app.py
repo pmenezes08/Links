@@ -16986,7 +16986,7 @@ def notify_community_new_resource(community_id, username, resource_type, descrip
         resource_label = "document" if resource_type == "doc" else "link"
         desc_preview = (description[:50] + '...') if len(description) > 50 else description
         message = f'{username} added a new {resource_label} to "{community_name}": {desc_preview}'
-        notification_link = f'/useful_links/{community_id}'
+        notification_link = f'/community/{community_id}/useful_links_react'
         
         # Send notification to each member (in-app + push)
         for member in members:

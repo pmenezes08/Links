@@ -33,7 +33,14 @@ export default function UsefulLinks(){
   const pdfDescRef = useRef<HTMLInputElement|null>(null)
   const pdfInputRef = useRef<HTMLInputElement|null>(null)
 
-  useEffect(() => { setTitle('Useful Links & Docs') }, [setTitle])
+  useEffect(() => { 
+    setTitle('Useful Links & Docs')
+    // Mark docs as seen for this community
+    if (community_id) {
+      const key = `docs_last_seen_${community_id}`
+      localStorage.setItem(key, new Date().toISOString())
+    }
+  }, [setTitle, community_id])
 
   function showToast(message: string, type: 'success' | 'error' = 'success') {
     setToast({ message, type })

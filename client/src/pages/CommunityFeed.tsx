@@ -93,6 +93,8 @@ export default function CommunityFeed() {
   const [error, setError] = useState<string| null>(null)
   const [hasUnseenAnnouncements, setHasUnseenAnnouncements] = useState(false)
   const [hasUnansweredPolls, setHasUnansweredPolls] = useState(false)
+  const [hasUnseenDocs, setHasUnseenDocs] = useState(false)
+  const [hasPendingRsvps, setHasPendingRsvps] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [showAnnouncements, _setShowAnnouncements] = useState(false)
   const [_announcements, _setAnnouncements] = useState<Array<{id:number, content:string, created_by:string, created_at:string}>>([])
@@ -628,6 +630,55 @@ export default function CommunityFeed() {
       setHasUnansweredPolls(hasUnanswered)
     }catch{ setHasUnansweredPolls(false) }
   }, [data])
+
+  // Check for unseen docs in useful links
+  useEffect(() => {
+    let mounted = true
+    async function checkUnseenDocs(){
+      if (!community_id) return
+      try{
+        const r = await fetch(`/get_links?community_id=${community_id}`, { credentials: 'include' })
+        const j = await r.json()
+        if (!mounted) return
+        if (j?.success){
+          const docs = j.docs || []
+          if (docs.length === 0) { setHasUnseenDocs(false); return }
+          const key = `docs_last_seen_${community_id}`
+          const lastSeenStr = localStorage.getItem(key)
+          const lastSeen = lastSeenStr ? Date.parse(lastSeenStr) : 0
+          const hasNew = docs.some((d:any) => Date.parse(d.created_at) > lastSeen)
+          setHasUnseenDocs(hasNew)
+        }
+      }catch{ setHasUnseenDocs(false) }
+    }
+    checkUnseenDocs()
+    return () => { mounted = false }
+  }, [community_id])
+
+  // Check for pending RSVPs (calendar events without user RSVP)
+  useEffect(() => {
+    let mounted = true
+    async function checkPendingRsvps(){
+      if (!community_id) return
+      try{
+        const r = await fetch(`/api/calendar_events/${community_id}`, { credentials: 'include' })
+        const j = await r.json()
+        if (!mounted) return
+        if (j?.success){
+          const events = j.events || []
+          // Check for future events without RSVP
+          const now = new Date()
+          const hasPending = events.some((e:any) => {
+            const eventDate = new Date(e.date)
+            return eventDate >= now && !e.user_rsvp
+          })
+          setHasPendingRsvps(hasPending)
+        }
+      }catch{ setHasPendingRsvps(false) }
+    }
+    checkPendingRsvps()
+    return () => { mounted = false }
+  }, [community_id])
 
   async function fetchAnnouncements(){
     try{
@@ -2913,7 +2964,10 @@ export default function CommunityFeed() {
               Polls
               {hasUnansweredPolls && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>Calendar</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/calendar_react`) }}>
+              Calendar
+              {hasPendingRsvps && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
+            </button>
             {showTasks && (
               <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/tasks_react`) }}>Tasks</button>
             )}
@@ -2922,7 +2976,10 @@ export default function CommunityFeed() {
             {showResourcesSection && (
               <>
                 <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/resources_react`) }}>Forum</button>
-                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/useful_links_react`) }}>Useful Links & Docs</button>
+                <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/useful_links_react`) }}>
+                  Useful Links & Docs
+                  {hasUnseenDocs && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
+                </button>
               </>
             )}
             <EditCommunityButton communityId={String(community_id)} onClose={()=> setMoreOpen(false)} />
