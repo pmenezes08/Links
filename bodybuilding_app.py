@@ -16959,7 +16959,7 @@ def get_links():
         return jsonify({'success': False, 'error': str(e)})
 
 def notify_community_new_resource(community_id, username, resource_type, description, conn):
-    """Send notifications to community members when a new link/doc is added"""
+    """Send notifications (in-app + push) to community members when a new link/doc is added"""
     if not community_id:
         return
     try:
@@ -16986,10 +16986,13 @@ def notify_community_new_resource(community_id, username, resource_type, descrip
         resource_label = "document" if resource_type == "doc" else "link"
         desc_preview = (description[:50] + '...') if len(description) > 50 else description
         message = f'{username} added a new {resource_label} to "{community_name}": {desc_preview}'
+        notification_link = f'/useful_links/{community_id}'
         
-        # Send notification to each member
+        # Send notification to each member (in-app + push)
         for member in members:
             member_username = member['username'] if hasattr(member, 'keys') else member[0]
+            
+            # In-app notification (stored in database, appears on notification page)
             try:
                 c.execute("""
                     INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
@@ -17000,10 +17003,21 @@ def notify_community_new_resource(community_id, username, resource_type, descrip
                     'new_resource',
                     community_id,
                     message,
-                    f'/useful_links/{community_id}'
+                    notification_link
                 ))
             except Exception as notify_err:
-                logger.warning(f"Failed to notify {member_username} about new resource: {notify_err}")
+                logger.warning(f"Failed to create in-app notification for {member_username}: {notify_err}")
+            
+            # Push notification
+            try:
+                send_push_to_user(member_username, {
+                    'title': f'New {resource_label} in {community_name}',
+                    'body': f'{username}: {desc_preview}',
+                    'url': notification_link,
+                    'tag': f'new-resource-{community_id}-{resource_type}'
+                })
+            except Exception as push_err:
+                logger.warning(f"Failed to send push notification to {member_username}: {push_err}")
         
         logger.info(f"Sent new {resource_type} notifications to {len(members)} members in {community_name}")
         
