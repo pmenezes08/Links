@@ -198,10 +198,13 @@ export default function UsefulLinks(){
                   {docs.length === 0 ? (
                     <div className="text-[#9fb0b5]">No documents yet.</div>
                   ) : (
-                    docs.map(d => (
+                    docs.map(d => {
+                      // Extract filename from file_path if no description
+                      const displayName = d.description || (d.file_path ? d.file_path.split('/').pop()?.replace(/^\d+_/, '') : 'PDF Document')
+                      return (
                       <div key={d.id} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                          <div className="text-white/90 text-sm truncate">{d.description || 'PDF Document'}</div>
+                          <div className="text-white/90 text-sm truncate">{displayName}</div>
                           <div className="text-xs text-[#9fb0b5]">{d.username} • {new Date(d.created_at).toLocaleString()}</div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
@@ -217,7 +220,7 @@ export default function UsefulLinks(){
                           <button className="px-3 py-1.5 rounded-md border border-white/10 hover:bg-white/5 text-sm" onClick={()=> removeDoc(d.id)}>Delete</button>
                         </div>
                       </div>
-                    ))
+                    )})
                   )}
                 </div>
               </>
