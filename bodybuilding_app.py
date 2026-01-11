@@ -16958,6 +16958,58 @@ def get_links():
         logger.error(f"Error getting links: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
+def notify_community_new_resource(community_id, username, resource_type, description, conn):
+    """Send notifications to community members when a new link/doc is added"""
+    if not community_id:
+        return
+    try:
+        c = conn.cursor()
+        
+        # Get community name
+        c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+        comm_row = c.fetchone()
+        if not comm_row:
+            return
+        community_name = comm_row['name'] if hasattr(comm_row, 'keys') else comm_row[0]
+        
+        # Get all community members except the one who added the resource
+        c.execute("""
+            SELECT DISTINCT u.username
+            FROM user_communities uc
+            JOIN users u ON uc.user_id = u.id
+            WHERE uc.community_id = ? AND u.username != ?
+        """, (community_id, username))
+        
+        members = c.fetchall()
+        
+        # Create notification message
+        resource_label = "document" if resource_type == "doc" else "link"
+        desc_preview = (description[:50] + '...') if len(description) > 50 else description
+        message = f'{username} added a new {resource_label} to "{community_name}": {desc_preview}'
+        
+        # Send notification to each member
+        for member in members:
+            member_username = member['username'] if hasattr(member, 'keys') else member[0]
+            try:
+                c.execute("""
+                    INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    member_username,
+                    username,
+                    'new_resource',
+                    community_id,
+                    message,
+                    f'/useful_links/{community_id}'
+                ))
+            except Exception as notify_err:
+                logger.warning(f"Failed to notify {member_username} about new resource: {notify_err}")
+        
+        logger.info(f"Sent new {resource_type} notifications to {len(members)} members in {community_name}")
+        
+    except Exception as e:
+        logger.error(f"Error sending new resource notifications: {e}")
+
 @app.route('/add_link', methods=['POST'])
 @login_required
 def add_link():
@@ -16983,6 +17035,10 @@ def add_link():
                 VALUES (?, ?, ?, ?, ?)
             """, (community_id if community_id else None, username, url, description, 
                   datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            
+            # Send notifications to community members
+            if community_id:
+                notify_community_new_resource(community_id, username, 'link', description, conn)
             
             conn.commit()
             
@@ -17028,6 +17084,12 @@ def upload_doc():
                 INSERT INTO useful_docs (community_id, username, file_path, description, created_at)
                 VALUES (?, ?, ?, ?, ?)
             """, (community_id if community_id else None, username, rel_path, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            
+            # Send notifications to community members
+            if community_id:
+                doc_description = description or orig  # Use filename if no description
+                notify_community_new_resource(community_id, username, 'doc', doc_description, conn)
+            
             conn.commit()
         return jsonify({'success': True, 'message': 'Document uploaded', 'path': f"/uploads/{rel_path}"})
     except Exception as e:

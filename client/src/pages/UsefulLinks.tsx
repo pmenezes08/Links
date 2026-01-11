@@ -181,21 +181,44 @@ export default function UsefulLinks(){
         )}
       </div>
 
-      {/* Preview overlay; click outside closes (styled like image preview) */}
+      {/* Preview overlay; click outside closes */}
       {previewDoc && (
-        <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setPreviewDoc(null)}>
-          <button className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white flex items-center justify-center" onClick={()=> setPreviewDoc(null)} aria-label="Close preview">
-            <i className="fa-solid fa-xmark" />
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            // Close when clicking the backdrop (not the content)
+            if (e.target === e.currentTarget) {
+              setPreviewDoc(null)
+            }
+          }}
+        >
+          {/* Close button - more prominent */}
+          <button 
+            className="absolute top-4 right-4 z-[110] w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 border border-white/30 text-white flex items-center justify-center transition-colors"
+            onClick={() => setPreviewDoc(null)} 
+            aria-label="Close preview"
+          >
+            <i className="fa-solid fa-xmark text-xl" />
           </button>
+          
+          {/* Open in new tab */}
           <a
             href={`/uploads/${previewDoc.file_path}`}
             target="_blank"
             rel="noreferrer"
-            className="absolute top-3 left-3 px-3 py-1.5 rounded-md border border-white/20 text-xs text-white hover:bg-white/10"
+            className="absolute top-4 left-4 z-[110] px-4 py-2 rounded-full border border-white/30 text-sm text-white hover:bg-white/10 transition-colors"
           >
+            <i className="fa-solid fa-external-link mr-2" />
             Open in new tab
           </a>
-          <PdfScrollViewer url={`/uploads/${previewDoc.file_path}`} />
+          
+          {/* PDF Viewer */}
+          <div 
+            className="w-full h-full max-w-4xl max-h-[85vh] flex items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <PdfScrollViewer url={`/uploads/${previewDoc.file_path}`} />
+          </div>
         </div>
       )}
 
@@ -205,100 +228,157 @@ export default function UsefulLinks(){
 
 function PdfScrollViewer({ url }:{ url: string }){
   const containerRef = useRef<HTMLDivElement|null>(null)
-  const wrapperRef = useRef<HTMLDivElement|null>(null)
-  const [scale, setScale] = useState(0.95)
-  const [pinchScale, setPinchScale] = useState(1)
-  const [isPinching, setIsPinching] = useState(false)
-  const startDistRef = useRef(0)
-  const baseScaleRef = useRef(0.95)
+  const scrollRef = useRef<HTMLDivElement|null>(null)
+  const [zoom, setZoom] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string|null>(null)
+  const [numPages, setNumPages] = useState(0)
+  
+  // Pinch zoom state
+  const pinchRef = useRef({ startDist: 0, startZoom: 1, isPinching: false })
+
   useEffect(() => {
     let mounted = true
     async function load(){
+      setLoading(true)
+      setError(null)
       try{
         const pdfjsLib: any = await import('pdfjs-dist')
         try{
-          // Try to set worker from packaged entry; ignore types
           // @ts-ignore
           const workerEntry = await import('pdfjs-dist/build/pdf.worker.mjs')
           pdfjsLib.GlobalWorkerOptions.workerSrc = (workerEntry as any)
         }catch{
-          // Fallback to CDN worker
           pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.js'
         }
+        
         const pdf = await pdfjsLib.getDocument(url).promise
         if (!mounted) return
+        
         const cont = containerRef.current
         if (!cont) return
         cont.innerHTML = ''
-        for (let i=1; i<=pdf.numPages; i++){
+        setNumPages(pdf.numPages)
+        
+        // Get container width for scaling
+        const containerWidth = scrollRef.current?.clientWidth || window.innerWidth - 32
+        
+        for (let i = 1; i <= pdf.numPages; i++){
           const page = await pdf.getPage(i)
-          const viewport = page.getViewport({ scale })
+          
+          // Calculate scale to fit width while maintaining aspect ratio
+          const originalViewport = page.getViewport({ scale: 1 })
+          const fitScale = (containerWidth - 16) / originalViewport.width
+          const viewport = page.getViewport({ scale: fitScale * zoom })
+          
           const canvas = document.createElement('canvas')
           canvas.style.display = 'block'
-          canvas.style.margin = '0 auto 12px auto'
-          canvas.style.maxWidth = 'none'
+          canvas.style.margin = '0 auto 8px auto'
+          canvas.style.borderRadius = '4px'
+          canvas.style.boxShadow = '0 2px 8px rgba(0,0,0,0.3)'
           canvas.width = viewport.width
           canvas.height = viewport.height
           cont.appendChild(canvas)
+          
           const ctx = canvas.getContext('2d')
           await page.render({ canvasContext: ctx as any, viewport }).promise
         }
-      }catch{}
+        setLoading(false)
+      }catch(err){
+        console.error('PDF load error:', err)
+        setError('Failed to load PDF')
+        setLoading(false)
+      }
     }
     load()
     return () => { mounted = false }
-  }, [url, scale])
-  function getDistance(touches: any){
-    if (!touches || touches.length < 2) return 0
-    const t0 = touches.item ? touches.item(0) : touches[0]
-    const t1 = touches.item ? touches.item(1) : touches[1]
-    const dx = t0.clientX - t1.clientX
-    const dy = t0.clientY - t1.clientY
+  }, [url, zoom])
+
+  // Get distance between two touch points
+  function getDistance(t1: React.Touch, t2: React.Touch): number {
+    const dx = t1.clientX - t2.clientX
+    const dy = t1.clientY - t2.clientY
     return Math.hypot(dx, dy)
   }
 
+  function handleTouchStart(e: React.TouchEvent) {
+    if (e.touches.length === 2) {
+      pinchRef.current = {
+        startDist: getDistance(e.touches[0], e.touches[1]),
+        startZoom: zoom,
+        isPinching: true
+      }
+    }
+  }
+
+  function handleTouchMove(e: React.TouchEvent) {
+    if (pinchRef.current.isPinching && e.touches.length === 2) {
+      const currentDist = getDistance(e.touches[0], e.touches[1])
+      const scale = currentDist / pinchRef.current.startDist
+      const newZoom = Math.max(0.5, Math.min(4, pinchRef.current.startZoom * scale))
+      setZoom(newZoom)
+    }
+  }
+
+  function handleTouchEnd() {
+    pinchRef.current.isPinching = false
+  }
+
   return (
-    <div
-      className="relative w-[92vw] h-[85vh] rounded border border-white/10 bg-black overflow-x-auto overflow-y-auto p-2"
-      style={{ touchAction: 'pan-x pan-y' }}
-      onTouchStart={(e)=>{
-        if (e.touches.length === 2){
-          try{ e.preventDefault() }catch{}
-          setIsPinching(true)
-          startDistRef.current = getDistance(e.touches)
-          baseScaleRef.current = scale
-          setPinchScale(1)
-        }
-      }}
-      onTouchMove={(e)=>{
-        if (isPinching && e.touches.length === 2){
-          try{ e.preventDefault() }catch{}
-          const dist = getDistance(e.touches)
-          const factor = Math.max(0.5/baseScaleRef.current, Math.min(3.0/baseScaleRef.current, dist / (startDistRef.current || dist)))
-          setPinchScale(factor)
-          const wrap = wrapperRef.current
-          if (wrap){
-            wrap.style.transform = `scale(${factor})`
-            wrap.style.transformOrigin = 'center top'
-          }
-        }
-      }}
-      onTouchEnd={(e)=>{
-        if (isPinching && e.touches.length < 2){
-          e.preventDefault()
-          const newScale = Math.max(0.5, Math.min(3.0, +(baseScaleRef.current * pinchScale).toFixed(2)))
-          setIsPinching(false)
-          setPinchScale(1)
-          const wrap = wrapperRef.current
-          if (wrap){ wrap.style.transform = 'none' }
-          if (newScale !== scale){ setScale(newScale) }
-        }
-      }}
+    <div 
+      ref={scrollRef}
+      className="relative w-full h-full bg-[#1a1a1a] rounded-xl overflow-auto"
+      style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
-      {/* Controls removed: pinch-to-zoom only */}
-      <div ref={wrapperRef}>
-        <div ref={containerRef} />
+      {/* Zoom controls */}
+      <div className="sticky top-0 left-0 right-0 z-10 flex items-center justify-center gap-2 py-2 bg-[#1a1a1a]/90 backdrop-blur-sm border-b border-white/10">
+        <button 
+          className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
+          onClick={() => setZoom(z => Math.max(0.5, z - 0.25))}
+        >
+          <i className="fa-solid fa-minus text-sm" />
+        </button>
+        <span className="text-white/70 text-sm w-16 text-center">{Math.round(zoom * 100)}%</span>
+        <button 
+          className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
+          onClick={() => setZoom(z => Math.min(4, z + 0.25))}
+        >
+          <i className="fa-solid fa-plus text-sm" />
+        </button>
+        <button 
+          className="ml-2 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
+          onClick={() => setZoom(1)}
+          title="Reset zoom"
+        >
+          <i className="fa-solid fa-expand text-sm" />
+        </button>
+        {numPages > 0 && (
+          <span className="ml-4 text-white/50 text-xs">{numPages} page{numPages > 1 ? 's' : ''}</span>
+        )}
       </div>
+      
+      {/* Loading state */}
+      {loading && (
+        <div className="flex items-center justify-center py-20">
+          <div className="text-white/60 flex items-center gap-2">
+            <i className="fa-solid fa-spinner fa-spin" />
+            Loading PDF...
+          </div>
+        </div>
+      )}
+      
+      {/* Error state */}
+      {error && (
+        <div className="flex items-center justify-center py-20">
+          <div className="text-red-400">{error}</div>
+        </div>
+      )}
+      
+      {/* PDF pages container */}
+      <div ref={containerRef} className="p-4" />
     </div>
   )
 }
