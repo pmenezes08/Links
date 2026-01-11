@@ -38,6 +38,7 @@ export default function PremiumDashboard() {
   const [emailVerified, setEmailVerified] = useState<boolean|null>(null)
   const [showVerifyFirstModal, setShowVerifyFirstModal] = useState(false)
   const [communitiesLoaded, setCommunitiesLoaded] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   // Onboarding steps
   const [onbStep, setOnbStep] = useState<0|1|2|3|4|5>(0)
   const [displayName, setDisplayName] = useState('')
@@ -101,6 +102,8 @@ export default function PremiumDashboard() {
       setHasProfilePic(profile.hasProfilePic)
       setExistingProfilePic(profile.existingProfilePic || '')
       setPicPreview(prev => prev || profile.existingProfilePic || '')
+      // If we have cached profile, we can show UI immediately
+      setInitialLoading(false)
     }
     if (Array.isArray(cached.communities)) {
       setCommunities(cached.communities)
@@ -312,6 +315,8 @@ export default function PremiumDashboard() {
       console.error('Error loading user data:', error)
       setHasGymAccess(false)
       setCommunities([])
+    } finally {
+      setInitialLoading(false)
     }
   }, [navigate])
 
@@ -533,6 +538,44 @@ export default function PremiumDashboard() {
     return communities[0]?.name || 'your community'
   })()
   const profilePreviewSrc = picPreview || existingProfilePic
+
+  // Show loading screen while initial data loads
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          {/* Animated logo/spinner */}
+          <div className="relative">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center shadow-lg shadow-teal-500/30">
+              <span className="text-2xl font-bold text-white">C</span>
+            </div>
+            {/* Spinning ring */}
+            <div className="absolute -inset-2">
+              <svg className="w-20 h-20 animate-spin" viewBox="0 0 24 24">
+                <circle 
+                  className="opacity-20" 
+                  cx="12" cy="12" r="10" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  fill="none"
+                  style={{ color: '#4db6ac' }}
+                />
+                <path 
+                  className="opacity-80" 
+                  fill="none"
+                  stroke="#4db6ac"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  d="M12 2a10 10 0 0 1 10 10"
+                />
+              </svg>
+            </div>
+          </div>
+          <p className="text-white/60 text-sm">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
     return (
       <div className="app-content min-h-screen chat-thread-bg text-white pb-safe relative">
