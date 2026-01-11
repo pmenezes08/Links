@@ -344,29 +344,33 @@ function SwipeableDocCard({
   }, [isSwiped])
 
   return (
-    <div className="relative overflow-hidden rounded-2xl mb-2">
-      {/* Action buttons behind */}
-      <div className="absolute right-0 top-0 bottom-0 flex items-stretch" style={{ width: actionWidth }}>
+    <div className="relative mb-2">
+      {/* Action buttons - positioned to the right, revealed when card slides */}
+      <div 
+        className="absolute right-0 top-0 bottom-0 flex items-stretch rounded-r-2xl overflow-hidden"
+        style={{ width: actionWidth }}
+      >
         <button 
-          className="flex-1 bg-blue-500 flex items-center justify-center text-white"
+          className="flex-1 bg-[#4db6ac] flex items-center justify-center text-black font-medium"
           onClick={onEditStart}
         >
           <i className="fa-solid fa-pen" />
         </button>
         <button 
-          className="flex-1 bg-red-500 flex items-center justify-center text-white"
+          className="flex-1 bg-red-500 flex items-center justify-center text-white font-medium"
           onClick={onDelete}
         >
           <i className="fa-solid fa-trash" />
         </button>
       </div>
       
-      {/* Main content - slides */}
+      {/* Main content - slides to reveal buttons */}
       <div 
-        className="relative bg-white/[0.035] border border-white/10 rounded-2xl p-3 transition-transform"
+        className="relative bg-black border border-white/10 rounded-2xl p-3 transition-transform"
         style={{ 
           transform: `translateX(${translateX}px)`,
-          transitionDuration: touchRef.current ? '0ms' : '200ms'
+          transitionDuration: touchRef.current ? '0ms' : '200ms',
+          backgroundColor: '#0a0a0a'
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
