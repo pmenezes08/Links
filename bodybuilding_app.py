@@ -20485,9 +20485,6 @@ def invite_landing(token):
         logger.error(f"Error in invite_landing: {e}")
         return redirect(web_url)
     
-    # Universal link URL that will open the app with the invite token
-    app_universal_link = f"https://app.c-point.co/login?invite={token}"
-    
     # For iOS users, show a landing page with options
     if is_ios:
         return f'''
@@ -20496,6 +20493,7 @@ def invite_landing(token):
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta name="apple-itunes-app" content="app-id=6755534074">
             <title>Join {community_name} on CPoint</title>
             <style>
                 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -20549,13 +20547,15 @@ def invite_landing(token):
                     font-size: 16px;
                     margin-bottom: 12px;
                     transition: opacity 0.2s;
+                    border: none;
+                    cursor: pointer;
                 }}
                 .btn:active {{ opacity: 0.8; }}
                 .btn-primary {{
                     background: #4db6ac;
                     color: #000;
                 }}
-                .btn-appstore {{
+                .btn-secondary {{
                     background: #1a1a1a;
                     color: #fff;
                     border: 1px solid #333;
@@ -20564,19 +20564,37 @@ def invite_landing(token):
                     color: #555;
                     font-size: 12px;
                     text-decoration: underline;
-                    margin-top: 16px;
+                    margin-top: 20px;
                     display: inline-block;
                 }}
-                .note {{
-                    color: #666;
+                .step {{
+                    background: #111;
+                    border-radius: 12px;
+                    padding: 16px;
+                    margin-bottom: 16px;
+                    text-align: left;
+                }}
+                .step-number {{
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 24px;
+                    height: 24px;
+                    background: #4db6ac;
+                    color: #000;
+                    border-radius: 50%;
                     font-size: 12px;
-                    margin-top: 24px;
-                    line-height: 1.5;
+                    font-weight: bold;
+                    margin-right: 10px;
+                }}
+                .step-text {{
+                    color: #ccc;
+                    font-size: 14px;
                 }}
                 .divider {{
                     color: #444;
                     font-size: 12px;
-                    margin: 16px 0;
+                    margin: 20px 0 16px;
                 }}
             </style>
         </head>
@@ -20587,22 +20605,27 @@ def invite_landing(token):
                 <p class="invite-info">Join <strong>{community_name}</strong></p>
                 <p class="invited-by">Invited by {invited_by}</p>
                 
-                <a href="{app_universal_link}" class="btn btn-primary">
-                    Open in CPoint App
+                <a href="{APP_STORE_URL}" class="btn btn-primary">
+                    Get CPoint App
                 </a>
                 
-                <p class="divider">Don't have the app?</p>
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <span class="step-text">Download the app from the App Store</span>
+                </div>
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <span class="step-text">Open this invite link again to join</span>
+                </div>
                 
-                <a href="{APP_STORE_URL}" class="btn btn-appstore">
-                    Download from App Store
+                <p class="divider">Already have the app?</p>
+                
+                <a href="{web_url}" class="btn btn-secondary">
+                    Continue to Join
                 </a>
-                
-                <p class="note">
-                    After installing, tap this invite link again<br/>or tap "Open in CPoint App" above.
-                </p>
                 
                 <a href="{web_url}" class="link-subtle">
-                    Use browser instead
+                    Use browser version
                 </a>
             </div>
         </body>
