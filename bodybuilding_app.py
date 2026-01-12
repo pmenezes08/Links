@@ -20512,16 +20512,14 @@ def invite_landing(token):
                     text-align: center;
                 }}
                 .logo {{
-                    width: 80px;
-                    height: 80px;
-                    background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%);
-                    border-radius: 20px;
+                    width: 100px;
+                    height: 100px;
                     margin: 0 auto 24px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 36px;
-                    font-weight: bold;
+                }}
+                .logo img {{
+                    width: 100%;
+                    height: 100%;
+                    object-fit: contain;
                 }}
                 h1 {{
                     font-size: 24px;

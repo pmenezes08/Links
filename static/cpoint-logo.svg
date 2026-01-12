@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Main wave/pin shape -->
+  <path d="M100 20 C140 20 170 50 170 90 C170 110 160 130 140 150 C120 170 100 180 100 180 C100 180 80 170 60 150 C40 130 30 110 30 90 C30 50 60 20 100 20 Z" fill="#4db6ac"/>
+  
+  <!-- Inner circle (eye of the pin) -->
+  <circle cx="120" cy="70" r="20" fill="white"/>
+  <circle cx="120" cy="70" r="10" fill="#4db6ac"/>
+  
+  <!-- Bottom waves -->
+  <path d="M20 150 Q60 130 100 150 Q140 170 180 150" stroke="#4db6ac" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <path d="M30 170 Q70 150 110 170 Q150 190 190 170" stroke="#2d8a80" stroke-width="8" fill="none" stroke-linecap="round"/>
+</svg>
