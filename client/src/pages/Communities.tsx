@@ -90,7 +90,7 @@ export default function Communities(){
   const [newGroupName, setNewGroupName] = useState('')
   const [approvalRequired, setApprovalRequired] = useState(false)
   const [selectedSubCommunityId, setSelectedSubCommunityId] = useState<number | 'none'>('none')
-  const [isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
+  const [_isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
   const [showNested, setShowNested] = useState<boolean>(() => {
     try{
       if (typeof window === 'undefined') return true
@@ -534,7 +534,6 @@ export default function Communities(){
           <>
             <PlusActions
               onCreateSub={() => { setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
-              onCreateGroup={() => { if (!isAdminOrPaulo) { alert('Only admin or Paulo can create groups'); return } setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false) }}
             />
 
             {showCreateSubModal && (
@@ -712,22 +711,15 @@ export default function Communities(){
   )
 }
 
-function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onCreateGroup: ()=>void }){
-  const [open, setOpen] = useState(false)
+function PlusActions({ onCreateSub }:{ onCreateSub: ()=>void }){
   return (
-    <div className="fixed bottom-6 right-6 z-50">
-      {open && (
-        <div className="mb-2 rounded-xl border border-white/10 bg-black/80 backdrop-blur p-2 w-56 shadow-lg">
-          <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm" onClick={()=> { setOpen(false); onCreateSub() }}>
-            Create Sub-Community
-          </button>
-          <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm" onClick={()=> { setOpen(false); onCreateGroup() }}>
-            Create Group
-          </button>
-        </div>
-      )}
-      <button className="w-14 h-14 rounded-full bg-[#4db6ac] text-black shadow-lg hover:brightness-110 grid place-items-center border border-[#4db6ac]" onClick={()=> setOpen(v=>!v)} aria-label="Actions">
-        <i className="fa-solid fa-plus" />
+    <div className="flex justify-center mt-6 mb-4">
+      <button 
+        className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#4db6ac] text-black font-medium text-sm shadow-lg hover:brightness-110 transition-all duration-200 border border-[#4db6ac]"
+        onClick={onCreateSub}
+      >
+        <span>Create a Sub-Community</span>
+        <i className="fa-solid fa-arrow-right" />
       </button>
     </div>
   )
