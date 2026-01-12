@@ -168,6 +168,15 @@ function AppRoutes(){
       const inviteToken = extractInviteToken(url)
       if (inviteToken) {
         console.log('🔗 Invite token found:', inviteToken)
+        
+        // Store invite token immediately so it persists through login flow
+        try {
+          sessionStorage.setItem('cpoint_pending_invite', JSON.stringify({ inviteToken }))
+          console.log('🔗 Stored invite token in sessionStorage')
+        } catch (e) {
+          console.error('🔗 Failed to store invite token:', e)
+        }
+        
         try {
           const result = await joinCommunityWithInvite(inviteToken)
           console.log('🔗 Join result:', result)
@@ -179,30 +188,24 @@ function AppRoutes(){
               // Auto-dismiss and navigate after 2.5 seconds
               setTimeout(() => {
                 setDeepLinkJoin(null)
-                navigate(`/community_feed_react/${result.communityId}`)
+                window.location.href = `/community_feed_react/${result.communityId}`
               }, 2500)
             } else {
-              navigate(`/community_feed_react/${result.communityId}`)
+              window.location.href = `/community_feed_react/${result.communityId}`
             }
           } else if (result.alreadyMember && result.communityId) {
             // Already a member - just navigate
-            navigate(`/community_feed_react/${result.communityId}`)
+            window.location.href = `/community_feed_react/${result.communityId}`
           } else {
-            console.error('🔗 Failed to join:', result.error)
+            console.log('🔗 Join failed, redirecting to login. Error:', result.error)
             // If join failed (likely not authenticated), redirect to login with invite token
-            // Store token in sessionStorage for the login page to pick up
-            try {
-              sessionStorage.setItem('cpoint_pending_invite', JSON.stringify({ inviteToken }))
-            } catch {}
-            navigate(`/login?invite=${inviteToken}`)
+            // Use window.location for more reliable redirect in Capacitor
+            window.location.href = `/login?invite=${inviteToken}`
           }
         } catch (err) {
           console.error('🔗 Error processing invite:', err)
           // On error, redirect to login with invite token
-          try {
-            sessionStorage.setItem('cpoint_pending_invite', JSON.stringify({ inviteToken }))
-          } catch {}
-          navigate(`/login?invite=${inviteToken}`)
+          window.location.href = `/login?invite=${inviteToken}`
         }
       }
     }
