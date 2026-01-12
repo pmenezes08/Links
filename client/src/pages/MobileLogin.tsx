@@ -227,17 +227,63 @@ export default function MobileLogin() {
           </form>
         ) : (
           <form 
-            method="POST" 
-            action="/login"
             className="space-y-3" 
-            onSubmit={() => {
+            onSubmit={async (e) => {
+              e.preventDefault()
               console.log('Form submitting...')
               setIsSubmitting(true)
               setError(null)
-              // Allow default form submission to proceed
+              
+              const formData = new FormData(e.currentTarget)
+              const username = formData.get('username') as string
+              
+              if (!username?.trim()) {
+                setError('Username is required')
+                setIsSubmitting(false)
+                return
+              }
+              
+              try {
+                // Submit username to start login flow
+                const response = await fetch('/login', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                  credentials: 'include',
+                  body: new URLSearchParams({
+                    username: username.trim(),
+                    ...(inviteToken ? { invite_token: inviteToken } : {})
+                  })
+                })
+                
+                // Check if redirected to password step
+                if (response.redirected) {
+                  const url = new URL(response.url)
+                  if (url.pathname === '/login' && url.searchParams.get('step') === 'password') {
+                    // Navigate to password step
+                    navigate(`/login?step=password${inviteToken ? `&invite=${inviteToken}` : ''}`)
+                    return
+                  }
+                }
+                
+                // If not redirected, try to parse response
+                const text = await response.text()
+                if (text.includes('error=')) {
+                  const errorMatch = text.match(/error=([^&"]+)/)
+                  if (errorMatch) {
+                    setError(decodeURIComponent(errorMatch[1]))
+                  }
+                } else {
+                  // Likely redirected to password step, navigate there
+                  navigate(`/login?step=password${inviteToken ? `&invite=${inviteToken}` : ''}`)
+                }
+              } catch (err) {
+                console.error('Login error:', err)
+                setError('Connection error. Please try again.')
+              } finally {
+                setIsSubmitting(false)
+              }
             }}
           >
-            {inviteToken && <input type="hidden" name="invite_token" value={inviteToken} />}
             <div>
               <input
                 type="text"
