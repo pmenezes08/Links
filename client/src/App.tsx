@@ -155,21 +155,69 @@ function AppRoutes(){
   // State for deep link join modal
   const [deepLinkJoin, setDeepLinkJoin] = useState<{ name: string; id: number } | null>(null)
   
-  // Track processed URLs to prevent infinite loops
+  // Track processed URLs to prevent infinite loops - use sessionStorage for persistence across page reloads
   const processedUrlsRef = useRef<Set<string>>(new Set())
+  
+  // Initialize from sessionStorage on first render
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('cpoint_processed_deep_links')
+      if (stored) {
+        const urls = JSON.parse(stored) as string[]
+        urls.forEach(url => processedUrlsRef.current.add(url))
+      }
+    } catch {
+      // Ignore
+    }
+  }, [])
+  
+  // Helper to mark URL as processed (persists in sessionStorage)
+  const markUrlProcessed = useCallback((url: string) => {
+    processedUrlsRef.current.add(url)
+    try {
+      sessionStorage.setItem('cpoint_processed_deep_links', JSON.stringify([...processedUrlsRef.current]))
+    } catch (e) {
+      console.warn('🔗 Failed to persist processed URLs:', e)
+    }
+  }, [])
+  
+  // Helper to check if URL was already processed
+  const isUrlProcessed = useCallback((url: string): boolean => {
+    // Also check sessionStorage in case ref wasn't initialized
+    if (processedUrlsRef.current.has(url)) return true
+    try {
+      const stored = sessionStorage.getItem('cpoint_processed_deep_links')
+      if (stored) {
+        const urls = JSON.parse(stored) as string[]
+        if (urls.includes(url)) {
+          processedUrlsRef.current.add(url)
+          return true
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    return false
+  }, [])
 
   // Handle deep links (Universal Links) when app is opened from external sources
+  // IMPORTANT: Wait for authLoaded before processing to avoid race conditions
   useEffect(() => {
     if (Capacitor.getPlatform() === 'web') return
+    // Don't process deep links until auth state is known
+    if (!authLoaded) {
+      console.log('🔗 Waiting for auth to load before processing deep links...')
+      return
+    }
 
     let listenerHandle: PluginListenerHandle | undefined
 
     const handleDeepLink = async (url: string, source: string) => {
       console.log(`🔗 Deep link received (${source}):`, url)
       
-      // Prevent processing the same URL multiple times
-      if (processedUrlsRef.current.has(url)) {
-        console.log('🔗 URL already processed, skipping:', url)
+      // Prevent processing the same URL multiple times (persisted check)
+      if (isUrlProcessed(url)) {
+        console.log('🔗 URL already processed (persisted), skipping:', url)
         return
       }
       
@@ -178,16 +226,25 @@ function AppRoutes(){
       if (inviteToken) {
         console.log('🔗 Invite token found:', inviteToken)
         
-        // Check if we're already on the login page with this invite token
         const currentUrl = window.location.href
+        const currentPath = window.location.pathname
+        
+        // Check if we're already on the login page with this invite token
         if (currentUrl.includes(`invite=${inviteToken}`)) {
           console.log('🔗 Already on login page with this invite token, skipping redirect')
-          processedUrlsRef.current.add(url)
+          markUrlProcessed(url)
+          return
+        }
+        
+        // Check if we're already on a community feed page (prevent redirect loop)
+        if (currentPath.startsWith('/community_feed_react/')) {
+          console.log('🔗 Already on community feed, marking URL as processed')
+          markUrlProcessed(url)
           return
         }
         
         // Mark as processed BEFORE any async operations
-        processedUrlsRef.current.add(url)
+        markUrlProcessed(url)
         
         // Store invite token immediately so it persists through login flow
         try {
@@ -197,35 +254,44 @@ function AppRoutes(){
           console.error('🔗 Failed to store invite token:', e)
         }
         
-        try {
-          const result = await joinCommunityWithInvite(inviteToken)
-          console.log('🔗 Join result:', result)
-          
-          if (result.success && result.communityId) {
-            // Successfully joined - show modal and navigate
-            if (result.communityName) {
-              setDeepLinkJoin({ name: result.communityName, id: result.communityId })
-              // Auto-dismiss and navigate after 2.5 seconds
-              setTimeout(() => {
-                setDeepLinkJoin(null)
-                window.location.href = `/community_feed_react/${result.communityId}`
-              }, 2500)
+        // If user is already logged in (profileData exists), try to join
+        if (profileData) {
+          console.log('🔗 User is authenticated, attempting to join community')
+          try {
+            const result = await joinCommunityWithInvite(inviteToken)
+            console.log('🔗 Join result:', result)
+            
+            if (result.success && result.communityId) {
+              // Successfully joined - show modal and navigate
+              if (result.communityName) {
+                setDeepLinkJoin({ name: result.communityName, id: result.communityId })
+                // Auto-dismiss and navigate after 2.5 seconds
+                setTimeout(() => {
+                  setDeepLinkJoin(null)
+                  navigate(`/community_feed_react/${result.communityId}`)
+                }, 2500)
+              } else {
+                navigate(`/community_feed_react/${result.communityId}`)
+              }
+            } else if (result.alreadyMember && result.communityId) {
+              // Already a member - just navigate (use navigate instead of window.location.href)
+              console.log('🔗 Already a member, navigating to community')
+              navigate(`/community_feed_react/${result.communityId}`)
             } else {
-              window.location.href = `/community_feed_react/${result.communityId}`
+              // Join failed for some reason (but user is logged in)
+              console.log('🔗 Join failed but user is logged in:', result.error)
+              // Don't redirect to login - user is already logged in
+              // The error will be shown in the community if they navigate there
             }
-          } else if (result.alreadyMember && result.communityId) {
-            // Already a member - just navigate
-            window.location.href = `/community_feed_react/${result.communityId}`
-          } else {
-            console.log('🔗 Join failed, redirecting to login. Error:', result.error)
-            // If join failed (likely not authenticated), redirect to login with invite token
-            // Use window.location for more reliable redirect in Capacitor
-            window.location.href = `/login?invite=${inviteToken}`
+          } catch (err) {
+            console.error('🔗 Error processing invite:', err)
+            // Don't redirect to login on error if user is already logged in
           }
-        } catch (err) {
-          console.error('🔗 Error processing invite:', err)
-          // On error, redirect to login with invite token
-          window.location.href = `/login?invite=${inviteToken}`
+        } else {
+          console.log('🔗 User not authenticated, redirecting to login with invite token')
+          // User not authenticated - redirect to login with invite token
+          // Use navigate instead of window.location.href to avoid page reload
+          navigate(`/login?invite=${inviteToken}`)
         }
       }
     }
@@ -238,7 +304,7 @@ function AppRoutes(){
       listenerHandle = handle
     })
 
-    // Also check if app was launched with a URL (only once on mount)
+    // Also check if app was launched with a URL (only once when auth is loaded)
     CapacitorApp.getLaunchUrl().then((result) => {
       if (result?.url) {
         console.log('🔗 App launched with URL:', result.url)
@@ -249,7 +315,7 @@ function AppRoutes(){
     return () => {
       listenerHandle?.remove()
     }
-  }, [navigate])
+  }, [navigate, authLoaded, profileData, isUrlProcessed, markUrlProcessed])
 
   const resetScrollPosition = useCallback(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
