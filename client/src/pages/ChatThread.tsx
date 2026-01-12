@@ -857,15 +857,29 @@ export default function ChatThread(){
         })
       })
       
+      // Additional delayed scrolls to catch late-loading images/content
+      const delayedScrolls = [100, 300, 500, 800, 1200].map(delay => 
+        setTimeout(scrollToBottom, delay)
+      )
+      
+      // Track if we're in initial load period (first 2 seconds)
+      let isInitialLoadPeriod = true
+      const initialLoadTimer = setTimeout(() => { isInitialLoadPeriod = false }, 2000)
+      
       // MutationObserver to handle images loading (silently adjusts scroll)
       let lastHeight = el.scrollHeight
       const observer = new MutationObserver(() => {
         if (el.scrollHeight !== lastHeight) {
           lastHeight = el.scrollHeight
-          // Only auto-scroll if user is near bottom
-          const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
-          if (nearBottom) {
+          // During initial load, ALWAYS scroll to bottom when content changes
+          // After initial load, only auto-scroll if user is near bottom
+          if (isInitialLoadPeriod) {
             scrollToBottom()
+          } else {
+            const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
+            if (nearBottom) {
+              scrollToBottom()
+            }
           }
         }
       })
@@ -873,6 +887,8 @@ export default function ChatThread(){
       const observerTimer = setTimeout(() => observer.disconnect(), 5000)
       
       return () => {
+        delayedScrolls.forEach(clearTimeout)
+        clearTimeout(initialLoadTimer)
         clearTimeout(observerTimer)
         observer.disconnect()
       }
