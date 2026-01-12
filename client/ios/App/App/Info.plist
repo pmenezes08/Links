@@ -55,5 +55,16 @@
 	<string>This app needs permission to save photos to your library.</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>This app needs permission to send you notifications about messages, events, and community updates.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>co.cpoint.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>cpoint</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

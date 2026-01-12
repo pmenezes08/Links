@@ -60,9 +60,27 @@ export function isLandingPageLink(url: string): boolean {
 
 /**
  * Extract the invite token from a URL if present
+ * Supports:
+ * - https://app.c-point.co/invite/TOKEN
+ * - https://app.c-point.co/login?invite=TOKEN
+ * - cpoint://invite/TOKEN (custom URL scheme)
  */
 export function extractInviteToken(url: string): string | null {
   try {
+    // Handle custom URL scheme (cpoint://invite/TOKEN)
+    if (url.startsWith('cpoint://')) {
+      const match = url.match(/^cpoint:\/\/invite\/([a-zA-Z0-9_-]+)/)
+      if (match) {
+        return match[1]
+      }
+      // Also check for cpoint://login?invite=TOKEN
+      const queryMatch = url.match(/[?&]invite=([a-zA-Z0-9_-]+)/)
+      if (queryMatch) {
+        return queryMatch[1]
+      }
+      return null
+    }
+    
     const parsed = new URL(url)
     
     // Check for /invite/TOKEN path format (new smart redirect)

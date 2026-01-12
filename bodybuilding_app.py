@@ -20726,28 +20726,43 @@ def invite_landing(token):
                 <p class="invite-info">Join <strong>{community_name}</strong></p>
                 <p class="invited-by">Invited by {invited_by}</p>
                 
-                <a href="{APP_STORE_URL}" class="btn btn-primary">
-                    Get CPoint App
+                <a href="cpoint://invite/{token}" class="btn btn-primary" id="openAppBtn">
+                    Open in CPoint App
                 </a>
                 
-                <div class="step">
-                    <span class="step-number">1</span>
-                    <span class="step-text">Download the app from the App Store</span>
-                </div>
-                <div class="step">
-                    <span class="step-number">2</span>
-                    <span class="step-text">Open this invite link again to join</span>
-                </div>
+                <p class="divider">Don't have the app yet?</p>
                 
-                <p class="divider">Already have the app?</p>
-                
-                <a href="{web_url}" class="btn btn-secondary">
-                    Continue to Join
+                <a href="{APP_STORE_URL}" class="btn btn-secondary">
+                    Download from App Store
                 </a>
                 
                 <a href="{web_url}" class="link-subtle">
                     Use browser version
                 </a>
+                
+                <script>
+                    // Try to open the app, if it fails after a timeout, show app store
+                    document.getElementById('openAppBtn').addEventListener('click', function(e) {{
+                        var start = Date.now();
+                        var timeout = setTimeout(function() {{
+                            // If we're still here after 1.5s, app probably isn't installed
+                            if (Date.now() - start < 2000) {{
+                                // Show a message or redirect to app store
+                                if (confirm('CPoint app not found. Would you like to download it?')) {{
+                                    window.location.href = '{APP_STORE_URL}';
+                                }}
+                            }}
+                        }}, 1500);
+                        
+                        // If app opens, this page will be hidden/backgrounded
+                        window.addEventListener('pagehide', function() {{
+                            clearTimeout(timeout);
+                        }});
+                        window.addEventListener('blur', function() {{
+                            clearTimeout(timeout);
+                        }});
+                    }});
+                </script>
             </div>
         </body>
         </html>
