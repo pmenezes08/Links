@@ -20485,6 +20485,9 @@ def invite_landing(token):
         logger.error(f"Error in invite_landing: {e}")
         return redirect(web_url)
     
+    # Universal link URL that will open the app with the invite token
+    app_universal_link = f"https://app.c-point.co/login?invite={token}"
+    
     # For iOS users, show a landing page with options
     if is_ios:
         return f'''
@@ -20552,15 +20555,28 @@ def invite_landing(token):
                     background: #4db6ac;
                     color: #000;
                 }}
-                .btn-secondary {{
+                .btn-appstore {{
                     background: #1a1a1a;
                     color: #fff;
                     border: 1px solid #333;
+                }}
+                .link-subtle {{
+                    color: #555;
+                    font-size: 12px;
+                    text-decoration: underline;
+                    margin-top: 16px;
+                    display: inline-block;
                 }}
                 .note {{
                     color: #666;
                     font-size: 12px;
                     margin-top: 24px;
+                    line-height: 1.5;
+                }}
+                .divider {{
+                    color: #444;
+                    font-size: 12px;
+                    margin: 16px 0;
                 }}
             </style>
         </head>
@@ -20571,23 +20587,110 @@ def invite_landing(token):
                 <p class="invite-info">Join <strong>{community_name}</strong></p>
                 <p class="invited-by">Invited by {invited_by}</p>
                 
-                <a href="{APP_STORE_URL}" class="btn btn-primary">
-                    Download CPoint App
+                <a href="{app_universal_link}" class="btn btn-primary">
+                    Open in CPoint App
                 </a>
-                <a href="{web_url}" class="btn btn-secondary">
-                    Continue in Browser
+                
+                <p class="divider">Don't have the app?</p>
+                
+                <a href="{APP_STORE_URL}" class="btn btn-appstore">
+                    Download from App Store
                 </a>
                 
                 <p class="note">
-                    For the best experience, we recommend using the CPoint app.
+                    After installing, tap this invite link again<br/>or tap "Open in CPoint App" above.
                 </p>
+                
+                <a href="{web_url}" class="link-subtle">
+                    Use browser instead
+                </a>
             </div>
         </body>
         </html>
         '''
     
-    # For non-iOS users, redirect directly to web
-    return redirect(web_url)
+    # For non-iOS users, show page with browser as primary option
+    return f'''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Join {community_name} on CPoint</title>
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: #000;
+                color: #fff;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 20px;
+            }}
+            .container {{
+                max-width: 400px;
+                text-align: center;
+            }}
+            .logo {{
+                width: 80px;
+                height: 80px;
+                background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%);
+                border-radius: 20px;
+                margin: 0 auto 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 36px;
+                font-weight: bold;
+            }}
+            h1 {{
+                font-size: 24px;
+                margin-bottom: 12px;
+            }}
+            .invite-info {{
+                color: #4db6ac;
+                font-size: 18px;
+                margin-bottom: 8px;
+            }}
+            .invited-by {{
+                color: #888;
+                font-size: 14px;
+                margin-bottom: 32px;
+            }}
+            .btn {{
+                display: block;
+                width: 100%;
+                padding: 16px 24px;
+                border-radius: 12px;
+                text-decoration: none;
+                font-weight: 600;
+                font-size: 16px;
+                margin-bottom: 12px;
+                transition: opacity 0.2s;
+            }}
+            .btn:active {{ opacity: 0.8; }}
+            .btn-primary {{
+                background: #4db6ac;
+                color: #000;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="logo">C</div>
+            <h1>You're Invited!</h1>
+            <p class="invite-info">Join <strong>{community_name}</strong></p>
+            <p class="invited-by">Invited by {invited_by}</p>
+            
+            <a href="{web_url}" class="btn btn-primary">
+                Join Community
+            </a>
+        </div>
+    </body>
+    </html>
+    '''
 
 @app.route('/api/invitation/verify', methods=['GET'])
 def verify_invitation():

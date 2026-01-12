@@ -189,9 +189,20 @@ function AppRoutes(){
             navigate(`/community_feed_react/${result.communityId}`)
           } else {
             console.error('🔗 Failed to join:', result.error)
+            // If join failed (likely not authenticated), redirect to login with invite token
+            // Store token in sessionStorage for the login page to pick up
+            try {
+              sessionStorage.setItem('cpoint_pending_invite', JSON.stringify({ inviteToken }))
+            } catch {}
+            navigate(`/login?invite=${inviteToken}`)
           }
         } catch (err) {
           console.error('🔗 Error processing invite:', err)
+          // On error, redirect to login with invite token
+          try {
+            sessionStorage.setItem('cpoint_pending_invite', JSON.stringify({ inviteToken }))
+          } catch {}
+          navigate(`/login?invite=${inviteToken}`)
         }
       }
     }
