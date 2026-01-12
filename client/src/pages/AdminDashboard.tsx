@@ -144,9 +144,6 @@ export default function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'premium' | 'free'>('all')
   const [showAddUserModal, setShowAddUserModal] = useState(false)
-  const [showLogoModal, setShowLogoModal] = useState(false)
-  const [currentLogo, setCurrentLogo] = useState<string | null>(null)
-  const [logoStatus, setLogoStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteCommunityId, setInviteCommunityId] = useState<number | null>(null)
   const [inviteCommunityName, setInviteCommunityName] = useState<string>('')
@@ -264,24 +261,6 @@ export default function AdminDashboard() {
     }
   }
 
-  const loadCurrentLogo = async () => {
-    try {
-      setLogoStatus('loading')
-      const response = await fetch('/get_logo', { credentials: 'include' })
-      const data = await response.json()
-
-      if (data.success && data.logo_path) {
-        setCurrentLogo(`/static/${data.logo_path}`)
-        setLogoStatus('success')
-      } else {
-        setCurrentLogo(null)
-        setLogoStatus('success')
-      }
-    } catch (error) {
-      console.error('Error loading logo:', error)
-      setLogoStatus('error')
-    }
-  }
 
   const loadWelcomeCards = useCallback(async () => {
     setWelcomeStatus('loading')
@@ -447,7 +426,6 @@ export default function AdminDashboard() {
     setTitle('Admin Dashboard')
     checkAdminAccess()
     loadAdminData()
-    loadCurrentLogo()
     loadWelcomeCards()
   }, [setTitle, loadWelcomeCards])
 
@@ -476,53 +454,7 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  const handleLogoUpload = async (file: File) => {
-    const formData = new FormData()
-    formData.append('logo', file)
 
-    try {
-      const response = await fetch('/upload_logo', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData
-      })
-
-      const data = await response.json()
-      if (data.success) {
-        alert('Logo uploaded successfully!')
-        loadCurrentLogo()
-        setShowLogoModal(false)
-      } else {
-        alert('Error uploading logo: ' + data.error)
-      }
-    } catch (error) {
-      console.error('Error uploading logo:', error)
-      alert('Error uploading logo')
-    }
-  }
-
-  const handleRemoveLogo = async () => {
-    if (!confirm('Are you sure you want to remove the logo?')) return
-
-    try {
-      const response = await fetch('/remove_logo', {
-        method: 'POST',
-        credentials: 'include'
-      })
-
-      const data = await response.json()
-      if (data.success) {
-        alert('Logo removed successfully!')
-        loadCurrentLogo()
-        setShowLogoModal(false)
-      } else {
-        alert('Error removing logo: ' + data.error)
-      }
-    } catch (error) {
-      console.error('Error removing logo:', error)
-      alert('Error removing logo')
-    }
-  }
 
   const resetInviteSelections = () => {
     setInviteCommunityId(null)
@@ -954,74 +886,6 @@ export default function AdminDashboard() {
         {/* Overview Tab */}
         {activeTab === 'overview' && stats && (
           <div className="space-y-4">
-            {/* Logo Management Section */}
-            <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
-              <h3 className="text-lg font-semibold mb-4 text-[#4db6ac]">App Logo Management</h3>
-
-              <div className="flex items-center gap-6">
-                <div className="flex flex-col items-center">
-                  <div className="text-sm text-white/60 mb-2">Current Logo</div>
-                  <div className="w-24 h-16 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center mb-3">
-                    {logoStatus === 'loading' ? (
-                      <div className="text-xs text-white/60">Loading...</div>
-                    ) : currentLogo ? (
-                      <img src={currentLogo} alt="Current Logo" className="max-w-full max-h-full object-contain" />
-                    ) : (
-                      <div className="text-xs text-white/60">No Logo</div>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setShowLogoModal(true)}
-                      className="px-3 py-1 text-xs bg-[#4db6ac] text-black rounded-lg hover:bg-[#45a099]"
-                    >
-                      Change
-                    </button>
-                    {currentLogo && (
-                      <button
-                        onClick={handleRemoveLogo}
-                        className="px-3 py-1 text-xs bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/30"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex-1">
-                  <div className="grid grid-cols-1 gap-3">
-                    <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-                      <div className="text-sm font-medium mb-1">Logo Status</div>
-                      <div className="text-xs">
-                        {logoStatus === 'loading' && <span className="text-white/60">Loading...</span>}
-                        {logoStatus === 'success' && currentLogo && <span className="text-[#4db6ac]">Uploaded</span>}
-                        {logoStatus === 'success' && !currentLogo && <span className="text-yellow-400">Not Set</span>}
-                        {logoStatus === 'error' && <span className="text-red-400">Error</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-3">
-                    <button
-                      onClick={async () => {
-                        try{
-                          const r = await fetch('/admin/regenerate_app_icons', { method:'POST', credentials:'include' })
-                          const j = await r.json()
-                          if (j?.success) {
-                            alert('App icons regenerated. Remove and re-add the PWA to update the home screen icon.')
-                          } else {
-                            alert('Failed to regenerate icons: ' + (j?.error || 'Unknown error'))
-                          }
-                        }catch{ alert('Server error') }
-                      }}
-                      className="px-3 py-1.5 bg-white/10 border border-white/20 rounded-lg text-sm hover:bg-white/15"
-                    >
-                      Regenerate App Icons
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
               {/* Welcome Cards Management */}
               <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
@@ -2131,67 +1995,6 @@ export default function AdminDashboard() {
                 Copy Link
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Logo Upload Modal */}
-      {showLogoModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-white/10">
-            <h2 className="text-lg font-semibold mb-4">Change App Logo</h2>
-
-            {/* Current Logo Preview */}
-            <div className="mb-4">
-              <div className="text-sm text-white/60 mb-2">Current Logo</div>
-              <div className="w-full h-20 bg-white/5 border border-white/10 rounded-lg flex items-center justify-center mb-3">
-                {currentLogo ? (
-                  <img src={currentLogo} alt="Current Logo" className="max-w-full max-h-full object-contain" />
-                ) : (
-                  <div className="text-sm text-white/60">No logo uploaded</div>
-                )}
-              </div>
-            </div>
-
-            {/* Upload Form */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                const fileInput = document.getElementById('logoFile') as HTMLInputElement
-                if (fileInput?.files?.[0]) {
-                  handleLogoUpload(fileInput.files[0])
-                }
-              }}
-              className="space-y-4"
-            >
-              <div>
-                <label className="block text-sm text-white/60 mb-1">Select New Logo</label>
-                <input
-                  id="logoFile"
-                  type="file"
-                  accept="image/*"
-                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-[#4db6ac]"
-                  required
-                />
-                <div className="text-xs text-white/40 mt-1">Supported formats: PNG, JPG, SVG, WEBP (Max 200×100px)</div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  className="flex-1 py-2 bg-[#4db6ac] text-black rounded-lg font-medium hover:bg-[#45a099]"
-                >
-                  Upload Logo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowLogoModal(false)}
-                  className="flex-1 py-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
