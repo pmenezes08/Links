@@ -546,12 +546,32 @@ def login_password():
     is_ios = "iPhone" in user_agent or "iPad" in user_agent
     logger.info(f"login_password: method={request.method}, is_ios={is_ios}, session_keys={list(session.keys())}, cookies={list(request.cookies.keys())}")
     
-    if "pending_username" not in session and "username" not in session:
-        logger.warning(f"login_password: No pending_username in session. Redirecting to login. is_ios={is_ios}")
+    # Try to get username from session first, then fall back to request body (iOS session workaround)
+    username = session.get("pending_username") or session.get("username")
+    
+    # iOS/Capacitor sometimes loses session cookies - accept username from request body as fallback
+    if not username and request.method == "POST":
+        username = (request.form.get("username") or "").strip()
+        if username:
+            logger.info(f"login_password: Using username from request body (iOS fallback): '{username}'")
+            # Validate that the user exists before proceeding
+            try:
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    placeholder = get_sql_placeholder()
+                    c.execute(f"SELECT 1 FROM users WHERE username={placeholder} LIMIT 1", (username,))
+                    if not c.fetchone():
+                        logger.warning(f"login_password: Username from body '{username}' not found in database")
+                        username = None
+            except Exception as e:
+                logger.error(f"login_password: Error validating username from body: {e}")
+                username = None
+    
+    if not username:
+        logger.warning(f"login_password: No username found in session or request. Redirecting to login. is_ios={is_ios}")
         return redirect(url_for("auth.login"))
 
-    username = session.get("pending_username") or session.get("username")
-    logger.info(f"login_password: username from session = '{username}', is_ios={is_ios}")
+    logger.info(f"login_password: username = '{username}', is_ios={is_ios}")
     
     if request.method == "POST":
         password = request.form.get("password", "")

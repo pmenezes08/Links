@@ -243,11 +243,12 @@ export default function MobileLogin() {
               }
               
               try {
+                // Include username in request body as fallback for iOS session issues
                 const response = await fetch('/login_password', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                   credentials: 'include',
-                  body: new URLSearchParams({ password })
+                  body: new URLSearchParams({ password, username: pendingUsername })
                 })
                 
                 // Check for redirect (successful login)

@@ -715,16 +715,10 @@ export default function Communities(){
 function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onCreateGroup: ()=>void }){
   const [open, setOpen] = useState(false)
   return (
-    <div className="flex flex-col items-center mt-6 mb-4 relative">
-      <button 
-        className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#4db6ac] text-black font-medium text-sm shadow-lg hover:brightness-110 transition-all duration-200 border border-[#4db6ac]"
-        onClick={() => setOpen(v => !v)}
-      >
-        <span>Create Sub-Community or Group</span>
-        <i className={`fa-solid fa-chevron-${open ? 'up' : 'down'} text-xs transition-transform`} />
-      </button>
+    <div className="fixed bottom-0 left-0 right-0 z-50 flex flex-col items-center pb-safe" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}>
+      {/* Dropdown appears ABOVE the button */}
       {open && (
-        <div className="absolute top-full mt-2 rounded-xl border border-white/10 bg-black/95 backdrop-blur p-2 w-56 shadow-lg z-50">
+        <div className="mb-3 rounded-xl border border-white/10 bg-black/95 backdrop-blur p-2 w-64 shadow-lg">
           <button 
             className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-white/5 text-sm text-white flex items-center gap-2" 
             onClick={() => { setOpen(false); onCreateSub() }}
@@ -741,6 +735,13 @@ function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onC
           </button>
         </div>
       )}
+      <button 
+        className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#4db6ac] text-black font-medium text-sm shadow-lg hover:brightness-110 transition-all duration-200 border border-[#4db6ac]"
+        onClick={() => setOpen(v => !v)}
+      >
+        <span>Create Sub-Community or Group</span>
+        <i className={`fa-solid fa-chevron-${open ? 'down' : 'up'} text-xs transition-transform`} />
+      </button>
     </div>
   )
 }
