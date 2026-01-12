@@ -128,19 +128,44 @@ export default function MobileLogin() {
   useEffect(() => {
     if (step === 'password') {
       // Check session for pending username
-      fetch('/api/check_pending_login', { credentials: 'include' })
+      fetch('/api/check_pending_login', { 
+        credentials: 'include',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      })
         .then(r => r.json())
         .then(j => {
+          console.log('check_pending_login response:', j)
           if (j?.pending_username) {
             setPendingUsername(j.pending_username)
           } else {
-            // No pending login, redirect back to username step
-            navigate('/login', { replace: true })
+            // No pending login in session
+            // Check if we have a locally stored pending username (fallback for iOS)
+            const storedUsername = sessionStorage.getItem('cpoint_pending_username')
+            if (storedUsername) {
+              console.log('Using stored pending username:', storedUsername)
+              setPendingUsername(storedUsername)
+            } else {
+              // Redirect back to username step
+              console.log('No pending username found, redirecting to login')
+              navigate('/login' + (inviteToken ? `?invite=${inviteToken}` : ''), { replace: true })
+            }
           }
         })
-        .catch(() => navigate('/login', { replace: true }))
+        .catch((err) => {
+          console.error('check_pending_login error:', err)
+          // Fallback to local storage
+          const storedUsername = sessionStorage.getItem('cpoint_pending_username')
+          if (storedUsername) {
+            setPendingUsername(storedUsername)
+          } else {
+            navigate('/login' + (inviteToken ? `?invite=${inviteToken}` : ''), { replace: true })
+          }
+        })
     }
-  }, [step, navigate])
+  }, [step, navigate, inviteToken])
 
   // Removed install prompt wiring
 
@@ -191,7 +216,79 @@ export default function MobileLogin() {
         )}
 
         {step === 'password' && pendingUsername ? (
-          <form method="POST" action="/login_password" className="space-y-3">
+          <form 
+            className="space-y-3"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              setIsSubmitting(true)
+              setError(null)
+              
+              const formData = new FormData(e.currentTarget)
+              const password = formData.get('password') as string
+              
+              if (!password) {
+                setError('Password is required')
+                setIsSubmitting(false)
+                return
+              }
+              
+              try {
+                const response = await fetch('/login_password', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                  credentials: 'include',
+                  body: new URLSearchParams({ password })
+                })
+                
+                // Check for redirect (successful login)
+                if (response.redirected) {
+                  const url = new URL(response.url)
+                  console.log('Password login redirected to:', url.pathname)
+                  
+                  // Check if redirected to login with error
+                  if (url.pathname === '/login') {
+                    const errorParam = url.searchParams.get('error')
+                    if (errorParam) {
+                      setError(decodeURIComponent(errorParam))
+                      setIsSubmitting(false)
+                      return
+                    }
+                    // Redirected back to login without error - session issue
+                    setError('Session expired. Please try again.')
+                    navigate('/login' + (inviteToken ? `?invite=${inviteToken}` : ''), { replace: true })
+                    setIsSubmitting(false)
+                    return
+                  }
+                  
+                  // Successful login - clear stored username and redirect
+                  try { sessionStorage.removeItem('cpoint_pending_username') } catch {}
+                  window.location.href = url.pathname + url.search
+                  return
+                }
+                
+                // If not redirected, try to parse response for errors
+                const text = await response.text()
+                if (text.includes('error=')) {
+                  const errorMatch = text.match(/error=([^&"]+)/)
+                  if (errorMatch) {
+                    setError(decodeURIComponent(errorMatch[1]))
+                  } else {
+                    setError('Incorrect password. Please try again.')
+                  }
+                } else if (response.ok) {
+                  // Assume success, redirect to dashboard
+                  window.location.href = '/premium_dashboard'
+                } else {
+                  setError('Login failed. Please try again.')
+                }
+              } catch (err) {
+                console.error('Password login error:', err)
+                setError('Connection error. Please try again.')
+              } finally {
+                setIsSubmitting(false)
+              }
+            }}
+          >
             <div className="text-center mb-4">
               <h2 className="text-xl font-semibold text-white mb-1">Welcome Back</h2>
               <p className="text-white/70 text-base">{pendingUsername}</p>
@@ -222,7 +319,13 @@ export default function MobileLogin() {
                 )}
               </button>
             </div>
-            <button type="submit" className="w-full rounded-lg bg-teal-400 text-white py-2.5 text-sm font-medium active:opacity-90">Login</button>
+            <button 
+              type="submit" 
+              disabled={isSubmitting}
+              className="w-full rounded-lg bg-teal-400 text-white py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50"
+            >
+              {isSubmitting ? 'Logging in...' : 'Login'}
+            </button>
             <button type="button" onClick={() => navigate('/login')} className="w-full rounded-lg border border-white/10 bg-white/5 text-white py-2.5 text-sm font-medium active:opacity-90">Back</button>
           </form>
         ) : (
@@ -244,6 +347,13 @@ export default function MobileLogin() {
               }
               
               try {
+                // Store username locally as a fallback (for iOS session issues)
+                try {
+                  sessionStorage.setItem('cpoint_pending_username', username.trim())
+                } catch (e) {
+                  console.warn('Could not store pending username:', e)
+                }
+                
                 // Submit username to start login flow
                 const response = await fetch('/login', {
                   method: 'POST',
@@ -271,6 +381,8 @@ export default function MobileLogin() {
                   const errorMatch = text.match(/error=([^&"]+)/)
                   if (errorMatch) {
                     setError(decodeURIComponent(errorMatch[1]))
+                    // Clear stored username on error
+                    try { sessionStorage.removeItem('cpoint_pending_username') } catch {}
                   }
                 } else {
                   // Likely redirected to password step, navigate there
@@ -279,6 +391,8 @@ export default function MobileLogin() {
               } catch (err) {
                 console.error('Login error:', err)
                 setError('Connection error. Please try again.')
+                // Clear stored username on error
+                try { sessionStorage.removeItem('cpoint_pending_username') } catch {}
               } finally {
                 setIsSubmitting(false)
               }
