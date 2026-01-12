@@ -90,7 +90,7 @@ export default function Communities(){
   const [newGroupName, setNewGroupName] = useState('')
   const [approvalRequired, setApprovalRequired] = useState(false)
   const [selectedSubCommunityId, setSelectedSubCommunityId] = useState<number | 'none'>('none')
-  const [_isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
+  const [isAdminOrPaulo, setIsAdminOrPaulo] = useState(false)
   const [showNested, setShowNested] = useState<boolean>(() => {
     try{
       if (typeof window === 'undefined') return true
@@ -534,6 +534,7 @@ export default function Communities(){
           <>
             <PlusActions
               onCreateSub={() => { setNewSubName(''); setNewSubType(parentTypeLabel); setShowCreateSubModal(true) }}
+              onCreateGroup={() => { if (!isAdminOrPaulo) { alert('Only admin or Paulo can create groups'); return } setShowCreateGroup(true); setNewGroupName(''); setApprovalRequired(false) }}
             />
 
             {showCreateSubModal && (
@@ -711,16 +712,35 @@ export default function Communities(){
   )
 }
 
-function PlusActions({ onCreateSub }:{ onCreateSub: ()=>void }){
+function PlusActions({ onCreateSub, onCreateGroup }:{ onCreateSub: ()=>void, onCreateGroup: ()=>void }){
+  const [open, setOpen] = useState(false)
   return (
-    <div className="flex justify-center mt-6 mb-4">
+    <div className="flex flex-col items-center mt-6 mb-4 relative">
       <button 
         className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#4db6ac] text-black font-medium text-sm shadow-lg hover:brightness-110 transition-all duration-200 border border-[#4db6ac]"
-        onClick={onCreateSub}
+        onClick={() => setOpen(v => !v)}
       >
-        <span>Create a Sub-Community</span>
-        <i className="fa-solid fa-arrow-right" />
+        <span>Create Sub-Community or Group</span>
+        <i className={`fa-solid fa-chevron-${open ? 'up' : 'down'} text-xs transition-transform`} />
       </button>
+      {open && (
+        <div className="absolute top-full mt-2 rounded-xl border border-white/10 bg-black/95 backdrop-blur p-2 w-56 shadow-lg z-50">
+          <button 
+            className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-white/5 text-sm text-white flex items-center gap-2" 
+            onClick={() => { setOpen(false); onCreateSub() }}
+          >
+            <i className="fa-solid fa-sitemap text-[#4db6ac] w-5" />
+            Create Sub-Community
+          </button>
+          <button 
+            className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-white/5 text-sm text-white flex items-center gap-2" 
+            onClick={() => { setOpen(false); onCreateGroup() }}
+          >
+            <i className="fa-solid fa-users text-[#4db6ac] w-5" />
+            Create Group
+          </button>
+        </div>
+      )}
     </div>
   )
 }
