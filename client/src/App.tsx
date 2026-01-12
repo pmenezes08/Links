@@ -154,6 +154,9 @@ function AppRoutes(){
 
   // State for deep link join modal
   const [deepLinkJoin, setDeepLinkJoin] = useState<{ name: string; id: number } | null>(null)
+  
+  // Track processed URLs to prevent infinite loops
+  const processedUrlsRef = useRef<Set<string>>(new Set())
 
   // Handle deep links (Universal Links) when app is opened from external sources
   useEffect(() => {
@@ -161,13 +164,30 @@ function AppRoutes(){
 
     let listenerHandle: PluginListenerHandle | undefined
 
-    const handleDeepLink = async (url: string) => {
-      console.log('🔗 Deep link received:', url)
+    const handleDeepLink = async (url: string, source: string) => {
+      console.log(`🔗 Deep link received (${source}):`, url)
+      
+      // Prevent processing the same URL multiple times
+      if (processedUrlsRef.current.has(url)) {
+        console.log('🔗 URL already processed, skipping:', url)
+        return
+      }
       
       // Check if this is an invite link
       const inviteToken = extractInviteToken(url)
       if (inviteToken) {
         console.log('🔗 Invite token found:', inviteToken)
+        
+        // Check if we're already on the login page with this invite token
+        const currentUrl = window.location.href
+        if (currentUrl.includes(`invite=${inviteToken}`)) {
+          console.log('🔗 Already on login page with this invite token, skipping redirect')
+          processedUrlsRef.current.add(url)
+          return
+        }
+        
+        // Mark as processed BEFORE any async operations
+        processedUrlsRef.current.add(url)
         
         // Store invite token immediately so it persists through login flow
         try {
@@ -213,16 +233,16 @@ function AppRoutes(){
     // Listen for app URL open events (Universal Links)
     CapacitorApp.addListener('appUrlOpen', (event: { url: string }) => {
       console.log('🔗 appUrlOpen event:', event.url)
-      handleDeepLink(event.url)
+      handleDeepLink(event.url, 'appUrlOpen')
     }).then((handle: PluginListenerHandle) => {
       listenerHandle = handle
     })
 
-    // Also check if app was launched with a URL
+    // Also check if app was launched with a URL (only once on mount)
     CapacitorApp.getLaunchUrl().then((result) => {
       if (result?.url) {
         console.log('🔗 App launched with URL:', result.url)
-        handleDeepLink(result.url)
+        handleDeepLink(result.url, 'getLaunchUrl')
       }
     }).catch(() => {})
 

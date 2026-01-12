@@ -17,6 +17,7 @@ export default function MobileLogin() {
   const [invitationInfo, setInvitationInfo] = useState<{community_name: string, invited_by: string} | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [authCheckDone, setAuthCheckDone] = useState(false)
   // PWA install state (removed install UI)
 
   // Check invitation token
@@ -54,8 +55,9 @@ export default function MobileLogin() {
 
   // If already authenticated, auto-join community if invited
   useEffect(() => {
-    // Skip auth check if we're on the password step
+    // Skip auth check if we're on the password step or already checked
     if (step === 'password') return
+    if (authCheckDone) return
     
     async function check(){
       try{
@@ -68,6 +70,7 @@ export default function MobileLogin() {
         
         const r = await fetch('/api/profile_me', { credentials:'include' })
         if (r.status === 403){
+          setAuthCheckDone(true)
           navigate('/verify_required', { replace: true })
           return
         }
@@ -86,6 +89,7 @@ export default function MobileLogin() {
                 const joinData = await joinResponse.json()
                 if (joinData?.success) {
                   await triggerDashboardServerPull()
+                  setAuthCheckDone(true)
                   // Redirect to the community
                   navigate(`/community_feed_react/${joinData.community_id}`, { replace: true })
                   return
@@ -104,18 +108,24 @@ export default function MobileLogin() {
               const hj = await ht.json().catch(()=>null)
               const hasCommunities = Boolean(hj?.admin_communities?.length || hj?.communities_list?.length)
               if (!hasCommunities){
+                setAuthCheckDone(true)
                 navigate('/onboarding', { replace: true })
                 return
               }
             }catch{}
+            setAuthCheckDone(true)
             navigate('/premium_dashboard', { replace: true })
             return
           }
         }
-      }catch{}
+        // User not authenticated - stay on login page
+        setAuthCheckDone(true)
+      }catch{
+        setAuthCheckDone(true)
+      }
     }
     check()
-  }, [navigate, inviteToken, step])
+  }, [navigate, inviteToken, step, authCheckDone])
 
   // Read error from query string (e.g., /?error=...)
   useEffect(() => {
