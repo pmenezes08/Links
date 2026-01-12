@@ -21,9 +21,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // CRITICAL DEBUG - This MUST show up
         NSLog("========================================")
         NSLog("CPOINT APP DELEGATE LAUNCHED!!!")
-        NSLog("BUILD 38 - WITH BADGE CLEARING")
+        NSLog("BUILD 39 - WITH UNIVERSAL LINK FIX")
         NSLog("========================================")
         print("🚀 App launching...")
+        
+        // Check if launched from Universal Link
+        if let userActivityDict = launchOptions?[UIApplication.LaunchOptionsKey.userActivityDictionary] as? [String: Any],
+           let userActivity = userActivityDict["UIApplicationLaunchOptionsUserActivityKey"] as? NSUserActivity,
+           userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+           let url = userActivity.webpageURL {
+            NSLog("🔗🔗🔗 APP LAUNCHED FROM UNIVERSAL LINK 🔗🔗🔗")
+            NSLog("Launch URL: %@", url.absoluteString)
+            UserDefaults.standard.set(url.absoluteString, forKey: "launchUniversalLink")
+            UserDefaults.standard.synchronize()
+        }
         
         // Sync badge with server when app launches
         syncBadgeWithServer()
@@ -189,13 +200,34 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         task.resume()
     }
 
-    // MARK: - Capacitor Deep Links
+    // MARK: - Capacitor Deep Links & Universal Links
 
+    // Handle custom URL schemes (cpoint://)
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        NSLog("🔗🔗🔗 CUSTOM URL SCHEME RECEIVED 🔗🔗🔗")
+        NSLog("URL: %@", url.absoluteString)
+        print("🔗 Custom URL scheme: \(url.absoluteString)")
+        
+        // Forward to Capacitor
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
+    // Handle Universal Links (https://app.c-point.co/...)
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
+        NSLog("🔗🔗🔗 UNIVERSAL LINK RECEIVED 🔗🔗🔗")
+        NSLog("Activity type: %@", userActivity.activityType)
+        
+        if userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+           let url = userActivity.webpageURL {
+            NSLog("Universal Link URL: %@", url.absoluteString)
+            print("🔗 Universal Link: \(url.absoluteString)")
+            
+            // Store the URL so we can retrieve it if needed
+            UserDefaults.standard.set(url.absoluteString, forKey: "lastUniversalLink")
+            UserDefaults.standard.synchronize()
+        }
+        
+        // Forward to Capacitor
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 }
