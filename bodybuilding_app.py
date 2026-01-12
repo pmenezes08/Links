@@ -20448,6 +20448,8 @@ def debug_posts():
         return jsonify({'success': False, 'error': str(e)})
 
 APP_STORE_URL = "https://apps.apple.com/us/app/cpoint/id6755534074"
+# CPoint logo URL - update this after uploading to R2 using upload_logo_to_r2.py
+CPOINT_LOGO_URL = os.environ.get('CPOINT_LOGO_URL', '/static/cpoint-logo.svg')
 
 @app.route('/invite/<token>')
 def invite_landing(token):
@@ -20598,7 +20600,7 @@ def invite_landing(token):
         </head>
         <body>
             <div class="container">
-                <div class="logo">C</div>
+                <div class="logo"><img src="{CPOINT_LOGO_URL}" alt="CPoint" /></div>
                 <h1>You're Invited!</h1>
                 <p class="invite-info">Join <strong>{community_name}</strong></p>
                 <p class="invited-by">Invited by {invited_by}</p>
