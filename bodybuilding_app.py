@@ -18942,6 +18942,109 @@ def admin_upload_welcome_card():
         logger.error(f"admin_upload_welcome_card error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
 
+@app.route('/admin/get_invite_logo', methods=['GET'])
+@login_required
+def admin_get_invite_logo():
+    """Get the current invite page logo URL."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("SELECT `value` FROM site_settings WHERE `key` = 'invite_logo'")
+            else:
+                c.execute("SELECT value FROM site_settings WHERE key = 'invite_logo'")
+            row = c.fetchone()
+            
+            if row:
+                logo_url = row[0] if isinstance(row, tuple) else row['value']
+                return jsonify({'success': True, 'logo_url': logo_url})
+            else:
+                # Return default
+                return jsonify({'success': True, 'logo_url': None, 'default': '/static/cpoint-logo.svg'})
+    except Exception as e:
+        logger.error(f"admin_get_invite_logo error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin/upload_invite_logo', methods=['POST'])
+@login_required
+def admin_upload_invite_logo():
+    """
+    Upload invite page logo to Cloudflare R2 CDN.
+    This logo appears on community invite landing pages.
+    """
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        if 'logo' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'}), 400
+        
+        f = request.files['logo']
+        if not f or f.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'}), 400
+        
+        # Validate file type
+        allowed_extensions = {'.png', '.jpg', '.jpeg', '.svg', '.webp'}
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext not in allowed_extensions:
+            return jsonify({'success': False, 'error': 'Invalid file type. Use PNG, JPG, SVG, or WebP'}), 400
+        
+        # Save using the media service (handles R2 upload)
+        saved_path = save_uploaded_file(f, subfolder='branding')
+        
+        if not saved_path:
+            return jsonify({'success': False, 'error': 'Failed to upload file'}), 500
+        
+        # Store the path/URL in database
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("CREATE TABLE IF NOT EXISTS site_settings (`key` VARCHAR(191) PRIMARY KEY, `value` TEXT)")
+                c.execute("INSERT INTO site_settings (`key`,`value`) VALUES (%s,%s) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)", ('invite_logo', saved_path))
+            else:
+                c.execute("CREATE TABLE IF NOT EXISTS site_settings (key TEXT PRIMARY KEY, value TEXT)")
+                c.execute("INSERT INTO site_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", ('invite_logo', saved_path))
+            conn.commit()
+            logger.info(f"✅ Invite logo saved to database: {saved_path}")
+        
+        # Return the URL
+        if saved_path.startswith('http'):
+            url = saved_path
+        else:
+            url = f"/{saved_path}?v={int(datetime.now().timestamp())}"
+        
+        return jsonify({'success': True, 'logo_url': url})
+    except Exception as e:
+        logger.error(f"admin_upload_invite_logo error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/admin/remove_invite_logo', methods=['POST'])
+@login_required  
+def admin_remove_invite_logo():
+    """Remove the custom invite logo and revert to default."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("DELETE FROM site_settings WHERE `key` = 'invite_logo'")
+            else:
+                c.execute("DELETE FROM site_settings WHERE key = 'invite_logo'")
+            conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Logo removed, using default'})
+    except Exception as e:
+        logger.error(f"admin_remove_invite_logo error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/delete_reply', methods=['POST'])
 @login_required
 def delete_reply():
@@ -20448,14 +20551,32 @@ def debug_posts():
         return jsonify({'success': False, 'error': str(e)})
 
 APP_STORE_URL = "https://apps.apple.com/us/app/cpoint/id6755534074"
-# CPoint logo URL - update this after uploading to R2 using upload_logo_to_r2.py
-CPOINT_LOGO_URL = os.environ.get('CPOINT_LOGO_URL', '/static/cpoint-logo.svg')
+DEFAULT_INVITE_LOGO = '/static/cpoint-logo.svg'
+
+def get_invite_logo_url():
+    """Get the invite logo URL from database or return default."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("SELECT `value` FROM site_settings WHERE `key` = 'invite_logo'")
+            else:
+                c.execute("SELECT value FROM site_settings WHERE key = 'invite_logo'")
+            row = c.fetchone()
+            if row:
+                return row[0] if isinstance(row, tuple) else row['value']
+    except Exception as e:
+        logger.warning(f"Could not fetch invite logo: {e}")
+    return DEFAULT_INVITE_LOGO
 
 @app.route('/invite/<token>')
 def invite_landing(token):
     """Smart invite landing page - redirects iOS users to App Store, others to web"""
     user_agent = request.headers.get('User-Agent', '').lower()
     is_ios = 'iphone' in user_agent or 'ipad' in user_agent or 'ipod' in user_agent
+    
+    # Get the logo URL (from database or default)
+    logo_url = get_invite_logo_url()
     
     # Build the web invite URL
     base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
@@ -20600,7 +20721,7 @@ def invite_landing(token):
         </head>
         <body>
             <div class="container">
-                <div class="logo"><img src="{CPOINT_LOGO_URL}" alt="CPoint" /></div>
+                <div class="logo"><img src="{logo_url}" alt="CPoint" /></div>
                 <h1>You're Invited!</h1>
                 <p class="invite-info">Join <strong>{community_name}</strong></p>
                 <p class="invited-by">Invited by {invited_by}</p>
@@ -20657,16 +20778,14 @@ def invite_landing(token):
                 text-align: center;
             }}
             .logo {{
-                width: 80px;
-                height: 80px;
-                background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%);
-                border-radius: 20px;
+                width: 100px;
+                height: 100px;
                 margin: 0 auto 24px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 36px;
-                font-weight: bold;
+            }}
+            .logo img {{
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
             }}
             h1 {{
                 font-size: 24px;
@@ -20702,7 +20821,7 @@ def invite_landing(token):
     </head>
     <body>
         <div class="container">
-            <div class="logo">C</div>
+            <div class="logo"><img src="{logo_url}" alt="CPoint" /></div>
             <h1>You're Invited!</h1>
             <p class="invite-info">Join <strong>{community_name}</strong></p>
             <p class="invited-by">Invited by {invited_by}</p>

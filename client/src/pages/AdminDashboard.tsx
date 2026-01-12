@@ -161,6 +161,9 @@ export default function AdminDashboard() {
   const [inviteNestedDropdownOpen, setInviteNestedDropdownOpen] = useState(false)
   const [welcomeCards, setWelcomeCards] = useState<string[]>(['', '', ''])
   const [welcomeStatus, setWelcomeStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const [inviteLogo, setInviteLogo] = useState<string | null>(null)
+  const [inviteLogoStatus, setInviteLogoStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const [inviteLogoUploading, setInviteLogoUploading] = useState(false)
   const [welcomeUploadingIndex, setWelcomeUploadingIndex] = useState<number | null>(null)
   const [welcomeError, setWelcomeError] = useState<string>('')
   const [welcomeMessage, setWelcomeMessage] = useState<string>('')
@@ -288,6 +291,76 @@ export default function AdminDashboard() {
       setWelcomeError('Failed to load welcome images')
     }
   }, [])
+
+  const loadInviteLogo = useCallback(async () => {
+    setInviteLogoStatus('loading')
+    try {
+      const response = await fetch('/admin/get_invite_logo', {
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setInviteLogo(data.logo_url || data.default || null)
+        setInviteLogoStatus('success')
+      } else {
+        setInviteLogoStatus('error')
+      }
+    } catch (error) {
+      console.error('Error loading invite logo:', error)
+      setInviteLogoStatus('error')
+    }
+  }, [])
+
+  const handleInviteLogoUpload = async (file: File) => {
+    setInviteLogoUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('logo', file)
+      
+      const response = await fetch('/admin/upload_invite_logo', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      })
+      const data = await response.json()
+      
+      if (data?.success) {
+        setInviteLogo(data.logo_url)
+        setInviteLogoStatus('success')
+      } else {
+        alert(data?.error || 'Failed to upload logo')
+      }
+    } catch (error) {
+      console.error('Error uploading invite logo:', error)
+      alert('Server error while uploading logo')
+    } finally {
+      setInviteLogoUploading(false)
+    }
+  }
+
+  const handleRemoveInviteLogo = async () => {
+    if (!confirm('Remove custom logo and use default?')) return
+    
+    try {
+      const response = await fetch('/admin/remove_invite_logo', {
+        method: 'POST',
+        credentials: 'include'
+      })
+      const data = await response.json()
+      
+      if (data?.success) {
+        setInviteLogo('/static/cpoint-logo.svg')
+        setInviteLogoStatus('success')
+      } else {
+        alert(data?.error || 'Failed to remove logo')
+      }
+    } catch (error) {
+      console.error('Error removing invite logo:', error)
+      alert('Server error while removing logo')
+    }
+  }
 
   const loadReportedPosts = useCallback(async (status: string = 'pending') => {
     setReportsLoading(true)
@@ -427,7 +500,8 @@ export default function AdminDashboard() {
     checkAdminAccess()
     loadAdminData()
     loadWelcomeCards()
-  }, [setTitle, loadWelcomeCards])
+    loadInviteLogo()
+  }, [setTitle, loadWelcomeCards, loadInviteLogo])
 
   // Load reported posts when content_review tab is active
   useEffect(() => {
@@ -886,6 +960,69 @@ export default function AdminDashboard() {
         {/* Overview Tab */}
         {activeTab === 'overview' && stats && (
           <div className="space-y-4">
+              {/* Invite Page Logo */}
+              <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-[#4db6ac]">Invite Page Logo</h3>
+                    <p className="text-xs text-white/60 mt-1">
+                      This logo appears on community invite landing pages. Use a square image (recommended 200×200px).
+                    </p>
+                  </div>
+                  <div className="text-xs text-white/50">
+                    {inviteLogoStatus === 'loading' && <span className="text-white/60">Loading…</span>}
+                    {inviteLogoStatus === 'success' && <span className="text-[#4db6ac]">Up to date</span>}
+                    {inviteLogoStatus === 'error' && <span className="text-red-400">Failed to load</span>}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  {/* Logo Preview */}
+                  <div className="w-24 h-24 rounded-xl overflow-hidden border border-white/10 bg-black/30 flex items-center justify-center flex-shrink-0">
+                    {inviteLogoStatus === 'loading' ? (
+                      <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                    ) : inviteLogo ? (
+                      <img
+                        src={inviteLogo}
+                        alt="Invite logo"
+                        className="w-full h-full object-contain p-2"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="text-xs text-white/50 text-center px-2">No logo</div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex flex-col gap-2">
+                    <label className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium cursor-pointer hover:bg-[#4db6ac]/90 transition-colors text-center">
+                      {inviteLogoUploading ? 'Uploading...' : 'Upload Logo'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                        hidden
+                        disabled={inviteLogoUploading}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            handleInviteLogoUpload(file)
+                          }
+                          e.target.value = ''
+                        }}
+                      />
+                    </label>
+                    {inviteLogo && inviteLogo !== '/static/cpoint-logo.svg' && (
+                      <button
+                        onClick={handleRemoveInviteLogo}
+                        className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 transition-colors"
+                      >
+                        Remove Logo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Welcome Cards Management */}
               <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
