@@ -20616,7 +20616,7 @@ def invite_landing(token):
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta name="apple-itunes-app" content="app-id=6755534074">
+            <meta name="apple-itunes-app" content="app-id=6755534074, app-argument=https://app.c-point.co/invite/{token}">
             <title>Join {community_name} on CPoint</title>
             <style>
                 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
