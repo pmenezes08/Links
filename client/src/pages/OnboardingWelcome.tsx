@@ -8,6 +8,7 @@ export default function OnboardingWelcome(){
   const [touchStartX, setTouchStartX] = useState<number | null>(null)
   const [touchDeltaX, setTouchDeltaX] = useState(0)
   const [loaded, setLoaded] = useState(false)
+  const [imagesLoaded, setImagesLoaded] = useState<Record<number, boolean>>({})
   
   const sentences = [
     'Enter the network where ideas connect people.',
@@ -82,13 +83,18 @@ export default function OnboardingWelcome(){
               <div className="absolute inset-0 flex transition-transform duration-500"
                    style={{ transform: `translateX(calc(-${cardIndex * 100}% + ${touchDeltaX}px))` }}>
                 {cards.map((src, i) => (
-                  <div key={i} className="min-w-full h-full bg-gradient-to-br from-[#1a1a2e] to-[#16213e]">
+                  <div key={i} className="min-w-full h-full bg-black relative">
+                    {/* Show subtle loading shimmer only if image not loaded yet */}
+                    {!imagesLoaded[i] && (
+                      <div className="absolute inset-0 bg-white/[0.03] animate-pulse" />
+                    )}
                     <img 
                       src={src} 
                       alt="welcome"
-                      className="w-full h-full object-cover"
+                      className={`w-full h-full object-cover transition-opacity duration-300 ${imagesLoaded[i] ? 'opacity-100' : 'opacity-0'}`}
                       loading="eager"
                       decoding="async"
+                      onLoad={() => setImagesLoaded(prev => ({ ...prev, [i]: true }))}
                     />
                   </div>
                 ))}
@@ -106,7 +112,7 @@ export default function OnboardingWelcome(){
             </div>
           ) : (
             // Placeholder when no cards are uploaded
-            <div className="w-full h-[46vh] bg-gradient-to-br from-[#1a1a2e] to-[#16213e] flex items-center justify-center">
+            <div className="w-full h-[46vh] bg-white/[0.03] flex items-center justify-center">
               <div className="text-center text-white/40">
                 <i className="fa-solid fa-images text-4xl mb-2" />
                 <p className="text-sm">Welcome images coming soon</p>
