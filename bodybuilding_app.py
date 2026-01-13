@@ -6036,48 +6036,133 @@ def auto_flag_content_if_needed(post_id, content, username, community_id):
 def delete_account():
     """Permanently delete the current user's account and related data where possible."""
     username = session.get('username')
+    logger.info(f"Starting account deletion for user: {username}")
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
+            
             # Try to find user id for FK cleanups
-            c.execute(f"SELECT id FROM users WHERE username = {get_sql_placeholder()}", (username,))
+            c.execute(f"SELECT id FROM users WHERE username = {ph}", (username,))
             row = c.fetchone()
             user_id = None
             if row is not None:
                 user_id = row['id'] if hasattr(row, 'keys') else row[0]
+            
+            logger.info(f"Deleting data for user_id: {user_id}, username: {username}")
 
             # Best-effort delete dependent rows with foreign keys referencing users/username/user_id
             # Messages
-            try: c.execute(f"DELETE FROM messages WHERE sender={get_sql_placeholder()} OR receiver={get_sql_placeholder()}", (username, username))
-            except Exception: pass
+            try: 
+                c.execute(f"DELETE FROM messages WHERE sender={ph} OR receiver={ph}", (username, username))
+                logger.debug(f"Deleted messages for {username}")
+            except Exception as e: 
+                logger.debug(f"Could not delete messages: {e}")
+            
             # Notifications (if exists)
             try:
-                ph = get_sql_placeholder()
                 c.execute(f"DELETE FROM notifications WHERE user_id={ph} OR from_user={ph}", (username, username))
-            except Exception: pass
+                logger.debug(f"Deleted notifications for {username}")
+            except Exception as e: 
+                logger.debug(f"Could not delete notifications: {e}")
+            
             # Push subscriptions
-            try: c.execute(f"DELETE FROM push_subscriptions WHERE username={get_sql_placeholder()}", (username,))
+            try: 
+                c.execute(f"DELETE FROM push_subscriptions WHERE username={ph}", (username,))
             except Exception: pass
+            
+            # Native push tokens
+            try:
+                c.execute(f"DELETE FROM native_push_tokens WHERE username={ph}", (username,))
+            except Exception: pass
+            
+            # FCM tokens
+            try:
+                c.execute(f"DELETE FROM fcm_tokens WHERE username={ph}", (username,))
+            except Exception: pass
+            
             # Remember tokens (FK to users.username)
-            try: c.execute(f"DELETE FROM remember_tokens WHERE username={get_sql_placeholder()}", (username,))
+            try: 
+                c.execute(f"DELETE FROM remember_tokens WHERE username={ph}", (username,))
             except Exception: pass
+            
             # User profiles
-            try: c.execute(f"DELETE FROM user_profiles WHERE username={get_sql_placeholder()}", (username,))
+            try: 
+                c.execute(f"DELETE FROM user_profiles WHERE username={ph}", (username,))
             except Exception: pass
+            
+            # Community stories
+            try:
+                c.execute(f"DELETE FROM community_story_reactions WHERE username={ph}", (username,))
+            except Exception: pass
+            try:
+                c.execute(f"DELETE FROM community_story_views WHERE username={ph}", (username,))
+            except Exception: pass
+            try:
+                c.execute(f"DELETE FROM community_stories WHERE username={ph}", (username,))
+            except Exception: pass
+            
+            # Follows
+            try:
+                c.execute(f"DELETE FROM follows WHERE follower_username={ph} OR followed_username={ph}", (username, username))
+            except Exception: pass
+            
+            # Group members
+            try:
+                c.execute(f"DELETE FROM group_members WHERE username={ph}", (username,))
+            except Exception: pass
+            
+            # Post reactions
+            try:
+                c.execute(f"DELETE FROM post_reactions WHERE username={ph}", (username,))
+            except Exception: pass
+            
+            # Poll votes
+            try:
+                c.execute(f"DELETE FROM poll_votes WHERE username={ph}", (username,))
+            except Exception: pass
+            
+            # Task assignments
+            try:
+                c.execute(f"DELETE FROM task_assignees WHERE username={ph}", (username,))
+            except Exception: pass
+            
+            # Event attendees
+            if user_id is not None:
+                try:
+                    c.execute(f"DELETE FROM event_attendees WHERE user_id={ph}", (user_id,))
+                except Exception: pass
+            
             # User communities by user_id
             if user_id is not None:
-                try: c.execute(f"DELETE FROM user_communities WHERE user_id={get_sql_placeholder()}", (user_id,))
-                except Exception: pass
+                try: 
+                    c.execute(f"DELETE FROM user_communities WHERE user_id={ph}", (user_id,))
+                    logger.debug(f"Deleted user_communities for user_id {user_id}")
+                except Exception as e: 
+                    logger.debug(f"Could not delete user_communities: {e}")
 
             # Reassign communities owned by this user to admin to avoid FK failures
             try:
-                c.execute(f"UPDATE communities SET creator_username={get_sql_placeholder()} WHERE creator_username={get_sql_placeholder()}", ('admin', username))
-            except Exception:
-                pass
+                c.execute(f"UPDATE communities SET creator_username={ph} WHERE creator_username={ph}", ('admin', username))
+            except Exception as e:
+                logger.debug(f"Could not reassign communities: {e}")
+            
+            # Reassign posts to admin or delete them
+            try:
+                c.execute(f"UPDATE posts SET username={ph} WHERE username={ph}", ('admin', username))
+            except Exception as e:
+                logger.debug(f"Could not reassign posts: {e}")
+            
+            # Update community invitations
+            try:
+                c.execute(f"UPDATE community_invitations SET invited_by_username={ph} WHERE invited_by_username={ph}", ('admin', username))
+            except Exception: pass
 
             # Finally, delete from users
-            c.execute(f"DELETE FROM users WHERE username = {get_sql_placeholder()}", (username,))
+            logger.info(f"Deleting user record for {username}")
+            c.execute(f"DELETE FROM users WHERE username = {ph}", (username,))
             conn.commit()
+            logger.info(f"Successfully deleted account for {username}")
         # Clear session
         session.clear()
         
