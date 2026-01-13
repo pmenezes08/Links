@@ -216,6 +216,7 @@ def signup():
         generate_pending_signup_token,
         get_db_connection,
         get_parent_chain_ids,
+        get_sql_placeholder,
         normalize_id_list,
         notify_community_new_member,
     )
@@ -421,15 +422,18 @@ def signup():
             except Exception:
                 pass
 
+            # Get the correct placeholder for the database type
+            ph = get_sql_placeholder()
+            
             try:
-                c.execute("DELETE FROM pending_signups WHERE email = ?", (email,))
+                c.execute(f"DELETE FROM pending_signups WHERE email = {ph}", (email,))
             except Exception:
                 pass
 
             c.execute(
-                """
+                f"""
                 INSERT INTO pending_signups (username, email, password, first_name, last_name, mobile, verification_sent_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
                 """,
                 (username, email, hashed_password, first_name, last_name, mobile, datetime.now().isoformat()),
             )
@@ -439,7 +443,7 @@ def signup():
                 pending_id = c.lastrowid if hasattr(c, "lastrowid") else None
                 if not pending_id:
                     try:
-                        c.execute("SELECT id FROM pending_signups WHERE email=? ORDER BY id DESC LIMIT 1", (email,))
+                        c.execute(f"SELECT id FROM pending_signups WHERE email={ph} ORDER BY id DESC LIMIT 1", (email,))
                         row = c.fetchone()
                         pending_id = row["id"] if hasattr(row, "keys") else (row[0] if row else None)
                     except Exception:
@@ -459,7 +463,7 @@ def signup():
                 _send_email_via_resend(email, subject, html_body)
                 try:
                     c.execute(
-                        "UPDATE pending_signups SET verification_sent_at=? WHERE id=?",
+                        f"UPDATE pending_signups SET verification_sent_at={ph} WHERE id={ph}",
                         (datetime.now().isoformat(), pending_id),
                     )
                     conn.commit()
