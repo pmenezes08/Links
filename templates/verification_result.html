@@ -19,21 +19,21 @@
     <script>
         function closeTab(){ window.close(); }
         
-        // Auto-redirect to dashboard after successful verification
-        {% if success %}
-        setTimeout(function() {
-            window.location.href = '/premium_dashboard';
-        }, 2000); // 2 second delay so user can see success message
-        {% endif %}
+        // Auto-redirect to login after successful verification
+        // Don't auto-redirect - let user click the button to go to login
+        // This prevents issues with double page loads
     </script>
  </head>
 <body>
     <div class="wrap">
         <div class="card">
             {% if success %}
-                <div class="title">Email verified</div>
+                <div class="title">Email verified ✓</div>
                 <div class="msg">{{ message or 'Your email has been verified successfully.' }}</div>
-                <button class="ok" onclick="closeTab()">Close</button>
+                <div style="margin-top:16px; display:flex; gap:12px; flex-wrap:wrap;">
+                    <a href="/login" class="ok" style="text-decoration:none;">Sign In</a>
+                    <button class="ok" style="background:#333; color:#fff;" onclick="closeTab()">Close</button>
+                </div>
             {% else %}
                 <div class="title err">Verification failed</div>
                 <div class="msg">{{ message or 'The verification link is invalid or has expired.' }}</div>
