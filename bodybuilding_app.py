@@ -19566,7 +19566,7 @@ def create_community():
             c.execute(f"""
                 INSERT INTO communities (name, type, creator_username, join_code, created_at, description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_community_id)
                 VALUES ({placeholders})
-            """, (name, normalized_type, username, join_code, datetime.now().strftime('%m.%d.%y %H:%M'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_id_int))
+            """, (name, normalized_type, username, join_code, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), description, location, background_path, template, background_color, text_color, accent_color, card_color, parent_id_int))
             
             community_id = c.lastrowid
             
