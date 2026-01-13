@@ -20972,6 +20972,8 @@ def generate_invite_link():
 def notify_community_new_member(community_id, new_username, conn):
     """Send notifications to all community members when a new member joins (if enabled)"""
     try:
+        from backend.services.notifications import send_push_to_user
+        
         c = conn.cursor()
         
         # Check if community has notify_on_new_member enabled
@@ -20997,11 +20999,15 @@ def notify_community_new_member(community_id, new_username, conn):
         
         existing_members = c.fetchall()
         
+        notification_message = f'{new_username} just joined "{community_name}". Say hi! 👋'
+        notification_link = f'/community_feed/{community_id}'
+        
         # Send notification to each existing member
         notif_ph = ', '.join([get_sql_placeholder()] * 6)
         for member in existing_members:
             member_username = member['username'] if hasattr(member, 'keys') else member[0]
             try:
+                # Create in-app notification
                 c.execute(f"""
                     INSERT INTO notifications (user_id, from_user, type, community_id, message, link)
                     VALUES ({notif_ph})
@@ -21010,11 +21016,22 @@ def notify_community_new_member(community_id, new_username, conn):
                     new_username,
                     'new_member',
                     community_id,
-                    f'{new_username} just joined "{community_name}". Say hi! 👋',
-                    f'/community_feed/{community_id}'
+                    notification_message,
+                    notification_link
                 ))
             except Exception as member_notify_err:
                 logger.warning(f"Failed to notify {member_username} about new member: {member_notify_err}")
+            
+            # Send push notification
+            try:
+                send_push_to_user(member_username, {
+                    'title': f'New member in {community_name}',
+                    'body': notification_message,
+                    'url': notification_link,
+                    'tag': f'new_member_{community_id}_{new_username}'
+                })
+            except Exception as push_err:
+                logger.warning(f"Failed to send push notification to {member_username} about new member: {push_err}")
         
         logger.info(f"Sent new member notifications to {len(existing_members)} members in {community_name}")
         
@@ -21286,7 +21303,16 @@ def invite_to_community():
                             conn.rollback()
                             return jsonify({'success': False, 'error': str(limit_err)}), 403
                 
+                # Get the username for the existing user to send notification
+                c.execute("SELECT username FROM users WHERE id = ?", (existing_user_id,))
+                existing_user_row = c.fetchone()
+                existing_username = existing_user_row['username'] if hasattr(existing_user_row, 'keys') else existing_user_row[0] if existing_user_row else None
+                
                 conn.commit()
+                
+                # Send notifications to community members about new member
+                if existing_username:
+                    notify_community_new_member(community_id, existing_username, conn)
                 
                 nested_names = fetch_community_names(c, include_nested_ids)
                 nested_html_section = ""
