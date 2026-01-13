@@ -2595,7 +2595,7 @@ def init_db():
             # Insert admin user
             logger.info("Inserting admin user...")
             c.execute("INSERT IGNORE INTO users (username, email, subscription, password, first_name, last_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                      ('admin', 'admin@cpoint.com', 'premium', '12345', 'Admin', 'User', datetime.now().strftime('%m.%d.%y %H:%M')))
+                      ('admin', 'admin@cpoint.com', 'premium', '12345', 'Admin', 'User', datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
             
             # Create posts table
             logger.info("Creating posts table...")
@@ -5759,7 +5759,7 @@ def save_workout():
                 return jsonify({'error': 'Premium subscription required!'}), 403
             exercise_count = sum(1 for line in workout.split('<br>') if '<b>' in line and '</b>' in line) - 1
             initial_weights = json.dumps([{"session": [], "weight": ""} for _ in range(exercise_count)])
-            timestamp = datetime.now().strftime('%m.%d.%y')
+            timestamp = datetime.now().strftime('%Y-%m-%d')
             c.execute("INSERT INTO saved_workouts (username, workout, timestamp, weights) VALUES (?, ?, ?, ?)",
                       (username, workout, timestamp, initial_weights))
             workout_id = c.lastrowid
@@ -8376,7 +8376,9 @@ def verify_email():
                 # if email exists, just mark verified, else insert
                 c.execute(f"SELECT id FROM users WHERE email={ph}", (pend_email,))
                 exists = c.fetchone()
+                user_id = None
                 if exists:
+                    user_id = exists['id'] if hasattr(exists, 'keys') else exists[0]
                     c.execute(f"UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, {ph}) WHERE email={ph}", (datetime.now().isoformat(), pend_email))
                 else:
                     first_name = _val(row, 'first_name', 4) or ''
@@ -8386,9 +8388,62 @@ def verify_email():
                     c.execute(f"""
                         INSERT INTO users (username, email, password, first_name, last_name, age, gender, primary_goal, subscription, created_at, email_verified, email_verified_at)
                         VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 'free', {ph}, 1, {ph})
-                    """, (username, pend_email, password_hash, first_name, last_name, None, '', '', datetime.now().strftime('%m.%d.%y %H:%M'), datetime.now().isoformat()))
+                    """, (username, pend_email, password_hash, first_name, last_name, None, '', '', datetime.now().strftime('%Y-%m-%d %H:%M:%S'), datetime.now().isoformat()))
                     if mobile:
                         c.execute(f"UPDATE users SET mobile={ph} WHERE username={ph}", (mobile, username))
+                    # Get the new user's ID
+                    c.execute(f"SELECT id FROM users WHERE username={ph}", (username,))
+                    user_row = c.fetchone()
+                    user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0] if user_row else None
+                
+                # Auto-join communities the user was invited to via email
+                if user_id:
+                    try:
+                        c.execute(f"""
+                            SELECT ci.id, ci.community_id, ci.include_nested_ids, ci.include_parent_ids, c.name
+                            FROM community_invitations ci
+                            JOIN communities c ON ci.community_id = c.id
+                            WHERE ci.invited_email = {ph} AND ci.used = 0
+                        """, (pend_email.lower(),))
+                        pending_invites = c.fetchall()
+                        
+                        for invite in pending_invites:
+                            inv_id = invite['id'] if hasattr(invite, 'keys') else invite[0]
+                            community_id = invite['community_id'] if hasattr(invite, 'keys') else invite[1]
+                            raw_nested = invite['include_nested_ids'] if hasattr(invite, 'keys') else invite[2]
+                            raw_parent = invite['include_parent_ids'] if hasattr(invite, 'keys') else invite[3]
+                            community_name = invite['name'] if hasattr(invite, 'keys') else invite[4]
+                            
+                            # Build list of communities to join
+                            nested_ids = normalize_id_list(raw_nested) if raw_nested else []
+                            parent_ids = normalize_id_list(raw_parent) if raw_parent is not None else get_parent_chain_ids(c, community_id)
+                            
+                            communities_to_join = [community_id]
+                            for pid in parent_ids:
+                                if pid not in communities_to_join:
+                                    communities_to_join.append(pid)
+                            for nid in nested_ids:
+                                if nid not in communities_to_join:
+                                    communities_to_join.append(nid)
+                            
+                            # Join each community
+                            for comm_id in communities_to_join:
+                                c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (user_id, comm_id))
+                                if not c.fetchone():
+                                    try:
+                                        add_user_to_community(c, user_id, int(comm_id), role='member')
+                                    except CommunityMembershipLimitError:
+                                        logger.warning(f"Could not add user {user_id} to community {comm_id} due to member limit")
+                            
+                            # Mark invitation as used
+                            c.execute(f"UPDATE community_invitations SET used=1, used_at={ph} WHERE id={ph}", (datetime.now().isoformat(), inv_id))
+                            
+                            # Send notification to community members
+                            notify_community_new_member(community_id, username, conn)
+                            logger.info(f"Auto-joined user {username} to community {community_name} (ID: {community_id}) via email invitation")
+                    except Exception as auto_join_err:
+                        logger.warning(f"Error auto-joining user to invited communities: {auto_join_err}")
+                
                 # cleanup pending
                 try:
                     c.execute(f"DELETE FROM pending_signups WHERE id={ph}", (pending['pending_id'],))
@@ -8409,6 +8464,61 @@ def verify_email():
             # Only set email_verified_at on FIRST verification (when it's NULL)
             # This ensures the timestamp always represents the first time they verified
             c.execute(f"UPDATE users SET email_verified=1, email_verified_at=COALESCE(email_verified_at, {ph}) WHERE email={ph}", (datetime.now().isoformat(), email))
+            
+            # Get user ID and username for auto-joining communities
+            c.execute(f"SELECT id, username FROM users WHERE email={ph}", (email,))
+            user_row = c.fetchone()
+            if user_row:
+                user_id = user_row['id'] if hasattr(user_row, 'keys') else user_row[0]
+                username = user_row['username'] if hasattr(user_row, 'keys') else user_row[1]
+                
+                # Auto-join communities the user was invited to via email
+                try:
+                    c.execute(f"""
+                        SELECT ci.id, ci.community_id, ci.include_nested_ids, ci.include_parent_ids, c.name
+                        FROM community_invitations ci
+                        JOIN communities c ON ci.community_id = c.id
+                        WHERE ci.invited_email = {ph} AND ci.used = 0
+                    """, (email.lower(),))
+                    pending_invites = c.fetchall()
+                    
+                    for invite in pending_invites:
+                        inv_id = invite['id'] if hasattr(invite, 'keys') else invite[0]
+                        community_id = invite['community_id'] if hasattr(invite, 'keys') else invite[1]
+                        raw_nested = invite['include_nested_ids'] if hasattr(invite, 'keys') else invite[2]
+                        raw_parent = invite['include_parent_ids'] if hasattr(invite, 'keys') else invite[3]
+                        community_name = invite['name'] if hasattr(invite, 'keys') else invite[4]
+                        
+                        # Build list of communities to join
+                        nested_ids = normalize_id_list(raw_nested) if raw_nested else []
+                        parent_ids = normalize_id_list(raw_parent) if raw_parent is not None else get_parent_chain_ids(c, community_id)
+                        
+                        communities_to_join = [community_id]
+                        for pid in parent_ids:
+                            if pid not in communities_to_join:
+                                communities_to_join.append(pid)
+                        for nid in nested_ids:
+                            if nid not in communities_to_join:
+                                communities_to_join.append(nid)
+                        
+                        # Join each community
+                        for comm_id in communities_to_join:
+                            c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (user_id, comm_id))
+                            if not c.fetchone():
+                                try:
+                                    add_user_to_community(c, user_id, int(comm_id), role='member')
+                                except CommunityMembershipLimitError:
+                                    logger.warning(f"Could not add user {user_id} to community {comm_id} due to member limit")
+                        
+                        # Mark invitation as used
+                        c.execute(f"UPDATE community_invitations SET used=1, used_at={ph} WHERE id={ph}", (datetime.now().isoformat(), inv_id))
+                        
+                        # Send notification to community members
+                        notify_community_new_member(community_id, username, conn)
+                        logger.info(f"Auto-joined user {username} to community {community_name} (ID: {community_id}) via email invitation")
+                except Exception as auto_join_err:
+                    logger.warning(f"Error auto-joining user to invited communities: {auto_join_err}")
+            
             conn.commit()
         return render_template('verification_result.html', success=True, message='Your email has been verified! You can close this tab.')
     except Exception as e:
@@ -29466,7 +29576,7 @@ def seed_dummy_data():
                     return r['id'] if isinstance(r, sqlite3.Row) else r[0]
                 join_code = generate_join_code()
                 c.execute('''INSERT INTO communities (name, type, creator_username, join_code, created_at)
-                             VALUES (?, ?, ?, ?, ?)''', (name, ctype, 'admin', join_code, datetime.now().strftime('%m.%d.%y %H:%M')))
+                             VALUES (?, ?, ?, ?, ?)''', (name, ctype, 'admin', join_code, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
                 return c.lastrowid
 
             gym_comm_id = get_or_create_community('Demo Gym', 'gym')
@@ -29478,7 +29588,7 @@ def seed_dummy_data():
                 row = c.fetchone()
                 if not row:
                     c.execute('''INSERT INTO users (username, email, password, created_at)
-                                 VALUES (?, ?, ?, ?)''', (u, f'{u}@example.com', '12345', datetime.now().strftime('%m.%d.%y %H:%M')))
+                                 VALUES (?, ?, ?, ?)''', (u, f'{u}@example.com', '12345', datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
                     c.execute('SELECT rowid FROM users WHERE username=?', (u,))
                     row = c.fetchone()
                 user_id = row['rowid'] if isinstance(row, sqlite3.Row) else row[0]
