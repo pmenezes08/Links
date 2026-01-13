@@ -60,7 +60,8 @@ export default function MessageImage({ src, alt, onClick, className = '' }: Mess
         }`}
         onLoad={handleLoad}
         onError={handleError}
-        loading="lazy"
+        loading="eager"
+        decoding="async"
         style={{ 
           display: error ? 'none' : 'block',
           maxHeight: '320px',

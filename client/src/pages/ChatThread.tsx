@@ -61,8 +61,15 @@ export default function ChatThread(){
   useEffect(() => { setTitle('') }, [setTitle])
   
   // Reset scroll state when switching to a different chat
+  // Track when this chat was opened (for initial load window)
+  const chatOpenTimeRef = useRef<number>(0)
+  // Track if user has manually scrolled away from bottom
+  const userHasScrolledRef = useRef<boolean>(false)
+  
   useEffect(() => {
     didInitialAutoScrollRef.current = false
+    userHasScrolledRef.current = false
+    chatOpenTimeRef.current = Date.now()
     setIsScrollReady(false)
   }, [username])
 
@@ -834,78 +841,152 @@ export default function ChatThread(){
     }
   }, [username, chatCacheKey, profileCacheKey, processRawMessages])
   
+  // Main scroll effect - handles initial load and new messages
   useEffect(() => {
     const el = listRef.current
-    if (!el) return
+    if (!el || messages.length === 0) return
     
-    if (!didInitialAutoScrollRef.current && messages.length > 0) {
-      // Initial load - scroll to bottom BEFORE revealing content
-      didInitialAutoScrollRef.current = true
-      lastCountRef.current = messages.length
+    const timeSinceChatOpen = Date.now() - chatOpenTimeRef.current
+    const isInitialLoadWindow = timeSinceChatOpen < 3000 // 3 second window for initial loading
+    
+    // During initial load window, always scroll to bottom if user hasn't manually scrolled
+    if (isInitialLoadWindow && !userHasScrolledRef.current) {
+      // Mark as initial scroll done (for the reveal)
+      if (!didInitialAutoScrollRef.current) {
+        didInitialAutoScrollRef.current = true
+      }
       
-      // Scroll immediately (content is hidden via isScrollReady=false)
+      // Scroll immediately
       scrollToBottom()
       
-      // Use RAF to ensure scroll happens before reveal
+      // Use RAF to ensure DOM is painted
       requestAnimationFrame(() => {
         scrollToBottom()
-        // Reveal content after scroll is positioned
         requestAnimationFrame(() => {
-          setIsScrollReady(true)
-          // One more scroll after reveal to ensure position
+          if (!isScrollReady) {
+            setIsScrollReady(true)
+          }
           scrollToBottom()
         })
       })
-      
-      // Additional delayed scrolls to catch late-loading images/content
-      const delayedScrolls = [100, 300, 500, 800, 1200].map(delay => 
-        setTimeout(scrollToBottom, delay)
-      )
-      
-      // Track if we're in initial load period (first 2 seconds)
-      let isInitialLoadPeriod = true
-      const initialLoadTimer = setTimeout(() => { isInitialLoadPeriod = false }, 2000)
-      
-      // MutationObserver to handle images loading (silently adjusts scroll)
-      let lastHeight = el.scrollHeight
-      const observer = new MutationObserver(() => {
-        if (el.scrollHeight !== lastHeight) {
-          lastHeight = el.scrollHeight
-          // During initial load, ALWAYS scroll to bottom when content changes
-          // After initial load, only auto-scroll if user is near bottom
-          if (isInitialLoadPeriod) {
-            scrollToBottom()
-          } else {
-            const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
-            if (nearBottom) {
-              scrollToBottom()
-            }
-          }
-        }
-      })
-      observer.observe(el, { childList: true, subtree: true, attributes: true })
-      const observerTimer = setTimeout(() => observer.disconnect(), 5000)
-      
-      return () => {
-        delayedScrolls.forEach(clearTimeout)
-        clearTimeout(initialLoadTimer)
-        clearTimeout(observerTimer)
-        observer.disconnect()
-      }
     }
     
-    // New messages arrived
-    if (messages.length > lastCountRef.current) {
-      const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
-      if (near) {
+    // After initial load, handle new messages
+    if (!isInitialLoadWindow && messages.length > lastCountRef.current) {
+      // Check if user is near bottom
+      const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
+      if (nearBottom || !userHasScrolledRef.current) {
         scrollToBottom()
         setShowScrollDown(false)
       } else {
         setShowScrollDown(true)
       }
     }
+    
     lastCountRef.current = messages.length
-  }, [messages, scrollToBottom])
+  }, [messages, scrollToBottom, isScrollReady])
+  
+  // Separate effect for handling image/media loading that changes scroll height
+  // This effect doesn't depend on messages so it doesn't get canceled when messages update
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    
+    // Aggressive delayed scrolls for initial load - catches images loading
+    const initialScrollTimers = [100, 250, 500, 800, 1200, 2000, 3000].map(delay =>
+      setTimeout(() => {
+        if (!userHasScrolledRef.current) {
+          scrollToBottom()
+        }
+      }, delay)
+    )
+    
+    // MutationObserver to handle DOM changes from images loading
+    let lastHeight = el.scrollHeight
+    const observer = new MutationObserver(() => {
+      const newHeight = el.scrollHeight
+      if (newHeight !== lastHeight) {
+        lastHeight = newHeight
+        // Only auto-scroll if user hasn't manually scrolled away
+        if (!userHasScrolledRef.current) {
+          scrollToBottom()
+        }
+      }
+    })
+    
+    // Start observing with a slight delay to avoid initial render noise
+    const observerStartTimer = setTimeout(() => {
+      observer.observe(el, { 
+        childList: true, 
+        subtree: true, 
+        attributes: true,
+        attributeFilter: ['src', 'style', 'class'] // Only watch relevant attributes
+      })
+    }, 50)
+    
+    // Keep observer alive for 10 seconds to catch slow-loading images
+    const observerStopTimer = setTimeout(() => {
+      observer.disconnect()
+    }, 10000)
+    
+    return () => {
+      initialScrollTimers.forEach(clearTimeout)
+      clearTimeout(observerStartTimer)
+      clearTimeout(observerStopTimer)
+      observer.disconnect()
+    }
+  }, [username, scrollToBottom]) // Only re-run when chat changes, not on every message update
+  
+  // Track user scroll to detect manual scrolling
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null
+    let lastScrollTop = el.scrollTop
+    
+    const handleScroll = () => {
+      const timeSinceChatOpen = Date.now() - chatOpenTimeRef.current
+      
+      // Ignore scroll events during the first 500ms (from programmatic scrolls)
+      if (timeSinceChatOpen < 500) return
+      
+      // Check if this is a manual scroll UP (away from bottom)
+      const currentScrollTop = el.scrollTop
+      const isAtBottom = (el.scrollHeight - currentScrollTop - el.clientHeight) < 50
+      
+      // If user scrolled up significantly, mark as manual scroll
+      if (currentScrollTop < lastScrollTop - 20 && !isAtBottom) {
+        userHasScrolledRef.current = true
+      }
+      
+      // If user scrolled back to bottom, reset the flag
+      if (isAtBottom) {
+        userHasScrolledRef.current = false
+        setShowScrollDown(false)
+      }
+      
+      lastScrollTop = currentScrollTop
+      
+      // Clear existing timeout
+      if (scrollTimeout) clearTimeout(scrollTimeout)
+      
+      // After scroll stops, check position
+      scrollTimeout = setTimeout(() => {
+        const stillAtBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 100
+        if (stillAtBottom) {
+          userHasScrolledRef.current = false
+        }
+      }, 150)
+    }
+    
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    
+    return () => {
+      el.removeEventListener('scroll', handleScroll)
+      if (scrollTimeout) clearTimeout(scrollTimeout)
+    }
+  }, [username])
 
   // Load metadata from localStorage
   useEffect(() => {
