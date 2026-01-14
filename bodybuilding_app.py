@@ -23222,7 +23222,7 @@ def api_get_story_viewers(story_id: int):
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
-@app.route('/api/community_stories/<int:story_id>', methods=['GET'])
+@app.route('/api/story/<int:story_id>', methods=['GET'])
 @login_required
 def get_community_story(story_id: int):
     """Get details of a specific story including its community_id."""

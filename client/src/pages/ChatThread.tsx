@@ -2438,13 +2438,35 @@ export default function ChatThread(){
                   onStoryReplyClick={async (storyId) => {
                     // Fetch the story to get its community_id, then navigate
                     try {
-                      console.log('🎬 Fetching story:', storyId)
-                      const res = await fetch(`/api/community_stories/${storyId}`, { credentials: 'include' })
+                      // Ensure storyId is clean (no trailing whitespace or special chars)
+                      const cleanStoryId = String(storyId).trim()
+                      console.log('🎬 Fetching story:', cleanStoryId, 'raw:', storyId)
+                      
+                      if (!cleanStoryId || cleanStoryId === 'undefined' || cleanStoryId === 'null') {
+                        console.error('Invalid story ID:', storyId)
+                        alert('Story reference is invalid')
+                        return
+                      }
+                      
+                      const res = await fetch(`/api/story/${cleanStoryId}`, { credentials: 'include' })
+                      console.log('🎬 Story response status:', res.status)
+                      
+                      if (!res.ok) {
+                        if (res.status === 404) {
+                          alert('This story is no longer available')
+                          return
+                        }
+                        console.error('HTTP error:', res.status)
+                        alert('Unable to load story')
+                        return
+                      }
+                      
                       const json = await res.json()
                       console.log('🎬 Story response:', json)
+                      
                       if (json?.success && json.story?.community_id) {
                         // Navigate to community feed with the story ID to open
-                        navigate(`/community_feed_react/${json.story.community_id}`, { state: { openStoryId: Number(storyId) } })
+                        navigate(`/community_feed_react/${json.story.community_id}`, { state: { openStoryId: Number(cleanStoryId) } })
                       } else if (json?.error === 'Story not found' || json?.error === 'Story expired') {
                         // Story might have expired
                         alert('This story is no longer available')
