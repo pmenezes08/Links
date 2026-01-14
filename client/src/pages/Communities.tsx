@@ -55,6 +55,107 @@ function normalizeMediaPath(path?: string | null){
   return `/uploads/${raw}`
 }
 
+// Type for multi-media posts
+type MediaItem = { type: 'image' | 'video'; path: string }
+
+// Helper component for post media carousel
+function PostMediaCarousel({ post }: { post: { image_path?: string | null; video_path?: string | null; media_paths?: MediaItem[] | string | null } }) {
+  const [index, setIndex] = useState(0)
+  
+  const mediaPaths = useMemo((): MediaItem[] => {
+    if (!post.media_paths) return []
+    if (Array.isArray(post.media_paths)) return post.media_paths
+    if (typeof post.media_paths === 'string') {
+      try {
+        const parsed = JSON.parse(post.media_paths)
+        return Array.isArray(parsed) ? parsed : []
+      } catch {
+        return []
+      }
+    }
+    return []
+  }, [post.media_paths])
+  
+  // If no media_paths, fall back to legacy single media
+  if (mediaPaths.length === 0) {
+    if (post.image_path) {
+      return (
+        <ImageLoader
+          src={normalizeMediaPath(post.image_path)}
+          alt="Post image"
+          className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+        />
+      )
+    }
+    if (post.video_path) {
+      return (
+        <div onClick={(e) => e.stopPropagation()}>
+          <video
+            className="w-full max-h-[360px] rounded border border-white/10 bg-black"
+            src={normalizeMediaPath(post.video_path)}
+            controls
+            playsInline
+          />
+        </div>
+      )
+    }
+    return null
+  }
+  
+  const current = mediaPaths[index]
+  const hasMultiple = mediaPaths.length > 1
+  
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      {current?.type === 'video' ? (
+        <video
+          className="w-full max-h-[360px] rounded border border-white/10 bg-black"
+          src={normalizeMediaPath(current.path)}
+          controls
+          playsInline
+        />
+      ) : (
+        <ImageLoader
+          src={normalizeMediaPath(current?.path || '')}
+          alt={`Post media ${index + 1}`}
+          className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
+        />
+      )}
+      
+      {hasMultiple && (
+        <>
+          {/* Left arrow */}
+          <button
+            className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-30 z-10"
+            onClick={(e) => { e.stopPropagation(); setIndex(i => Math.max(0, i - 1)) }}
+            disabled={index === 0}
+          >
+            <i className="fa-solid fa-chevron-left text-sm" />
+          </button>
+          {/* Right arrow */}
+          <button
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-30 z-10"
+            onClick={(e) => { e.stopPropagation(); setIndex(i => Math.min(mediaPaths.length - 1, i + 1)) }}
+            disabled={index === mediaPaths.length - 1}
+          >
+            <i className="fa-solid fa-chevron-right text-sm" />
+          </button>
+          {/* Dot indicators */}
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-10">
+            {mediaPaths.map((_, idx) => (
+              <button
+                key={idx}
+                className={`w-2 h-2 rounded-full transition-colors ${idx === index ? 'bg-white' : 'bg-white/40'}`}
+                onClick={(e) => { e.stopPropagation(); setIndex(idx) }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function Communities(){
   const navigate = useNavigate()
   const location = useLocation()
@@ -1132,23 +1233,8 @@ function ParentTimeline({ parentId }:{ parentId:number }){
                     </>
                   )
                 })()}
-                {p.image_path ? (
-                  <ImageLoader
-                    src={normalizeMediaPath(p.image_path)}
-                    alt="Post image"
-                    className="block mx-auto max-w-full max-h-[360px] rounded border border-white/10"
-                  />
-                ) : null}
-                {p.video_path ? (
-                  <div onClick={(e)=> e.stopPropagation()}>
-                    <video
-                      className="w-full max-h-[360px] rounded border border-white/10 bg-black"
-                      src={normalizeMediaPath(p.video_path)}
-                      controls
-                      playsInline
-                    />
-                  </div>
-                ) : null}
+                {/* Multi-media carousel or legacy single media */}
+                <PostMediaCarousel post={p} />
                 {p.audio_path ? (
                   <div className="space-y-2" onClick={(e)=> e.stopPropagation()}>
                     {p.audio_summary && (

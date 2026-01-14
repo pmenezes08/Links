@@ -2261,15 +2261,16 @@ export default function CommunityFeed() {
         <div
           className="fixed inset-0 z-[120] bg-black flex flex-col"
           onClick={handleStoryBackdropClick}
-          style={{
-            paddingBottom: keyboardHeight ? `${keyboardHeight}px` : undefined,
-            transition: 'padding-bottom 0.25s ease-out',
-          }}
         >
-          {/* Full-screen media container */}
+          {/* Full-screen media container - resizes when keyboard is open */}
           <div
             ref={storyContentRef}
-            className="group absolute inset-0 flex items-center justify-center"
+            className="group absolute left-0 right-0 flex items-center justify-center transition-all duration-200"
+            style={{
+              top: 0,
+              // When keyboard is open, shrink media area to fit above keyboard + bottom bar (~120px for bottom bar)
+              bottom: keyboardHeight > 0 ? `${keyboardHeight + 120}px` : '120px',
+            }}
             onPointerDown={handleStoryPointerDown}
             onPointerUp={handleStoryPointerUp}
             onPointerLeave={handleStoryPointerCancel}
