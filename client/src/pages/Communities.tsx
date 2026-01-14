@@ -76,7 +76,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
     return []
   }, [post.media_paths])
   
-  // If no media_paths, fall back to legacy single media
+  // If no media_paths OR it's empty, fall back to legacy single media
   if (mediaPaths.length === 0) {
     if (post.image_path) {
       return (
@@ -106,7 +106,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
   const hasMultiple = mediaPaths.length > 1
   
   return (
-    <div className="relative" onClick={(e) => e.stopPropagation()}>
+    <div className="relative overflow-hidden" onClick={(e) => e.stopPropagation()}>
       {current?.type === 'video' ? (
         <video
           className="w-full max-h-[360px] rounded border border-white/10 bg-black"
@@ -122,33 +122,41 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
         />
       )}
       
+      {/* Carousel navigation - only show when multiple items */}
       {hasMultiple && (
         <>
           {/* Left arrow */}
           <button
-            className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-30 z-10"
+            type="button"
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black/90 disabled:opacity-30 z-20 shadow-lg"
             onClick={(e) => { e.stopPropagation(); setIndex(i => Math.max(0, i - 1)) }}
             disabled={index === 0}
           >
-            <i className="fa-solid fa-chevron-left text-sm" />
+            <i className="fa-solid fa-chevron-left" />
           </button>
           {/* Right arrow */}
           <button
-            className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-30 z-10"
+            type="button"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/70 text-white flex items-center justify-center hover:bg-black/90 disabled:opacity-30 z-20 shadow-lg"
             onClick={(e) => { e.stopPropagation(); setIndex(i => Math.min(mediaPaths.length - 1, i + 1)) }}
             disabled={index === mediaPaths.length - 1}
           >
-            <i className="fa-solid fa-chevron-right text-sm" />
+            <i className="fa-solid fa-chevron-right" />
           </button>
           {/* Dot indicators */}
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-10">
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20 bg-black/50 rounded-full px-2 py-1">
             {mediaPaths.map((_, idx) => (
               <button
                 key={idx}
+                type="button"
                 className={`w-2 h-2 rounded-full transition-colors ${idx === index ? 'bg-white' : 'bg-white/40'}`}
                 onClick={(e) => { e.stopPropagation(); setIndex(idx) }}
               />
             ))}
+          </div>
+          {/* Counter badge */}
+          <div className="absolute top-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded-full z-20">
+            {index + 1}/{mediaPaths.length}
           </div>
         </>
       )}
