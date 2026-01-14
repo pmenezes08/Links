@@ -315,6 +315,17 @@ export default function CreatePost(){
   return (
     <>
     <div className="glass-page text-white">
+      {/* Full-screen loading overlay when submitting */}
+      {submitting && (
+        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center">
+          <div className="w-16 h-16 border-4 border-white/20 border-t-[#4db6ac] rounded-full animate-spin mb-4" />
+          <div className="text-white font-medium">Posting...</div>
+          {mediaFiles.length > 0 && (
+            <div className="text-white/60 text-sm mt-2">Uploading {mediaFiles.length} {mediaFiles.length === 1 ? 'file' : 'files'}</div>
+          )}
+        </div>
+      )}
+      
       {/* Praise notification */}
       {showPraise && (
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none">

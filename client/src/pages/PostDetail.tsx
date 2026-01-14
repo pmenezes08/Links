@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, memo } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
@@ -19,7 +19,8 @@ import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number }
+type MediaItem = { type: 'image' | 'video'; path: string }
+type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; media_paths?: MediaItem[] | string | null }
 
 // old formatTimestamp removed; using formatSmartTime
 
@@ -118,6 +119,24 @@ export default function PostDetail(){
   const [currentUser, setCurrentUser] = useState<{username: string; profile_picture?: string | null} | null>(null)
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
+  const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
+  
+  // Parse media_paths for multi-media support
+  const parsedMediaPaths = useMemo((): MediaItem[] => {
+    if (!post?.media_paths) return []
+    if (Array.isArray(post.media_paths)) return post.media_paths
+    if (typeof post.media_paths === 'string') {
+      try {
+        const parsed = JSON.parse(post.media_paths)
+        return Array.isArray(parsed) ? parsed : []
+      } catch {
+        return []
+      }
+    }
+    return []
+  }, [post?.media_paths])
+  
+  const hasMultipleMedia = parsedMediaPaths.length > 1
   const { recording, recordMs, preview: replyPreview, start: startRec, stop: stopRec, clearPreview: clearReplyPreview, level } = useAudioRecorder() as any
   const replyTokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const [inlineSending, setInlineSending] = useState<Record<number, boolean>>({})
@@ -1288,7 +1307,59 @@ export default function PostDetail(){
                     </>
                   )
                 })()}
-                {post.image_path ? (
+                {/* Media carousel for multi-media or single media display */}
+                {parsedMediaPaths.length > 0 ? (
+                  <div className="relative">
+                    {parsedMediaPaths[mediaCarouselIndex]?.type === 'video' ? (
+                      <div className="px-3">
+                        <video
+                          className="w-full max-h-[420px] rounded border border-white/10 bg-black"
+                          src={normalizePath(parsedMediaPaths[mediaCarouselIndex].path)}
+                          controls
+                          playsInline
+                        />
+                      </div>
+                    ) : (
+                      <div className="px-0">
+                        <ImageLoader
+                          src={normalizePath(parsedMediaPaths[mediaCarouselIndex]?.path || '')}
+                          alt={`Post media ${mediaCarouselIndex + 1}`}
+                          className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
+                          onClick={() => setPreviewSrc(normalizePath(parsedMediaPaths[mediaCarouselIndex]?.path || ''))}
+                        />
+                      </div>
+                    )}
+                    
+                    {/* Carousel navigation */}
+                    {hasMultipleMedia && (
+                      <>
+                        <button
+                          className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-30 z-10"
+                          onClick={() => setMediaCarouselIndex(i => Math.max(0, i - 1))}
+                          disabled={mediaCarouselIndex === 0}
+                        >
+                          <i className="fa-solid fa-chevron-left text-sm" />
+                        </button>
+                        <button
+                          className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-30 z-10"
+                          onClick={() => setMediaCarouselIndex(i => Math.min(parsedMediaPaths.length - 1, i + 1))}
+                          disabled={mediaCarouselIndex === parsedMediaPaths.length - 1}
+                        >
+                          <i className="fa-solid fa-chevron-right text-sm" />
+                        </button>
+                        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-10">
+                          {parsedMediaPaths.map((_, idx) => (
+                            <button
+                              key={idx}
+                              className={`w-2 h-2 rounded-full transition-colors ${idx === mediaCarouselIndex ? 'bg-white' : 'bg-white/40'}`}
+                              onClick={() => setMediaCarouselIndex(idx)}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : post.image_path ? (
                   <div className="px-0">
                     <ImageLoader
                       src={normalizePath(post.image_path as string)}
