@@ -69,7 +69,7 @@ type StoryGroup = {
 type StoryViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 const COMMUNITY_FEED_CACHE_TTL_MS = 2 * 60 * 1000
 const COMMUNITY_FEED_CACHE_VERSION = 'community-feed-v3'
-const STORY_REACTIONS = ['❤️', '🔥', '👏', '😂', '😮', '👍']
+const STORY_REACTIONS = ['❤️', '🔥', '👏', '😂', '😮', '😢', '🎉', '💯']
 
 function normalizeMediaPath(p?: string | null){
   if (!p) return ''
@@ -170,6 +170,7 @@ export default function CommunityFeed() {
   const [storyReplyText, setStoryReplyText] = useState('')
   const [storyReplySending, setStoryReplySending] = useState(false)
   const storyReplyInputRef = useRef<HTMLInputElement | null>(null)
+  const [storyReplyModalOpen, setStoryReplyModalOpen] = useState(false)
   // const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
   // const [storyEditorNewText, setStoryEditorNewText] = useState('')
   
@@ -1246,6 +1247,7 @@ export default function CommunityFeed() {
     setActiveStoryPointer(null)
     setStoryViewersState(prev => ({ ...prev, open: false }))
     setStoryReplyText('')
+    setStoryReplyModalOpen(false)
   }, [])
 
   // Handle story reply - sends message to story creator's 1:1 chat
@@ -2436,85 +2438,52 @@ export default function CommunityFeed() {
             </div>
           </div>
 
-          {/* Bottom overlay - caption, reactions, reply, sound toggle */}
+          {/* Bottom bar - caption and simple interaction bar */}
           <div 
-            className="absolute bottom-0 left-0 right-0 z-[125] bg-gradient-to-t from-black/80 via-black/50 to-transparent pb-safe"
+            className="absolute bottom-0 left-0 right-0 z-[125] bg-gradient-to-t from-black/80 via-black/40 to-transparent pb-safe"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
             onPointerUp={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
           >
-            <div className="px-4 pt-8 pb-4">
+            <div className="px-4 pt-6 pb-4">
               {/* Caption */}
               {currentStory.caption && (
                 <div className="mb-3 text-sm text-white/90 whitespace-pre-wrap break-words max-h-16 overflow-y-auto">{currentStory.caption}</div>
               )}
-              {/* Reactions */}
-              <div className="flex flex-wrap justify-center gap-2 mb-3">
-                {STORY_REACTIONS.map(reaction => {
-                  const count = currentStory.reactions?.[reaction] ?? 0
-                  const isActive = currentStory.user_reaction === reaction
-                  return (
-                    <button
-                      key={reaction}
-                      type="button"
-                      className={`px-3 py-1 rounded-full border flex items-center gap-1 text-sm transition-colors ${
-                        isActive ? 'bg-white text-black border-white' : 'border-white/20 text-white/80 hover:bg-white/10 bg-black/30'
-                      }`}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleStoryReaction(currentStory, reaction)
-                      }}
-                    >
-                      <span className="text-base leading-none">{reaction}</span>
-                      {count > 0 && <span className="text-xs font-semibold">{count}</span>}
-                    </button>
-                  )
-                })}
-              </div>
-              {/* Reply input - only show if not own story */}
+              {/* Simple interaction bar - only show if not own story */}
               {currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    handleStoryReply(currentStory)
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex items-center gap-2">
-                    <input
-                      ref={storyReplyInputRef}
-                      type="text"
-                      value={storyReplyText}
-                      onChange={(e) => setStoryReplyText(e.target.value)}
-                      placeholder={`Reply to ${currentStory.username}...`}
-                      className="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-white/40 focus:bg-white/15 transition-colors"
-                      disabled={storyReplySending}
-                      onClick={(e) => e.stopPropagation()}
-                      onPointerDown={(e) => e.stopPropagation()}
-                    />
-                    <button
-                      type="submit"
-                      disabled={!storyReplyText.trim() || storyReplySending}
-                      className="w-10 h-10 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#5ec4ba] transition-colors"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {storyReplySending ? (
-                        <i className="fa-solid fa-spinner fa-spin text-sm" />
-                      ) : (
-                        <i className="fa-solid fa-paper-plane text-sm" />
-                      )}
-                    </button>
-                  </div>
-                </form>
+                <div className="flex items-center gap-3">
+                  {/* Message composer trigger */}
+                  <button
+                    type="button"
+                    className="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-3 text-sm text-white/50 text-left"
+                    onClick={() => setStoryReplyModalOpen(true)}
+                  >
+                    Send message...
+                  </button>
+                  {/* Quick heart reaction */}
+                  <button
+                    type="button"
+                    className={`w-12 h-12 rounded-full border flex items-center justify-center transition-all ${
+                      currentStory.user_reaction === '❤️' 
+                        ? 'bg-red-500 border-red-500 text-white scale-110' 
+                        : 'bg-white/10 border-white/20 text-white hover:bg-white/20'
+                    }`}
+                    onClick={() => handleStoryReaction(currentStory, '❤️')}
+                  >
+                    <i className={`fa-${currentStory.user_reaction === '❤️' ? 'solid' : 'regular'} fa-heart text-xl`} />
+                  </button>
+                </div>
               )}
             </div>
           </div>
 
-          {/* Sound toggle button for videos - positioned in bottom right above the reply input */}
+          {/* Sound toggle button for videos */}
           {currentStory.media_type === 'video' && (
             <button
-              className="absolute bottom-32 right-4 w-11 h-11 rounded-full bg-black/60 border border-white/20 text-white hover:bg-black/80 flex items-center justify-center z-[126] transition-all"
+              className="absolute bottom-28 right-4 w-11 h-11 rounded-full bg-black/60 border border-white/20 text-white hover:bg-black/80 flex items-center justify-center z-[126] transition-all"
               onClick={(e) => {
                 e.stopPropagation()
                 setStoryMuted(!storyMuted)
@@ -2526,6 +2495,83 @@ export default function CommunityFeed() {
             >
               <i className={`fa-solid ${storyMuted ? 'fa-volume-xmark' : 'fa-volume-high'}`} />
             </button>
+          )}
+
+          {/* Story reply/reaction modal */}
+          {storyReplyModalOpen && (
+            <div 
+              className="absolute inset-0 z-[130] bg-black/70 backdrop-blur-sm flex flex-col justify-end"
+              onClick={() => setStoryReplyModalOpen(false)}
+            >
+              <div 
+                className="bg-[#1a1a1a] rounded-t-3xl border-t border-white/10 pb-safe"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+              >
+                {/* Handle bar */}
+                <div className="flex justify-center pt-3 pb-2">
+                  <div className="w-10 h-1 rounded-full bg-white/30" />
+                </div>
+                
+                {/* Emoji reactions */}
+                <div className="px-4 py-3">
+                  <div className="flex justify-center gap-3 flex-wrap">
+                    {STORY_REACTIONS.map(emoji => {
+                      const isActive = currentStory.user_reaction === emoji
+                      return (
+                        <button
+                          key={emoji}
+                          type="button"
+                          className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl transition-all ${
+                            isActive ? 'bg-white/20 scale-110 ring-2 ring-white/40' : 'bg-white/5 hover:bg-white/15 active:scale-95'
+                          }`}
+                          onClick={() => {
+                            handleStoryReaction(currentStory, emoji)
+                          }}
+                        >
+                          {emoji}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Message input */}
+                <form
+                  className="px-4 pb-4"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    handleStoryReply(currentStory)
+                    setStoryReplyModalOpen(false)
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={storyReplyInputRef}
+                      type="text"
+                      value={storyReplyText}
+                      onChange={(e) => setStoryReplyText(e.target.value)}
+                      placeholder={`Reply to ${currentStory.username}...`}
+                      className="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-3 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-white/40 focus:bg-white/15 transition-colors"
+                      disabled={storyReplySending}
+                      autoFocus
+                    />
+                    <button
+                      type="submit"
+                      disabled={!storyReplyText.trim() || storyReplySending}
+                      className="w-12 h-12 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#5ec4ba] transition-colors"
+                    >
+                      {storyReplySending ? (
+                        <i className="fa-solid fa-spinner fa-spin" />
+                      ) : (
+                        <i className="fa-solid fa-paper-plane" />
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
           )}
         </div>
       )}
