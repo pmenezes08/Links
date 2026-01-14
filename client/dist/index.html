@@ -51,6 +51,33 @@
     <link rel="stylesheet" crossorigin href="/assets/index-CbQF5X5c-1768428819636.css">
   </head>
   <body>
-    <div id="root" style="background-color: #000000;"></div>
+    <div id="root" style="background-color: #000000;">
+      <!-- Initial loading state - visible immediately while JS loads, replaced when React mounts -->
+      <div id="initial-loader" style="
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #000000;
+        z-index: 9999;
+      ">
+        <img src="/static/logo.png" alt="C.Point" style="width: 80px; height: 80px; margin-bottom: 24px; border-radius: 16px;" onerror="this.style.display='none'" />
+        <div style="
+          width: 32px;
+          height: 32px;
+          border: 3px solid rgba(255,255,255,0.15);
+          border-top-color: #4db6ac;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        "></div>
+        <style>
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        </style>
+      </div>
+    </div>
   </body>
 </html>
