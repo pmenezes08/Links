@@ -2259,47 +2259,150 @@ export default function CommunityFeed() {
       )}
       {activeStoryPointer && currentStory && (
         <div
-          className="fixed inset-0 z-[120] bg-black/95 flex flex-col"
+          className="fixed inset-0 z-[120] bg-black flex flex-col"
           onClick={handleStoryBackdropClick}
           style={{
             paddingBottom: keyboardHeight ? `${keyboardHeight}px` : undefined,
             transition: 'padding-bottom 0.25s ease-out',
           }}
         >
-          <button
-            className="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/10 border border-white/20 text-white hover:bg-white/20 flex items-center justify-center z-[130]"
-            onClick={closeStoryViewer}
-            aria-label="Close story"
+          {/* Full-screen media container */}
+          <div
+            ref={storyContentRef}
+            className="group absolute inset-0 flex items-center justify-center"
+            onPointerDown={handleStoryPointerDown}
+            onPointerUp={handleStoryPointerUp}
+            onPointerLeave={handleStoryPointerCancel}
+            onPointerCancel={handleStoryPointerCancel}
           >
-            <i className="fa-solid fa-xmark text-lg" />
-          </button>
-          <div className="flex-1 flex items-center justify-center p-4 pt-16 pb-6 overflow-y-auto">
-            <div ref={storyContentRef} className="w-full max-w-md">
+            {currentStory.media_type === 'video' ? (
+              <>
+                <video
+                  ref={storyVideoRef}
+                  key={currentStory.id}
+                  src={resolveStoryMediaSrc(currentStory)}
+                  className="w-full h-full object-contain"
+                  autoPlay
+                  playsInline
+                  muted={storyMuted}
+                  loop
+                  preload="auto"
+                  onLoadedData={(e) => {
+                    const container = e.currentTarget.parentElement
+                    const loader = container?.querySelector('.video-loader') as HTMLElement
+                    if (loader) loader.style.display = 'none'
+                  }}
+                  onWaiting={(e) => {
+                    const container = e.currentTarget.parentElement
+                    const loader = container?.querySelector('.video-loader') as HTMLElement
+                    if (loader) loader.style.display = 'flex'
+                  }}
+                  onPlaying={(e) => {
+                    const container = e.currentTarget.parentElement
+                    const loader = container?.querySelector('.video-loader') as HTMLElement
+                    if (loader) loader.style.display = 'none'
+                  }}
+                />
+                <div className="video-loader absolute inset-0 flex items-center justify-center bg-black/60 z-[2]">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-8 h-8 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
+                    <span className="text-xs text-white/60">Loading video...</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <img
+                key={currentStory.id}
+                src={resolveStoryMediaSrc(currentStory)}
+                alt="Story media"
+                className="w-full h-full object-contain"
+                loading="eager"
+              />
+            )}
+            {/* Text overlays */}
+            {currentStory.text_overlays && currentStory.text_overlays.map(overlay => (
+              <div
+                key={overlay.id}
+                className="absolute pointer-events-none z-[4]"
+                style={{
+                  left: `${overlay.x}%`,
+                  top: `${overlay.y}%`,
+                  transform: `translate(-50%, -50%) rotate(${overlay.rotation}deg)`,
+                  fontSize: `${overlay.fontSize}px`,
+                  color: overlay.color,
+                  fontFamily: overlay.fontFamily,
+                  textShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                  WebkitTextStroke: '0.5px rgba(0,0,0,0.3)',
+                }}
+              >
+                <span className="whitespace-nowrap">{overlay.text}</span>
+              </div>
+            ))}
+            {/* Location overlay */}
+            {currentStory.location_data && (
+              <div
+                className="absolute pointer-events-none z-[4] bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/20"
+                style={{
+                  left: `${currentStory.location_data.x}%`,
+                  top: `${currentStory.location_data.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              >
+                <span className="text-white text-sm flex items-center gap-1.5">
+                  <i className="fa-solid fa-location-dot text-[#4db6ac]" />
+                  {currentStory.location_data.name}
+                </span>
+              </div>
+            )}
+            {/* Subtle tap zone indicators */}
+            {hasPrevStory && (
+              <div className="absolute left-0 top-0 bottom-0 w-[40%] z-[3] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute inset-y-0 left-0 w-full bg-gradient-to-r from-black/20 to-transparent" />
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                  <i className="fa-solid fa-chevron-left text-white text-sm" />
+                </div>
+              </div>
+            )}
+            {hasNextStory && (
+              <div className="absolute right-0 top-0 bottom-0 w-[40%] z-[3] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute inset-y-0 right-0 w-full bg-gradient-to-l from-black/20 to-transparent" />
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                  <i className="fa-solid fa-chevron-right text-white text-sm" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Top overlay - progress bars, user info, close button */}
+          <div className="absolute top-0 left-0 right-0 z-[125] bg-gradient-to-b from-black/60 via-black/30 to-transparent pt-safe">
+            <div className="px-4 pt-3 pb-6">
+              {/* Progress bars */}
               <div className="flex gap-1 mb-3">
                 {(currentStoryGroup?.stories || []).map((story, idx) => (
                   <div
                     key={story.id}
-                    className={`flex-1 h-1 rounded-full ${idx <= (activeStoryPointer?.storyIndex ?? 0) ? 'bg-white' : 'bg-white/30'}`}
+                    className={`flex-1 h-0.5 rounded-full ${idx <= (activeStoryPointer?.storyIndex ?? 0) ? 'bg-white' : 'bg-white/30'}`}
                   />
                 ))}
               </div>
-              <div className="flex items-center gap-3 mb-3">
+              {/* User info and actions */}
+              <div className="flex items-center gap-3">
                 <Avatar
                   username={currentStory.username}
                   url={currentStory.profile_picture || undefined}
                   size={36}
                   linkToProfile
                 />
-                <div className="flex-1">
-                  <div className="font-semibold tracking-tight text-sm">{currentStory.username}</div>
-                  <div className="text-xs text-[#9fb0b5]">
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold tracking-tight text-sm text-white truncate">{currentStory.username}</div>
+                  <div className="text-xs text-white/70">
                     {currentStory.created_at ? formatSmartTime(currentStory.created_at) : null}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="text-xs text-[#cfd8dc] flex items-center gap-1 hover:text-white transition-colors"
+                    className="text-xs text-white/80 flex items-center gap-1 hover:text-white transition-colors px-2 py-1"
                     onClick={() => openStoryViewers(currentStory.id)}
                   >
                     <i className="fa-regular fa-eye" />
@@ -2315,157 +2418,52 @@ export default function CommunityFeed() {
                       <i className={`fa-solid ${deletingStory ? 'fa-spinner fa-spin' : 'fa-trash'} text-sm`} />
                     </button>
                   )}
+                  {/* Close button */}
+                  <button
+                    className="w-9 h-9 rounded-full bg-black/40 border border-white/20 text-white hover:bg-black/60 flex items-center justify-center ml-1"
+                    onClick={closeStoryViewer}
+                    aria-label="Close story"
+                  >
+                    <i className="fa-solid fa-xmark text-lg" />
+                  </button>
                 </div>
               </div>
-              <div
-                className="group relative rounded-2xl border border-white/10 overflow-hidden bg-black/40 min-h-[200px] flex items-center justify-center mt-6"
-                onPointerDown={handleStoryPointerDown}
-                onPointerUp={handleStoryPointerUp}
-                onPointerLeave={handleStoryPointerCancel}
-                onPointerCancel={handleStoryPointerCancel}
-              >
-                {currentStory.media_type === 'video' ? (
-                  <>
-                    <video
-                      ref={storyVideoRef}
-                      key={currentStory.id}
-                      src={resolveStoryMediaSrc(currentStory)}
-                      className="w-full max-h-[50vh] object-contain relative z-[1]"
-                      autoPlay
-                      playsInline
-                      muted={storyMuted}
-                      loop
-                      preload="auto"
-                      onLoadedData={(e) => {
-                        const container = e.currentTarget.parentElement
-                        const loader = container?.querySelector('.video-loader') as HTMLElement
-                        if (loader) loader.style.display = 'none'
-                      }}
-                      onWaiting={(e) => {
-                        const container = e.currentTarget.parentElement
-                        const loader = container?.querySelector('.video-loader') as HTMLElement
-                        if (loader) loader.style.display = 'flex'
-                      }}
-                      onPlaying={(e) => {
-                        const container = e.currentTarget.parentElement
-                        const loader = container?.querySelector('.video-loader') as HTMLElement
-                        if (loader) loader.style.display = 'none'
-                      }}
-                    />
-                    {/* Sound toggle button */}
+            </div>
+          </div>
+
+          {/* Bottom overlay - caption, reactions, reply, sound toggle */}
+          <div className="absolute bottom-0 left-0 right-0 z-[125] bg-gradient-to-t from-black/80 via-black/50 to-transparent pb-safe">
+            <div className="px-4 pt-8 pb-4">
+              {/* Caption */}
+              {currentStory.caption && (
+                <div className="mb-3 text-sm text-white/90 whitespace-pre-wrap break-words max-h-16 overflow-y-auto">{currentStory.caption}</div>
+              )}
+              {/* Reactions */}
+              <div className="flex flex-wrap justify-center gap-2 mb-3">
+                {STORY_REACTIONS.map(reaction => {
+                  const count = currentStory.reactions?.[reaction] ?? 0
+                  const isActive = currentStory.user_reaction === reaction
+                  return (
                     <button
-                      className="absolute bottom-4 right-4 w-10 h-10 rounded-full bg-black/60 border border-white/20 text-white hover:bg-black/80 flex items-center justify-center z-[10] transition-all"
+                      key={reaction}
+                      type="button"
+                      className={`px-3 py-1 rounded-full border flex items-center gap-1 text-sm transition-colors ${
+                        isActive ? 'bg-white text-black border-white' : 'border-white/20 text-white/80 hover:bg-white/10 bg-black/30'
+                      }`}
                       onClick={(e) => {
                         e.stopPropagation()
-                        setStoryMuted(!storyMuted)
-                        if (storyVideoRef.current) {
-                          storyVideoRef.current.muted = !storyMuted
-                        }
+                        handleStoryReaction(currentStory, reaction)
                       }}
-                      aria-label={storyMuted ? 'Unmute video' : 'Mute video'}
                     >
-                      <i className={`fa-solid ${storyMuted ? 'fa-volume-xmark' : 'fa-volume-high'}`} />
+                      <span className="text-base leading-none">{reaction}</span>
+                      {count > 0 && <span className="text-xs font-semibold">{count}</span>}
                     </button>
-                    <div className="video-loader absolute inset-0 flex items-center justify-center bg-black/60 z-[2]">
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="w-8 h-8 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
-                        <span className="text-xs text-white/60">Loading video...</span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <img
-                    key={currentStory.id}
-                    src={resolveStoryMediaSrc(currentStory)}
-                    alt="Story media"
-                    className="w-full max-h-[50vh] object-contain"
-                    loading="eager"
-                  />
-                )}
-                {/* Text overlays */}
-                {currentStory.text_overlays && currentStory.text_overlays.map(overlay => (
-                  <div
-                    key={overlay.id}
-                    className="absolute pointer-events-none z-[4]"
-                    style={{
-                      left: `${overlay.x}%`,
-                      top: `${overlay.y}%`,
-                      transform: `translate(-50%, -50%) rotate(${overlay.rotation}deg)`,
-                      fontSize: `${overlay.fontSize}px`,
-                      color: overlay.color,
-                      fontFamily: overlay.fontFamily,
-                      textShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                      WebkitTextStroke: '0.5px rgba(0,0,0,0.3)',
-                    }}
-                  >
-                    <span className="whitespace-nowrap">{overlay.text}</span>
-                  </div>
-                ))}
-                {/* Location overlay */}
-                {currentStory.location_data && (
-                  <div
-                    className="absolute pointer-events-none z-[4] bg-black/50 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/20"
-                    style={{
-                      left: `${currentStory.location_data.x}%`,
-                      top: `${currentStory.location_data.y}%`,
-                      transform: 'translate(-50%, -50%)',
-                    }}
-                  >
-                    <span className="text-white text-sm flex items-center gap-1.5">
-                      <i className="fa-solid fa-location-dot text-[#4db6ac]" />
-                      {currentStory.location_data.name}
-                    </span>
-                  </div>
-                )}
-                {/* Subtle tap zone indicators */}
-                {hasPrevStory && (
-                  <div className="absolute left-0 top-0 bottom-0 w-[40%] z-[3] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="absolute inset-y-0 left-0 w-full bg-gradient-to-r from-black/20 to-transparent" />
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
-                      <i className="fa-solid fa-chevron-left text-white text-sm" />
-                    </div>
-                  </div>
-                )}
-                {hasNextStory && (
-                  <div className="absolute right-0 top-0 bottom-0 w-[40%] z-[3] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="absolute inset-y-0 right-0 w-full bg-gradient-to-l from-black/20 to-transparent" />
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
-                      <i className="fa-solid fa-chevron-right text-white text-sm" />
-                    </div>
-                  </div>
-                )}
+                  )
+                })}
               </div>
-              {currentStory.caption && (
-                <div className="mt-3 text-sm text-white/90 whitespace-pre-wrap break-words max-h-20 overflow-y-auto">{currentStory.caption}</div>
-              )}
-              <div className="mt-4">
-                <div className="flex flex-wrap justify-center gap-2">
-                  {STORY_REACTIONS.map(reaction => {
-                    const count = currentStory.reactions?.[reaction] ?? 0
-                    const isActive = currentStory.user_reaction === reaction
-                    return (
-                      <button
-                        key={reaction}
-                        type="button"
-                        className={`px-3 py-1 rounded-full border flex items-center gap-1 text-sm transition-colors ${
-                          isActive ? 'bg-white text-black border-white' : 'border-white/20 text-white/80 hover:bg-white/10'
-                        }`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleStoryReaction(currentStory, reaction)
-                        }}
-                      >
-                        <span className="text-base leading-none">{reaction}</span>
-                        {count > 0 && <span className="text-xs font-semibold">{count}</span>}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              {/* Story reply input - only show if not own story */}
+              {/* Reply input - only show if not own story */}
               {currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() && (
                 <form
-                  className="mt-4"
                   onSubmit={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
@@ -2502,6 +2500,23 @@ export default function CommunityFeed() {
               )}
             </div>
           </div>
+
+          {/* Sound toggle button for videos - positioned in bottom right above the reply input */}
+          {currentStory.media_type === 'video' && (
+            <button
+              className="absolute bottom-32 right-4 w-11 h-11 rounded-full bg-black/60 border border-white/20 text-white hover:bg-black/80 flex items-center justify-center z-[126] transition-all"
+              onClick={(e) => {
+                e.stopPropagation()
+                setStoryMuted(!storyMuted)
+                if (storyVideoRef.current) {
+                  storyVideoRef.current.muted = !storyMuted
+                }
+              }}
+              aria-label={storyMuted ? 'Unmute video' : 'Mute video'}
+            >
+              <i className={`fa-solid ${storyMuted ? 'fa-volume-xmark' : 'fa-volume-high'}`} />
+            </button>
+          )}
         </div>
       )}
 
