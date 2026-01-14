@@ -1,0 +1,91 @@
+# This file specifies files that are *not* uploaded to Google Cloud
+# using gcloud. It follows the same syntax as .gitignore.
+
+# Ignore git directory
+.git
+.github
+.gitignore
+
+# Ignore development files
+*.md
+*.txt
+*.sh
+*.sql
+*.sample
+*.example
+
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+
+# Ignore virtual environments
+venv/
+env/
+.env
+.env.*
+
+# Ignore IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Ignore client source (we only need client/dist)
+client/src/
+client/node_modules/
+client/package*.json
+client/tsconfig*.json
+client/vite.config.ts
+client/*.html
+client/.env*
+
+# Ignore landing source (we only need landing/dist)
+landing/src/
+landing/node_modules/
+landing/package*.json
+landing/tsconfig*.json
+landing/vite.config.ts
+landing/*.html
+landing/.env*
+landing/Dockerfile
+
+# Ignore test and debug files
+test_*.py
+check_*.py
+debug_*.py
+fix_*.py
+*_test.py
+diagnose_*.py
+verify_*.py
+database_diagnostic.py
+
+# Ignore migration and setup scripts
+add_*.py
+migrate_*.py
+*_migration.py
+apply_*.py
+create_env_file.py
+insert_test_token.py
+init_community_db.py
+
+# Ignore utility scripts
+optimize_*.py
+force_*.py
+complete_revert.py
+direct_migration.py
+emergency_fix.py
+final_fix.py
+find_mysql_password.py
+revert_chat_changes.py
+nutrition_plans.py
+
+# Ignore documentation
+*.md
+
+# Ignore misc files
+cookies.txt
+*.pid
+runtime.txt
