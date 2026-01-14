@@ -2262,14 +2262,13 @@ export default function CommunityFeed() {
           className="fixed inset-0 z-[120] bg-black flex flex-col"
           onClick={handleStoryBackdropClick}
         >
-          {/* Full-screen media container - resizes when keyboard is open */}
+          {/* Full-screen media container - fills entire screen, overlays float on top */}
           <div
             ref={storyContentRef}
-            className="group absolute left-0 right-0 flex items-center justify-center transition-all duration-200"
+            className="group absolute inset-0 flex items-center justify-center transition-all duration-200"
             style={{
-              top: 0,
-              // When keyboard is open, shrink media area to fit above keyboard + bottom bar (~120px for bottom bar)
-              bottom: keyboardHeight > 0 ? `${keyboardHeight + 120}px` : '120px',
+              // When keyboard is open, shrink media area to fit above keyboard + bottom bar
+              bottom: keyboardHeight > 0 ? `${keyboardHeight + 120}px` : '0px',
             }}
             onPointerDown={handleStoryPointerDown}
             onPointerUp={handleStoryPointerUp}
