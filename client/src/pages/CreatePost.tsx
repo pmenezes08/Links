@@ -17,14 +17,13 @@ export default function CreatePost(){
   const navigate = useNavigate()
   const communityId = params.get('community_id') || ''
   const groupId = params.get('group_id') || ''
-  const isGroupPost = Boolean(groupId)
   const [content, setContent] = useState('')
-  const [file, setFile] = useState<File|null>(null)
+  const [mediaFiles, setMediaFiles] = useState<File[]>([])
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [selectedGif, setSelectedGif] = useState<GifSelection | null>(null)
   const [gifFile, setGifFile] = useState<File | null>(null)
-  const [videoFile, setVideoFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
   const { recording, preview, start, stop, clearPreview, ensurePreview, level, recordMs } = useAudioRecorder() as any
   const [showPraise, setShowPraise] = useState(false)
   const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([])
@@ -32,7 +31,6 @@ export default function CreatePost(){
   const [linkDisplayName, setLinkDisplayName] = useState('')
   const tokenRef = useRef<string>(`${Date.now()}_${Math.random().toString(36).slice(2)}`)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
-  const videoInputRef = useRef<HTMLInputElement|null>(null)
   const headerOffsetVar = 'var(--app-header-offset, calc(56px + env(safe-area-inset-top, 0px)))'
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const conversationMinHeight = `calc(100vh - ${headerOffsetVar})`
@@ -47,18 +45,30 @@ export default function CreatePost(){
   const [viewportLift, setViewportLift] = useState(0)
   const [viewportHeight, setViewportHeight] = useState<number | null>(null)
 
-  const videoPreviewUrl = useMemo(() => {
-    if (!videoFile) return null
-    return URL.createObjectURL(videoFile)
-  }, [videoFile])
+  // Generate preview URLs for all media files
+  const mediaPreviewUrls = useMemo(() => {
+    return mediaFiles.map(file => ({
+      url: URL.createObjectURL(file),
+      type: file.type.startsWith('video/') ? 'video' : 'image',
+      name: file.name
+    }))
+  }, [mediaFiles])
 
-  const hasVideoAttachment = !isGroupPost && Boolean(videoFile)
+  const hasMediaAttachment = mediaFiles.length > 0
 
+  // Cleanup preview URLs when component unmounts or files change
   useEffect(() => {
     return () => {
-      if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl)
+      mediaPreviewUrls.forEach(preview => URL.revokeObjectURL(preview.url))
     }
-  }, [videoPreviewUrl])
+  }, [mediaPreviewUrls])
+
+  // Reset carousel index when media changes
+  useEffect(() => {
+    if (mediaCarouselIndex >= mediaFiles.length) {
+      setMediaCarouselIndex(Math.max(0, mediaFiles.length - 1))
+    }
+  }, [mediaFiles.length, mediaCarouselIndex])
 
 
   useLayoutEffect(() => {
@@ -214,8 +224,7 @@ export default function CreatePost(){
     // If user is still recording, stop and wait briefly for preview to finalize
     if (recording) await ensurePreview(5000)
     
-    const activeVideoFile = isGroupPost ? null : videoFile
-    if (!content && !file && !gifFile && !preview?.blob && !activeVideoFile) {
+    if (!content && mediaFiles.length === 0 && !gifFile && !preview?.blob) {
       alert('Add text, media, or finish recording audio before posting')
       return
     }
@@ -228,12 +237,24 @@ export default function CreatePost(){
     try{
       const fd = new FormData()
       fd.append('content', content)
-      if (gifFile) fd.append('image', gifFile)
-      else if (file) fd.append('image', file)
-      const activeVideoFile = isGroupPost ? null : videoFile
-      if (activeVideoFile) fd.append('video', activeVideoFile)
+      
+      // Handle GIF (takes priority as single image)
+      if (gifFile) {
+        fd.append('image', gifFile)
+      } else if (mediaFiles.length > 0) {
+        // Append all media files
+        mediaFiles.forEach(file => {
+          if (file.type.startsWith('video/')) {
+            fd.append('videos', file)
+          } else {
+            fd.append('images', file)
+          }
+        })
+      }
+      
       if (preview?.blob) fd.append('audio', preview.blob, (preview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
       fd.append('dedupe_token', tokenRef.current)
+      
       if (groupId){
         fd.append('group_id', groupId)
         const r = await fetch('/api/group_posts', { method: 'POST', credentials: 'include', body: fd })
@@ -269,12 +290,11 @@ export default function CreatePost(){
         else navigate(-1)
       }
       setContent('')
-      setFile(null)
+      setMediaFiles([])
       setSelectedGif(null)
       setGifFile(null)
-      setVideoFile(null)
+      setMediaCarouselIndex(0)
       if (fileInputRef.current) fileInputRef.current.value = ''
-      if (videoInputRef.current) videoInputRef.current.value = ''
       clearPreview()
     }catch{
       setSubmitting(false)
@@ -362,34 +382,85 @@ export default function CreatePost(){
           </div>
         )}
 
-        {file ? (
-          <div className="mt-3 rounded-xl overflow-hidden border border-white/10">
-            <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-auto" />
-          </div>
-        ) : null}
-        {hasVideoAttachment && videoPreviewUrl ? (
-          <div className="mt-3 rounded-xl overflow-hidden border border-white/10">
-            <video
-              src={videoPreviewUrl}
-              controls
-              playsInline
-              className="w-full max-h-[360px] bg-black"
-            />
-            <div className="px-3 py-2 flex items-center justify-between bg-white/5 border-t border-white/10 text-xs text-white/70">
-              <span className="flex items-center gap-2 text-[#7fe7df]"><i className="fa-solid fa-video" /> Video attached</span>
+        {/* Media carousel preview */}
+        {mediaPreviewUrls.length > 0 && (
+          <div className="mt-3 rounded-xl overflow-hidden border border-white/10 bg-black">
+            {/* Carousel */}
+            <div className="relative">
+              {/* Current media item */}
+              {mediaPreviewUrls[mediaCarouselIndex]?.type === 'video' ? (
+                <video
+                  src={mediaPreviewUrls[mediaCarouselIndex].url}
+                  controls
+                  playsInline
+                  className="w-full max-h-[360px] bg-black"
+                />
+              ) : (
+                <img 
+                  src={mediaPreviewUrls[mediaCarouselIndex]?.url} 
+                  alt={`preview ${mediaCarouselIndex + 1}`} 
+                  className="w-full max-h-[360px] object-contain bg-black" 
+                />
+              )}
+              
+              {/* Navigation arrows for multiple items */}
+              {mediaPreviewUrls.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-30"
+                    onClick={() => setMediaCarouselIndex(i => Math.max(0, i - 1))}
+                    disabled={mediaCarouselIndex === 0}
+                  >
+                    <i className="fa-solid fa-chevron-left text-sm" />
+                  </button>
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-30"
+                    onClick={() => setMediaCarouselIndex(i => Math.min(mediaPreviewUrls.length - 1, i + 1))}
+                    disabled={mediaCarouselIndex === mediaPreviewUrls.length - 1}
+                  >
+                    <i className="fa-solid fa-chevron-right text-sm" />
+                  </button>
+                </>
+              )}
+              
+              {/* Remove current item button */}
               <button
                 type="button"
-                className="text-red-400 hover:text-red-300"
+                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-red-400 flex items-center justify-center hover:bg-black/80"
                 onClick={() => {
-                  setVideoFile(null)
-                  if (videoInputRef.current) videoInputRef.current.value = ''
+                  setMediaFiles(prev => prev.filter((_, i) => i !== mediaCarouselIndex))
                 }}
               >
                 <i className="fa-solid fa-times" />
               </button>
             </div>
+            
+            {/* Carousel indicators and info */}
+            <div className="px-3 py-2 flex items-center justify-between bg-white/5 border-t border-white/10">
+              <div className="flex items-center gap-2 text-xs text-white/70">
+                <span className="flex items-center gap-1.5 text-[#7fe7df]">
+                  <i className={`fa-solid ${mediaPreviewUrls[mediaCarouselIndex]?.type === 'video' ? 'fa-video' : 'fa-image'}`} />
+                  {mediaPreviewUrls.length} {mediaPreviewUrls.length === 1 ? 'item' : 'items'}
+                </span>
+              </div>
+              {/* Dot indicators */}
+              {mediaPreviewUrls.length > 1 && (
+                <div className="flex items-center gap-1.5">
+                  {mediaPreviewUrls.map((_, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`w-2 h-2 rounded-full transition-colors ${idx === mediaCarouselIndex ? 'bg-[#4db6ac]' : 'bg-white/30'}`}
+                      onClick={() => setMediaCarouselIndex(idx)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        ) : null}
+        )}
         {selectedGif ? (
           <div className="mt-3 inline-flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
             <img src={selectedGif.previewUrl} alt="Selected GIF" className="w-16 h-16 rounded object-cover" loading="lazy" />
@@ -496,42 +567,29 @@ export default function CreatePost(){
           style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}
         >
           <div className="flex flex-wrap items-center gap-3">
-            <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add image">
+            <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add photos/videos">
               <i className="fa-regular fa-image" style={{ color: '#4db6ac' }} />
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,video/mp4,video/webm,video/quicktime"
+                multiple
                 onChange={(e)=> {
-                  const next = e.target.files?.[0] || null
-                  setFile(next)
-                  setSelectedGif(null)
-                  setGifFile(null)
-                  setVideoFile(null)
-                  if (videoInputRef.current) videoInputRef.current.value = ''
+                  const files = e.target.files
+                  if (!files || files.length === 0) return
+                  
+                  // Add new files to existing ones (max 10 items)
+                  const newFiles = Array.from(files).slice(0, 10 - mediaFiles.length)
+                  if (newFiles.length > 0) {
+                    setMediaFiles(prev => [...prev, ...newFiles].slice(0, 10))
+                    setSelectedGif(null)
+                    setGifFile(null)
+                  }
+                  e.target.value = '' // Reset input to allow selecting same files again
                 }}
                 style={{ display: 'none' }}
               />
             </label>
-            {!isGroupPost && (
-              <label className="px-3 py-2 rounded-full hover:bg-white/5 cursor-pointer" aria-label="Add video">
-                <i className="fa-solid fa-video" style={{ color: '#4db6ac' }} />
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept="video/mp4,video/webm,video/quicktime"
-                  onChange={(e)=> {
-                    const next = e.target.files?.[0] || null
-                    setVideoFile(next)
-                    setFile(null)
-                    if (fileInputRef.current) fileInputRef.current.value = ''
-                    setSelectedGif(null)
-                    setGifFile(null)
-                  }}
-                  style={{ display: 'none' }}
-                />
-              </label>
-            )}
             <button
               className="px-3 py-2 rounded-full text-[#4db6ac] hover:bg-white/5"
               aria-label="Add GIF"
@@ -548,7 +606,7 @@ export default function CreatePost(){
               </button>
             )}
           </div>
-          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !file && !gifFile && !preview && !hasVideoAttachment)}>
+          <button className={`px-4 py-2 rounded-full ${submitting ? 'bg-white/20 text-white/60 cursor-not-allowed' : 'bg-[#4db6ac] text-black hover:brightness-110'}`} onClick={submit} disabled={submitting || (!content && !hasMediaAttachment && !gifFile && !preview)}>
             {submitting ? 'Posting...' : 'Post'}
           </button>
         </div>
@@ -570,10 +628,9 @@ export default function CreatePost(){
           const converted = await gifSelectionToFile(gif, 'post-gif')
           setSelectedGif(gif)
           setGifFile(converted)
-          setFile(null)
-          setVideoFile(null)
+          setMediaFiles([])
+          setMediaCarouselIndex(0)
           if (fileInputRef.current) fileInputRef.current.value = ''
-          if (videoInputRef.current) videoInputRef.current.value = ''
         } catch (err) {
           console.error('Failed to prepare GIF for post', err)
           alert('Unable to attach GIF. Please try again.')

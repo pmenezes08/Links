@@ -13548,12 +13548,34 @@ def post_status():
     logger.info(f"All form data: {dict(request.form)}")
     
     # Handle file upload (image, video, or audio)
+    # Supports both single file (legacy) and multiple files (new)
     image_path = None
     audio_path = None
     video_path = None
-    # Robustly detect both files regardless of field name casing
+    media_paths = []  # For multiple media (JSON array)
+    
     files = request.files
-    if 'image' in files and files['image'].filename:
+    
+    # Handle multiple images (new format)
+    if 'images' in files:
+        image_files = files.getlist('images')
+        for img_file in image_files:
+            if img_file and img_file.filename:
+                saved_path = save_uploaded_file(img_file)
+                if saved_path:
+                    media_paths.append({'type': 'image', 'path': saved_path})
+    
+    # Handle multiple videos (new format)
+    if 'videos' in files:
+        video_files = files.getlist('videos')
+        for vid_file in video_files:
+            if vid_file and vid_file.filename:
+                saved_path = save_uploaded_file(vid_file, subfolder='video')
+                if saved_path:
+                    media_paths.append({'type': 'video', 'path': saved_path})
+    
+    # Handle legacy single image upload
+    if not media_paths and 'image' in files and files['image'].filename:
         file = files['image']
         image_path = save_uploaded_file(file)
         if not image_path:
@@ -13565,6 +13587,8 @@ def post_status():
                     return redirect(url_for('community_feed', community_id=community_id) + msg)
                 else:
                     return redirect(url_for('feed') + msg)
+    
+    # Handle audio upload
     if 'audio' in files and files['audio'].filename:
         afile = files['audio']
         audio_path = save_uploaded_file(afile, subfolder='audio')
@@ -13577,7 +13601,9 @@ def post_status():
                     return redirect(url_for('community_feed', community_id=community_id) + msg)
                 else:
                     return redirect(url_for('feed') + msg)
-    if 'video' in files and files['video'].filename:
+    
+    # Handle legacy single video upload
+    if not media_paths and 'video' in files and files['video'].filename:
         vfile = files['video']
         video_path = save_uploaded_file(vfile, subfolder='video')
         if not video_path:
@@ -13590,7 +13616,15 @@ def post_status():
                 else:
                     return redirect(url_for('feed') + msg)
     
-    if not content and not image_path and not audio_path and not video_path:
+    # If we have multiple media, set first image/video as primary for backwards compatibility
+    if media_paths:
+        for m in media_paths:
+            if m['type'] == 'image' and not image_path:
+                image_path = m['path']
+            elif m['type'] == 'video' and not video_path:
+                video_path = m['path']
+    
+    if not content and not image_path and not audio_path and not video_path and not media_paths:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'success': False, 'error': 'Content, image, video or audio is required!'}), 400
         else:
@@ -13667,6 +13701,10 @@ def post_status():
                 c.execute("ALTER TABLE posts ADD COLUMN video_path TEXT")
             except Exception:
                 pass
+            try:
+                c.execute("ALTER TABLE posts ADD COLUMN media_paths TEXT")
+            except Exception:
+                pass
 
             # Generate AI summary if audio is present
             audio_summary = None
@@ -13683,8 +13721,11 @@ def post_status():
                     # Don't fail the post creation if summarization fails
                     audio_summary = None
 
-            c.execute("INSERT INTO posts (username, content, image_path, video_path, audio_path, audio_summary, timestamp, community_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                      (username, content, image_path, video_path, audio_path, audio_summary, timestamp, community_id))
+            # Serialize media_paths to JSON if we have multiple media
+            media_paths_json = json.dumps(media_paths) if media_paths else None
+            
+            c.execute("INSERT INTO posts (username, content, image_path, video_path, audio_path, audio_summary, timestamp, community_id, media_paths) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      (username, content, image_path, video_path, audio_path, audio_summary, timestamp, community_id, media_paths_json))
             conn.commit()
             post_id = c.lastrowid
             logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")

@@ -23,7 +23,8 @@ import { handleLogoutClick } from '../utils/logout'
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null }
-type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean }
+type MediaItem = { type: 'image' | 'video'; path: string }
+type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null }
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
 type PostViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 type TextOverlay = {
@@ -3384,6 +3385,25 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [renamingLink, setRenamingLink] = useState<DetectedLink | null>(null)
   const [linkDisplayName, setLinkDisplayName] = useState('')
   const [showMoreMenu, setShowMoreMenu] = useState<number | null>(null)
+  const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
+  
+  // Parse media_paths - can be JSON string, array, or null
+  const parsedMediaPaths = useMemo((): MediaItem[] => {
+    if (!post.media_paths) return []
+    if (Array.isArray(post.media_paths)) return post.media_paths
+    if (typeof post.media_paths === 'string') {
+      try {
+        const parsed = JSON.parse(post.media_paths)
+        return Array.isArray(parsed) ? parsed : []
+      } catch {
+        return []
+      }
+    }
+    return []
+  }, [post.media_paths])
+  
+  // Determine if post has multiple media
+  const hasMultipleMedia = parsedMediaPaths.length > 1
   
   // Close more menu when clicking outside
   useEffect(() => {
@@ -3776,7 +3796,62 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             </div>
           </div>
         )}
-        {post.image_path ? (
+        {/* Media carousel for multiple media or single media display */}
+        {parsedMediaPaths.length > 0 ? (
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            {/* Current media item */}
+            {parsedMediaPaths[mediaCarouselIndex]?.type === 'video' ? (
+              <div className="px-3">
+                <LazyVideo
+                  src={normalizeMediaPath(parsedMediaPaths[mediaCarouselIndex].path)}
+                  className="w-full max-h-[420px] rounded border border-white/10 bg-black"
+                  playsInline
+                />
+              </div>
+            ) : (
+              <div className="px-0">
+                <ImageLoader
+                  src={normalizeMediaPath(parsedMediaPaths[mediaCarouselIndex]?.path || '')}
+                  alt={`Post media ${mediaCarouselIndex + 1}`}
+                  className="block mx-auto max-w-full max-h-[520px] rounded border border-white/10 cursor-zoom-in"
+                  onClick={() => onPreviewImage && onPreviewImage(normalizeMediaPath(parsedMediaPaths[mediaCarouselIndex]?.path || ''))}
+                />
+              </div>
+            )}
+            
+            {/* Carousel navigation for multiple items */}
+            {hasMultipleMedia && (
+              <>
+                {/* Left arrow */}
+                <button
+                  className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-30 z-10"
+                  onClick={(e) => { e.stopPropagation(); setMediaCarouselIndex(i => Math.max(0, i - 1)) }}
+                  disabled={mediaCarouselIndex === 0}
+                >
+                  <i className="fa-solid fa-chevron-left text-sm" />
+                </button>
+                {/* Right arrow */}
+                <button
+                  className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 disabled:opacity-30 z-10"
+                  onClick={(e) => { e.stopPropagation(); setMediaCarouselIndex(i => Math.min(parsedMediaPaths.length - 1, i + 1)) }}
+                  disabled={mediaCarouselIndex === parsedMediaPaths.length - 1}
+                >
+                  <i className="fa-solid fa-chevron-right text-sm" />
+                </button>
+                {/* Dot indicators */}
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-10">
+                  {parsedMediaPaths.map((_, idx) => (
+                    <button
+                      key={idx}
+                      className={`w-2 h-2 rounded-full transition-colors ${idx === mediaCarouselIndex ? 'bg-white' : 'bg-white/40'}`}
+                      onClick={(e) => { e.stopPropagation(); setMediaCarouselIndex(idx) }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        ) : post.image_path ? (
           <div className="px-0">
             <ImageLoader
               src={normalizeMediaPath(post.image_path || '')}
