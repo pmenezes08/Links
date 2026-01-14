@@ -8,7 +8,6 @@
 
 # Ignore development files
 *.md
-*.txt
 *.sh
 *.sql
 *.sample
@@ -82,10 +81,9 @@ find_mysql_password.py
 revert_chat_changes.py
 nutrition_plans.py
 
-# Ignore documentation
-*.md
-
 # Ignore misc files
 cookies.txt
 *.pid
-runtime.txt
+CLEANUP_INSTRUCTIONS.txt
+START_HERE_AWS.txt
+manual_install_commands.txt
