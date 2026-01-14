@@ -1,6 +1,9 @@
-const SW_VERSION = '2.0.0'
+const SW_VERSION = '2.20.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
+const MEDIA_CACHE = `cp-media-${SW_VERSION}`
+const MAX_MEDIA_CACHE_SIZE = 50 // Max number of videos/large media to cache
+const FORCE_UPDATE_TIMESTAMP = 1765181100000 // Force cache clear after this timestamp
 
 const STATIC_ASSETS = [
   '/',
@@ -13,6 +16,13 @@ const STATIC_ASSETS = [
 ]
 
 const STATIC_ASSET_PATHS = new Set(STATIC_ASSETS)
+// These endpoints use stale-while-revalidate (show cached first, update in background)
+// NOTE: /api/profile_me is NOT here - it must always be network-first for proper login/logout
+const STALE_API_ENDPOINTS = new Set([
+  '/api/user_communities_hierarchical',
+  '/get_user_communities_with_members',
+  '/api/premium_dashboard_summary',
+])
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -32,21 +42,26 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     try {
       const cacheNames = await caches.keys()
+      // Delete ALL old caches to force refresh
       await Promise.all(
         cacheNames
-          .filter((cacheName) => cacheName !== APP_SHELL_CACHE && cacheName !== RUNTIME_CACHE)
+          .filter((cacheName) => cacheName !== APP_SHELL_CACHE && cacheName !== RUNTIME_CACHE && cacheName !== MEDIA_CACHE)
           .map((cacheName) => caches.delete(cacheName))
       )
+      
+      // Also clear current runtime cache to force refetch of assets
+      await caches.delete(RUNTIME_CACHE)
+      
       await self.clients.claim()
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       for (const client of clients){
         try {
-          client.postMessage({ type: 'SW_ACTIVATED', version: SW_VERSION })
+          client.postMessage({ type: 'SW_ACTIVATED', version: SW_VERSION, forceReload: true })
         } catch (error) {
           console.warn('[SW] Failed to notify client', error)
         }
       }
-      console.log(`[SW] Activated v${SW_VERSION}`)
+      console.log(`[SW] Activated v${SW_VERSION} - forced cache clear`)
     } catch (error) {
       console.error('[SW] Activation error', error)
     }
@@ -109,6 +124,37 @@ async function networkFirst(request, cacheName){
   }
 }
 
+// Cache-first for large media (videos) with size limit
+async function cacheFirstMedia(request){
+  const cache = await caches.open(MEDIA_CACHE)
+  const cached = await cache.match(request)
+  if (cached) {
+    console.log('[SW] Video served from cache:', request.url)
+    return cached
+  }
+  
+  const response = await fetch(request)
+  if (response?.status === 200){
+    // Clone before caching
+    const responseToCache = response.clone()
+    
+    // Limit cache size - remove oldest entries if needed
+    cache.keys().then(async (keys) => {
+      if (keys.length >= MAX_MEDIA_CACHE_SIZE) {
+        // Delete oldest 10 entries
+        const toDelete = keys.slice(0, 10)
+        for (const key of toDelete) {
+          await cache.delete(key)
+        }
+      }
+    })
+    
+    cache.put(request, responseToCache)
+    console.log('[SW] Video cached:', request.url)
+  }
+  return response
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
   if (request.method !== 'GET') return
@@ -142,7 +188,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.origin === self.location.origin && url.pathname.startsWith('/assets/')){
-    event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
+    // Use network-first for JS files to ensure latest code, stale-while-revalidate for CSS
+    if (url.pathname.endsWith('.js')) {
+      event.respondWith(networkFirst(request, RUNTIME_CACHE))
+    } else {
+      event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
+    }
     return
   }
 
@@ -151,7 +202,31 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
+  // Welcome card images should always be fetched fresh (admin can update them anytime)
+  if (url.origin === self.location.origin && url.pathname.startsWith('/static/welcome/')){
+    // Network-first for welcome images to ensure fresh content
+    event.respondWith(networkFirst(request, RUNTIME_CACHE))
+    return
+  }
+
   if (url.origin === self.location.origin && request.destination === 'image'){
+    event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
+    return
+  }
+
+  // Cache videos from /uploads/ - cache-first since videos don't change
+  if (url.origin === self.location.origin && url.pathname.startsWith('/uploads/') && request.destination === 'video'){
+    event.respondWith(cacheFirstMedia(request))
+    return
+  }
+
+  // Also catch video files by extension (fallback)
+  if (url.origin === self.location.origin && /\.(mp4|webm|mov|m4v)$/i.test(url.pathname)){
+    event.respondWith(cacheFirstMedia(request))
+    return
+  }
+
+  if (STALE_API_ENDPOINTS.has(url.pathname) && request.headers.get('accept')?.includes('application/json')){
     event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE))
     return
   }
@@ -234,7 +309,53 @@ self.addEventListener('pushsubscriptionchange', (event) => {
 })
 
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING'){
+  const data = event.data || {}
+  if (data.type === 'SKIP_WAITING'){
     self.skipWaiting()
+    return
+  }
+
+  if (data.type === 'SERVER_PULL'){
+    const urls = Array.isArray(data.urls) ? data.urls : []
+    const requestId = data.requestId
+    if (!urls.length) return
+    event.waitUntil((async () => {
+      const results = []
+      const cache = await caches.open(RUNTIME_CACHE)
+      for (const rawUrl of urls){
+        const absolute = rawUrl.startsWith('http') ? rawUrl : new URL(rawUrl, self.location.origin).href
+        try{
+          const request = new Request(absolute, { credentials: 'include', cache: 'reload' })
+          const response = await fetch(request)
+          if (response && response.ok){
+            await cache.put(request, response.clone())
+            results.push({ url: rawUrl, success: true })
+          } else {
+            results.push({ url: rawUrl, success: false, status: response?.status || 0 })
+          }
+        }catch(error){
+          results.push({ url: rawUrl, success: false, error: String(error) })
+        }
+      }
+      const payload = {
+        type: 'SERVER_PULL_COMPLETE',
+        requestId,
+        success: results.every((result) => result.success),
+        results,
+      }
+      const targets = []
+      if (event.source) targets.push(event.source)
+      try{
+        const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' })
+        for (const client of clientsList){
+          if (!targets.includes(client)) targets.push(client)
+        }
+      }catch{}
+      for (const client of targets){
+        try{
+          client.postMessage(payload)
+        }catch{}
+      }
+    })())
   }
 })

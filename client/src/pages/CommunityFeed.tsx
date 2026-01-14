@@ -2436,10 +2436,13 @@ export default function CommunityFeed() {
             </div>
           </div>
 
-          {/* Bottom section - fixed at bottom with solid background */}
+          {/* Bottom section - fixed at bottom with solid background, lifts with keyboard */}
           <div 
-            className="absolute bottom-0 left-0 right-0 z-[128] bg-black"
-            style={{ paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}
+            className="absolute left-0 right-0 z-[128] bg-black transition-all duration-200"
+            style={{ 
+              bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : '0px',
+              paddingBottom: keyboardHeight > 0 ? '8px' : 'env(safe-area-inset-bottom, 16px)'
+            }}
           >
             {/* Caption */}
             {currentStory.caption && (

@@ -2444,15 +2444,17 @@ export default function ChatThread(){
                       console.log('🎬 Story response:', json)
                       if (json?.success && json.story?.community_id) {
                         // Navigate to community feed with the story ID to open
-                        navigate(`/timeline/${json.story.community_id}`, { state: { openStoryId: storyId } })
-                      } else if (json?.error === 'Story not found') {
+                        navigate(`/community_feed_react/${json.story.community_id}`, { state: { openStoryId: Number(storyId) } })
+                      } else if (json?.error === 'Story not found' || json?.error === 'Story expired') {
                         // Story might have expired
                         alert('This story is no longer available')
                       } else {
                         console.error('Failed to get story details:', json)
+                        alert('Unable to load story')
                       }
                     } catch (err) {
                       console.error('Failed to fetch story:', err)
+                      alert('Unable to load story')
                     }
                   }}
                   otherUsername={username}
