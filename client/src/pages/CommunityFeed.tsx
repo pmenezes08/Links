@@ -1343,6 +1343,12 @@ export default function CommunityFeed() {
 
   const handleStoryBackdropClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
+      // Dismiss keyboard when clicking on the story area (outside input)
+      if (storyReplyInputRef.current && document.activeElement === storyReplyInputRef.current) {
+        storyReplyInputRef.current.blur()
+        return // Don't close the viewer, just dismiss keyboard
+      }
+      
       if (!storyContentRef.current) {
         closeStoryViewer()
         return
@@ -2270,6 +2276,12 @@ export default function CommunityFeed() {
               // When keyboard is open, shrink media area to fit above keyboard + bottom bar
               bottom: keyboardHeight > 0 ? `${keyboardHeight + 120}px` : '0px',
             }}
+            onClick={() => {
+              // Dismiss keyboard when clicking on the media area
+              if (storyReplyInputRef.current) {
+                storyReplyInputRef.current.blur()
+              }
+            }}
             onPointerDown={handleStoryPointerDown}
             onPointerUp={handleStoryPointerUp}
             onPointerLeave={handleStoryPointerCancel}
@@ -2376,7 +2388,11 @@ export default function CommunityFeed() {
           {/* Top overlay - progress bars, user info, close button */}
           <div 
             className="absolute top-0 left-0 right-0 z-[125] bg-gradient-to-b from-black/60 via-black/30 to-transparent pt-safe"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              // Dismiss keyboard when clicking on top overlay
+              if (storyReplyInputRef.current) storyReplyInputRef.current.blur()
+            }}
             onPointerDown={(e) => e.stopPropagation()}
             onPointerUp={(e) => e.stopPropagation()}
           >
