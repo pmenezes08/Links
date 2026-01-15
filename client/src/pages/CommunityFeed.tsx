@@ -2271,7 +2271,7 @@ export default function CommunityFeed() {
           {/* Full-screen media container - fills entire screen, overlays float on top */}
           <div
             ref={storyContentRef}
-            className="group absolute inset-0 flex items-center justify-center transition-all duration-200"
+            className="group absolute inset-0 flex items-center justify-center transition-all duration-200 z-[121]"
             style={{
               // When keyboard is open, shrink media area to fit above keyboard + bottom bar
               bottom: keyboardHeight > 0 ? `${keyboardHeight + 120}px` : '0px',
@@ -2385,9 +2385,10 @@ export default function CommunityFeed() {
             )}
           </div>
 
-          {/* Top overlay - progress bars, user info, close button */}
+          {/* Top overlay - progress bars, user info, close button - MUST be above media (z-130) */}
           <div 
-            className="absolute top-0 left-0 right-0 z-[125] bg-gradient-to-b from-black/60 via-black/30 to-transparent pt-safe"
+            className="absolute top-0 left-0 right-0 z-[130] bg-gradient-to-b from-black/80 via-black/40 to-transparent"
+            style={{ paddingTop: 'max(12px, env(safe-area-inset-top, 12px))' }}
             onClick={(e) => {
               e.stopPropagation()
               // Dismiss keyboard when clicking on top overlay
@@ -2396,7 +2397,7 @@ export default function CommunityFeed() {
             onPointerDown={(e) => e.stopPropagation()}
             onPointerUp={(e) => e.stopPropagation()}
           >
-            <div className="px-4 pt-3 pb-6">
+            <div className="px-4 pt-2 pb-8">
               {/* Progress bars */}
               <div className="flex gap-1 mb-3">
                 {(currentStoryGroup?.stories || []).map((story, idx) => (
