@@ -65,6 +65,7 @@ function PostMediaCarousel({ post }: { post: Post }) {
             src={normalizeMediaPath(post.video_path)}
             controls
             playsInline
+            preload="metadata"
           />
         </div>
       )
@@ -109,6 +110,7 @@ function PostMediaCarousel({ post }: { post: Post }) {
             src={normalizeMediaPath(current.path)}
             controls
             playsInline
+            preload="metadata"
           />
         </div>
       ) : (

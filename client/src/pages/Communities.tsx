@@ -95,6 +95,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
             src={normalizeMediaPath(post.video_path)}
             controls
             playsInline
+            preload="metadata"
           />
         </div>
       )
@@ -138,6 +139,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
           src={normalizeMediaPath(current.path)}
           controls
           playsInline
+          preload="metadata"
         />
       ) : (
         <ImageLoader

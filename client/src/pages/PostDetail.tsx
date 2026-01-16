@@ -1341,6 +1341,7 @@ export default function PostDetail(){
                           src={normalizePath(parsedMediaPaths[mediaCarouselIndex].path)}
                           controls
                           playsInline
+                          preload="metadata"
                         />
                       </div>
                     ) : (
