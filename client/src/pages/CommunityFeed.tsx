@@ -3778,7 +3778,33 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         )}
         {/* Media carousel for multiple media or single media display */}
         {parsedMediaPaths.length > 0 ? (
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
+          <div 
+            className="relative overflow-hidden touch-pan-y" 
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => {
+              if (!hasMultipleMedia) return
+              const touch = e.touches[0]
+              ;(e.currentTarget as any)._swipeStartX = touch.clientX
+              ;(e.currentTarget as any)._swipeStartY = touch.clientY
+            }}
+            onTouchEnd={(e) => {
+              if (!hasMultipleMedia) return
+              const startX = (e.currentTarget as any)._swipeStartX
+              const startY = (e.currentTarget as any)._swipeStartY
+              if (startX === undefined) return
+              const touch = e.changedTouches[0]
+              const diffX = touch.clientX - startX
+              const diffY = touch.clientY - startY
+              // Only swipe if horizontal movement > vertical and > 50px threshold
+              if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+                if (diffX < 0 && mediaCarouselIndex < parsedMediaPaths.length - 1) {
+                  setMediaCarouselIndex(i => i + 1)
+                } else if (diffX > 0 && mediaCarouselIndex > 0) {
+                  setMediaCarouselIndex(i => i - 1)
+                }
+              }
+            }}
+          >
             {/* Current media item */}
             {parsedMediaPaths[mediaCarouselIndex]?.type === 'video' ? (
               <div className="px-3">

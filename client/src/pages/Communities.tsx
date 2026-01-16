@@ -106,7 +106,32 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
   const hasMultiple = mediaPaths.length > 1
   
   return (
-    <div className="relative overflow-hidden" onClick={(e) => e.stopPropagation()}>
+    <div 
+      className="relative overflow-hidden touch-pan-y" 
+      onClick={(e) => e.stopPropagation()}
+      onTouchStart={(e) => {
+        if (!hasMultiple) return
+        const touch = e.touches[0]
+        ;(e.currentTarget as any)._swipeStartX = touch.clientX
+        ;(e.currentTarget as any)._swipeStartY = touch.clientY
+      }}
+      onTouchEnd={(e) => {
+        if (!hasMultiple) return
+        const startX = (e.currentTarget as any)._swipeStartX
+        const startY = (e.currentTarget as any)._swipeStartY
+        if (startX === undefined) return
+        const touch = e.changedTouches[0]
+        const diffX = touch.clientX - startX
+        const diffY = touch.clientY - startY
+        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+          if (diffX < 0 && index < mediaPaths.length - 1) {
+            setIndex(i => i + 1)
+          } else if (diffX > 0 && index > 0) {
+            setIndex(i => i - 1)
+          }
+        }
+      }}
+    >
       {current?.type === 'video' ? (
         <video
           className="w-full max-h-[360px] rounded border border-white/10 bg-black"
