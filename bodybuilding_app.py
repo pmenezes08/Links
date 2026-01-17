@@ -1104,6 +1104,7 @@ VAPID_PUBLIC_KEY = os.getenv('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY', '')
 VAPID_SUBJECT = os.getenv('VAPID_SUBJECT', 'https://www.c-point.co')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+XAI_API_KEY = os.getenv('XAI_API_KEY', '')  # xAI/Grok API key for Steve
 TYPING_TTL_SECONDS = 5
 
 
@@ -19501,9 +19502,9 @@ def ai_steve_reply():
         if not user_message:
             return jsonify({'success': False, 'error': 'Message is required'}), 400
         
-        # Check OpenAI availability
-        if not OPENAI_AVAILABLE or not OPENAI_API_KEY:
-            logger.error("OpenAI not available for Steve AI")
+        # Check xAI availability for Steve (falls back to OpenAI if xAI not configured)
+        if not XAI_API_KEY and not OPENAI_API_KEY:
+            logger.error("No AI API key available for Steve (XAI_API_KEY or OPENAI_API_KEY)")
             return jsonify({'success': False, 'error': 'AI service temporarily unavailable'}), 503
         
         with get_db_connection() as conn:
@@ -19576,14 +19577,26 @@ def ai_steve_reply():
             
             context = "\n\n".join(context_parts)
             
-            # Call OpenAI
+            # Call xAI (Grok) for Steve - falls back to OpenAI if xAI not configured
             try:
-                client = OpenAI(api_key=OPENAI_API_KEY)
+                if XAI_API_KEY:
+                    # Use xAI/Grok
+                    client = OpenAI(
+                        api_key=XAI_API_KEY,
+                        base_url="https://api.x.ai/v1"
+                    )
+                    model = "grok-3-latest"
+                    logger.info("Steve using xAI/Grok")
+                else:
+                    # Fallback to OpenAI
+                    client = OpenAI(api_key=OPENAI_API_KEY)
+                    model = "gpt-4o-mini"
+                    logger.info("Steve using OpenAI (fallback)")
                 
                 system_prompt = get_ai_personality_prompt(ai_personality)
 
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model=model,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": context}
@@ -19595,7 +19608,7 @@ def ai_steve_reply():
                 ai_response = response.choices[0].message.content.strip()
                 
             except Exception as ai_err:
-                logger.error(f"OpenAI API error: {ai_err}")
+                logger.error(f"AI API error (xAI/OpenAI): {ai_err}")
                 return jsonify({'success': False, 'error': 'AI service error'}), 503
             
             # Get Steve's user ID
