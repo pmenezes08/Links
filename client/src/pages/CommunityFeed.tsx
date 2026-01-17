@@ -4101,12 +4101,42 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{r.username}</span>
                     <span className="text-[11px] text-[#9fb0b5]">{formatSmartTime(r.timestamp)}</span>
-                    <button
-                      className={`ml-auto px-2 py-0.5 rounded-full text-[11px] ${activeChildReplyFor === r.id ? 'text-[#4db6ac]' : 'text-[#9fb0b5] hover:text-[#4db6ac]'}`}
-                      onClick={(e)=> { e.stopPropagation(); setActiveChildReplyFor(id => id === r.id ? null : r.id); setChildReplyText('') }}
-                    >
-                      Reply
-                    </button>
+                    <div className="ml-auto flex items-center gap-1">
+                      <button
+                        className={`px-2 py-0.5 rounded-full text-[11px] ${activeChildReplyFor === r.id ? 'text-[#4db6ac]' : 'text-[#9fb0b5] hover:text-[#4db6ac]'}`}
+                        onClick={(e)=> { e.stopPropagation(); setActiveChildReplyFor(id => id === r.id ? null : r.id); setChildReplyText('') }}
+                      >
+                        Reply
+                      </button>
+                      {(r.username === currentUser || isAdmin || currentUser === 'admin') && (
+                        <button
+                          className="px-2 py-0.5 rounded-full text-[11px] text-[#9fb0b5] hover:text-red-400"
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            if (!confirm('Delete this reply?')) return
+                            try {
+                              const fd = new FormData()
+                              fd.append('reply_id', String(r.id))
+                              const res = await fetch('/delete_reply', { method: 'POST', credentials: 'include', body: fd })
+                              const j = await res.json()
+                              if (j?.success) {
+                                // Remove reply from local state
+                                post.replies = post.replies.filter((rep: any) => rep.id !== r.id)
+                                // Force re-render
+                                setChildReplyText(prev => prev)
+                              } else {
+                                alert(j?.error || 'Failed to delete reply')
+                              }
+                            } catch {
+                              alert('Failed to delete reply')
+                            }
+                          }}
+                          title="Delete reply"
+                        >
+                          <i className="fa-regular fa-trash-can text-[10px]" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {r.parent_reply_id ? (() => {
                     try {
