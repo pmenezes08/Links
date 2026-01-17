@@ -19608,12 +19608,42 @@ def ai_steve_reply():
                 except Exception as pers_err:
                     logger.warning(f"Could not fetch AI personality: {pers_err}")
             
-            # Build context for AI
+            # Build context for AI - include conversation history if replying in a thread
             context_parts = []
             context_parts.append(f"Original post by {post_author}: {post_content}")
-            if parent_content:
+            
+            # If this is part of a conversation thread, gather the conversation history
+            if parent_reply_id:
+                # Get conversation history (up to 5 recent messages in the thread)
+                try:
+                    c.execute(f"""
+                        SELECT username, content, id FROM replies 
+                        WHERE post_id = {placeholder} 
+                        AND (id = {placeholder} OR parent_reply_id = {placeholder} OR id IN (
+                            SELECT parent_reply_id FROM replies WHERE id = {placeholder}
+                        ))
+                        ORDER BY timestamp DESC LIMIT 5
+                    """, (post_id, parent_reply_id, parent_reply_id, parent_reply_id))
+                    thread_messages = c.fetchall()
+                    
+                    if thread_messages:
+                        context_parts.append("\n--- Conversation thread ---")
+                        # Reverse to show in chronological order
+                        for msg in reversed(thread_messages):
+                            msg_user = msg['username'] if hasattr(msg, 'keys') else msg[0]
+                            msg_content = msg['content'] if hasattr(msg, 'keys') else msg[1]
+                            if msg_content:
+                                context_parts.append(f"{msg_user}: {msg_content}")
+                        context_parts.append("--- End of thread ---\n")
+                except Exception as thread_err:
+                    logger.warning(f"Could not fetch thread history: {thread_err}")
+                    # Fall back to just parent content
+                    if parent_content:
+                        context_parts.append(f"Comment by {parent_author}: {parent_content}")
+            elif parent_content:
                 context_parts.append(f"Comment by {parent_author}: {parent_content}")
-            context_parts.append(f"User {username} asks: {user_message}")
+            
+            context_parts.append(f"User {username} says: {user_message}")
             
             context = "\n\n".join(context_parts)
             

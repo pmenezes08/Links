@@ -3407,6 +3407,15 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     return result
   }
   
+  // Check if replying to Steve's comment
+  const isReplyingToSteve = (parentReplyId: number | null) => {
+    if (!parentReplyId || !post.replies) return false
+    const parentReply = post.replies.find((r: any) => r.id === parentReplyId)
+    const isSteve = parentReply?.username?.toLowerCase() === 'steve'
+    console.log('[Steve AI] Checking if replying to Steve, parentReplyId:', parentReplyId, '-> isSteve:', isSteve)
+    return isSteve
+  }
+  
   // Call Steve AI to generate a reply
   const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
     console.log('[Steve AI] callSteveAI called with:', userMessage, 'parentReplyId:', parentReplyId)
@@ -4255,11 +4264,12 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                                   if (onAddReply) {
                                     onAddReply(post.id, j.reply as any)
                                   }
-                                  // Check if user mentioned @Steve and trigger AI reply
+                                  // Check if user mentioned @Steve OR is replying to Steve's comment
                                   const messageText = childReplyText.trim()
                                   console.log('[Steve AI] Child reply posted, checking message:', messageText)
-                                  if (containsSteveMention(messageText)) {
-                                    console.log('[Steve AI] @Steve found in child reply, calling AI with user reply ID:', j.reply.id)
+                                  const shouldTriggerSteve = containsSteveMention(messageText) || isReplyingToSteve(r.id)
+                                  if (shouldTriggerSteve) {
+                                    console.log('[Steve AI] Triggering Steve (mention or reply to Steve), calling AI with user reply ID:', j.reply.id)
                                     // Pass the user's new reply ID so Steve replies directly to it
                                     callSteveAI(messageText, j.reply.id)
                                   }
