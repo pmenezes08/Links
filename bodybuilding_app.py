@@ -19324,6 +19324,7 @@ def delete_reply():
 
 AI_USERNAME = 'steve'
 AI_DAILY_LIMIT = 10  # Max AI requests per user per day
+AI_UNLIMITED_USERS = {'admin', 'paulo', 'mary'}  # Users with unlimited AI requests
 
 @app.route('/api/ai/steve_reply', methods=['POST'])
 @login_required
@@ -19360,28 +19361,32 @@ def ai_steve_reply():
             c = conn.cursor()
             placeholder = get_sql_placeholder()
             
-            # Rate limiting: Check daily usage
-            if USE_MYSQL:
-                c.execute(f"""
-                    SELECT COUNT(*) as cnt FROM ai_usage_log 
-                    WHERE username = {placeholder} 
-                    AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
-                """, (username,))
-            else:
-                c.execute(f"""
-                    SELECT COUNT(*) as cnt FROM ai_usage_log 
-                    WHERE username = {placeholder} 
-                    AND datetime(created_at) > datetime('now', '-24 hours')
-                """, (username,))
+            # Rate limiting: Check daily usage (skip for unlimited users)
+            usage_count = 0
+            is_unlimited = username.lower() in AI_UNLIMITED_USERS
             
-            row = c.fetchone()
-            usage_count = row['cnt'] if hasattr(row, 'keys') else row[0] if row else 0
-            
-            if usage_count >= AI_DAILY_LIMIT:
-                return jsonify({
-                    'success': False, 
-                    'error': f'Daily limit reached. You can ask Steve {AI_DAILY_LIMIT} questions per day.'
-                }), 429
+            if not is_unlimited:
+                if USE_MYSQL:
+                    c.execute(f"""
+                        SELECT COUNT(*) as cnt FROM ai_usage_log 
+                        WHERE username = {placeholder} 
+                        AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                    """, (username,))
+                else:
+                    c.execute(f"""
+                        SELECT COUNT(*) as cnt FROM ai_usage_log 
+                        WHERE username = {placeholder} 
+                        AND datetime(created_at) > datetime('now', '-24 hours')
+                    """, (username,))
+                
+                row = c.fetchone()
+                usage_count = row['cnt'] if hasattr(row, 'keys') else row[0] if row else 0
+                
+                if usage_count >= AI_DAILY_LIMIT:
+                    return jsonify({
+                        'success': False, 
+                        'error': f'Daily limit reached. You can ask Steve {AI_DAILY_LIMIT} questions per day.'
+                    }), 429
             
             # Get post content for context
             c.execute(f"SELECT content, username FROM posts WHERE id = {placeholder}", (post_id,))
@@ -19510,7 +19515,7 @@ Never be rude or offensive. Always be supportive and positive."""
                     'post_id': post_id,
                     'parent_reply_id': steve_parent_reply_id
                 },
-                'remaining_today': AI_DAILY_LIMIT - usage_count - 1
+                'remaining_today': 'unlimited' if is_unlimited else AI_DAILY_LIMIT - usage_count - 1
             })
             
     except Exception as e:
