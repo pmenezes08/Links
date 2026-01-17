@@ -19296,10 +19296,38 @@ def delete_reply():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username, image_path FROM replies WHERE id= ?", (reply_id,))
+            c.execute("SELECT username, image_path, community_id FROM replies WHERE id= ?", (reply_id,))
             reply = c.fetchone()
-            if not reply or (reply['username'] != username and username != 'admin'):
-                return jsonify({'success': False, 'error': 'Reply not found or unauthorized!'}), 403
+            if not reply:
+                return jsonify({'success': False, 'error': 'Reply not found!'}), 404
+            
+            reply_owner = reply['username'] if hasattr(reply, 'keys') else reply[0]
+            reply_community_id = reply['community_id'] if hasattr(reply, 'keys') else reply[2]
+            
+            # Check if user can delete this reply:
+            # 1. Reply owner can delete their own reply
+            # 2. Platform admin can delete any reply
+            # 3. Community admin can delete replies in their community
+            can_delete = False
+            if reply_owner == username:
+                can_delete = True
+            elif username == 'admin':
+                can_delete = True
+            elif reply_community_id:
+                # Check if user is admin of this community
+                c.execute("""
+                    SELECT uc.role FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE u.username = ? AND uc.community_id = ?
+                """, (username, reply_community_id))
+                role_row = c.fetchone()
+                if role_row:
+                    role = role_row['role'] if hasattr(role_row, 'keys') else role_row[0]
+                    if role in ('admin', 'owner'):
+                        can_delete = True
+            
+            if not can_delete:
+                return jsonify({'success': False, 'error': 'Unauthorized to delete this reply!'}), 403
             
             # Delete image file if it exists
             if reply['image_path']:
