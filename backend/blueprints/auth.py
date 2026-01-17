@@ -159,7 +159,7 @@ def login():
             return redirect("/login?" + urlencode({"error": "Server error. Please try again."}))
 
         if not exists:
-            return redirect("/login?" + urlencode({"error": "Username does not exist"}))
+            return redirect("/login?" + urlencode({"error": "Username does not exist."}))
 
         try:
             session.pop("username", None)

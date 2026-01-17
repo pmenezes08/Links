@@ -376,9 +376,20 @@ export default function MobileLogin() {
                   })
                 })
                 
-                // Check if redirected to password step
+                // Check if redirected
                 if (response.redirected) {
                   const url = new URL(response.url)
+                  
+                  // Check for error in redirected URL (e.g., username doesn't exist)
+                  const errorParam = url.searchParams.get('error')
+                  if (errorParam) {
+                    setError(decodeURIComponent(errorParam))
+                    // Clear stored username on error
+                    try { sessionStorage.removeItem('cpoint_pending_username') } catch {}
+                    return
+                  }
+                  
+                  // Check if redirected to password step
                   if (url.pathname === '/login' && url.searchParams.get('step') === 'password') {
                     // Navigate to password step
                     navigate(`/login?step=password${inviteToken ? `&invite=${inviteToken}` : ''}`)
