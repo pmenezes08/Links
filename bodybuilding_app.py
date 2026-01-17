@@ -19317,6 +19317,207 @@ def delete_reply():
         logger.error(f"Error deleting reply {reply_id} for {username}: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 
+
+# ============================================================================
+# AI Assistant (Steve) - Responds to @Steve mentions in comments
+# ============================================================================
+
+AI_USERNAME = 'steve'
+AI_DAILY_LIMIT = 10  # Max AI requests per user per day
+
+@app.route('/api/ai/steve_reply', methods=['POST'])
+@login_required
+def ai_steve_reply():
+    """
+    Generate an AI reply from Steve when user mentions @Steve in a comment.
+    Rate limited to 10 requests per user per day.
+    """
+    username = session['username']
+    
+    # Don't let Steve reply to himself
+    if username == AI_USERNAME:
+        return jsonify({'success': False, 'error': 'AI cannot reply to itself'}), 400
+    
+    try:
+        data = request.get_json() or {}
+        post_id = data.get('post_id')
+        parent_reply_id = data.get('parent_reply_id')  # The comment being replied to
+        user_message = (data.get('user_message') or '').strip()
+        community_id = data.get('community_id')
+        
+        if not post_id:
+            return jsonify({'success': False, 'error': 'Post ID is required'}), 400
+        
+        if not user_message:
+            return jsonify({'success': False, 'error': 'Message is required'}), 400
+        
+        # Check OpenAI availability
+        if not OPENAI_AVAILABLE or not OPENAI_API_KEY:
+            logger.error("OpenAI not available for Steve AI")
+            return jsonify({'success': False, 'error': 'AI service temporarily unavailable'}), 503
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            placeholder = get_sql_placeholder()
+            
+            # Rate limiting: Check daily usage
+            if USE_MYSQL:
+                c.execute(f"""
+                    SELECT COUNT(*) as cnt FROM ai_usage_log 
+                    WHERE username = {placeholder} 
+                    AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                """, (username,))
+            else:
+                c.execute(f"""
+                    SELECT COUNT(*) as cnt FROM ai_usage_log 
+                    WHERE username = {placeholder} 
+                    AND datetime(created_at) > datetime('now', '-24 hours')
+                """, (username,))
+            
+            row = c.fetchone()
+            usage_count = row['cnt'] if hasattr(row, 'keys') else row[0] if row else 0
+            
+            if usage_count >= AI_DAILY_LIMIT:
+                return jsonify({
+                    'success': False, 
+                    'error': f'Daily limit reached. You can ask Steve {AI_DAILY_LIMIT} questions per day.'
+                }), 429
+            
+            # Get post content for context
+            c.execute(f"SELECT content, username FROM posts WHERE id = {placeholder}", (post_id,))
+            post_row = c.fetchone()
+            if not post_row:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            
+            post_content = post_row['content'] if hasattr(post_row, 'keys') else post_row[0]
+            post_author = post_row['username'] if hasattr(post_row, 'keys') else post_row[1]
+            
+            # Get parent comment content if replying to a comment
+            parent_content = None
+            parent_author = None
+            if parent_reply_id:
+                c.execute(f"SELECT content, username FROM replies WHERE id = {placeholder}", (parent_reply_id,))
+                parent_row = c.fetchone()
+                if parent_row:
+                    parent_content = parent_row['content'] if hasattr(parent_row, 'keys') else parent_row[0]
+                    parent_author = parent_row['username'] if hasattr(parent_row, 'keys') else parent_row[1]
+            
+            # Build context for AI
+            context_parts = []
+            context_parts.append(f"Original post by {post_author}: {post_content}")
+            if parent_content:
+                context_parts.append(f"Comment by {parent_author}: {parent_content}")
+            context_parts.append(f"User {username} asks: {user_message}")
+            
+            context = "\n\n".join(context_parts)
+            
+            # Call OpenAI
+            try:
+                client = OpenAI(api_key=OPENAI_API_KEY)
+                
+                system_prompt = """You are Steve, a friendly and humorous AI assistant in the C.Point community app. 
+You help users by answering questions about posts and comments in a conversational, witty way.
+Keep responses concise (2-3 sentences max) and engaging.
+Be helpful but also add a touch of humor when appropriate.
+If you don't know something, admit it with a joke.
+Never be rude or offensive. Always be supportive and positive."""
+
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": context}
+                    ],
+                    max_tokens=200,
+                    temperature=0.8
+                )
+                
+                ai_response = response.choices[0].message.content.strip()
+                
+            except Exception as ai_err:
+                logger.error(f"OpenAI API error: {ai_err}")
+                return jsonify({'success': False, 'error': 'AI service error'}), 503
+            
+            # Get Steve's user ID
+            c.execute(f"SELECT id FROM users WHERE username = {placeholder}", (AI_USERNAME,))
+            steve_row = c.fetchone()
+            if not steve_row:
+                logger.error("Steve AI user not found in database")
+                return jsonify({'success': False, 'error': 'AI user not configured'}), 500
+            
+            # Create Steve's reply
+            now = datetime.utcnow()
+            timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Determine what Steve is replying to
+            # If user posted a reply, Steve replies to that reply
+            # Otherwise Steve replies to the parent_reply_id
+            steve_parent_reply_id = parent_reply_id
+            
+            c.execute(f"""
+                INSERT INTO replies (post_id, username, content, timestamp, community_id, parent_reply_id)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+            """, (post_id, AI_USERNAME, ai_response, timestamp_db, community_id, steve_parent_reply_id))
+            
+            steve_reply_id = c.lastrowid
+            
+            # Log AI usage
+            try:
+                c.execute(f"""
+                    INSERT INTO ai_usage_log (username, request_type, created_at)
+                    VALUES ({placeholder}, {placeholder}, {placeholder})
+                """, (username, 'steve_reply', timestamp_db))
+            except Exception as log_err:
+                # Table might not exist, create it
+                try:
+                    if USE_MYSQL:
+                        c.execute("""
+                            CREATE TABLE IF NOT EXISTS ai_usage_log (
+                                id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                username VARCHAR(191) NOT NULL,
+                                request_type VARCHAR(50) NOT NULL,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                INDEX idx_ai_usage_user (username),
+                                INDEX idx_ai_usage_time (created_at)
+                            )
+                        """)
+                    else:
+                        c.execute("""
+                            CREATE TABLE IF NOT EXISTS ai_usage_log (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                username TEXT NOT NULL,
+                                request_type TEXT NOT NULL,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            )
+                        """)
+                    c.execute(f"""
+                        INSERT INTO ai_usage_log (username, request_type, created_at)
+                        VALUES ({placeholder}, {placeholder}, {placeholder})
+                    """, (username, 'steve_reply', timestamp_db))
+                except Exception as create_err:
+                    logger.warning(f"Could not log AI usage: {create_err}")
+            
+            conn.commit()
+            
+            # Return the AI reply
+            return jsonify({
+                'success': True,
+                'reply': {
+                    'id': steve_reply_id,
+                    'username': AI_USERNAME,
+                    'content': ai_response,
+                    'timestamp': timestamp_db,
+                    'post_id': post_id,
+                    'parent_reply_id': steve_parent_reply_id
+                },
+                'remaining_today': AI_DAILY_LIMIT - usage_count - 1
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in ai_steve_reply: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
 @app.route('/add_reply_reaction', methods=['POST'])
 @login_required
 def add_reply_reaction():

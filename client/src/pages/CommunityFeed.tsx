@@ -3398,6 +3398,50 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [sendingReply, setSendingReply] = useState(false)
   const [activeChildReplyFor, setActiveChildReplyFor] = useState<number|null>(null)
   const [childReplyText, setChildReplyText] = useState('')
+  const [steveIsTyping, setSteveIsTyping] = useState(false)
+  
+  // Check if message contains @Steve mention (case insensitive)
+  const containsSteveMention = (text: string) => {
+    return /@steve\b/i.test(text)
+  }
+  
+  // Call Steve AI to generate a reply
+  const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
+    if (!containsSteveMention(userMessage)) return
+    
+    try {
+      setSteveIsTyping(true)
+      const response = await fetch('/api/ai/steve_reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          post_id: post.id,
+          parent_reply_id: parentReplyId,
+          user_message: userMessage,
+          community_id: communityId ? Number(communityId) : null
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success && data.reply && onAddReply) {
+        // Add Steve's reply to the post
+        onAddReply(post.id, data.reply as any)
+      } else if (!data.success) {
+        // Show error but don't alert for rate limits (show inline instead)
+        if (response.status === 429) {
+          console.log('Steve rate limit:', data.error)
+        } else {
+          console.error('Steve AI error:', data.error)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to get Steve AI reply:', err)
+    } finally {
+      setSteveIsTyping(false)
+    }
+  }
   useEffect(() => {
     if (!onMarkViewed) return
     if (post.has_viewed) return
@@ -4171,6 +4215,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                                   if (onAddReply) {
                                     onAddReply(post.id, j.reply as any)
                                   }
+                                  // Check if user mentioned @Steve and trigger AI reply
+                                  const messageText = childReplyText.trim()
+                                  if (containsSteveMention(messageText)) {
+                                    callSteveAI(messageText, r.id)
+                                  }
                                   setChildReplyText('')
                                   setChildReplyGif(null)
                                   setActiveChildReplyFor(null)
@@ -4198,6 +4247,34 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           {post.replies.length > 2 && (
             <button className="text-xs text-[#4db6ac] hover:underline" onClick={()=> onOpen()}>View all replies</button>
           )}
+          {/* Steve is typing indicator */}
+          {steveIsTyping && (
+            <div className="flex items-center gap-2 py-2 text-xs text-white/60">
+              <div className="flex items-center gap-1">
+                <span className="font-medium text-[#4db6ac]">Steve</span>
+                <span>is typing</span>
+                <span className="inline-flex gap-0.5">
+                  <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {/* Steve is typing indicator (when no replies yet) */}
+      {steveIsTyping && (!post.replies || post.replies.length === 0) && (
+        <div className="px-3 pb-2 flex items-center gap-2 text-xs text-white/60">
+          <div className="flex items-center gap-1">
+            <span className="font-medium text-[#4db6ac]">Steve</span>
+            <span>is typing</span>
+            <span className="inline-flex gap-0.5">
+              <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
+          </div>
         </div>
       )}
       {/* Inline quick reply composer - sleek, full-width, low-distraction */}
@@ -4257,6 +4334,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       if (j?.success && j.reply){
                         if (onAddReply) {
                           onAddReply(post.id, j.reply as any)
+                        }
+                        // Check if user mentioned @Steve and trigger AI reply
+                        const messageText = replyText.trim()
+                        if (containsSteveMention(messageText)) {
+                          callSteveAI(messageText, null)
                         }
                         setReplyText('')
                         setReplyGif(null)
