@@ -19425,7 +19425,9 @@ You help users by answering questions about posts and comments in a conversation
 Keep responses concise (2-3 sentences max) and engaging.
 Be helpful but also add a touch of humor when appropriate.
 If you don't know something, admit it with a joke.
-Never be rude or offensive. Always be supportive and positive."""
+Never be rude or offensive. Always be supportive and positive.
+
+IMPORTANT: Always reply in the same language the user writes in. If they write in Portuguese, reply in Portuguese. If they write in Spanish, reply in Spanish. Match their language exactly."""
 
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
