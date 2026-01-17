@@ -19589,21 +19589,24 @@ def ai_steve_reply():
             
             context = "\n\n".join(context_parts)
             
-            # Call xAI (Grok) for Steve - falls back to OpenAI if xAI not configured
+            # Call AI for Steve - Use Grok for Unhinged mode, OpenAI for others
             try:
-                if XAI_API_KEY:
-                    # Use xAI/Grok
+                if ai_personality == 'unhinged' and XAI_API_KEY:
+                    # Use xAI/Grok for Unhinged mode
                     client = OpenAI(
                         api_key=XAI_API_KEY,
                         base_url="https://api.x.ai/v1"
                     )
                     model = "grok-4-1-fast-non-reasoning"
-                    logger.info("Steve using xAI/Grok")
-                else:
-                    # Fallback to OpenAI
+                    logger.info("Steve using xAI/Grok (Unhinged mode)")
+                elif OPENAI_API_KEY:
+                    # Use OpenAI for all other personalities
                     client = OpenAI(api_key=OPENAI_API_KEY)
                     model = "gpt-4o-mini"
-                    logger.info("Steve using OpenAI (fallback)")
+                    logger.info(f"Steve using OpenAI ({ai_personality} mode)")
+                else:
+                    logger.error("No AI API key available")
+                    return jsonify({'success': False, 'error': 'AI service not configured'}), 503
                 
                 system_prompt = get_ai_personality_prompt(ai_personality)
 
