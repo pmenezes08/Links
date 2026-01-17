@@ -19394,7 +19394,7 @@ def get_ai_personality_prompt(personality_key: str) -> str:
     # Add language matching instruction to all personalities
     return base_prompt + '''
 
-IMPORTANT: Always reply in the same language the user writes in. If they write in Portuguese, reply in Portuguese. If they write in Spanish, reply in Spanish. Match their language exactly.
+IMPORTANT: Always reply in the same language the user writes in. If they write in Portuguese, reply in European Portuguese (Portuguese from Portugal, NOT Brazilian Portuguese). If they write in Spanish, reply in Spanish. Match their language exactly.
 Never be rude or offensive. Always be supportive even when sarcastic or cynical.'''
 
 
