@@ -19419,20 +19419,24 @@ def community_ai_personality(community_id: int):
             c = conn.cursor()
             placeholder = get_sql_placeholder()
             
-            # Check if user is admin of this community
-            c.execute(f"""
-                SELECT uc.role FROM user_communities uc
-                WHERE uc.user_id = (SELECT id FROM users WHERE username = {placeholder})
-                AND uc.community_id = {placeholder}
-            """, (username, community_id))
-            role_row = c.fetchone()
+            # Platform admin (username: admin) can manage any community
+            is_platform_admin = username == 'admin'
             
-            if not role_row:
-                return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
-            
-            role = role_row['role'] if hasattr(role_row, 'keys') else role_row[0]
-            if role not in ('admin', 'owner'):
-                return jsonify({'success': False, 'error': 'Only admins can manage AI settings'}), 403
+            if not is_platform_admin:
+                # Check if user is admin of this community
+                c.execute(f"""
+                    SELECT uc.role FROM user_communities uc
+                    WHERE uc.user_id = (SELECT id FROM users WHERE username = {placeholder})
+                    AND uc.community_id = {placeholder}
+                """, (username, community_id))
+                role_row = c.fetchone()
+                
+                if not role_row:
+                    return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
+                
+                role = role_row['role'] if hasattr(role_row, 'keys') else role_row[0]
+                if role not in ('admin', 'owner'):
+                    return jsonify({'success': False, 'error': 'Only admins can manage AI settings'}), 403
             
             if request.method == 'GET':
                 c.execute(f"SELECT ai_personality FROM communities WHERE id = {placeholder}", (community_id,))
