@@ -4259,8 +4259,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                                   const messageText = childReplyText.trim()
                                   console.log('[Steve AI] Child reply posted, checking message:', messageText)
                                   if (containsSteveMention(messageText)) {
-                                    console.log('[Steve AI] @Steve found in child reply, calling AI')
-                                    callSteveAI(messageText, r.id)
+                                    console.log('[Steve AI] @Steve found in child reply, calling AI with user reply ID:', j.reply.id)
+                                    // Pass the user's new reply ID so Steve replies directly to it
+                                    callSteveAI(messageText, j.reply.id)
                                   }
                                   setChildReplyText('')
                                   setChildReplyGif(null)
@@ -4373,7 +4374,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       }
                       const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
                       const j = await r.json().catch(()=>null)
-                      if (j?.success && j.reply){
+                        if (j?.success && j.reply){
                         if (onAddReply) {
                           onAddReply(post.id, j.reply as any)
                         }
@@ -4381,8 +4382,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                         const messageText = replyText.trim()
                         console.log('[Steve AI] Main reply posted, checking message:', messageText)
                         if (containsSteveMention(messageText)) {
-                          console.log('[Steve AI] @Steve found in main reply, calling AI')
-                          callSteveAI(messageText, null)
+                          console.log('[Steve AI] @Steve found in main reply, calling AI with user reply ID:', j.reply.id)
+                          // Pass the user's new reply ID so Steve replies directly to it
+                          callSteveAI(messageText, j.reply.id)
                         }
                         setReplyText('')
                         setReplyGif(null)
