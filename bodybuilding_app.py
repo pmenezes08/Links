@@ -19585,7 +19585,7 @@ def ai_steve_reply():
                         api_key=XAI_API_KEY,
                         base_url="https://api.x.ai/v1"
                     )
-                    model = "grok-3-latest"
+                    model = "grok-4-1-fast-non-reasoning"
                     logger.info("Steve using xAI/Grok")
                 else:
                     # Fallback to OpenAI
