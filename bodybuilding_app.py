@@ -19326,6 +19326,145 @@ AI_USERNAME = 'steve'
 AI_DAILY_LIMIT = 10  # Max AI requests per user per day
 AI_UNLIMITED_USERS = {'admin', 'paulo', 'mary'}  # Users with unlimited AI requests
 
+# AI Personality configurations
+AI_PERSONALITIES = {
+    'professional': {
+        'name': 'Professional / Formal',
+        'prompt': '''You are Steve, a professional and formal AI assistant in the C.Point community app.
+Be clear, concise, polite, and structured in your responses.
+Provide well-organized, thoughtful answers. Maintain a professional tone at all times.
+Keep responses concise (2-3 sentences max).'''
+    },
+    'friendly': {
+        'name': 'Friendly / Warm',
+        'prompt': '''You are Steve, a friendly and warm AI assistant in the C.Point community app.
+Be empathetic, encouraging, and conversational. Use a warm tone that makes users feel welcome.
+Feel free to use occasional emojis to add warmth 😊
+Keep responses concise (2-3 sentences max) and engaging.'''
+    },
+    'sarcastic': {
+        'name': 'Sarcastic / Witty',
+        'prompt': '''You are Steve, a sarcastic and witty AI assistant in the C.Point community app.
+Use dry humor, be a bit snarky, and deliver clever comebacks. Roast gently but helpfully.
+Still provide useful answers, just with attitude and sass.
+Keep responses concise (2-3 sentences max).'''
+    },
+    'humorous': {
+        'name': 'Humorous / Funny',
+        'prompt': '''You are Steve, a humorous and funny AI assistant in the C.Point community app.
+Make jokes, be playful, and keep things light and entertaining.
+Use humor to make your answers memorable, but still be helpful.
+Feel free to use emojis and be a bit chaotic 😂
+Keep responses concise (2-3 sentences max).'''
+    },
+    'sage': {
+        'name': 'Sage / Wise',
+        'prompt': '''You are Steve, a wise and philosophical AI assistant in the C.Point community app.
+Be thoughtful, reflective, and offer deeper insights. Speak with the wisdom of ages.
+Draw connections to broader life lessons when appropriate.
+Keep responses concise (2-3 sentences max) but meaningful.'''
+    },
+    'empathetic': {
+        'name': 'Listener / Empathetic',
+        'prompt': '''You are Steve, an empathetic and supportive AI assistant in the C.Point community app.
+Be a good listener, non-judgmental, and reflective. Validate feelings and offer support.
+Focus on understanding and acknowledging the user's perspective.
+Keep responses concise (2-3 sentences max) and caring.'''
+    },
+    'cynic': {
+        'name': 'Cynic / Skeptical',
+        'prompt': '''You are Steve, a cynical and skeptical AI assistant in the C.Point community app.
+Question everything with a realistic, slightly pessimistic but funny perspective.
+Be the voice of reason that cuts through the BS, but still be helpful.
+Keep responses concise (2-3 sentences max).'''
+    },
+    'quirky': {
+        'name': 'Quirky / Chaotic',
+        'prompt': '''You are Steve, a quirky and chaotic AI assistant in the C.Point community app.
+Be random, use memes, be dramatic, break the 4th wall occasionally.
+Channel chaotic bestie energy ✨ but still actually help.
+Keep responses concise (2-3 sentences max) and unhinged in the best way.'''
+    }
+}
+
+def get_ai_personality_prompt(personality_key: str) -> str:
+    """Get the system prompt for a given AI personality."""
+    personality = AI_PERSONALITIES.get(personality_key, AI_PERSONALITIES['friendly'])
+    base_prompt = personality['prompt']
+    # Add language matching instruction to all personalities
+    return base_prompt + '''
+
+IMPORTANT: Always reply in the same language the user writes in. If they write in Portuguese, reply in Portuguese. If they write in Spanish, reply in Spanish. Match their language exactly.
+Never be rude or offensive. Always be supportive even when sarcastic or cynical.'''
+
+
+@app.route('/api/ai/personalities', methods=['GET'])
+def get_ai_personalities():
+    """Get list of available AI personalities."""
+    personalities = [
+        {'key': key, 'name': val['name']} 
+        for key, val in AI_PERSONALITIES.items()
+    ]
+    return jsonify({'success': True, 'personalities': personalities})
+
+
+@app.route('/api/community/<int:community_id>/ai_personality', methods=['GET', 'POST'])
+@login_required
+def community_ai_personality(community_id: int):
+    """Get or set the AI personality for a community."""
+    username = session['username']
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            placeholder = get_sql_placeholder()
+            
+            # Check if user is admin of this community
+            c.execute(f"""
+                SELECT uc.role FROM user_communities uc
+                WHERE uc.user_id = (SELECT id FROM users WHERE username = {placeholder})
+                AND uc.community_id = {placeholder}
+            """, (username, community_id))
+            role_row = c.fetchone()
+            
+            if not role_row:
+                return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
+            
+            role = role_row['role'] if hasattr(role_row, 'keys') else role_row[0]
+            if role not in ('admin', 'owner'):
+                return jsonify({'success': False, 'error': 'Only admins can manage AI settings'}), 403
+            
+            if request.method == 'GET':
+                c.execute(f"SELECT ai_personality FROM communities WHERE id = {placeholder}", (community_id,))
+                row = c.fetchone()
+                current = (row['ai_personality'] if hasattr(row, 'keys') else row[0]) if row else 'friendly'
+                return jsonify({
+                    'success': True, 
+                    'ai_personality': current or 'friendly',
+                    'personality_name': AI_PERSONALITIES.get(current or 'friendly', {}).get('name', 'Friendly / Warm')
+                })
+            
+            # POST - update personality
+            data = request.get_json() or {}
+            new_personality = data.get('ai_personality', 'friendly')
+            
+            if new_personality not in AI_PERSONALITIES:
+                return jsonify({'success': False, 'error': 'Invalid personality'}), 400
+            
+            c.execute(f"UPDATE communities SET ai_personality = {placeholder} WHERE id = {placeholder}", 
+                     (new_personality, community_id))
+            conn.commit()
+            
+            return jsonify({
+                'success': True, 
+                'ai_personality': new_personality,
+                'personality_name': AI_PERSONALITIES[new_personality]['name']
+            })
+            
+    except Exception as e:
+        logger.error(f"Error in community_ai_personality: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/api/ai/steve_reply', methods=['POST'])
 @login_required
 def ai_steve_reply():
@@ -19407,6 +19546,17 @@ def ai_steve_reply():
                     parent_content = parent_row['content'] if hasattr(parent_row, 'keys') else parent_row[0]
                     parent_author = parent_row['username'] if hasattr(parent_row, 'keys') else parent_row[1]
             
+            # Get community's AI personality setting
+            ai_personality = 'friendly'  # default
+            if community_id:
+                try:
+                    c.execute(f"SELECT ai_personality FROM communities WHERE id = {placeholder}", (community_id,))
+                    comm_row = c.fetchone()
+                    if comm_row:
+                        ai_personality = (comm_row['ai_personality'] if hasattr(comm_row, 'keys') else comm_row[0]) or 'friendly'
+                except Exception as pers_err:
+                    logger.warning(f"Could not fetch AI personality: {pers_err}")
+            
             # Build context for AI
             context_parts = []
             context_parts.append(f"Original post by {post_author}: {post_content}")
@@ -19420,14 +19570,7 @@ def ai_steve_reply():
             try:
                 client = OpenAI(api_key=OPENAI_API_KEY)
                 
-                system_prompt = """You are Steve, a friendly and humorous AI assistant in the C.Point community app. 
-You help users by answering questions about posts and comments in a conversational, witty way.
-Keep responses concise (2-3 sentences max) and engaging.
-Be helpful but also add a touch of humor when appropriate.
-If you don't know something, admit it with a joke.
-Never be rude or offensive. Always be supportive and positive.
-
-IMPORTANT: Always reply in the same language the user writes in. If they write in Portuguese, reply in Portuguese. If they write in Spanish, reply in Spanish. Match their language exactly."""
+                system_prompt = get_ai_personality_prompt(ai_personality)
 
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",

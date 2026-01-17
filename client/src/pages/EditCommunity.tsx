@@ -20,6 +20,9 @@ export default function EditCommunity(){
   const [maxMembers, setMaxMembers] = useState<string>('')
   const [currentBackgroundPath, setCurrentBackgroundPath] = useState<string | null>(null)
   const [removeBackground, setRemoveBackground] = useState(false)
+  const [aiPersonality, setAiPersonality] = useState('friendly')
+  const [aiPersonalities, setAiPersonalities] = useState<Array<{key: string, name: string}>>([])
+  const [savingAiPersonality, setSavingAiPersonality] = useState(false)
   const formRef = useRef<HTMLFormElement|null>(null)
 
   useEffect(() => {
@@ -55,6 +58,25 @@ export default function EditCommunity(){
           const pj = await pr.json().catch(()=>null)
           if (pj?.success && Array.isArray(pj.communities)) setParentOptions(pj.communities)
         }catch{}
+        
+        // Load AI personalities list
+        try {
+          const persResp = await fetch('/api/ai/personalities', { credentials: 'include' })
+          const persData = await persResp.json()
+          if (persData?.success && Array.isArray(persData.personalities)) {
+            setAiPersonalities(persData.personalities)
+          }
+        } catch {}
+        
+        // Load current AI personality for this community
+        try {
+          const aiResp = await fetch(`/api/community/${community_id}/ai_personality`, { credentials: 'include' })
+          const aiData = await aiResp.json()
+          if (aiData?.success && aiData.ai_personality) {
+            setAiPersonality(aiData.ai_personality)
+          }
+        } catch {}
+        
         setLoading(false)
       }catch{
         if (mounted){ setError('Failed to load community'); setLoading(false) }
@@ -132,6 +154,28 @@ export default function EditCommunity(){
       }
     } catch {
       alert('Failed to delete community')
+    }
+  }
+
+  async function saveAiPersonality(newPersonality: string) {
+    setSavingAiPersonality(true)
+    try {
+      const resp = await fetch(`/api/community/${community_id}/ai_personality`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ai_personality: newPersonality })
+      })
+      const data = await resp.json()
+      if (data?.success) {
+        setAiPersonality(newPersonality)
+      } else {
+        alert(data?.error || 'Failed to update AI personality')
+      }
+    } catch {
+      alert('Failed to update AI personality')
+    } finally {
+      setSavingAiPersonality(false)
     }
   }
 
@@ -323,6 +367,32 @@ export default function EditCommunity(){
               className="block w-full text-sm" 
             />
           </div>
+          
+          {/* AI Assistant Personality */}
+          <div>
+            <label className="block text-sm text-[#9fb0b5] mb-2">AI Assistant Personality (@Steve)</label>
+            <div className="rounded-lg border border-white/15 bg-black p-4">
+              <p className="text-xs text-[#9fb0b5] mb-3">
+                Choose how Steve (the AI assistant) responds when members mention @Steve in comments.
+              </p>
+              <select 
+                className="w-full rounded-md bg-black border border-white/15 px-3 py-2 text-[16px] focus:border-[#4db6ac] outline-none"
+                value={aiPersonality}
+                onChange={e => saveAiPersonality(e.target.value)}
+                disabled={savingAiPersonality}
+              >
+                {aiPersonalities.map(p => (
+                  <option key={p.key} value={p.key}>{p.name}</option>
+                ))}
+              </select>
+              {savingAiPersonality && (
+                <div className="mt-2 text-xs text-[#4db6ac]">
+                  <i className="fa-solid fa-spinner fa-spin mr-1" /> Saving...
+                </div>
+              )}
+            </div>
+          </div>
+          
           <div className="flex justify-end gap-2">
             <button type="button" className="px-3 py-2 rounded-md border border-white/10 hover:bg-white/5" onClick={()=> navigate(-1)}>Cancel</button>
             <button type="submit" className="px-3 py-2 rounded-md bg-[#4db6ac] text-black hover:brightness-110">Save Changes</button>
