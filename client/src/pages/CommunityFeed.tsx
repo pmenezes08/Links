@@ -3402,14 +3402,21 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   
   // Check if message contains @Steve mention (case insensitive)
   const containsSteveMention = (text: string) => {
-    return /@steve\b/i.test(text)
+    const result = /@steve\b/i.test(text)
+    console.log('[Steve AI] Checking for @Steve in:', text, '-> Found:', result)
+    return result
   }
   
   // Call Steve AI to generate a reply
   const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
-    if (!containsSteveMention(userMessage)) return
+    console.log('[Steve AI] callSteveAI called with:', userMessage, 'parentReplyId:', parentReplyId)
+    if (!containsSteveMention(userMessage)) {
+      console.log('[Steve AI] No @Steve mention found, skipping')
+      return
+    }
     
     try {
+      console.log('[Steve AI] Calling API...')
       setSteveIsTyping(true)
       const response = await fetch('/api/ai/steve_reply', {
         method: 'POST',
@@ -3424,21 +3431,24 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
       })
       
       const data = await response.json()
+      console.log('[Steve AI] API response:', data)
       
       if (data.success && data.reply && onAddReply) {
+        console.log('[Steve AI] Success! Adding Steve reply to post')
         // Add Steve's reply to the post
         onAddReply(post.id, data.reply as any)
       } else if (!data.success) {
         // Show error but don't alert for rate limits (show inline instead)
         if (response.status === 429) {
-          console.log('Steve rate limit:', data.error)
+          console.log('[Steve AI] Rate limit:', data.error)
         } else {
-          console.error('Steve AI error:', data.error)
+          console.error('[Steve AI] Error:', data.error)
         }
       }
     } catch (err) {
-      console.error('Failed to get Steve AI reply:', err)
+      console.error('[Steve AI] Failed to get Steve AI reply:', err)
     } finally {
+      console.log('[Steve AI] Done, hiding typing indicator')
       setSteveIsTyping(false)
     }
   }
@@ -4217,7 +4227,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                                   }
                                   // Check if user mentioned @Steve and trigger AI reply
                                   const messageText = childReplyText.trim()
+                                  console.log('[Steve AI] Child reply posted, checking message:', messageText)
                                   if (containsSteveMention(messageText)) {
+                                    console.log('[Steve AI] @Steve found in child reply, calling AI')
                                     callSteveAI(messageText, r.id)
                                   }
                                   setChildReplyText('')
@@ -4337,7 +4349,9 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                         }
                         // Check if user mentioned @Steve and trigger AI reply
                         const messageText = replyText.trim()
+                        console.log('[Steve AI] Main reply posted, checking message:', messageText)
                         if (containsSteveMention(messageText)) {
+                          console.log('[Steve AI] @Steve found in main reply, calling AI')
                           callSteveAI(messageText, null)
                         }
                         setReplyText('')
