@@ -19541,24 +19541,39 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             # Call AI - use OpenAI Responses API with web search for real-time queries
             ai_response = None
             try:
-                # Use OpenAI Chat Completions with search-enabled model for real-time queries
+                # Use OpenAI Responses API with web_search tool for real-time queries
                 if needs_web_search and OPENAI_API_KEY:
-                    logger.info("Steve post reply using OpenAI web search model")
+                    logger.info("Steve post reply using OpenAI Responses API with web search")
                     client = OpenAI(api_key=OPENAI_API_KEY)
                     try:
-                        response = client.chat.completions.create(
-                            model="gpt-4o-mini-search-preview",
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": context}
-                            ],
-                            max_tokens=500
+                        full_input = f"Instructions: {system_prompt}\n\n---\n\nUser query and context:\n{context}"
+                        response = client.responses.create(
+                            model="gpt-4o-mini",
+                            tools=[{"type": "web_search"}],
+                            input=full_input
                         )
-                        ai_response = response.choices[0].message.content.strip() if response.choices else None
+                        ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                         if ai_response:
-                            logger.info("Steve post reply web search successful")
+                            logger.info("Steve post reply Responses API web search successful")
+                    except AttributeError:
+                        # Fallback to Chat Completions with search model
+                        try:
+                            response = client.chat.completions.create(
+                                model="gpt-4o-search-preview",
+                                messages=[
+                                    {"role": "system", "content": system_prompt},
+                                    {"role": "user", "content": context}
+                                ],
+                                max_tokens=500
+                            )
+                            ai_response = response.choices[0].message.content.strip() if response.choices else None
+                            if ai_response:
+                                logger.info("Steve post reply Chat search model successful")
+                        except Exception as chat_err:
+                            logger.warning(f"Chat search model failed: {chat_err}")
+                            ai_response = None
                     except Exception as search_err:
-                        logger.warning(f"Web search model failed in post reply: {search_err}")
+                        logger.warning(f"Web search failed in post reply: {search_err}")
                         ai_response = None
                 
                 # Use xAI/Grok for general queries or as fallback
@@ -19839,32 +19854,53 @@ def ai_steve_reply():
             needs_web_search = bool(re.search(realtime_keywords, user_message.lower()))
             
             try:
-                # Option 1: Use OpenAI Chat Completions with search-enabled model for real-time queries
+                # Option 1: Use OpenAI Responses API with web_search tool for real-time queries
                 if needs_web_search and OPENAI_API_KEY:
-                    logger.info(f"Steve using OpenAI web search model ({ai_personality} mode)")
+                    logger.info(f"Steve using OpenAI Responses API with web search ({ai_personality} mode)")
                     client = OpenAI(api_key=OPENAI_API_KEY)
                     
                     try:
-                        # Use gpt-4o-mini-search-preview for web search (per OpenAI docs)
-                        response = client.chat.completions.create(
-                            model="gpt-4o-mini-search-preview",
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": context}
-                            ],
-                            max_tokens=500
+                        # Try Responses API first (per OpenAI docs)
+                        # Combine system prompt with context for input
+                        full_input = f"Instructions: {system_prompt}\n\n---\n\nUser query and context:\n{context}"
+                        
+                        response = client.responses.create(
+                            model="gpt-4o-mini",
+                            tools=[{"type": "web_search"}],
+                            input=full_input
                         )
                         
-                        ai_response = response.choices[0].message.content.strip() if response.choices else None
+                        # Get output_text from response
+                        ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                         
                         if ai_response:
-                            logger.info("Steve OpenAI web search successful")
+                            logger.info("Steve OpenAI Responses API web search successful")
                         else:
-                            logger.warning("OpenAI web search returned empty response")
+                            logger.warning("OpenAI Responses API returned empty response")
+                            ai_response = None
+                            
+                    except AttributeError as attr_err:
+                        # responses.create might not exist in this SDK version
+                        logger.warning(f"OpenAI Responses API not available: {attr_err}")
+                        # Try Chat Completions with search model as fallback
+                        try:
+                            response = client.chat.completions.create(
+                                model="gpt-4o-search-preview",
+                                messages=[
+                                    {"role": "system", "content": system_prompt},
+                                    {"role": "user", "content": context}
+                                ],
+                                max_tokens=500
+                            )
+                            ai_response = response.choices[0].message.content.strip() if response.choices else None
+                            if ai_response:
+                                logger.info("Steve OpenAI Chat search-preview model successful")
+                        except Exception as chat_err:
+                            logger.warning(f"OpenAI Chat search model also failed: {chat_err}")
                             ai_response = None
                             
                     except Exception as search_err:
-                        logger.warning(f"OpenAI search model failed: {search_err}, falling back to xAI")
+                        logger.warning(f"OpenAI web search failed: {search_err}, falling back to xAI")
                         ai_response = None
                 
                 # Option 2: Use xAI/Grok for general queries or as fallback
