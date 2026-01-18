@@ -13799,7 +13799,10 @@ def post_status():
                     logger.info(f"@Steve mentioned in new post {post_id} by {username}")
                     # Trigger async Steve reply (don't block post creation)
                     try:
-                        trigger_steve_reply_to_post(post_id, content, username, community_id)
+                        trigger_steve_reply_to_post(
+                            post_id, content, username, community_id,
+                            image_path=image_path, video_path=video_path, media_paths=media_paths_json
+                        )
                     except Exception as steve_err:
                         logger.warning(f"Steve reply to post failed: {steve_err}")
             except Exception as steve_check_err:
@@ -19483,12 +19486,15 @@ The current date/time is provided in the context.
 Never be rude or offensive. Always be supportive even when sarcastic or cynical.'''
 
 
-def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username: str, community_id: int):
+def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username: str, community_id: int,
+                                 image_path: str = None, video_path: str = None, media_paths: str = None):
     """
     Trigger Steve to reply to a post where he was mentioned.
     This runs inline but is designed to be quick and non-blocking.
+    Supports vision if images are attached.
     """
     from datetime import datetime
+    import json
     
     logger.info(f"Steve replying to post {post_id} in community {community_id}")
     
@@ -19521,9 +19527,63 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             except Exception:
                 pass
             
+            # Collect image URLs from the post
+            post_image_urls = []
+            
+            def get_full_media_url(path):
+                if not path:
+                    return None
+                path = path.strip()
+                if path.startswith('http'):
+                    return path
+                base_url = os.environ.get('PUBLIC_BASE_URL', 'https://app.c-point.co')
+                media_base = os.environ.get('CLOUDFLARE_R2_PUBLIC_URL', '')
+                if media_base and not path.startswith('/'):
+                    return f"{media_base}/{path}"
+                elif path.startswith('/uploads') or path.startswith('/static'):
+                    return f"{base_url}{path}"
+                else:
+                    return f"{base_url}/uploads/{path}"
+            
+            # Get main image
+            if image_path:
+                url = get_full_media_url(image_path)
+                if url:
+                    post_image_urls.append(url)
+            
+            # Get images from media_paths
+            if media_paths:
+                try:
+                    media_list = json.loads(media_paths) if isinstance(media_paths, str) else media_paths
+                    if isinstance(media_list, list):
+                        for item in media_list:
+                            if isinstance(item, dict) and item.get('type') == 'image':
+                                url = get_full_media_url(item.get('path'))
+                                if url and url not in post_image_urls:
+                                    post_image_urls.append(url)
+                            elif isinstance(item, str):
+                                url = get_full_media_url(item)
+                                if url and url not in post_image_urls:
+                                    post_image_urls.append(url)
+                except Exception as media_err:
+                    logger.warning(f"Could not parse media_paths for post {post_id}: {media_err}")
+            
+            has_images = len(post_image_urls) > 0
+            has_video = bool(video_path)
+            
+            logger.info(f"Post {post_id} for Steve reply has {len(post_image_urls)} images, video: {has_video}")
+            
             # Build context for Steve
+            post_description = f"Original post by {author_username}: {post_content}"
+            if has_images and has_video:
+                post_description += f"\n[This post includes {len(post_image_urls)} image(s) and a video]"
+            elif has_images:
+                post_description += f"\n[This post includes {len(post_image_urls)} image(s)]"
+            elif has_video:
+                post_description += "\n[This post includes a video]"
+            
             context_parts = [
-                f"Original post by {author_username}: {post_content}",
+                post_description,
                 f"\nUser {author_username} mentioned you (@Steve) in their post. Respond to their post directly."
             ]
             
@@ -19538,11 +19598,49 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             realtime_keywords = r'\b(news|notícias|noticias|weather|tempo|clima|meteo|today|hoje|hoy|current|actual|latest|últimas|score|resultado|stock|ações|price|preço|happening|acontece)\b'
             needs_web_search = bool(re.search(realtime_keywords, post_content.lower()))
             
-            # Call AI - use OpenAI Responses API with web search for real-time queries
+            # Call AI - use vision for images, web search for news, or regular model
             ai_response = None
             try:
+                # Option 0: Use OpenAI Vision (GPT-4o) if post has images
+                if has_images and OPENAI_API_KEY:
+                    logger.info(f"Steve post reply using OpenAI Vision GPT-4o ({ai_personality} mode)")
+                    client = OpenAI(api_key=OPENAI_API_KEY)
+                    
+                    try:
+                        # Build message content with images
+                        user_content = [{"type": "text", "text": context}]
+                        
+                        # Add images (limit to first 4)
+                        for img_url in post_image_urls[:4]:
+                            user_content.append({
+                                "type": "image_url",
+                                "image_url": {"url": img_url, "detail": "low"}
+                            })
+                        
+                        if has_video:
+                            user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
+                        
+                        response = client.chat.completions.create(
+                            model="gpt-4o",
+                            messages=[
+                                {"role": "system", "content": system_prompt + "\n\nYou can see images attached to this post. Describe what you see and respond accordingly."},
+                                {"role": "user", "content": user_content}
+                            ],
+                            max_tokens=500
+                        )
+                        ai_response = response.choices[0].message.content.strip() if response.choices else None
+                        
+                        if ai_response:
+                            logger.info("Steve post reply Vision successful")
+                        else:
+                            logger.warning("OpenAI Vision returned empty response")
+                            ai_response = None
+                    except Exception as vision_err:
+                        logger.warning(f"OpenAI Vision failed for post reply: {vision_err}, falling back")
+                        ai_response = None
+                
                 # Use OpenAI Responses API with web_search tool for real-time queries
-                if needs_web_search and OPENAI_API_KEY:
+                if ai_response is None and needs_web_search and OPENAI_API_KEY:
                     logger.info("Steve post reply using OpenAI Responses API with web search")
                     client = OpenAI(api_key=OPENAI_API_KEY)
                     try:
@@ -19778,14 +19876,68 @@ def ai_steve_reply():
                         'error': f'Daily limit reached. You can ask Steve {AI_DAILY_LIMIT} questions per day.'
                     }), 429
             
-            # Get post content for context
-            c.execute(f"SELECT content, username FROM posts WHERE id = {placeholder}", (post_id,))
+            # Get post content for context (including media)
+            c.execute(f"SELECT content, username, image_path, video_path, media_paths FROM posts WHERE id = {placeholder}", (post_id,))
             post_row = c.fetchone()
             if not post_row:
                 return jsonify({'success': False, 'error': 'Post not found'}), 404
             
             post_content = post_row['content'] if hasattr(post_row, 'keys') else post_row[0]
             post_author = post_row['username'] if hasattr(post_row, 'keys') else post_row[1]
+            post_image_path = post_row['image_path'] if hasattr(post_row, 'keys') else post_row[2]
+            post_video_path = post_row['video_path'] if hasattr(post_row, 'keys') else post_row[3]
+            post_media_paths = post_row['media_paths'] if hasattr(post_row, 'keys') else post_row[4]
+            
+            # Collect all image URLs from the post
+            post_image_urls = []
+            
+            # Helper to convert path to full URL
+            def get_full_media_url(path):
+                if not path:
+                    return None
+                path = path.strip()
+                if path.startswith('http'):
+                    return path
+                # Use the public base URL or media CDN
+                base_url = os.environ.get('PUBLIC_BASE_URL', 'https://app.c-point.co')
+                media_base = os.environ.get('CLOUDFLARE_R2_PUBLIC_URL', '')
+                if media_base and not path.startswith('/'):
+                    return f"{media_base}/{path}"
+                elif path.startswith('/uploads') or path.startswith('/static'):
+                    return f"{base_url}{path}"
+                else:
+                    return f"{base_url}/uploads/{path}"
+            
+            # Get main image
+            if post_image_path:
+                url = get_full_media_url(post_image_path)
+                if url:
+                    post_image_urls.append(url)
+            
+            # Get images from media_paths (multiple images)
+            if post_media_paths:
+                try:
+                    import json
+                    media_list = json.loads(post_media_paths) if isinstance(post_media_paths, str) else post_media_paths
+                    if isinstance(media_list, list):
+                        for item in media_list:
+                            if isinstance(item, dict) and item.get('type') == 'image':
+                                url = get_full_media_url(item.get('path'))
+                                if url and url not in post_image_urls:
+                                    post_image_urls.append(url)
+                            elif isinstance(item, str):
+                                # Simple path string
+                                url = get_full_media_url(item)
+                                if url and url not in post_image_urls:
+                                    post_image_urls.append(url)
+                except Exception as media_err:
+                    logger.warning(f"Could not parse media_paths: {media_err}")
+            
+            # Flag if post has visual content
+            has_images = len(post_image_urls) > 0
+            has_video = bool(post_video_path)
+            
+            logger.info(f"Post {post_id} has {len(post_image_urls)} images, video: {has_video}")
             
             # Get parent comment content if replying to a comment
             parent_content = None
@@ -19810,7 +19962,17 @@ def ai_steve_reply():
             
             # Build context for AI - include all comments on the post for full context
             context_parts = []
-            context_parts.append(f"Original post by {post_author}: {post_content}")
+            post_description = f"Original post by {post_author}: {post_content}"
+            
+            # Note if post has media
+            if has_images and has_video:
+                post_description += f"\n[This post includes {len(post_image_urls)} image(s) and a video]"
+            elif has_images:
+                post_description += f"\n[This post includes {len(post_image_urls)} image(s)]"
+            elif has_video:
+                post_description += "\n[This post includes a video]"
+            
+            context_parts.append(post_description)
             
             # Fetch ALL comments on this post for full context (up to 20 most recent)
             try:
@@ -19849,7 +20011,7 @@ def ai_steve_reply():
             
             context = "\n\n".join(context_parts)
             
-            # Call AI - use OpenAI Responses API with web search for real-time queries
+            # Call AI - use vision model if images present, web search for news, or regular model
             system_prompt = get_ai_personality_prompt(ai_personality)
             ai_response = None
             
@@ -19858,9 +20020,53 @@ def ai_steve_reply():
             realtime_keywords = r'\b(news|notícias|noticias|weather|tempo|clima|meteo|today|hoje|hoy|current|actual|latest|últimas|score|resultado|stock|ações|price|preço|happening|acontece)\b'
             needs_web_search = bool(re.search(realtime_keywords, user_message.lower()))
             
+            # Detect if user is asking about the image/picture
+            image_keywords = r'\b(image|picture|photo|pic|imagem|foto|fotografia|see|ver|look|olha|show|mostra|what is this|o que é isto|what\'s this)\b'
+            asking_about_image = has_images and bool(re.search(image_keywords, user_message.lower()))
+            
             try:
+                # Option 0: Use OpenAI Vision (GPT-4o) if post has images and user is asking about them
+                if has_images and OPENAI_API_KEY and (asking_about_image or '@steve' in user_message.lower()):
+                    logger.info(f"Steve using OpenAI Vision (GPT-4o) for image analysis ({ai_personality} mode)")
+                    client = OpenAI(api_key=OPENAI_API_KEY)
+                    
+                    try:
+                        # Build message content with images
+                        user_content = [{"type": "text", "text": context}]
+                        
+                        # Add images (limit to first 4 to avoid token limits)
+                        for img_url in post_image_urls[:4]:
+                            user_content.append({
+                                "type": "image_url",
+                                "image_url": {"url": img_url, "detail": "low"}  # "low" for faster processing
+                            })
+                        
+                        # Add note about images
+                        if has_video:
+                            user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
+                        
+                        response = client.chat.completions.create(
+                            model="gpt-4o",  # Vision-capable model
+                            messages=[
+                                {"role": "system", "content": system_prompt + "\n\nYou can see images attached to this post. Describe what you see and respond accordingly."},
+                                {"role": "user", "content": user_content}
+                            ],
+                            max_tokens=500
+                        )
+                        ai_response = response.choices[0].message.content.strip() if response.choices else None
+                        
+                        if ai_response:
+                            logger.info("Steve OpenAI Vision (GPT-4o) successful")
+                        else:
+                            logger.warning("OpenAI Vision returned empty response")
+                            ai_response = None
+                            
+                    except Exception as vision_err:
+                        logger.warning(f"OpenAI Vision failed: {vision_err}, falling back to text-only")
+                        ai_response = None
+                
                 # Option 1: Use OpenAI Responses API with web_search tool for real-time queries
-                if needs_web_search and OPENAI_API_KEY:
+                if ai_response is None and needs_web_search and OPENAI_API_KEY:
                     logger.info(f"Steve using OpenAI Responses API with web search ({ai_personality} mode)")
                     client = OpenAI(api_key=OPENAI_API_KEY)
                     
