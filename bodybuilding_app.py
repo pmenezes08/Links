@@ -19531,22 +19531,24 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             # Call AI - use OpenAI Responses API with web search for real-time queries
             ai_response = None
             try:
-                # Use OpenAI Responses API with web search for real-time queries
+                # Use OpenAI Chat Completions with search-enabled model for real-time queries
                 if needs_web_search and OPENAI_API_KEY:
-                    logger.info("Steve post reply using OpenAI web search")
+                    logger.info("Steve post reply using OpenAI web search model")
                     client = OpenAI(api_key=OPENAI_API_KEY)
                     try:
-                        full_input = f"{system_prompt}\n\n---\n\n{context}"
-                        response = client.responses.create(
-                            model="gpt-4o-mini",
-                            tools=[{"type": "web_search"}],
-                            input=full_input
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini-search-preview",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": context}
+                            ],
+                            max_tokens=500
                         )
-                        ai_response = response.output_text.strip() if hasattr(response, 'output_text') else None
+                        ai_response = response.choices[0].message.content.strip() if response.choices else None
                         if ai_response:
                             logger.info("Steve post reply web search successful")
                     except Exception as search_err:
-                        logger.warning(f"Web search failed in post reply: {search_err}")
+                        logger.warning(f"Web search model failed in post reply: {search_err}")
                         ai_response = None
                 
                 # Use xAI/Grok for general queries or as fallback
@@ -19827,24 +19829,23 @@ def ai_steve_reply():
             needs_web_search = bool(re.search(realtime_keywords, user_message.lower()))
             
             try:
-                # Option 1: Use OpenAI Responses API with web search for real-time queries
+                # Option 1: Use OpenAI Chat Completions with search-enabled model for real-time queries
                 if needs_web_search and OPENAI_API_KEY:
-                    logger.info(f"Steve using OpenAI Responses API with web search ({ai_personality} mode)")
+                    logger.info(f"Steve using OpenAI web search model ({ai_personality} mode)")
                     client = OpenAI(api_key=OPENAI_API_KEY)
                     
                     try:
-                        # Combine system prompt with user context for the input
-                        full_input = f"{system_prompt}\n\n---\n\n{context}"
-                        
-                        # Use Responses API with web_search tool
-                        response = client.responses.create(
-                            model="gpt-4o-mini",  # Use available model that supports web search
-                            tools=[{"type": "web_search"}],
-                            input=full_input
+                        # Use gpt-4o-mini-search-preview for web search (per OpenAI docs)
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini-search-preview",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": context}
+                            ],
+                            max_tokens=500
                         )
                         
-                        # Get the output text from the response
-                        ai_response = response.output_text.strip() if hasattr(response, 'output_text') else None
+                        ai_response = response.choices[0].message.content.strip() if response.choices else None
                         
                         if ai_response:
                             logger.info("Steve OpenAI web search successful")
@@ -19853,7 +19854,7 @@ def ai_steve_reply():
                             ai_response = None
                             
                     except Exception as search_err:
-                        logger.warning(f"OpenAI Responses API failed: {search_err}, falling back to xAI")
+                        logger.warning(f"OpenAI search model failed: {search_err}, falling back to xAI")
                         ai_response = None
                 
                 # Option 2: Use xAI/Grok for general queries or as fallback
