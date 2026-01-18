@@ -120,6 +120,60 @@ export default function PostDetail(){
   const [previewSrc, setPreviewSrc] = useState<string | null>(null)
   const [submittingReply, setSubmittingReply] = useState(false)
   const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
+  const [steveIsTyping, setSteveIsTyping] = useState(false)
+  
+  // Check if message contains @Steve mention (case insensitive)
+  const containsSteveMention = (text: string) => {
+    return /@steve\b/i.test(text)
+  }
+  
+  // Call Steve AI to generate a reply
+  const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
+    if (!post || !containsSteveMention(userMessage)) return
+    
+    try {
+      setSteveIsTyping(true)
+      const response = await fetch('/api/ai/steve_reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          post_id: post.id,
+          parent_reply_id: parentReplyId,
+          user_message: userMessage,
+          community_id: null // PostDetail doesn't always have community context
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success && data.reply) {
+        // Add Steve's reply to the post
+        setPost(p => {
+          if (!p) return p
+          if (parentReplyId) {
+            function attachSteve(list: Reply[]): Reply[] {
+              return list.map(item => {
+                if (item.id === parentReplyId) {
+                  const children = item.children ? [data.reply, ...item.children] : [data.reply]
+                  return { ...item, children }
+                }
+                return { ...item, children: item.children ? attachSteve(item.children) : item.children }
+              })
+            }
+            return { ...p, replies: attachSteve(p.replies) }
+          }
+          return { ...p, replies: [data.reply, ...p.replies] }
+        })
+      } else if (!data.success) {
+        console.error('[Steve AI] Error:', data.error)
+      }
+    } catch (err) {
+      console.error('[Steve AI] Failed to get Steve AI reply:', err)
+    } finally {
+      setSteveIsTyping(false)
+    }
+  }
   
   // Parse media_paths for multi-media support
   const parsedMediaPaths = useMemo((): MediaItem[] => {
@@ -747,6 +801,11 @@ export default function PostDetail(){
         }
         return { ...p, replies: [j.reply, ...p.replies] }
       })
+      // Check if user mentioned @Steve and trigger AI reply
+      const messageText = content.trim()
+      if (containsSteveMention(messageText)) {
+        callSteveAI(messageText, j.reply.id)
+      }
       setContent(''); setFile(null); setUploadFile(null); setReplyGif(null); setFilePreviewUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''
       replyTokenRef.current = `${Date.now()}_${Math.random().toString(36).slice(2)}`
     }
@@ -788,6 +847,10 @@ export default function PostDetail(){
         }
         return { ...p, replies: attach(p.replies) }
       })
+      // Check if user mentioned @Steve and trigger AI reply
+      if (containsSteveMention(text)) {
+        callSteveAI(text, j.reply.id)
+      }
     }
   }
 
@@ -1530,6 +1593,18 @@ export default function PostDetail(){
               onSetActiveInlineReply={setActiveInlineReplyFor}
             />
           ))}
+          {/* Steve is typing indicator */}
+          {steveIsTyping && (
+            <div className="px-4 py-3 border-t border-white/10 flex items-center gap-2 text-xs text-white/60">
+              <span className="font-medium text-[#4db6ac]">Steve</span>
+              <span>is typing</span>
+              <span className="inline-flex gap-0.5">
+                <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
