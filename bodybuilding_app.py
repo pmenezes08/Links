@@ -19578,17 +19578,22 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 
                 # Use xAI/Grok for general queries or as fallback
                 if ai_response is None and XAI_API_KEY:
-                    client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-                    response = client.chat.completions.create(
-                        model="grok-3",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": context}
-                        ],
-                        max_tokens=400,
-                        temperature=0.7
-                    )
-                    ai_response = response.choices[0].message.content.strip()
+                    try:
+                        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+                        response = client.chat.completions.create(
+                            model="grok-3",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": context}
+                            ],
+                            max_tokens=400,
+                            temperature=0.7
+                        )
+                        ai_response = response.choices[0].message.content.strip()
+                        logger.info("Steve post reply xAI/Grok successful")
+                    except Exception as xai_err:
+                        logger.warning(f"xAI/Grok post reply failed: {xai_err}, falling back to OpenAI")
+                        ai_response = None
                 
                 # OpenAI Chat Completions fallback
                 if ai_response is None and OPENAI_API_KEY:
@@ -19906,22 +19911,26 @@ def ai_steve_reply():
                 # Option 2: Use xAI/Grok for general queries or as fallback
                 if ai_response is None and XAI_API_KEY:
                     logger.info(f"Steve using xAI/Grok ({ai_personality} mode)")
-                    client = OpenAI(
-                        api_key=XAI_API_KEY,
-                        base_url="https://api.x.ai/v1"
-                    )
-                    
-                    response = client.chat.completions.create(
-                        model="grok-3",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": context}
-                        ],
-                        max_tokens=400,
-                        temperature=0.7
-                    )
-                    ai_response = response.choices[0].message.content.strip()
-                    logger.info("Steve xAI/Grok call successful")
+                    try:
+                        client = OpenAI(
+                            api_key=XAI_API_KEY,
+                            base_url="https://api.x.ai/v1"
+                        )
+                        
+                        response = client.chat.completions.create(
+                            model="grok-3",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": context}
+                            ],
+                            max_tokens=400,
+                            temperature=0.7
+                        )
+                        ai_response = response.choices[0].message.content.strip()
+                        logger.info("Steve xAI/Grok call successful")
+                    except Exception as xai_err:
+                        logger.warning(f"xAI/Grok call failed: {xai_err}, falling back to OpenAI")
+                        ai_response = None
                 
                 # Option 3: OpenAI Chat Completions fallback (no web search)
                 if ai_response is None and OPENAI_API_KEY:
