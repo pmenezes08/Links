@@ -87,10 +87,6 @@ export default function ChatThread(){
 
   const [otherUserId, setOtherUserId] = useState<number|''>('')
   const [messages, setMessages] = useState<Message[]>([])
-  // PERFORMANCE: Pagination state for infinite scroll
-  const [hasMoreMessages, setHasMoreMessages] = useState(false)
-  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
-  const oldestMessageIdRef = useRef<number | null>(null)
   const [editingId, setEditingId] = useState<number|string| null>(null)
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
@@ -719,64 +715,6 @@ export default function ChatThread(){
     })
   }, [decryptMessageIfNeeded, username])
 
-  // PERFORMANCE: Load older messages for infinite scroll (triggered when user scrolls to top)
-  const loadOlderMessages = useCallback(async () => {
-    if (!otherUserId || loadingOlderMessages || !hasMoreMessages || !oldestMessageIdRef.current) {
-      return
-    }
-    
-    setLoadingOlderMessages(true)
-    
-    try {
-      const fd = new URLSearchParams({ 
-        other_user_id: String(otherUserId),
-        before_id: String(oldestMessageIdRef.current),
-        limit: '50'  // Load 50 older messages at a time
-      })
-      
-      const response = await fetch('/get_messages', { 
-        method: 'POST', 
-        credentials: 'include', 
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, 
-        body: fd 
-      })
-      
-      const data = await response.json()
-      
-      if (data?.success && Array.isArray(data.messages) && data.messages.length > 0) {
-        const processedMessages = await processRawMessages(data.messages)
-        
-        // Prepend older messages while maintaining scroll position
-        const el = listRef.current
-        const previousScrollHeight = el?.scrollHeight || 0
-        
-        setMessages(prev => [...processedMessages, ...prev])
-        
-        // Update pagination state
-        setHasMoreMessages(data.has_more || false)
-        if (data.oldest_id) {
-          oldestMessageIdRef.current = data.oldest_id
-        }
-        
-        // Restore scroll position after prepending (run in next frame)
-        requestAnimationFrame(() => {
-          if (el) {
-            const newScrollHeight = el.scrollHeight
-            const scrollDiff = newScrollHeight - previousScrollHeight
-            el.scrollTop = scrollDiff
-          }
-        })
-      } else {
-        // No more messages
-        setHasMoreMessages(false)
-      }
-    } catch (err) {
-      console.warn('Failed to load older messages:', err)
-    } finally {
-      setLoadingOlderMessages(false)
-    }
-  }, [otherUserId, loadingOlderMessages, hasMoreMessages, processRawMessages])
-
   // Load cached profile immediately
   useEffect(() => {
     if (!profileCacheKey) return
@@ -789,74 +727,15 @@ export default function ChatThread(){
   // Load cached messages immediately for instant display
   useEffect(() => {
     if (!chatCacheKey) return
-    const cached = readDeviceCache<{ messages: any[]; otherUserId: number; hasMore?: boolean; oldestId?: number }>(chatCacheKey, CHAT_CACHE_VERSION)
+    const cached = readDeviceCache<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
     if (cached?.messages && cached.otherUserId) {
       setOtherUserId(cached.otherUserId)
       // Process cached messages (no await needed since they're already decrypted in cache)
       processRawMessages(cached.messages).then(processed => {
         setMessages(processed)
       })
-      // Restore pagination state from cache
-      if (cached.hasMore !== undefined) setHasMoreMessages(cached.hasMore)
-      if (cached.oldestId) oldestMessageIdRef.current = cached.oldestId
     }
   }, [chatCacheKey, processRawMessages])
-
-  // PERFORMANCE: Load older messages when user scrolls to top (infinite scroll)
-  const loadOlderMessages = useCallback(async () => {
-    if (!otherUserId || loadingOlderMessages || !hasMoreMessages || !oldestMessageIdRef.current) return
-    
-    setLoadingOlderMessages(true)
-    
-    try {
-      const fd = new URLSearchParams({ 
-        other_user_id: String(otherUserId),
-        before_id: String(oldestMessageIdRef.current),
-        limit: '50'
-      })
-      
-      const r = await fetch('/get_messages', { 
-        method: 'POST', 
-        credentials: 'include', 
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, 
-        body: fd 
-      })
-      const j = await r.json()
-      
-      if (j?.success && Array.isArray(j.messages) && j.messages.length > 0) {
-        const olderProcessed = await processRawMessages(j.messages)
-        
-        // Get scroll position before prepending
-        const listEl = listRef.current
-        const prevScrollHeight = listEl?.scrollHeight || 0
-        
-        // Prepend older messages
-        setMessages(prev => [...olderProcessed, ...prev])
-        
-        // Update pagination state
-        setHasMoreMessages(j.has_more || false)
-        if (j.oldest_id) {
-          oldestMessageIdRef.current = j.oldest_id
-        }
-        
-        // Maintain scroll position after prepending (prevent jump)
-        requestAnimationFrame(() => {
-          if (listEl) {
-            const newScrollHeight = listEl.scrollHeight
-            const heightDiff = newScrollHeight - prevScrollHeight
-            listEl.scrollTop = heightDiff
-          }
-        })
-      } else {
-        // No more messages
-        setHasMoreMessages(false)
-      }
-    } catch (e) {
-      console.warn('Failed to load older messages:', e)
-    } finally {
-      setLoadingOlderMessages(false)
-    }
-  }, [otherUserId, loadingOlderMessages, hasMoreMessages, processRawMessages])
 
   // Initial load of messages and other user info (fresh fetch)
   useEffect(() => {
@@ -879,22 +758,11 @@ export default function ChatThread(){
           setMessages(processedMessages)
           lastFetchTime.current = Date.now()
           
-          // PERFORMANCE: Track pagination metadata for infinite scroll
-          setHasMoreMessages(msgResponse.has_more || false)
-          if (msgResponse.oldest_id) {
-            oldestMessageIdRef.current = msgResponse.oldest_id
-          }
-          if (msgResponse.newest_id) {
-            lastKnownMessageIdRef.current = msgResponse.newest_id
-          }
-          
           // Cache the messages for next time
           if (chatCacheKey) {
             writeDeviceCache(chatCacheKey, { 
               messages: msgResponse.messages, 
-              otherUserId: userId,
-              hasMore: msgResponse.has_more,
-              oldestId: msgResponse.oldest_id
+              otherUserId: userId 
             }, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
           }
           
@@ -972,60 +840,6 @@ export default function ChatThread(){
       }).catch(()=>{})
     }
   }, [username, chatCacheKey, profileCacheKey, processRawMessages])
-  
-  // PERFORMANCE: Load older messages for infinite scroll
-  const loadOlderMessages = useCallback(async () => {
-    if (!otherUserId || loadingOlderMessages || !oldestMessageIdRef.current) return
-    
-    setLoadingOlderMessages(true)
-    try {
-      const fd = new URLSearchParams({ 
-        other_user_id: String(otherUserId),
-        before_id: String(oldestMessageIdRef.current),
-        limit: '50'
-      })
-      
-      const response = await fetch('/get_messages', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: fd
-      })
-      const data = await response.json()
-      
-      if (data?.success && Array.isArray(data.messages) && data.messages.length > 0) {
-        const processedOlder = await processRawMessages(data.messages)
-        
-        // Save scroll position before prepending
-        const el = listRef.current
-        const scrollHeightBefore = el?.scrollHeight || 0
-        
-        // Prepend older messages
-        setMessages(prev => [...processedOlder, ...prev])
-        
-        // Update pagination state
-        setHasMoreMessages(data.has_more || false)
-        if (data.oldest_id) {
-          oldestMessageIdRef.current = data.oldest_id
-        }
-        
-        // Restore scroll position after render
-        requestAnimationFrame(() => {
-          if (el) {
-            const scrollHeightAfter = el.scrollHeight
-            const heightDiff = scrollHeightAfter - scrollHeightBefore
-            el.scrollTop = heightDiff
-          }
-        })
-      } else {
-        setHasMoreMessages(false)
-      }
-    } catch (error) {
-      console.warn('Failed to load older messages:', error)
-    } finally {
-      setLoadingOlderMessages(false)
-    }
-  }, [otherUserId, loadingOlderMessages, processRawMessages])
   
   // Main scroll effect - handles initial load and new messages
   useEffect(() => {
@@ -2521,59 +2335,17 @@ export default function ChatThread(){
             touchDismissRef.current.active = false
           }
           const el = e.currentTarget
-          
-          // Check if scrolled near bottom (for scroll-down button)
-          const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
-          if (nearBottom) setShowScrollDown(false)
-          
-          // PERFORMANCE: Check if scrolled near top (for infinite scroll - load older messages)
-          const nearTop = el.scrollTop < 100
-          if (nearTop && hasMoreMessages && !loadingOlderMessages) {
-            loadOlderMessages()
-          }
-          
-          // Mark that user has manually scrolled (for scroll position management)
-          if (Math.abs(el.scrollHeight - el.scrollTop - el.clientHeight) > 150) {
-            userHasScrolledRef.current = true
-          }
+          const near = (el.scrollHeight - el.scrollTop - el.clientHeight) < 120
+          if (near) setShowScrollDown(false)
         }}
       >
-        {/* PERFORMANCE: Show loading indicator when fetching older messages */}
-        {loadingOlderMessages && (
-          <div className="flex justify-center py-4">
-            <div className="liquid-glass-chip px-4 py-2 text-xs text-white/70 flex items-center gap-2">
-              <i className="fa-solid fa-spinner fa-spin" />
-              Loading older messages...
-            </div>
-          </div>
-        )}
-        
-        {/* Show "load more" hint if there are more messages */}
-        {hasMoreMessages && !loadingOlderMessages && (
-          <div className="flex justify-center py-2">
-            <button 
-              onClick={loadOlderMessages}
-              className="liquid-glass-chip px-4 py-2 text-xs text-white/60 hover:text-white/80 transition-colors"
-            >
-              ↑ Load earlier messages
-            </button>
-          </div>
-        )}
-        
         {messages.map((m, index) => {
           const messageDate = getDateKey(m.time)
           const prevMessageDate = index > 0 ? getDateKey(messages[index - 1].time) : null
           const showDateSeparator = messageDate !== prevMessageDate
           
           return (
-            <div 
-              key={m.clientKey ?? m.id}
-              style={{
-                // PERFORMANCE: Allow browser to skip rendering off-screen messages
-                contentVisibility: 'auto',
-                containIntrinsicSize: '0 60px', // Approximate height for layout
-              } as React.CSSProperties}
-            >
+            <div key={m.clientKey ?? m.id}>
               {showDateSeparator && (
                 <div className="flex justify-center my-3">
                   <div className="liquid-glass-chip px-3 py-1 text-xs text-white/80 border">
