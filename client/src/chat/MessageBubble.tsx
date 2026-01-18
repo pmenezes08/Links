@@ -4,8 +4,13 @@
  * - Reply snippets, audio/image/video content
  * - Encryption indicators, edit mode, reactions
  * - Long press actions (react, reply, copy, edit, delete)
+ * 
+ * PERFORMANCE: Wrapped in React.memo to prevent re-renders when parent updates
+ * but the individual message hasn't changed. This is critical for chat threads
+ * with many messages.
  */
 
+import { memo } from 'react'
 import type { ChatMessage } from '../types/chat'
 import MessageImage from '../components/MessageImage'
 import MessageVideo from '../components/MessageVideo'
@@ -62,7 +67,7 @@ export interface MessageBubbleProps {
   linkifyText: (text: string) => React.ReactNode[]
 }
 
-export default function MessageBubble({
+function MessageBubbleInner({
   message: m,
   isEditing,
   editText,
@@ -362,3 +367,36 @@ export default function MessageBubble({
     </LongPressActionable>
   )
 }
+
+/**
+ * Memoized MessageBubble - only re-renders when relevant props change.
+ * This prevents all message bubbles from re-rendering when the parent
+ * ChatThread updates (e.g., new message arrives, typing indicator changes).
+ */
+const MessageBubble = memo(MessageBubbleInner, (prevProps, nextProps) => {
+  // Custom comparison - only re-render if message content or editing state changed
+  const prevMsg = prevProps.message
+  const nextMsg = nextProps.message
+  
+  // Check message identity and content
+  if (prevMsg.id !== nextMsg.id) return false
+  if (prevMsg.clientKey !== nextMsg.clientKey) return false
+  if (prevMsg.text !== nextMsg.text) return false
+  if (prevMsg.reaction !== nextMsg.reaction) return false
+  if (prevMsg.isOptimistic !== nextMsg.isOptimistic) return false
+  if (prevMsg.edited_at !== nextMsg.edited_at) return false
+  if (prevMsg.decryption_error !== nextMsg.decryption_error) return false
+  
+  // Check editing state
+  if (prevProps.isEditing !== nextProps.isEditing) return false
+  if (prevProps.editText !== nextProps.editText) return false
+  if (prevProps.editingSaving !== nextProps.editingSaving) return false
+  
+  // Display name can change if profile loads
+  if (prevProps.otherDisplayName !== nextProps.otherDisplayName) return false
+  
+  // All relevant props are the same - skip re-render
+  return true
+})
+
+export default MessageBubble

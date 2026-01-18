@@ -9752,13 +9752,17 @@ def delete_chat():
 def get_messages():
     """Get messages between current user and another user
     
-    PERFORMANCE: Supports delta fetching via since_id parameter.
-    When since_id is provided, only returns messages with id > since_id.
-    This reduces data transfer on polling for faster message delivery.
+    PERFORMANCE: Supports pagination and delta fetching:
+    - since_id: Only get messages with id > since_id (for polling new messages)
+    - before_id: Only get messages with id < before_id (for loading older messages)
+    - limit: Max number of messages to return (default 100 for initial/older, unlimited for polling)
+    
+    This reduces data transfer and improves render performance for large chat histories.
     """
     username = session.get('username')
     other_user_id = request.form.get('other_user_id')
-    # PERFORMANCE: Delta fetching - only get messages newer than this ID
+    
+    # PERFORMANCE: Delta fetching - only get messages newer than this ID (for polling)
     since_id = request.form.get('since_id')
     since_id_int = None
     if since_id:
@@ -9766,6 +9770,27 @@ def get_messages():
             since_id_int = int(since_id)
         except (ValueError, TypeError):
             pass
+    
+    # PERFORMANCE: Pagination - only get messages older than this ID (for infinite scroll)
+    before_id = request.form.get('before_id')
+    before_id_int = None
+    if before_id:
+        try:
+            before_id_int = int(before_id)
+        except (ValueError, TypeError):
+            pass
+    
+    # PERFORMANCE: Limit number of messages (default 100 for initial/older loads, unlimited for polling)
+    limit = request.form.get('limit')
+    limit_int = None
+    if limit:
+        try:
+            limit_int = min(int(limit), 500)  # Cap at 500 for safety
+        except (ValueError, TypeError):
+            pass
+    # Default limit for non-polling requests
+    if limit_int is None and not since_id_int:
+        limit_int = 100
     
     if not other_user_id:
         return jsonify({'success': False, 'error': 'Other user ID required'})
@@ -9817,12 +9842,34 @@ def get_messages():
             other_username = other_user['username'] if hasattr(other_user, 'keys') else other_user[0]
             
             # Get messages between users (compat: edited_at and encryption fields may not exist yet)
-            # PERFORMANCE: Delta fetch support - only get messages newer than since_id
+            # PERFORMANCE: Supports delta fetch (since_id), pagination (before_id), and limit
             with_edited = True
             with_encryption = True
-            since_clause = " AND id > ?" if since_id_int else ""
+            
+            # Build WHERE clause additions
+            extra_clauses = []
+            extra_params = []
+            if since_id_int:
+                extra_clauses.append("id > ?")
+                extra_params.append(since_id_int)
+            if before_id_int:
+                extra_clauses.append("id < ?")
+                extra_params.append(before_id_int)
+            
+            extra_where = (" AND " + " AND ".join(extra_clauses)) if extra_clauses else ""
+            
+            # Build LIMIT clause (for before_id queries, we need to reverse sort then re-reverse results)
+            # For before_id: ORDER BY id DESC LIMIT N, then reverse to get ASC order
+            # For since_id or no pagination: ORDER BY timestamp ASC
+            if before_id_int and limit_int:
+                order_clause = "ORDER BY id DESC"
+                limit_clause = f" LIMIT {limit_int}"
+            else:
+                order_clause = "ORDER BY timestamp ASC"
+                limit_clause = f" LIMIT {limit_int}" if limit_int else ""
+            
             base_params = (username, other_username, other_username, username)
-            query_params = base_params + (since_id_int,) if since_id_int else base_params
+            query_params = base_params + tuple(extra_params)
             
             has_audio_summary = True
             has_reactions = True
@@ -9833,8 +9880,8 @@ def get_messages():
                            is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary, reaction, reaction_by
                     FROM messages
                     WHERE ((sender = ? AND receiver = ?)
-                       OR (sender = ? AND receiver = ?)){since_clause}
-                    ORDER BY timestamp ASC
+                       OR (sender = ? AND receiver = ?)){extra_where}
+                    {order_clause}{limit_clause}
                     """,
                     query_params,
                 )
@@ -9848,8 +9895,8 @@ def get_messages():
                                is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary
                         FROM messages
                         WHERE ((sender = ? AND receiver = ?)
-                           OR (sender = ? AND receiver = ?)){since_clause}
-                        ORDER BY timestamp ASC
+                           OR (sender = ? AND receiver = ?)){extra_where}
+                        {order_clause}{limit_clause}
                         """,
                         query_params,
                     )
@@ -9862,8 +9909,8 @@ def get_messages():
                             SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at, audio_summary
                             FROM messages
                             WHERE ((sender = ? AND receiver = ?)
-                               OR (sender = ? AND receiver = ?)){since_clause}
-                            ORDER BY timestamp ASC
+                               OR (sender = ? AND receiver = ?)){extra_where}
+                            {order_clause}{limit_clause}
                             """,
                             query_params,
                         )
@@ -9876,8 +9923,8 @@ def get_messages():
                                 SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
                                 FROM messages
                                 WHERE ((sender = ? AND receiver = ?)
-                                   OR (sender = ? AND receiver = ?)){since_clause}
-                                ORDER BY timestamp ASC
+                                   OR (sender = ? AND receiver = ?)){extra_where}
+                                {order_clause}{limit_clause}
                                 """,
                                 query_params,
                             )
@@ -9888,8 +9935,8 @@ def get_messages():
                                 SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp
                                 FROM messages
                                 WHERE ((sender = ? AND receiver = ?)
-                                   OR (sender = ? AND receiver = ?)){since_clause}
-                                ORDER BY timestamp ASC
+                                   OR (sender = ? AND receiver = ?)){extra_where}
+                                {order_clause}{limit_clause}
                                 """,
                                 query_params,
                             )
@@ -9962,6 +10009,32 @@ def get_messages():
                 
                 messages.append(msg_dict)
             
+            # PERFORMANCE: Reverse messages if we fetched with DESC order (before_id case)
+            # This ensures messages are always returned in chronological order (oldest first)
+            if before_id_int and limit_int:
+                messages.reverse()
+            
+            # Calculate pagination metadata
+            has_more = False
+            oldest_id = None
+            newest_id = None
+            
+            if messages:
+                oldest_id = messages[0]['id']
+                newest_id = messages[-1]['id']
+                
+                # Check if there are more older messages (for before_id pagination)
+                if limit_int and len(messages) == limit_int:
+                    # We hit the limit, so there might be more
+                    c.execute(
+                        """SELECT COUNT(*) FROM messages 
+                           WHERE ((sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?))
+                           AND id < ?""",
+                        (username, other_username, other_username, username, oldest_id)
+                    )
+                    older_count = c.fetchone()
+                    has_more = (older_count[0] if older_count else 0) > 0
+            
             # Mark messages from other user as read
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
             marked_read = c.rowcount
@@ -9978,16 +10051,23 @@ def get_messages():
                     logger.debug(f"Could not update badge: {badge_err}")
             
             # Write-through cache for fast subsequent polls
-            # PERFORMANCE: Only cache full fetches, not delta fetches
+            # PERFORMANCE: Only cache full fetches, not delta/paginated fetches
             try:
                 from redis_cache import MESSAGE_CACHE_TTL
-                if cache_key and not since_id_int:
+                if cache_key and not since_id_int and not before_id_int:
                     cache.set(cache_key, messages, MESSAGE_CACHE_TTL)
             except Exception:
                 pass
             
-            # Include delta indicator in response for client-side optimization
-            return jsonify({'success': True, 'messages': messages, 'is_delta': bool(since_id_int)})
+            # Include pagination metadata in response
+            return jsonify({
+                'success': True, 
+                'messages': messages, 
+                'is_delta': bool(since_id_int),
+                'has_more': has_more,
+                'oldest_id': oldest_id,
+                'newest_id': newest_id
+            })
             
     except Exception as e:
         logger.error(f"Error fetching messages: {str(e)}")
