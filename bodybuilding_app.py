@@ -13790,6 +13790,19 @@ def post_status():
             except Exception as e:
                 logger.warning(f"mention post helper error: {e}")
 
+            # Check if @Steve is mentioned in the post - trigger AI reply
+            try:
+                import re
+                if content and re.search(r'@steve\b', content, re.IGNORECASE):
+                    logger.info(f"@Steve mentioned in new post {post_id} by {username}")
+                    # Trigger async Steve reply (don't block post creation)
+                    try:
+                        trigger_steve_reply_to_post(post_id, content, username, community_id)
+                    except Exception as steve_err:
+                        logger.warning(f"Steve reply to post failed: {steve_err}")
+            except Exception as steve_check_err:
+                logger.warning(f"Steve mention check error: {steve_check_err}")
+
             # Notify community members (excluding creator) - push + in-app notification row
             try:
                 # Get all members of the community (excluding author)
@@ -19468,6 +19481,119 @@ When sharing news:
 - Include the date of the information if relevant
 
 Never be rude or offensive. Always be supportive even when sarcastic or cynical.'''
+
+
+def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username: str, community_id: int):
+    """
+    Trigger Steve to reply to a post where he was mentioned.
+    This runs inline but is designed to be quick and non-blocking.
+    """
+    from datetime import datetime
+    
+    logger.info(f"Steve replying to post {post_id} in community {community_id}")
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            placeholder = get_sql_placeholder()
+            
+            # Check rate limiting (unless unlimited user)
+            if author_username.lower() not in AI_UNLIMITED_USERS:
+                today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+                c.execute(f"""
+                    SELECT COUNT(*) as cnt FROM ai_usage_log 
+                    WHERE username = {placeholder} AND created_at >= {placeholder}
+                """, (author_username, today_start.strftime('%Y-%m-%d %H:%M:%S')))
+                row = c.fetchone()
+                usage_count = row['cnt'] if hasattr(row, 'keys') else row[0]
+                
+                if usage_count >= AI_DAILY_LIMIT:
+                    logger.info(f"User {author_username} hit AI daily limit, skipping Steve reply to post")
+                    return
+            
+            # Get community's AI personality
+            ai_personality = 'friendly'
+            try:
+                c.execute(f"SELECT ai_personality FROM communities WHERE id = {placeholder}", (community_id,))
+                row = c.fetchone()
+                if row:
+                    ai_personality = (row['ai_personality'] if hasattr(row, 'keys') else row[0]) or 'friendly'
+            except Exception:
+                pass
+            
+            # Build context for Steve
+            context_parts = [
+                f"Original post by {author_username}: {post_content}",
+                f"\nUser {author_username} mentioned you (@Steve) in their post. Respond to their post directly."
+            ]
+            
+            current_datetime = datetime.utcnow()
+            context_parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
+            
+            context = "\n\n".join(context_parts)
+            system_prompt = get_ai_personality_prompt(ai_personality)
+            
+            # Call AI (simplified - use OpenAI-compatible API)
+            ai_response = None
+            try:
+                if XAI_API_KEY:
+                    client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+                    response = client.chat.completions.create(
+                        model="grok-3",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": context}
+                        ],
+                        max_tokens=400,
+                        temperature=0.7
+                    )
+                    ai_response = response.choices[0].message.content.strip()
+                elif OPENAI_API_KEY:
+                    client = OpenAI(api_key=OPENAI_API_KEY)
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": context}
+                        ],
+                        max_tokens=400,
+                        temperature=0.7
+                    )
+                    ai_response = response.choices[0].message.content.strip()
+            except Exception as ai_err:
+                logger.error(f"AI error in Steve post reply: {ai_err}")
+                return
+            
+            if not ai_response:
+                logger.warning("No AI response for Steve post reply")
+                return
+            
+            # Create Steve's reply to the post
+            now = datetime.utcnow()
+            timestamp_db = now.strftime('%Y-%m-%d %H:%M:%S')
+            
+            c.execute(f"""
+                INSERT INTO replies (post_id, username, content, timestamp, community_id, parent_reply_id)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+            """, (post_id, AI_USERNAME, ai_response, timestamp_db, community_id, None))
+            
+            steve_reply_id = c.lastrowid
+            conn.commit()
+            
+            # Log AI usage
+            try:
+                c.execute(f"""
+                    INSERT INTO ai_usage_log (username, request_type, created_at)
+                    VALUES ({placeholder}, {placeholder}, {placeholder})
+                """, (author_username, 'steve_post_reply', timestamp_db))
+                conn.commit()
+            except Exception:
+                pass
+            
+            logger.info(f"Steve replied to post {post_id} with reply ID {steve_reply_id}")
+            
+    except Exception as e:
+        logger.error(f"Error in trigger_steve_reply_to_post: {e}", exc_info=True)
 
 
 @app.route('/api/ai/personalities', methods=['GET'])
