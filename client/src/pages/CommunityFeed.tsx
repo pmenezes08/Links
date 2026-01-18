@@ -10,7 +10,7 @@ import ZoomableImage from '../components/ZoomableImage'
 import { useHeader } from '../contexts/HeaderContext'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
-import { renderTextWithLinks, detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
+import { renderTextWithLinks, renderTextWithSourceLinks, detectLinks, replaceLinkInText, type DetectedLink } from '../utils/linkUtils.tsx'
 import EditableAISummary from '../components/EditableAISummary'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
@@ -4156,7 +4156,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                     }
                   })() : null}
                   {r.content ? (
-                    <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">{r.content}</div>
+                    <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">
+                      {r.username?.toLowerCase() === 'steve' 
+                        ? renderTextWithSourceLinks(r.content, true)
+                        : r.content}
+                    </div>
                   ) : null}
                   {r.image_path ? (
                     <div className="mt-1 flex justify-center">

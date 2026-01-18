@@ -190,6 +190,74 @@ function preserveNewlines(text: string): React.ReactNode[] {
 }
 
 /**
+ * Renders text with clickable links, optionally shortening URLs to "[source]"
+ * Useful for AI-generated content with citations
+ */
+export function renderTextWithSourceLinks(
+  text: string,
+  shortenUrls: boolean = false
+): React.ReactNode {
+  if (!text) return null
+  
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let sourceCounter = 0
+  
+  // Match both markdown links and plain URLs
+  const combinedRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s]+)/g
+  let match
+  
+  while ((match = combinedRegex.exec(text)) !== null) {
+    // Add text before the link
+    if (match.index > lastIndex) {
+      const textBefore = text.substring(lastIndex, match.index)
+      parts.push(...colorizeMentions(preserveNewlines(textBefore)))
+    }
+    
+    let url: string
+    let displayText: string
+    
+    if (match[1] && match[2]) {
+      // Markdown link: [text](url)
+      displayText = match[1]
+      url = match[2]
+    } else {
+      // Plain URL
+      url = match[0]
+      if (shortenUrls) {
+        sourceCounter++
+        displayText = `[source${sourceCounter > 1 ? ` ${sourceCounter}` : ''}]`
+      } else {
+        displayText = url
+      }
+    }
+    
+    parts.push(
+      <a
+        key={`link-${match.index}`}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-[#4db6ac] hover:underline"
+        title={shortenUrls ? url : undefined}
+      >
+        {displayText}
+      </a>
+    )
+    
+    lastIndex = match.index + match[0].length
+  }
+  
+  // Add remaining text
+  if (lastIndex < text.length) {
+    const remainingText = text.substring(lastIndex)
+    parts.push(...colorizeMentions(preserveNewlines(remainingText)))
+  }
+  
+  return parts.length > 0 ? <>{parts}</> : text
+}
+
+/**
  * Renders text with clickable links (converts markdown links to HTML)
  * Internal c-point.co links are handled within the app
  * Also colorizes @mentions

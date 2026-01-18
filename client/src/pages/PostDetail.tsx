@@ -24,11 +24,12 @@ type Post = { id: number; username: string; content: string; image_path?: string
 
 // old formatTimestamp removed; using formatSmartTime
 
-function renderRichText(input: string){
+function renderRichText(input: string, shortenUrls: boolean = false){
   const nodes: Array<React.ReactNode> = []
   const markdownRe = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g
   let lastIndex = 0
   let match: RegExpExecArray | null
+  let sourceCounter = 0
   // First, process markdown links
   while ((match = markdownRe.exec(input))){
     if (match.index > lastIndex){
@@ -51,7 +52,13 @@ function renderRichText(input: string){
     }
     const urlText = m[0]
     const href = urlText.startsWith('http') ? urlText : `https://${urlText}`
-    nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words">{urlText}</a>)
+    // If shortenUrls is true, show "source" instead of full URL
+    if (shortenUrls) {
+      sourceCounter++
+      nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline" title={urlText}>[source{sourceCounter > 1 ? ` ${sourceCounter}` : ''}]</a>)
+    } else {
+      nodes.push(<a key={`u-${lastIndex + m.index}`} href={href} target="_blank" rel="noopener noreferrer" className="text-[#4db6ac] underline-offset-2 hover:underline break-words">{urlText}</a>)
+    }
     urlLast = urlRe.lastIndex
   }
   if (urlLast < rest.length){
@@ -2205,7 +2212,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             ) : null}
           </div>
           {!isEditing ? (
-            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content)}</div>
+            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, reply.username?.toLowerCase() === 'steve')}</div>
           ) : (
             <div className="mt-1">
               <textarea
