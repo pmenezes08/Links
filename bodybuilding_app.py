@@ -9858,15 +9858,24 @@ def get_messages():
             
             extra_where = (" AND " + " AND ".join(extra_clauses)) if extra_clauses else ""
             
-            # Build LIMIT clause (for before_id queries, we need to reverse sort then re-reverse results)
-            # For before_id: ORDER BY id DESC LIMIT N, then reverse to get ASC order
-            # For since_id or no pagination: ORDER BY timestamp ASC
-            if before_id_int and limit_int:
+            # Build ORDER BY and LIMIT clauses
+            # For initial load with limit: ORDER BY id DESC LIMIT N, then reverse to get newest N in ASC order
+            # For before_id (load older): ORDER BY id DESC LIMIT N, then reverse
+            # For since_id (polling): ORDER BY timestamp ASC (get all new messages)
+            needs_reverse = False
+            if since_id_int:
+                # Polling for new messages - get all in chronological order
+                order_clause = "ORDER BY timestamp ASC"
+                limit_clause = ""  # No limit for polling - need all new messages
+            elif limit_int:
+                # Initial load or load older - get last N messages then reverse
                 order_clause = "ORDER BY id DESC"
                 limit_clause = f" LIMIT {limit_int}"
+                needs_reverse = True
             else:
+                # No limit, no since_id - just get all in order (shouldn't happen normally)
                 order_clause = "ORDER BY timestamp ASC"
-                limit_clause = f" LIMIT {limit_int}" if limit_int else ""
+                limit_clause = ""
             
             base_params = (username, other_username, other_username, username)
             query_params = base_params + tuple(extra_params)
@@ -10009,9 +10018,10 @@ def get_messages():
                 
                 messages.append(msg_dict)
             
-            # PERFORMANCE: Reverse messages if we fetched with DESC order (before_id case)
+            # PERFORMANCE: Reverse messages if we fetched with DESC order
             # This ensures messages are always returned in chronological order (oldest first)
-            if before_id_int and limit_int:
+            # needs_reverse is True for: initial load with limit, OR before_id with limit
+            if needs_reverse:
                 messages.reverse()
             
             # Calculate pagination metadata
