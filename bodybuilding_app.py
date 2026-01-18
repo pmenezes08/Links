@@ -3661,11 +3661,11 @@ if not USE_MYSQL:
     ensure_indexes()
 
 # Defer add_missing_tables to background thread to speed up cold starts
+import threading as _threading
+
 def _deferred_db_bootstrap():
     """Run database bootstrap in background to not block cold starts."""
-    import threading
-    import time as _time
-    _time.sleep(2)  # Wait for app to be fully initialized
+    time.sleep(2)  # Wait for app to be fully initialized
     try:
         add_missing_tables()
         logger.info("Background DB bootstrap completed successfully")
@@ -3676,7 +3676,7 @@ def _deferred_db_bootstrap():
         )
 
 # Start background bootstrap thread (non-blocking)
-_bootstrap_thread = threading.Thread(target=_deferred_db_bootstrap, daemon=True)
+_bootstrap_thread = _threading.Thread(target=_deferred_db_bootstrap, daemon=True)
 _bootstrap_thread.start()
 logger.info("DB bootstrap deferred to background thread for faster cold start")
 
