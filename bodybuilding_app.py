@@ -3660,15 +3660,25 @@ if not USE_MYSQL:
     init_db()
     ensure_indexes()
 
-# Always ensure missing tables are added for both SQLite and MySQL
-# Guard this at import-time so a transient MySQL outage doesn't crash WSGI startup
-try:
-    add_missing_tables()
-except Exception as e:
-    logger.error(
-        f"Startup DB bootstrap skipped due to error: {e}. "
-        "Verify DB_BACKEND and MYSQL_* env vars on the server, or run setup_mysql_env.py."
-    )
+# Defer add_missing_tables to background thread to speed up cold starts
+def _deferred_db_bootstrap():
+    """Run database bootstrap in background to not block cold starts."""
+    import threading
+    import time as _time
+    _time.sleep(2)  # Wait for app to be fully initialized
+    try:
+        add_missing_tables()
+        logger.info("Background DB bootstrap completed successfully")
+    except Exception as e:
+        logger.error(
+            f"Background DB bootstrap failed: {e}. "
+            "Verify DB_BACKEND and MYSQL_* env vars on the server."
+        )
+
+# Start background bootstrap thread (non-blocking)
+_bootstrap_thread = threading.Thread(target=_deferred_db_bootstrap, daemon=True)
+_bootstrap_thread.start()
+logger.info("DB bootstrap deferred to background thread for faster cold start")
 
 def ensure_admin_member_of_all():
     try:
