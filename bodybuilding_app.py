@@ -19697,32 +19697,22 @@ def ai_steve_reply():
                 
                 ai_response = None
                 if XAI_API_KEY:
-                    # Try multiple formats for xAI live search
-                    search_formats = [
-                        # Format 1: extra_body with search_parameters
-                        {"extra_body": {"search_parameters": {"mode": "on"}}},
-                        # Format 2: extra_body with search
-                        {"extra_body": {"search": {"enabled": True}}},
-                        # Format 3: No search (fallback)
-                        {}
-                    ]
+                    # Enable live web search using xAI's official tools format
+                    # See: https://docs.x.ai/docs/guides/tools/search-tools
+                    api_params["tools"] = [{"type": "web_search"}]
+                    logger.info("Steve web search enabled via tools=[{type: web_search}]")
                     
-                    for i, search_config in enumerate(search_formats):
-                        try:
-                            call_params = {**api_params, **search_config}
-                            logger.info(f"Steve trying search format {i+1}: {list(search_config.keys()) if search_config else 'basic'}")
-                            response = client.chat.completions.create(**call_params)
-                            ai_response = response.choices[0].message.content.strip()
-                            if search_config:
-                                logger.info(f"Steve xAI call successful with search format {i+1}")
-                            else:
-                                logger.info("Steve basic xAI call successful (no live search)")
-                            break
-                        except Exception as fmt_err:
-                            logger.warning(f"Search format {i+1} failed: {fmt_err}")
-                            if i == len(search_formats) - 1:
-                                raise fmt_err
-                            continue
+                    try:
+                        response = client.chat.completions.create(**api_params)
+                        ai_response = response.choices[0].message.content.strip()
+                        logger.info("Steve xAI call with web search successful")
+                    except Exception as search_err:
+                        # If tools fail, try without
+                        logger.warning(f"Web search failed: {search_err}, trying without")
+                        del api_params["tools"]
+                        response = client.chat.completions.create(**api_params)
+                        ai_response = response.choices[0].message.content.strip()
+                        logger.info("Steve basic xAI call successful (no web search)")
                 else:
                     # OpenAI fallback (no web search)
                     response = client.chat.completions.create(**api_params)
