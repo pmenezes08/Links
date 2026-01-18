@@ -19685,22 +19685,40 @@ def ai_steve_reply():
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": context}
                     ],
-                    "max_tokens": 300,  # Increased for richer responses with web search
+                    "max_tokens": 300,
                     "temperature": 0.8
                 }
                 
-                # Enable web search for Grok (xAI) - allows real-time info access
+                # Try to enable web search for Grok (xAI)
+                # If it fails, fall back to basic call
+                ai_response = None
                 if XAI_API_KEY:
-                    api_params["search_parameters"] = {"mode": "auto"}
-                    logger.info("Steve web search enabled (auto mode)")
-                
-                response = client.chat.completions.create(**api_params)
-                
-                ai_response = response.choices[0].message.content.strip()
+                    try:
+                        # Try with live search enabled (xAI format)
+                        search_params = api_params.copy()
+                        search_params["search"] = {"mode": "auto"}
+                        logger.info("Attempting Steve with web search...")
+                        response = client.chat.completions.create(**search_params)
+                        ai_response = response.choices[0].message.content.strip()
+                        logger.info("Steve web search call successful")
+                    except Exception as search_err:
+                        logger.warning(f"Web search failed, trying without: {search_err}")
+                        # Fall back to basic call without search
+                        try:
+                            response = client.chat.completions.create(**api_params)
+                            ai_response = response.choices[0].message.content.strip()
+                            logger.info("Steve basic call successful (no web search)")
+                        except Exception as basic_err:
+                            logger.error(f"Basic xAI call also failed: {basic_err}")
+                            raise basic_err
+                else:
+                    # OpenAI fallback (no web search)
+                    response = client.chat.completions.create(**api_params)
+                    ai_response = response.choices[0].message.content.strip()
                 
             except Exception as ai_err:
-                logger.error(f"AI API error (xAI/OpenAI): {ai_err}")
-                return jsonify({'success': False, 'error': 'AI service error'}), 503
+                logger.error(f"AI API error (xAI/OpenAI): {ai_err}", exc_info=True)
+                return jsonify({'success': False, 'error': f'AI service error: {str(ai_err)}'}), 503
             
             # Get Steve's user ID
             c.execute(f"SELECT id FROM users WHERE username = {placeholder}", (AI_USERNAME,))
