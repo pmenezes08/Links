@@ -9796,9 +9796,9 @@ def get_messages():
         return jsonify({'success': False, 'error': 'Other user ID required'})
     
     # Short-lived cache to reduce DB latency (viewer-specific; invalidated on write)
-    # PERFORMANCE: Skip cache for delta fetches - they need fresh data
+    # PERFORMANCE: Skip cache for delta fetches and paginated requests - they need fresh data
     cache_key = None
-    if not since_id_int:  # Only use cache for full fetches
+    if not since_id_int and not before_id_int and not limit_int:  # Only use cache for full fetches without pagination
         try:
             # Resolve other username for stable key
             with get_db_connection() as _conn:
@@ -9812,14 +9812,31 @@ def get_messages():
         except Exception:
             cache_key = None
         if cache_key:
-            cached_messages = cache.get(cache_key)
-            if cached_messages:
+            cached_data = cache.get(cache_key)
+            if cached_data:
+                # Support both old format (list) and new format (dict with metadata)
+                if isinstance(cached_data, list):
+                    cached_messages = cached_data
+                    cached_has_more = False
+                    cached_oldest_id = None
+                    cached_newest_id = None
+                else:
+                    cached_messages = cached_data.get('messages', [])
+                    cached_has_more = cached_data.get('has_more', False)
+                    cached_oldest_id = cached_data.get('oldest_id')
+                    cached_newest_id = cached_data.get('newest_id')
+                
                 # Ensure signal_protocol flag is set for cached messages
-                # This handles messages cached before the signal_protocol logic was added
                 for msg in cached_messages:
                     if msg.get('is_encrypted') and not msg.get('encrypted_body'):
                         msg['signal_protocol'] = True
-                return jsonify({'success': True, 'messages': cached_messages})
+                return jsonify({
+                    'success': True, 
+                    'messages': cached_messages,
+                    'has_more': cached_has_more,
+                    'oldest_id': cached_oldest_id,
+                    'newest_id': cached_newest_id
+                })
     
     try:
         with get_db_connection() as conn:
