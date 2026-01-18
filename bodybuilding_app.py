@@ -101,17 +101,9 @@ except ImportError as e:
     print(f"❌ OpenAI not available: {e}")
     print("   Run: pip install openai")
 
-# xAI SDK for Grok with web search
-try:
-    from xai_sdk import Client as XAIClient
-    from xai_sdk.chat import user as xai_user
-    from xai_sdk.tools import web_search as xai_web_search
-    XAI_SDK_AVAILABLE = True
-    print("✅ xAI SDK imported successfully")
-except ImportError as e:
-    XAI_SDK_AVAILABLE = False
-    print(f"⚠️ xAI SDK not available: {e}")
-    print("   Run: pip install xai-sdk")
+# Note: xAI SDK with web_search requires specific setup that doesn't work via OpenAI-compatible API
+# For now, Steve uses xAI/Grok without live web search
+XAI_SDK_AVAILABLE = False
 
 # Initialize Flask app
 app = Flask(__name__, template_folder='templates')
@@ -19467,18 +19459,17 @@ IMPORTANT LANGUAGE RULE: You MUST reply in the SAME language the user writes in.
 - If the user writes in French, reply in French.
 - Match the user's language exactly. Do NOT default to any language.
 
-LIVE WEB SEARCH: You have REAL-TIME web search capability. You MUST use it when users ask about:
-- Current news, today's headlines, or recent events
-- What's happening right now (use the current date/time provided in context)
-- Sports scores, stock prices, weather, or any live data
-- Recent developments in any topic
+KNOWLEDGE LIMITATIONS: You do NOT have access to real-time web search or live data.
+- If users ask for today's news, weather, or current events, be HONEST and say you don't have access to real-time information.
+- Never make up news headlines or pretend to search the web.
+- Never use placeholder text like "[inserir notícia]" - give real answers or admit you don't know.
+- You can discuss general topics, give advice, tell stories, and help with questions based on your training.
+- The current date is provided for context, but you cannot fetch live data from that date.
 
-CRITICAL: The current date is provided in the context. Use web search to find information from TODAY or the most recent available. Do NOT rely on your training data for current events - always search for the latest information.
-
-When sharing news:
-- Search for the most recent articles (from today if possible)
-- Mention the source briefly (e.g., "According to Reuters...")
-- Include the date of the information if relevant
+When you don't have the information:
+- Be honest: "I don't have access to real-time news, but I can help with..."
+- Suggest alternatives: "You could check RTP or Público for today's Portuguese news"
+- Offer what you CAN do: general knowledge, advice, stories, explanations, etc.
 
 Never be rude or offensive. Always be supportive even when sarcastic or cynical.'''
 
@@ -19800,74 +19791,32 @@ def ai_steve_reply():
             
             context = "\n\n".join(context_parts)
             
-            # Call xAI Grok with web search (preferred) or fallback to OpenAI
+            # Call xAI Grok or fallback to OpenAI
             system_prompt = get_ai_personality_prompt(ai_personality)
             ai_response = None
             
             try:
-                # Option 1: Use xAI SDK with web search (preferred)
-                if XAI_API_KEY and XAI_SDK_AVAILABLE:
-                    logger.info(f"Steve using xAI SDK with web search ({ai_personality} mode)")
-                    try:
-                        xai_client = XAIClient(api_key=XAI_API_KEY)
-                        
-                        # Create chat with web search enabled
-                        chat = xai_client.chat.create(
-                            model="grok-3",  # Model that supports web search
-                            tools=[xai_web_search()],  # Enable real-time web search
-                            system_prompt=system_prompt
-                        )
-                        
-                        # Send the user message
-                        chat.append(xai_user(context))
-                        
-                        # Get the response (non-streaming for simplicity)
-                        full_response = ""
-                        for response, chunk in chat.stream():
-                            full_response = response.content
-                        
-                        ai_response = full_response.strip() if full_response else None
-                        
-                        if ai_response:
-                            logger.info("Steve xAI SDK call with web search successful")
-                        else:
-                            raise Exception("Empty response from xAI SDK")
-                            
-                    except Exception as sdk_err:
-                        logger.warning(f"xAI SDK failed: {sdk_err}, trying OpenAI-compatible API")
-                        ai_response = None
-                
-                # Option 2: Use xAI OpenAI-compatible API (fallback)
-                if ai_response is None and XAI_API_KEY:
-                    logger.info(f"Steve using xAI OpenAI-compatible API ({ai_personality} mode)")
+                # Option 1: Use xAI/Grok (preferred)
+                if XAI_API_KEY:
+                    logger.info(f"Steve using xAI/Grok ({ai_personality} mode)")
                     client = OpenAI(
                         api_key=XAI_API_KEY,
                         base_url="https://api.x.ai/v1"
                     )
                     
-                    api_params = {
-                        "model": "grok-3",
-                        "messages": [
+                    response = client.chat.completions.create(
+                        model="grok-3",
+                        messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": context}
                         ],
-                        "max_tokens": 400,
-                        "temperature": 0.7,
-                        "tools": [{"type": "web_search"}]
-                    }
-                    
-                    try:
-                        response = client.chat.completions.create(**api_params)
-                        ai_response = response.choices[0].message.content.strip()
-                        logger.info("Steve xAI OpenAI-compatible API successful")
-                    except Exception as api_err:
-                        logger.warning(f"xAI tools failed: {api_err}, trying without tools")
-                        del api_params["tools"]
-                        response = client.chat.completions.create(**api_params)
-                        ai_response = response.choices[0].message.content.strip()
-                        logger.info("Steve xAI basic call successful (no web search)")
+                        max_tokens=400,
+                        temperature=0.7
+                    )
+                    ai_response = response.choices[0].message.content.strip()
+                    logger.info("Steve xAI/Grok call successful")
                 
-                # Option 3: OpenAI fallback (no web search)
+                # Option 2: OpenAI fallback
                 if ai_response is None and OPENAI_API_KEY:
                     logger.info(f"Steve using OpenAI fallback ({ai_personality} mode)")
                     client = OpenAI(api_key=OPENAI_API_KEY)
