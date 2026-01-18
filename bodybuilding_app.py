@@ -19640,6 +19640,11 @@ def ai_steve_reply():
                     context_parts.append(f"Comment by {parent_author}: {parent_content}")
             
             context_parts.append(f"User {username} now says: {user_message}")
+            
+            # Add current date/time for time-aware responses
+            from datetime import datetime
+            current_datetime = datetime.utcnow()
+            context_parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
             context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
             
             context = "\n\n".join(context_parts)
