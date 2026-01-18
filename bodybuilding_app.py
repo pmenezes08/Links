@@ -19442,13 +19442,18 @@ IMPORTANT LANGUAGE RULE: You MUST reply in the SAME language the user writes in.
 - If the user writes in French, reply in French.
 - Match the user's language exactly. Do NOT default to any language.
 
-WEB SEARCH CAPABILITY: You have access to live web search. When users ask about:
-- Current news, events, or headlines
-- Today's date or time-sensitive information
-- Real-time data like sports scores, stock prices, weather
-- Recent developments or what's happening now
-Use your web search capability to provide accurate, up-to-date information.
-When providing news or current events, cite your sources briefly.
+LIVE WEB SEARCH: You have REAL-TIME web search capability. You MUST use it when users ask about:
+- Current news, today's headlines, or recent events
+- What's happening right now (use the current date/time provided in context)
+- Sports scores, stock prices, weather, or any live data
+- Recent developments in any topic
+
+CRITICAL: The current date is provided in the context. Use web search to find information from TODAY or the most recent available. Do NOT rely on your training data for current events - always search for the latest information.
+
+When sharing news:
+- Search for the most recent articles (from today if possible)
+- Mention the source briefly (e.g., "According to Reuters...")
+- Include the date of the information if relevant
 
 Never be rude or offensive. Always be supportive even when sarcastic or cynical.'''
 
@@ -19660,12 +19665,13 @@ def ai_steve_reply():
             # Call xAI Grok for all Steve personalities (fallback to OpenAI if not configured)
             try:
                 if XAI_API_KEY:
-                    # Use xAI/Grok for all personalities
+                    # Use xAI/Grok with live web search capability
                     client = OpenAI(
                         api_key=XAI_API_KEY,
                         base_url="https://api.x.ai/v1"
                     )
-                    model = "grok-4-1-fast-non-reasoning"
+                    # Use grok-3 for live search capability (grok-4-1-fast doesn't support it well)
+                    model = "grok-3"
                     logger.info(f"Steve using xAI/Grok ({ai_personality} mode) - model: {model}")
                 elif OPENAI_API_KEY:
                     # Fallback to OpenAI if xAI not configured
@@ -19685,32 +19691,38 @@ def ai_steve_reply():
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": context}
                     ],
-                    "max_tokens": 300,
-                    "temperature": 0.8
+                    "max_tokens": 400,
+                    "temperature": 0.7
                 }
                 
-                # Try to enable web search for Grok (xAI)
-                # If it fails, fall back to basic call
                 ai_response = None
                 if XAI_API_KEY:
-                    try:
-                        # Try with live search enabled (xAI format)
-                        search_params = api_params.copy()
-                        search_params["search"] = {"mode": "auto"}
-                        logger.info("Attempting Steve with web search...")
-                        response = client.chat.completions.create(**search_params)
-                        ai_response = response.choices[0].message.content.strip()
-                        logger.info("Steve web search call successful")
-                    except Exception as search_err:
-                        logger.warning(f"Web search failed, trying without: {search_err}")
-                        # Fall back to basic call without search
+                    # Try multiple formats for xAI live search
+                    search_formats = [
+                        # Format 1: extra_body with search_parameters
+                        {"extra_body": {"search_parameters": {"mode": "on"}}},
+                        # Format 2: extra_body with search
+                        {"extra_body": {"search": {"enabled": True}}},
+                        # Format 3: No search (fallback)
+                        {}
+                    ]
+                    
+                    for i, search_config in enumerate(search_formats):
                         try:
-                            response = client.chat.completions.create(**api_params)
+                            call_params = {**api_params, **search_config}
+                            logger.info(f"Steve trying search format {i+1}: {list(search_config.keys()) if search_config else 'basic'}")
+                            response = client.chat.completions.create(**call_params)
                             ai_response = response.choices[0].message.content.strip()
-                            logger.info("Steve basic call successful (no web search)")
-                        except Exception as basic_err:
-                            logger.error(f"Basic xAI call also failed: {basic_err}")
-                            raise basic_err
+                            if search_config:
+                                logger.info(f"Steve xAI call successful with search format {i+1}")
+                            else:
+                                logger.info("Steve basic xAI call successful (no live search)")
+                            break
+                        except Exception as fmt_err:
+                            logger.warning(f"Search format {i+1} failed: {fmt_err}")
+                            if i == len(search_formats) - 1:
+                                raise fmt_err
+                            continue
                 else:
                     # OpenAI fallback (no web search)
                     response = client.chat.completions.create(**api_params)
