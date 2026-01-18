@@ -19459,14 +19459,21 @@ IMPORTANT LANGUAGE RULE: You MUST reply in the SAME language the user writes in.
 - If the user writes in French, reply in French.
 - Match the user's language exactly. Do NOT default to any language.
 
-WEB SEARCH: For questions about news, weather, current events, or real-time data, you have web search capability.
-- When you search the web, provide REAL information from your search results
-- Always cite your sources (e.g., "According to Reuters...", "BBC reports...")
-- Include the date of the information when relevant
-- Never make up news or use placeholder text like "[inserir notícia]"
+CRITICAL HONESTY RULE: You do NOT have real-time web access. Never pretend to search the web or cite sources you didn't actually access.
 
-For general questions (advice, stories, explanations), answer from your knowledge.
-The current date/time is provided in the context - use it to give time-appropriate responses.
+When users ask about current news, weather, or real-time events:
+- Be HONEST: Say "I don't have access to real-time news/weather data"
+- NEVER make up headlines, sources, or claim to have "scraped" or "searched" anything
+- NEVER cite RTP, Público, BBC, etc. unless you actually have that information
+- Suggest they check reliable sources directly: "Check RTP.pt or Público.pt for today's Portuguese news"
+
+What you CAN do:
+- Answer general knowledge questions
+- Give advice, tell stories, explain concepts
+- Discuss historical events (before your training cutoff)
+- Help with tasks that don't require real-time data
+
+The current date is provided for context only - you cannot fetch live data from today.
 
 Never be rude or offensive. Always be supportive even when sarcastic or cynical.'''
 
@@ -19521,38 +19528,11 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             context = "\n\n".join(context_parts)
             system_prompt = get_ai_personality_prompt(ai_personality)
             
-            # Detect if post is asking about real-time info
-            import re
-            realtime_keywords = r'\b(news|notícias|noticias|weather|tempo|clima|meteo|today|hoje|current|actual|latest|últimas|score|resultado|stock|ações|price|preço)\b'
-            needs_web_search = bool(re.search(realtime_keywords, post_content.lower()))
-            
-            # Call AI - use OpenAI web search for news/weather
+            # Call AI - use xAI/Grok or OpenAI fallback
             ai_response = None
             try:
-                # Use OpenAI web search for real-time queries
-                if needs_web_search and OPENAI_API_KEY:
-                    logger.info(f"Steve post reply using OpenAI web search")
-                    client = OpenAI(api_key=OPENAI_API_KEY)
-                    try:
-                        response = client.chat.completions.create(
-                            model="gpt-4o-mini-search-preview",
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": context}
-                            ],
-                            max_tokens=500,
-                            temperature=0.7,
-                            tools=[{"type": "web_search"}],
-                            tool_choice="auto"
-                        )
-                        ai_response = response.choices[0].message.content.strip()
-                        logger.info("Steve post reply web search successful")
-                    except Exception as search_err:
-                        logger.warning(f"Web search failed in post reply: {search_err}")
-                        ai_response = None
-                
-                # Use xAI/Grok for general queries
-                if ai_response is None and XAI_API_KEY:
+                # Use xAI/Grok (preferred)
+                if XAI_API_KEY:
                     client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                     response = client.chat.completions.create(
                         model="grok-3",
@@ -19565,7 +19545,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     )
                     ai_response = response.choices[0].message.content.strip()
                 
-                # OpenAI basic fallback
+                # OpenAI fallback
                 if ai_response is None and OPENAI_API_KEY:
                     client = OpenAI(api_key=OPENAI_API_KEY)
                     response = client.chat.completions.create(
@@ -19819,43 +19799,13 @@ def ai_steve_reply():
             
             context = "\n\n".join(context_parts)
             
-            # Call AI - use OpenAI with web search for news/weather, otherwise xAI/Grok
+            # Call AI - use xAI/Grok (preferred) or OpenAI fallback
             system_prompt = get_ai_personality_prompt(ai_personality)
             ai_response = None
             
-            # Detect if user is asking about real-time info (news, weather, current events)
-            import re
-            realtime_keywords = r'\b(news|notícias|noticias|weather|tempo|clima|meteo|today|hoje|current|actual|latest|últimas|score|resultado|stock|ações|price|preço)\b'
-            needs_web_search = bool(re.search(realtime_keywords, user_message.lower()))
-            
             try:
-                # Option 1: Use OpenAI with web search for real-time queries
-                if needs_web_search and OPENAI_API_KEY:
-                    logger.info(f"Steve using OpenAI web search ({ai_personality} mode) - real-time query detected")
-                    client = OpenAI(api_key=OPENAI_API_KEY)
-                    
-                    try:
-                        # Use search-enabled model with web_search tool
-                        response = client.chat.completions.create(
-                            model="gpt-4o-mini-search-preview",  # Search-enabled model
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": context}
-                            ],
-                            max_tokens=500,
-                            temperature=0.7,
-                            tools=[{"type": "web_search"}],
-                            tool_choice="auto"  # Let model decide when to search
-                        )
-                        ai_response = response.choices[0].message.content.strip()
-                        logger.info("Steve OpenAI web search successful")
-                    except Exception as search_err:
-                        logger.warning(f"OpenAI web search failed: {search_err}, trying without search")
-                        # Fall through to regular call
-                        ai_response = None
-                
-                # Option 2: Use xAI/Grok for general queries
-                if ai_response is None and XAI_API_KEY:
+                # Option 1: Use xAI/Grok (preferred)
+                if XAI_API_KEY:
                     logger.info(f"Steve using xAI/Grok ({ai_personality} mode)")
                     client = OpenAI(
                         api_key=XAI_API_KEY,
@@ -19874,9 +19824,9 @@ def ai_steve_reply():
                     ai_response = response.choices[0].message.content.strip()
                     logger.info("Steve xAI/Grok call successful")
                 
-                # Option 3: OpenAI basic fallback
+                # Option 2: OpenAI fallback
                 if ai_response is None and OPENAI_API_KEY:
-                    logger.info(f"Steve using OpenAI basic ({ai_personality} mode)")
+                    logger.info(f"Steve using OpenAI ({ai_personality} mode)")
                     client = OpenAI(api_key=OPENAI_API_KEY)
                     response = client.chat.completions.create(
                         model="gpt-4o-mini",
@@ -19888,7 +19838,7 @@ def ai_steve_reply():
                         temperature=0.7
                     )
                     ai_response = response.choices[0].message.content.strip()
-                    logger.info("Steve OpenAI basic successful")
+                    logger.info("Steve OpenAI call successful")
                 
                 if ai_response is None:
                     logger.error("No AI API available (XAI_API_KEY or OPENAI_API_KEY)")
