@@ -19432,7 +19432,7 @@ def get_ai_personality_prompt(personality_key: str) -> str:
     """Get the system prompt for a given AI personality."""
     personality = AI_PERSONALITIES.get(personality_key, AI_PERSONALITIES['friendly'])
     base_prompt = personality['prompt']
-    # Add language matching instruction to all personalities
+    # Add language matching instruction and capabilities to all personalities
     return base_prompt + '''
 
 IMPORTANT LANGUAGE RULE: You MUST reply in the SAME language the user writes in.
@@ -19441,6 +19441,14 @@ IMPORTANT LANGUAGE RULE: You MUST reply in the SAME language the user writes in.
 - If the user writes in Spanish, reply in Spanish.
 - If the user writes in French, reply in French.
 - Match the user's language exactly. Do NOT default to any language.
+
+WEB SEARCH CAPABILITY: You have access to live web search. When users ask about:
+- Current news, events, or headlines
+- Today's date or time-sensitive information
+- Real-time data like sports scores, stock prices, weather
+- Recent developments or what's happening now
+Use your web search capability to provide accurate, up-to-date information.
+When providing news or current events, cite your sources briefly.
 
 Never be rude or offensive. Always be supportive even when sarcastic or cynical.'''
 
@@ -19670,15 +19678,23 @@ def ai_steve_reply():
                 
                 system_prompt = get_ai_personality_prompt(ai_personality)
 
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=[
+                # Build the API call parameters
+                api_params = {
+                    "model": model,
+                    "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": context}
                     ],
-                    max_tokens=200,
-                    temperature=0.8
-                )
+                    "max_tokens": 300,  # Increased for richer responses with web search
+                    "temperature": 0.8
+                }
+                
+                # Enable web search for Grok (xAI) - allows real-time info access
+                if XAI_API_KEY:
+                    api_params["search_parameters"] = {"mode": "auto"}
+                    logger.info("Steve web search enabled (auto mode)")
+                
+                response = client.chat.completions.create(**api_params)
                 
                 ai_response = response.choices[0].message.content.strip()
                 
