@@ -3666,16 +3666,18 @@ import threading as _threading
 
 def _deferred_db_bootstrap():
     """
-    Run ALL database bootstrap operations in background to not block cold starts.
+    Run database bootstrap operations in background to not block cold starts.
     
     This includes:
     - add_missing_tables() - Creates/updates all missing tables and columns
-    - ensure_imagine_jobs_table() - Imagine jobs table
     - ensure_reply_video_column() - Video column on replies
-    - ensure_community_allow_nsfw_imagine_column() - NSFW imagine column
     - ensure_admin_member_of_all() - Admin membership in all communities
     - ensure_community_type_column() - Community type normalization
     - ensure_paulo_member_of_gym() - Paulo's gym membership
+    
+    REMOVED (not needed):
+    - ensure_imagine_jobs_table() - Tables already exist in production
+    - ensure_community_allow_nsfw_imagine_column() - Column already exists
     """
     time.sleep(2)  # Wait for app to be fully initialized
     try:
@@ -3685,42 +3687,28 @@ def _deferred_db_bootstrap():
         add_missing_tables()
         logger.info("Background: add_missing_tables completed")
         
-        # 2. Imagine jobs table
-        try:
-            ensure_imagine_jobs_table()
-            logger.info("Background: ensure_imagine_jobs_table completed")
-        except Exception as e:
-            logger.warning(f"Background: ensure_imagine_jobs_table failed: {e}")
-        
-        # 3. Reply video column
+        # 2. Reply video column
         try:
             ensure_reply_video_column()
             logger.info("Background: ensure_reply_video_column completed")
         except Exception as e:
             logger.warning(f"Background: ensure_reply_video_column failed: {e}")
         
-        # 4. NSFW imagine column
-        try:
-            ensure_community_allow_nsfw_imagine_column()
-            logger.info("Background: ensure_community_allow_nsfw_imagine_column completed")
-        except Exception as e:
-            logger.warning(f"Background: ensure_community_allow_nsfw_imagine_column failed: {e}")
-        
-        # 5. Community type column and normalization
+        # 3. Community type column and normalization
         try:
             ensure_community_type_column()
             logger.info("Background: ensure_community_type_column completed")
         except Exception as e:
             logger.warning(f"Background: ensure_community_type_column failed: {e}")
         
-        # 6. Admin membership (can be slow with many communities)
+        # 4. Admin membership (can be slow with many communities)
         try:
             ensure_admin_member_of_all()
             logger.info("Background: ensure_admin_member_of_all completed")
         except Exception as e:
             logger.warning(f"Background: ensure_admin_member_of_all failed: {e}")
         
-        # 7. Paulo gym membership
+        # 5. Paulo gym membership
         try:
             ensure_paulo_member_of_gym()
             logger.info("Background: ensure_paulo_member_of_gym completed")
