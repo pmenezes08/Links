@@ -19519,20 +19519,19 @@ Keep it short, keep it BRUTAL, and make them regret tagging you. 💀🔥'''
 
 def format_steve_response_links(response_text: str) -> str:
     """
-    Format URLs in Steve's responses as clickable HTML links with readable text.
-    Converts raw URLs like 'https://example.com/article' to '<a href="url">domain.com</a>'
-    Uses the domain name as the clickable text (e.g., "elpais.com", "bbc.com").
+    Format URLs in Steve's responses as markdown links with domain as display text.
+    Converts raw URLs like 'https://elpais.com/article' to '[elpais.com](https://elpais.com/article)'
+    The frontend's renderRichText function will convert these to clickable HTML links.
     """
     import re
     from urllib.parse import urlparse
-    import html
     
     if not response_text:
         return response_text
     
-    # Pattern to match URLs that are NOT already in an HTML link
-    # This avoids double-processing already formatted links
-    url_pattern = r'(?<!href=["\'])(?<!">)(https?://[^\s<>"]+)'
+    # Pattern to match URLs that are NOT already in markdown link format [text](url)
+    # Negative lookbehind to avoid matching URLs already inside markdown links
+    url_pattern = r'(?<!\]\()(?<!\()(?<!\[)(https?://[^\s\)\]<>"]+)'
     
     def get_domain_display(url: str) -> str:
         """Extract the domain name for display (e.g., elpais.com, bbc.com)."""
@@ -19554,12 +19553,10 @@ def format_steve_response_links(response_text: str) -> str:
         # Clean up URL (remove trailing punctuation that got caught)
         url = url.rstrip('.,;:!?')
         domain = get_domain_display(url)
-        # Escape HTML entities in URL and domain for safety
-        safe_url = html.escape(url, quote=True)
-        safe_domain = html.escape(domain)
-        return f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer">{safe_domain}</a>'
+        # Return markdown format: [domain](url)
+        return f'[{domain}]({url})'
     
-    # Replace URLs with HTML links
+    # Replace URLs with markdown links
     formatted = re.sub(url_pattern, replace_url, response_text)
     
     return formatted
