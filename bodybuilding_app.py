@@ -19460,6 +19460,106 @@ Keep it short, keep it BRUTAL, and make them regret tagging you. 💀🔥'''
     }
 }
 
+def format_steve_response_links(response_text: str) -> str:
+    """
+    Format URLs in Steve's responses as clickable markdown links with readable text.
+    Converts raw URLs like 'https://example.com/article' to '[Source](https://example.com/article)'
+    or extracts domain names for cleaner display.
+    """
+    import re
+    from urllib.parse import urlparse
+    
+    if not response_text:
+        return response_text
+    
+    # Pattern to match URLs that are NOT already in markdown link format [text](url)
+    # This avoids double-processing already formatted links
+    url_pattern = r'(?<!\]\()(?<!\[)(https?://[^\s\)\]<>"]+)'
+    
+    def get_readable_link_text(url: str) -> str:
+        """Extract a readable name from URL for link text."""
+        try:
+            parsed = urlparse(url)
+            domain = parsed.netloc.lower()
+            
+            # Remove www. prefix
+            if domain.startswith('www.'):
+                domain = domain[4:]
+            
+            # Map common domains to readable names
+            domain_names = {
+                'bbc.com': 'BBC News',
+                'bbc.co.uk': 'BBC News',
+                'cnn.com': 'CNN',
+                'nytimes.com': 'NY Times',
+                'theguardian.com': 'The Guardian',
+                'reuters.com': 'Reuters',
+                'apnews.com': 'AP News',
+                'washingtonpost.com': 'Washington Post',
+                'forbes.com': 'Forbes',
+                'bloomberg.com': 'Bloomberg',
+                'cnbc.com': 'CNBC',
+                'techcrunch.com': 'TechCrunch',
+                'wired.com': 'Wired',
+                'theverge.com': 'The Verge',
+                'espn.com': 'ESPN',
+                'sports.yahoo.com': 'Yahoo Sports',
+                'weather.com': 'Weather.com',
+                'accuweather.com': 'AccuWeather',
+                'wikipedia.org': 'Wikipedia',
+                'en.wikipedia.org': 'Wikipedia',
+                'reddit.com': 'Reddit',
+                'twitter.com': 'Twitter/X',
+                'x.com': 'X (Twitter)',
+                'instagram.com': 'Instagram',
+                'facebook.com': 'Facebook',
+                'youtube.com': 'YouTube',
+                'linkedin.com': 'LinkedIn',
+                'github.com': 'GitHub',
+                'medium.com': 'Medium',
+                'publico.pt': 'Público',
+                'observador.pt': 'Observador',
+                'rtp.pt': 'RTP',
+                'jn.pt': 'Jornal de Notícias',
+                'dn.pt': 'Diário de Notícias',
+                'expresso.pt': 'Expresso',
+                'sapo.pt': 'SAPO',
+                'record.pt': 'Record',
+                'abola.pt': 'A Bola',
+                'ojogo.pt': 'O Jogo',
+            }
+            
+            # Check for exact domain match
+            if domain in domain_names:
+                return domain_names[domain]
+            
+            # Check for subdomain matches (e.g., news.bbc.co.uk)
+            for key, name in domain_names.items():
+                if domain.endswith('.' + key) or domain == key:
+                    return name
+            
+            # For unknown domains, create a readable name from the domain
+            # e.g., "example-news.com" -> "Example News"
+            base_domain = domain.split('.')[0] if '.' in domain else domain
+            readable = base_domain.replace('-', ' ').replace('_', ' ').title()
+            return f"{readable} (Source)"
+            
+        except Exception:
+            return "Source"
+    
+    def replace_url(match):
+        url = match.group(1)
+        # Clean up URL (remove trailing punctuation that got caught)
+        url = url.rstrip('.,;:!?')
+        link_text = get_readable_link_text(url)
+        return f'[{link_text}]({url})'
+    
+    # Replace URLs with markdown links
+    formatted = re.sub(url_pattern, replace_url, response_text)
+    
+    return formatted
+
+
 def get_ai_personality_prompt(personality_key: str) -> str:
     """Get the system prompt for a given AI personality."""
     personality = AI_PERSONALITIES.get(personality_key, AI_PERSONALITIES['friendly'])
@@ -19479,8 +19579,9 @@ WEB SEARCH CAPABILITY: You have access to real-time web search for current infor
 
 When users ask about news, weather, or current events:
 - You CAN search the web for real, current information
-- Always cite your sources with the actual URLs or source names from your search results
-- Include dates when the information was published
+- ALWAYS include the full URL for any sources you cite (e.g., https://bbc.com/news/article)
+- Put the URL directly in your response - it will be automatically formatted as a clickable link
+- Include dates when the information was published if available
 - If search returns no results, be honest about it
 
 For general questions (advice, stories, explanations), answer from your knowledge.
@@ -19727,6 +19828,9 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             if not ai_response:
                 logger.warning("No AI response for Steve post reply")
                 return
+            
+            # Format URLs in response as clickable links with readable text
+            ai_response = format_steve_response_links(ai_response)
             
             # Create Steve's reply to the post
             now = datetime.utcnow()
@@ -20181,6 +20285,9 @@ def ai_steve_reply():
             if not steve_row:
                 logger.error("Steve AI user not found in database")
                 return jsonify({'success': False, 'error': 'AI user not configured'}), 500
+            
+            # Format URLs in response as clickable links with readable text
+            ai_response = format_steve_response_links(ai_response)
             
             # Create Steve's reply
             now = datetime.utcnow()
