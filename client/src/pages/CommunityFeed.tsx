@@ -4157,9 +4157,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                   })() : null}
                   {r.content ? (
                     <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">
-                      {r.username?.toLowerCase() === 'steve' 
-                        ? renderTextWithSourceLinks(r.content, true)
-                        : r.content}
+                      {renderTextWithSourceLinks(r.content, false)}
                     </div>
                   ) : null}
                   {r.image_path ? (

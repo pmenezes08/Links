@@ -2212,7 +2212,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             ) : null}
           </div>
           {!isEditing ? (
-            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, reply.username?.toLowerCase() === 'steve')}</div>
+            <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, false)}</div>
           ) : (
             <div className="mt-1">
               <textarea
