@@ -19519,99 +19519,47 @@ Keep it short, keep it BRUTAL, and make them regret tagging you. 💀🔥'''
 
 def format_steve_response_links(response_text: str) -> str:
     """
-    Format URLs in Steve's responses as clickable markdown links with readable text.
-    Converts raw URLs like 'https://example.com/article' to '[Source](https://example.com/article)'
-    or extracts domain names for cleaner display.
+    Format URLs in Steve's responses as clickable HTML links with readable text.
+    Converts raw URLs like 'https://example.com/article' to '<a href="url">domain.com</a>'
+    Uses the domain name as the clickable text (e.g., "elpais.com", "bbc.com").
     """
     import re
     from urllib.parse import urlparse
+    import html
     
     if not response_text:
         return response_text
     
-    # Pattern to match URLs that are NOT already in markdown link format [text](url)
+    # Pattern to match URLs that are NOT already in an HTML link
     # This avoids double-processing already formatted links
-    url_pattern = r'(?<!\]\()(?<!\[)(https?://[^\s\)\]<>"]+)'
+    url_pattern = r'(?<!href=["\'])(?<!">)(https?://[^\s<>"]+)'
     
-    def get_readable_link_text(url: str) -> str:
-        """Extract a readable name from URL for link text."""
+    def get_domain_display(url: str) -> str:
+        """Extract the domain name for display (e.g., elpais.com, bbc.com)."""
         try:
             parsed = urlparse(url)
             domain = parsed.netloc.lower()
             
-            # Remove www. prefix
+            # Remove www. prefix for cleaner display
             if domain.startswith('www.'):
                 domain = domain[4:]
             
-            # Map common domains to readable names
-            domain_names = {
-                'bbc.com': 'BBC News',
-                'bbc.co.uk': 'BBC News',
-                'cnn.com': 'CNN',
-                'nytimes.com': 'NY Times',
-                'theguardian.com': 'The Guardian',
-                'reuters.com': 'Reuters',
-                'apnews.com': 'AP News',
-                'washingtonpost.com': 'Washington Post',
-                'forbes.com': 'Forbes',
-                'bloomberg.com': 'Bloomberg',
-                'cnbc.com': 'CNBC',
-                'techcrunch.com': 'TechCrunch',
-                'wired.com': 'Wired',
-                'theverge.com': 'The Verge',
-                'espn.com': 'ESPN',
-                'sports.yahoo.com': 'Yahoo Sports',
-                'weather.com': 'Weather.com',
-                'accuweather.com': 'AccuWeather',
-                'wikipedia.org': 'Wikipedia',
-                'en.wikipedia.org': 'Wikipedia',
-                'reddit.com': 'Reddit',
-                'twitter.com': 'Twitter/X',
-                'x.com': 'X (Twitter)',
-                'instagram.com': 'Instagram',
-                'facebook.com': 'Facebook',
-                'youtube.com': 'YouTube',
-                'linkedin.com': 'LinkedIn',
-                'github.com': 'GitHub',
-                'medium.com': 'Medium',
-                'publico.pt': 'Público',
-                'observador.pt': 'Observador',
-                'rtp.pt': 'RTP',
-                'jn.pt': 'Jornal de Notícias',
-                'dn.pt': 'Diário de Notícias',
-                'expresso.pt': 'Expresso',
-                'sapo.pt': 'SAPO',
-                'record.pt': 'Record',
-                'abola.pt': 'A Bola',
-                'ojogo.pt': 'O Jogo',
-            }
-            
-            # Check for exact domain match
-            if domain in domain_names:
-                return domain_names[domain]
-            
-            # Check for subdomain matches (e.g., news.bbc.co.uk)
-            for key, name in domain_names.items():
-                if domain.endswith('.' + key) or domain == key:
-                    return name
-            
-            # For unknown domains, create a readable name from the domain
-            # e.g., "example-news.com" -> "Example News"
-            base_domain = domain.split('.')[0] if '.' in domain else domain
-            readable = base_domain.replace('-', ' ').replace('_', ' ').title()
-            return f"{readable} (Source)"
+            return domain
             
         except Exception:
-            return "Source"
+            return "link"
     
     def replace_url(match):
         url = match.group(1)
         # Clean up URL (remove trailing punctuation that got caught)
         url = url.rstrip('.,;:!?')
-        link_text = get_readable_link_text(url)
-        return f'[{link_text}]({url})'
+        domain = get_domain_display(url)
+        # Escape HTML entities in URL and domain for safety
+        safe_url = html.escape(url, quote=True)
+        safe_domain = html.escape(domain)
+        return f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer">{safe_domain}</a>'
     
-    # Replace URLs with markdown links
+    # Replace URLs with HTML links
     formatted = re.sub(url_pattern, replace_url, response_text)
     
     return formatted
