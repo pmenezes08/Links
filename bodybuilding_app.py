@@ -1689,8 +1689,8 @@ def ensure_reply_video_column():
         logger.warning(f"Failed ensuring replies.video_path column: {e}")
 
 
-ensure_imagine_jobs_table()
-ensure_reply_video_column()
+# MOVED TO BACKGROUND: ensure_imagine_jobs_table() and ensure_reply_video_column()
+# These are now called in _deferred_db_bootstrap() for faster cold starts
 
 
 def ensure_community_allow_nsfw_imagine_column():
@@ -1738,7 +1738,8 @@ def ensure_community_allow_nsfw_imagine_column():
         logger.warning(f"ensure_community_allow_nsfw_imagine_column error: {e}")
 
 
-ensure_community_allow_nsfw_imagine_column()
+# MOVED TO BACKGROUND: ensure_community_allow_nsfw_imagine_column()
+# Now called in _deferred_db_bootstrap() for faster cold starts
 
 
 def add_missing_tables():
@@ -3660,14 +3661,72 @@ if not USE_MYSQL:
     init_db()
     ensure_indexes()
 
-# Defer add_missing_tables to background thread to speed up cold starts
+# Defer ALL database bootstrap operations to background thread to speed up cold starts
 import threading as _threading
 
 def _deferred_db_bootstrap():
-    """Run database bootstrap in background to not block cold starts."""
+    """
+    Run ALL database bootstrap operations in background to not block cold starts.
+    
+    This includes:
+    - add_missing_tables() - Creates/updates all missing tables and columns
+    - ensure_imagine_jobs_table() - Imagine jobs table
+    - ensure_reply_video_column() - Video column on replies
+    - ensure_community_allow_nsfw_imagine_column() - NSFW imagine column
+    - ensure_admin_member_of_all() - Admin membership in all communities
+    - ensure_community_type_column() - Community type normalization
+    - ensure_paulo_member_of_gym() - Paulo's gym membership
+    """
     time.sleep(2)  # Wait for app to be fully initialized
     try:
+        logger.info("Starting background DB bootstrap...")
+        
+        # 1. Core table/column setup
         add_missing_tables()
+        logger.info("Background: add_missing_tables completed")
+        
+        # 2. Imagine jobs table
+        try:
+            ensure_imagine_jobs_table()
+            logger.info("Background: ensure_imagine_jobs_table completed")
+        except Exception as e:
+            logger.warning(f"Background: ensure_imagine_jobs_table failed: {e}")
+        
+        # 3. Reply video column
+        try:
+            ensure_reply_video_column()
+            logger.info("Background: ensure_reply_video_column completed")
+        except Exception as e:
+            logger.warning(f"Background: ensure_reply_video_column failed: {e}")
+        
+        # 4. NSFW imagine column
+        try:
+            ensure_community_allow_nsfw_imagine_column()
+            logger.info("Background: ensure_community_allow_nsfw_imagine_column completed")
+        except Exception as e:
+            logger.warning(f"Background: ensure_community_allow_nsfw_imagine_column failed: {e}")
+        
+        # 5. Community type column and normalization
+        try:
+            ensure_community_type_column()
+            logger.info("Background: ensure_community_type_column completed")
+        except Exception as e:
+            logger.warning(f"Background: ensure_community_type_column failed: {e}")
+        
+        # 6. Admin membership (can be slow with many communities)
+        try:
+            ensure_admin_member_of_all()
+            logger.info("Background: ensure_admin_member_of_all completed")
+        except Exception as e:
+            logger.warning(f"Background: ensure_admin_member_of_all failed: {e}")
+        
+        # 7. Paulo gym membership
+        try:
+            ensure_paulo_member_of_gym()
+            logger.info("Background: ensure_paulo_member_of_gym completed")
+        except Exception as e:
+            logger.warning(f"Background: ensure_paulo_member_of_gym failed: {e}")
+        
         logger.info("Background DB bootstrap completed successfully")
     except Exception as e:
         logger.error(
@@ -3678,7 +3737,7 @@ def _deferred_db_bootstrap():
 # Start background bootstrap thread (non-blocking)
 _bootstrap_thread = _threading.Thread(target=_deferred_db_bootstrap, daemon=True)
 _bootstrap_thread.start()
-logger.info("DB bootstrap deferred to background thread for faster cold start")
+logger.info("ALL DB bootstrap operations deferred to background thread for faster cold start")
 
 def ensure_admin_member_of_all():
     try:
@@ -3703,14 +3762,10 @@ def ensure_admin_member_of_all():
             conn.commit()
     except Exception as e:
         logger.error(f"ensure_admin_member_of_all error: {e}")
-ensure_admin_member_of_all()
-# Initialize database on application startup
-try:
-    ensure_database_exists()
-    logger.info("Database initialized successfully on startup")
-except Exception as e:
-    logger.error(f"Failed to initialize database on startup: {e}")
-    print(f"WARNING: Database initialization failed on startup: {e}")
+
+# MOVED TO BACKGROUND: ensure_admin_member_of_all() and ensure_database_exists()
+# These are now called in _deferred_db_bootstrap() for faster cold starts
+# Note: The database connection pool handles initial connectivity automatically
 
 # Ensure communities table has community_type column and normalize Gym
 def ensure_community_type_column():
@@ -3765,7 +3820,8 @@ def ensure_community_type_column():
     except Exception as e:
         logger.error(f"ensure_community_type_column error: {e}")
 
-ensure_community_type_column()
+# MOVED TO BACKGROUND: ensure_community_type_column()
+# Now called in _deferred_db_bootstrap() for faster cold starts
 
 def ensure_paulo_member_of_gym():
     """Ensure user 'Paulo' is a member of the Gym community."""
@@ -3833,7 +3889,8 @@ def ensure_paulo_member_of_gym():
     except Exception as e:
         logger.error(f"ensure_paulo_member_of_gym error: {e}")
 
-ensure_paulo_member_of_gym()
+# MOVED TO BACKGROUND: ensure_paulo_member_of_gym()
+# Now called in _deferred_db_bootstrap() for faster cold starts
 
 # Register the format_date Jinja2 filter
 @app.template_filter('format_date')
