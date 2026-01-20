@@ -109,24 +109,8 @@ XAI_SDK_AVAILABLE = False
 app = Flask(__name__, template_folder='templates')
 init_app(app)
 
-# Initialize Firebase Cloud Messaging
-print("🔥 ATTEMPTING FIREBASE INITIALIZATION...")  # This WILL show in logs
-try:
-    from backend.services.firebase_notifications import initialize_firebase
-    print("🔥 Firebase module imported")
-    result = initialize_firebase()
-    print(f"🔥 initialize_firebase() returned: {result}")
-    if result:
-        app.logger.info("✅ Firebase Cloud Messaging initialized")
-        print("✅ Firebase Cloud Messaging initialized")
-    else:
-        app.logger.warning("⚠️  Firebase not initialized - check FIREBASE_CREDENTIALS env var")
-        print("⚠️  Firebase not initialized - check FIREBASE_CREDENTIALS env var")
-except Exception as e:
-    app.logger.warning(f"⚠️  Firebase initialization skipped: {e}")
-    print(f"⚠️  Firebase initialization skipped: {e}")
-    import traceback
-    traceback.print_exc()
+# Firebase initialization is deferred to background thread for faster cold start
+# See _deferred_firebase_init() below
 
 MISSING_UPLOAD_CACHE = deque(maxlen=200)
 
@@ -3657,75 +3641,53 @@ def has_post_delete_permission(username, post_username, community_id):
         or is_community_admin(username, community_id)
     )
 
-if not USE_MYSQL:
-    init_db()
-    ensure_indexes()
-
-# Defer ALL database bootstrap operations to background thread to speed up cold starts
+# ALL initialization deferred to background thread for FAST cold start
 import threading as _threading
 
-def _deferred_db_bootstrap():
+def _deferred_startup_init():
     """
-    Run database bootstrap operations in background to not block cold starts.
-    
-    This includes:
-    - add_missing_tables() - Creates/updates all missing tables and columns
-    - ensure_reply_video_column() - Video column on replies
-    - ensure_admin_member_of_all() - Admin membership in all communities
-    - ensure_community_type_column() - Community type normalization
-    - ensure_paulo_member_of_gym() - Paulo's gym membership
-    
-    REMOVED (not needed):
-    - ensure_imagine_jobs_table() - Tables already exist in production
-    - ensure_community_allow_nsfw_imagine_column() - Column already exists
+    Run ALL slow startup operations in background to not block cold starts.
+    This allows the app to serve requests immediately while initialization completes.
     """
-    time.sleep(2)  # Wait for app to be fully initialized
+    time.sleep(1)  # Brief wait for app to be ready
     try:
-        logger.info("Starting background DB bootstrap...")
+        logger.info("Background startup init beginning...")
         
-        # 1. Core table/column setup
-        add_missing_tables()
-        logger.info("Background: add_missing_tables completed")
-        
-        # 2. Reply video column
+        # 1. Firebase initialization (can be slow - reads credential file)
         try:
-            ensure_reply_video_column()
-            logger.info("Background: ensure_reply_video_column completed")
+            from backend.services.firebase_notifications import initialize_firebase
+            if initialize_firebase():
+                logger.info("Background: Firebase initialized")
+            else:
+                logger.warning("Background: Firebase not initialized (check FIREBASE_CREDENTIALS)")
         except Exception as e:
-            logger.warning(f"Background: ensure_reply_video_column failed: {e}")
+            logger.warning(f"Background: Firebase init failed: {e}")
         
-        # 3. Community type column and normalization
-        try:
-            ensure_community_type_column()
-            logger.info("Background: ensure_community_type_column completed")
-        except Exception as e:
-            logger.warning(f"Background: ensure_community_type_column failed: {e}")
+        # 2. SQLite-only: init_db and ensure_indexes (skip for MySQL - tables exist)
+        if not USE_MYSQL:
+            try:
+                init_db()
+                ensure_indexes()
+                logger.info("Background: SQLite init_db/ensure_indexes completed")
+            except Exception as e:
+                logger.warning(f"Background: SQLite init failed: {e}")
         
-        # 4. Admin membership (can be slow with many communities)
-        try:
-            ensure_admin_member_of_all()
-            logger.info("Background: ensure_admin_member_of_all completed")
-        except Exception as e:
-            logger.warning(f"Background: ensure_admin_member_of_all failed: {e}")
+        # 3. Core table/column setup (MySQL production)
+        if USE_MYSQL:
+            try:
+                add_missing_tables()
+                logger.info("Background: add_missing_tables completed")
+            except Exception as e:
+                logger.warning(f"Background: add_missing_tables failed: {e}")
         
-        # 5. Paulo gym membership
-        try:
-            ensure_paulo_member_of_gym()
-            logger.info("Background: ensure_paulo_member_of_gym completed")
-        except Exception as e:
-            logger.warning(f"Background: ensure_paulo_member_of_gym failed: {e}")
-        
-        logger.info("Background DB bootstrap completed successfully")
+        logger.info("Background startup init completed")
     except Exception as e:
-        logger.error(
-            f"Background DB bootstrap failed: {e}. "
-            "Verify DB_BACKEND and MYSQL_* env vars on the server."
-        )
+        logger.error(f"Background startup init failed: {e}")
 
-# Start background bootstrap thread (non-blocking)
-_bootstrap_thread = _threading.Thread(target=_deferred_db_bootstrap, daemon=True)
-_bootstrap_thread.start()
-logger.info("ALL DB bootstrap operations deferred to background thread for faster cold start")
+# Start background init thread (non-blocking) - app can serve requests immediately
+_startup_thread = _threading.Thread(target=_deferred_startup_init, daemon=True)
+_startup_thread.start()
+logger.info("App ready - background initialization started")
 
 def ensure_admin_member_of_all():
     try:
