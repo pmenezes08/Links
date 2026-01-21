@@ -16850,6 +16850,62 @@ def admin_ads_overview():
         flash('Error loading ads overview', 'error')
         return redirect(url_for('admin'))
 
+@app.route('/api/calendar_events/<int:event_id>')
+@login_required
+def api_get_calendar_event(event_id):
+    """Get a single calendar event by ID"""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Get the event with community info
+            c.execute(f"""
+                SELECT ce.*, c.name as community_name, c.background_color
+                FROM calendar_events ce
+                LEFT JOIN communities c ON ce.community_id = c.id
+                WHERE ce.id = {ph}
+            """, (event_id,))
+            row = c.fetchone()
+            
+            if not row:
+                return jsonify({'success': False, 'error': 'Event not found'}), 404
+            
+            # Check if user has access (is creator or invited)
+            event_creator = row['username'] if hasattr(row, 'keys') else row[1]
+            c.execute(f"SELECT 1 FROM event_invitations WHERE event_id = {ph} AND invited_username = {ph}", (event_id, username))
+            is_invited = c.fetchone() is not None
+            
+            if event_creator != username and not is_invited:
+                # Check if user is in the same community
+                community_id = row['community_id'] if hasattr(row, 'keys') else row[10]
+                if community_id:
+                    c.execute(f"SELECT 1 FROM user_communities WHERE user_id = (SELECT id FROM users WHERE username = {ph}) AND community_id = {ph}", (username, community_id))
+                    if not c.fetchone():
+                        return jsonify({'success': False, 'error': 'Access denied'}), 403
+            
+            event = {
+                'id': row['id'] if hasattr(row, 'keys') else row[0],
+                'username': row['username'] if hasattr(row, 'keys') else row[1],
+                'title': row['title'] if hasattr(row, 'keys') else row[2],
+                'date': row['date'] if hasattr(row, 'keys') else row[3],
+                'end_date': (row['end_date'] if hasattr(row, 'keys') else row[4]) or (row['date'] if hasattr(row, 'keys') else row[3]),
+                'start_time': row['start_time'] if hasattr(row, 'keys') else row[5],
+                'end_time': row['end_time'] if hasattr(row, 'keys') else row[6],
+                'time': row['time'] if hasattr(row, 'keys') else row[7],
+                'description': row['description'] if hasattr(row, 'keys') else row[8],
+                'community_id': row['community_id'] if hasattr(row, 'keys') else row[10],
+                'community_name': row['community_name'] if hasattr(row, 'keys') else row[-2],
+                'timezone': row['timezone'] if hasattr(row, 'keys') else row[11],
+            }
+            
+            return jsonify({'success': True, 'event': event})
+    except Exception as e:
+        logger.error(f"api_get_calendar_event error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
 @app.route('/get_calendar_events')
 @login_required
 def get_calendar_events():
@@ -25461,8 +25517,11 @@ def react_members_page(community_id):
         logger.error(f"Error serving React community members page: {str(e)}")
         abort(500)
 @app.route('/.well-known/apple-app-site-association')
+@app.route('/apple-app-site-association')
 def apple_app_site_association():
-    """Serve Apple App Site Association file for Universal Links"""
+    """Serve Apple App Site Association file for Universal Links.
+    Apple checks both /.well-known/apple-app-site-association AND /apple-app-site-association
+    """
     try:
         response = send_from_directory('static/.well-known', 'apple-app-site-association')
         response.headers['Content-Type'] = 'application/json'
