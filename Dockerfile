@@ -28,4 +28,7 @@ COPY client/dist/ ./client/dist/
 EXPOSE 8080
 
 # Run with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "8", "--timeout", "0", "bodybuilding_app:app"]
+# --preload: Load app once before forking workers (faster startup)
+# --timeout 120: 2 min timeout for requests
+# --graceful-timeout 30: Time for graceful shutdown
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "120", "--graceful-timeout", "30", "--preload", "bodybuilding_app:app"]
