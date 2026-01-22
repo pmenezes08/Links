@@ -29,7 +29,10 @@ _temp_creds_file = None  # Keep reference to prevent cleanup
 def _get_firebase_credentials():
     """
     Get Firebase credentials from environment variable.
-    Supports both file paths AND JSON strings (for Cloud Run).
+    Supports:
+    - File paths (local development or Secret Manager mounted files)
+    - JSON strings (direct paste - may have issues with newlines)
+    - Base64-encoded JSON (prefix with 'base64:' - recommended for env vars)
     
     Returns:
         credentials.Certificate or None if not available
@@ -43,16 +46,39 @@ def _get_firebase_credentials():
     
     creds_value = creds_value.strip()
     
-    # Check if it's a file path
+    # Check if it's a file path (exists on filesystem)
     if os.path.exists(creds_value):
         print(f"[FIREBASE] Using credentials file: {creds_value}", file=sys.stderr, flush=True)
         return credentials.Certificate(creds_value)
+    
+    # Check if it's base64 encoded (prefix with 'base64:')
+    if creds_value.startswith('base64:'):
+        print("[FIREBASE] Credentials are base64 encoded, decoding...", file=sys.stderr, flush=True)
+        try:
+            import base64
+            b64_data = creds_value[7:]  # Remove 'base64:' prefix
+            decoded = base64.b64decode(b64_data).decode('utf-8')
+            creds_dict = json.loads(decoded)
+            print(f"[FIREBASE] Decoded base64 credentials for project: {creds_dict.get('project_id', 'unknown')}", file=sys.stderr, flush=True)
+            return credentials.Certificate(creds_dict)
+        except Exception as e:
+            print(f"[FIREBASE] Failed to decode base64 credentials: {e}", file=sys.stderr, flush=True)
+            return None
     
     # Check if it looks like a JSON string (starts with { or contains "type":)
     if creds_value.startswith('{') or '"type"' in creds_value or "'type'" in creds_value:
         print("[FIREBASE] Credentials appear to be JSON string, parsing...", file=sys.stderr, flush=True)
         try:
+            # First try direct JSON parse
             creds_dict = json.loads(creds_value)
+            
+            # Check if private_key has proper newlines
+            private_key = creds_dict.get('private_key', '')
+            if private_key and '\\n' in private_key and '\n' not in private_key:
+                # The \n characters are escaped, need to unescape them
+                print("[FIREBASE] Fixing escaped newlines in private_key...", file=sys.stderr, flush=True)
+                creds_dict['private_key'] = private_key.replace('\\n', '\n')
+            
             print(f"[FIREBASE] Parsed JSON credentials for project: {creds_dict.get('project_id', 'unknown')}", file=sys.stderr, flush=True)
             return credentials.Certificate(creds_dict)
         except json.JSONDecodeError as e:
@@ -66,6 +92,25 @@ def _get_firebase_credentials():
                 return credentials.Certificate(_temp_creds_file.name)
             except Exception as te:
                 print(f"[FIREBASE] Temp file fallback also failed: {te}", file=sys.stderr, flush=True)
+                return None
+        except ValueError as ve:
+            # This catches the PEM loading error
+            print(f"[FIREBASE] Certificate creation failed (likely private_key issue): {ve}", file=sys.stderr, flush=True)
+            # Try fixing newlines more aggressively
+            try:
+                private_key = creds_dict.get('private_key', '')
+                # Replace literal \n with actual newlines
+                fixed_key = private_key.replace('\\n', '\n')
+                # Also handle case where newlines were completely stripped
+                if '-----BEGIN' in fixed_key and '\n' not in fixed_key:
+                    # Try to reconstruct the key format
+                    fixed_key = fixed_key.replace('-----BEGIN PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----\n')
+                    fixed_key = fixed_key.replace('-----END PRIVATE KEY-----', '\n-----END PRIVATE KEY-----\n')
+                creds_dict['private_key'] = fixed_key
+                print("[FIREBASE] Attempting with fixed private_key newlines...", file=sys.stderr, flush=True)
+                return credentials.Certificate(creds_dict)
+            except Exception as fix_err:
+                print(f"[FIREBASE] Even with newline fix, failed: {fix_err}", file=sys.stderr, flush=True)
                 return None
     
     # It looks like a path but doesn't exist
