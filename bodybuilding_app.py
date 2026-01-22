@@ -109,8 +109,16 @@ XAI_SDK_AVAILABLE = False
 app = Flask(__name__, template_folder='templates')
 init_app(app)
 
-# Firebase initialization is deferred to background thread for faster cold start
-# See _deferred_firebase_init() below
+# Initialize Firebase Cloud Messaging (required for push notifications)
+# This must be synchronous to ensure notifications work immediately
+try:
+    from backend.services.firebase_notifications import initialize_firebase
+    if initialize_firebase():
+        print("✅ Firebase Cloud Messaging initialized")
+    else:
+        print("⚠️ Firebase not initialized - check FIREBASE_CREDENTIALS env var")
+except Exception as e:
+    print(f"⚠️ Firebase initialization failed: {e}")
 
 MISSING_UPLOAD_CACHE = deque(maxlen=200)
 
@@ -3646,24 +3654,14 @@ import threading as _threading
 
 def _deferred_startup_init():
     """
-    Run ALL slow startup operations in background to not block cold starts.
-    This allows the app to serve requests immediately while initialization completes.
+    Run slow DB operations in background to not block cold starts.
+    Note: Firebase is initialized synchronously (required for notifications).
     """
     time.sleep(1)  # Brief wait for app to be ready
     try:
         logger.info("Background startup init beginning...")
         
-        # 1. Firebase initialization (can be slow - reads credential file)
-        try:
-            from backend.services.firebase_notifications import initialize_firebase
-            if initialize_firebase():
-                logger.info("Background: Firebase initialized")
-            else:
-                logger.warning("Background: Firebase not initialized (check FIREBASE_CREDENTIALS)")
-        except Exception as e:
-            logger.warning(f"Background: Firebase init failed: {e}")
-        
-        # 2. SQLite-only: init_db and ensure_indexes (skip for MySQL - tables exist)
+        # 1. SQLite-only: init_db and ensure_indexes (skip for MySQL - tables exist)
         if not USE_MYSQL:
             try:
                 init_db()
@@ -3672,7 +3670,7 @@ def _deferred_startup_init():
             except Exception as e:
                 logger.warning(f"Background: SQLite init failed: {e}")
         
-        # 3. Core table/column setup (MySQL production)
+        # 2. Core table/column setup (MySQL production)
         if USE_MYSQL:
             try:
                 add_missing_tables()
