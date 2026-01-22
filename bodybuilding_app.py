@@ -130,13 +130,7 @@ except Exception as e:
     import traceback
     traceback.print_exc(file=sys.stderr)
 
-# Register public blueprint (contains /api/push/register_fcm for push notifications)
-try:
-    from backend.blueprints.public import public_bp
-    app.register_blueprint(public_bp)
-    print("✅ Public blueprint registered (FCM token registration)")
-except Exception as e:
-    print(f"⚠️ Failed to register public blueprint: {e}")
+# Note: public_bp (with /api/push/register_fcm) is registered via init_app() → register_blueprints()
 
 MISSING_UPLOAD_CACHE = deque(maxlen=200)
 
