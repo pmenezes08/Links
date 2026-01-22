@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import sys
+import tempfile
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -17,44 +20,95 @@ except ImportError:
     FIREBASE_AVAILABLE = False
     logger.warning("Firebase Admin SDK not installed. Install with: pip install firebase-admin")
 
-# Firebase configuration
-FIREBASE_CREDENTIALS_PATH = os.getenv('FIREBASE_CREDENTIALS')
+# Firebase configuration - can be a file path OR a JSON string
+FIREBASE_CREDENTIALS_ENV = os.getenv('FIREBASE_CREDENTIALS')
 _firebase_app = None
+_temp_creds_file = None  # Keep reference to prevent cleanup
+
+
+def _get_firebase_credentials():
+    """
+    Get Firebase credentials from environment variable.
+    Supports both file paths AND JSON strings (for Cloud Run).
+    
+    Returns:
+        credentials.Certificate or None if not available
+    """
+    global _temp_creds_file
+    
+    creds_value = FIREBASE_CREDENTIALS_ENV
+    if not creds_value:
+        print("[FIREBASE] No FIREBASE_CREDENTIALS env var set", file=sys.stderr, flush=True)
+        return None
+    
+    creds_value = creds_value.strip()
+    
+    # Check if it's a file path
+    if os.path.exists(creds_value):
+        print(f"[FIREBASE] Using credentials file: {creds_value}", file=sys.stderr, flush=True)
+        return credentials.Certificate(creds_value)
+    
+    # Check if it looks like a JSON string (starts with { or contains "type":)
+    if creds_value.startswith('{') or '"type"' in creds_value or "'type'" in creds_value:
+        print("[FIREBASE] Credentials appear to be JSON string, parsing...", file=sys.stderr, flush=True)
+        try:
+            creds_dict = json.loads(creds_value)
+            print(f"[FIREBASE] Parsed JSON credentials for project: {creds_dict.get('project_id', 'unknown')}", file=sys.stderr, flush=True)
+            return credentials.Certificate(creds_dict)
+        except json.JSONDecodeError as e:
+            print(f"[FIREBASE] Failed to parse credentials as JSON: {e}", file=sys.stderr, flush=True)
+            # Try writing to temp file as fallback
+            try:
+                _temp_creds_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+                _temp_creds_file.write(creds_value)
+                _temp_creds_file.close()
+                print(f"[FIREBASE] Wrote credentials to temp file: {_temp_creds_file.name}", file=sys.stderr, flush=True)
+                return credentials.Certificate(_temp_creds_file.name)
+            except Exception as te:
+                print(f"[FIREBASE] Temp file fallback also failed: {te}", file=sys.stderr, flush=True)
+                return None
+    
+    # It looks like a path but doesn't exist
+    print(f"[FIREBASE] Credentials path does not exist: {creds_value}", file=sys.stderr, flush=True)
+    return None
 
 
 def initialize_firebase():
     """Initialize Firebase Admin SDK (call once at app startup)."""
     global _firebase_app
     
+    print("[FIREBASE] initialize_firebase() called", file=sys.stderr, flush=True)
+    
     if not FIREBASE_AVAILABLE:
+        print("[FIREBASE] ERROR: firebase-admin SDK not installed", file=sys.stderr, flush=True)
         logger.error("Firebase Admin SDK not available")
         return False
     
     # Check if already initialized
     if _firebase_app is not None:
+        print("[FIREBASE] Already initialized (cached)", file=sys.stderr, flush=True)
         logger.debug("Firebase already initialized")
         return True
     
     # Check if default app exists (initialized elsewhere)
     try:
         _firebase_app = firebase_admin.get_app()
+        print("[FIREBASE] Using existing default app", file=sys.stderr, flush=True)
         logger.info("✅ Firebase already initialized (using existing default app)")
         return True
     except ValueError:
         # Default app doesn't exist, we need to initialize it
         pass
     
-    if not FIREBASE_CREDENTIALS_PATH:
-        logger.error("FIREBASE_CREDENTIALS environment variable not set")
-        return False
-    
-    if not os.path.exists(FIREBASE_CREDENTIALS_PATH):
-        logger.error(f"Firebase credentials file not found: {FIREBASE_CREDENTIALS_PATH}")
+    # Get credentials (supports both file path and JSON string)
+    cred = _get_firebase_credentials()
+    if cred is None:
+        print("[FIREBASE] ERROR: Could not load credentials", file=sys.stderr, flush=True)
         return False
     
     try:
-        cred = credentials.Certificate(FIREBASE_CREDENTIALS_PATH)
         _firebase_app = firebase_admin.initialize_app(cred)
+        print("[FIREBASE] ✅ Firebase Admin SDK initialized successfully", file=sys.stderr, flush=True)
         logger.info("✅ Firebase Admin SDK initialized successfully")
         return True
     except ValueError as e:
@@ -62,15 +116,19 @@ def initialize_firebase():
         if "already exists" in str(e):
             try:
                 _firebase_app = firebase_admin.get_app()
+                print("[FIREBASE] Recovered existing app", file=sys.stderr, flush=True)
                 logger.info("✅ Firebase already initialized (recovered from ValueError)")
                 return True
             except:
+                print(f"[FIREBASE] ERROR: Initialization conflict: {e}", file=sys.stderr, flush=True)
                 logger.error(f"Firebase initialization conflict: {e}")
                 return False
         else:
+            print(f"[FIREBASE] ERROR: ValueError: {e}", file=sys.stderr, flush=True)
             logger.error(f"Failed to initialize Firebase: {e}")
             return False
     except Exception as e:
+        print(f"[FIREBASE] ERROR: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         logger.error(f"Failed to initialize Firebase: {e}")
         return False
 

@@ -111,14 +111,24 @@ init_app(app)
 
 # Initialize Firebase Cloud Messaging (required for push notifications)
 # This must be synchronous to ensure notifications work immediately
+# Firebase module now supports both file paths and JSON strings for credentials
+import sys
+print("[STARTUP] Initializing Firebase Cloud Messaging...", file=sys.stderr, flush=True)
 try:
-    from backend.services.firebase_notifications import initialize_firebase
-    if initialize_firebase():
-        print("✅ Firebase Cloud Messaging initialized")
+    from backend.services.firebase_notifications import initialize_firebase, FIREBASE_AVAILABLE
+    print(f"[STARTUP] firebase-admin SDK available: {FIREBASE_AVAILABLE}", file=sys.stderr, flush=True)
+    
+    if FIREBASE_AVAILABLE:
+        _firebase_initialized = initialize_firebase()
+        print(f"[STARTUP] Firebase status: {'READY' if _firebase_initialized else 'NOT INITIALIZED'}", file=sys.stderr, flush=True)
     else:
-        print("⚠️ Firebase not initialized - check FIREBASE_CREDENTIALS env var")
+        _firebase_initialized = False
+        print("[STARTUP] Firebase not available - notifications disabled", file=sys.stderr, flush=True)
 except Exception as e:
-    print(f"⚠️ Firebase initialization failed: {e}")
+    _firebase_initialized = False
+    print(f"[STARTUP] Firebase initialization error: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+    import traceback
+    traceback.print_exc(file=sys.stderr)
 
 # Register public blueprint (contains /api/push/register_fcm for push notifications)
 try:
@@ -1838,6 +1848,39 @@ def add_missing_tables():
                              )''')
                 c.execute("CREATE INDEX IF NOT EXISTS idx_native_push_user ON native_push_tokens(username)")
                 c.execute("CREATE INDEX IF NOT EXISTS idx_native_push_install ON native_push_tokens(install_id)")
+
+            # FCM tokens table (main table for Firebase Cloud Messaging tokens)
+            try:
+                if USE_MYSQL:
+                    c.execute('''CREATE TABLE IF NOT EXISTS fcm_tokens (
+                                     id INT AUTO_INCREMENT PRIMARY KEY,
+                                     token VARCHAR(255) UNIQUE NOT NULL,
+                                     username VARCHAR(100),
+                                     platform VARCHAR(20) DEFAULT 'ios',
+                                     device_name VARCHAR(255),
+                                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                     is_active TINYINT(1) DEFAULT 1,
+                                     INDEX idx_fcm_username (username),
+                                     INDEX idx_fcm_active (is_active)
+                                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci''')
+                else:
+                    c.execute('''CREATE TABLE IF NOT EXISTS fcm_tokens (
+                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                     token TEXT UNIQUE NOT NULL,
+                                     username TEXT,
+                                     platform TEXT DEFAULT 'ios',
+                                     device_name TEXT,
+                                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                     is_active INTEGER DEFAULT 1
+                                 )''')
+                    c.execute("CREATE INDEX IF NOT EXISTS idx_fcm_username ON fcm_tokens(username)")
+                    c.execute("CREATE INDEX IF NOT EXISTS idx_fcm_active ON fcm_tokens(is_active)")
+                conn.commit()
+                logger.info("fcm_tokens table ensured")
+            except Exception as e:
+                logger.warning(f"Could not ensure fcm_tokens table: {e}")
 
             # Log of recently sent push notifications for de-duplication
             try:
