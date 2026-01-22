@@ -120,6 +120,14 @@ try:
 except Exception as e:
     print(f"⚠️ Firebase initialization failed: {e}")
 
+# Register public blueprint (contains /api/push/register_fcm for push notifications)
+try:
+    from backend.blueprints.public import public_bp
+    app.register_blueprint(public_bp)
+    print("✅ Public blueprint registered (FCM token registration)")
+except Exception as e:
+    print(f"⚠️ Failed to register public blueprint: {e}")
+
 MISSING_UPLOAD_CACHE = deque(maxlen=200)
 
 COUNTRY_CACHE_TTL = 60 * 60 * 24  # 24 hours
