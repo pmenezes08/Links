@@ -1873,6 +1873,28 @@ def add_missing_tables():
                     c.execute("CREATE INDEX IF NOT EXISTS idx_fcm_active ON fcm_tokens(is_active)")
                 conn.commit()
                 logger.info("fcm_tokens table ensured")
+                
+                # Migrate existing tokens from native_push_tokens to fcm_tokens (one-time sync)
+                try:
+                    if USE_MYSQL:
+                        c.execute("""
+                            INSERT IGNORE INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                            SELECT token, username, platform, device_name, last_seen, is_active
+                            FROM native_push_tokens
+                            WHERE is_active = 1 AND username IS NOT NULL
+                        """)
+                    else:
+                        c.execute("""
+                            INSERT OR IGNORE INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                            SELECT token, username, platform, device_name, last_seen, is_active
+                            FROM native_push_tokens
+                            WHERE is_active = 1 AND username IS NOT NULL
+                        """)
+                    conn.commit()
+                    logger.info("Migrated tokens from native_push_tokens to fcm_tokens")
+                except Exception as migrate_err:
+                    logger.warning(f"Could not migrate tokens: {migrate_err}")
+                    
             except Exception as e:
                 logger.warning(f"Could not ensure fcm_tokens table: {e}")
 
@@ -31079,6 +31101,7 @@ def api_native_push_register():
     username = session.get('username')
 
     try:
+        # Register in native_push_tokens table
         register_native_push_token(
             token=token,
             username=username,
@@ -31088,6 +31111,40 @@ def api_native_push_register():
             bundle_id=bundle_id,
             device_name=device_name,
         )
+        
+        # ALSO register in fcm_tokens table (used by Firebase notification sending)
+        # This ensures notifications work via both FCM and direct APNs
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                if USE_MYSQL:
+                    c.execute(f"""
+                        INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                        VALUES ({ph}, {ph}, {ph}, {ph}, NOW(), 1)
+                        ON DUPLICATE KEY UPDATE
+                            username=IFNULL(VALUES(username), username),
+                            platform=VALUES(platform),
+                            device_name=VALUES(device_name),
+                            last_seen=NOW(),
+                            is_active=1
+                    """, (token, username, platform, device_name))
+                else:
+                    c.execute("""
+                        INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                        VALUES (?, ?, ?, ?, datetime('now'), 1)
+                        ON CONFLICT(token) DO UPDATE SET
+                            username=COALESCE(excluded.username, username),
+                            platform=excluded.platform,
+                            device_name=excluded.device_name,
+                            last_seen=datetime('now'),
+                            is_active=1
+                    """, (token, username, platform, device_name))
+                conn.commit()
+                app.logger.info(f"📱 Token also stored in fcm_tokens for {username or 'anonymous'}")
+        except Exception as fcm_err:
+            app.logger.warning(f"Could not store in fcm_tokens (non-critical): {fcm_err}")
+        
         if username:
             associate_install_tokens_with_user(install_id, username)
         resp = jsonify({ 'success': True, 'install_id': install_id, 'linked': bool(username) })
@@ -31114,6 +31171,37 @@ def api_native_push_claim():
     username = session.get('username')
     try:
         updated = associate_install_tokens_with_user(install_id, username)
+        
+        # Also sync tokens to fcm_tokens table
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                # Get tokens from native_push_tokens for this install_id
+                c.execute(f"SELECT token, platform, device_name FROM native_push_tokens WHERE install_id = {ph} AND is_active = 1", (install_id,))
+                tokens = c.fetchall()
+                for row in tokens:
+                    if hasattr(row, 'keys'):
+                        token, platform, device_name = row['token'], row['platform'], row.get('device_name')
+                    else:
+                        token, platform, device_name = row[0], row[1], row[2] if len(row) > 2 else None
+                    if USE_MYSQL:
+                        c.execute(f"""
+                            INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                            VALUES ({ph}, {ph}, {ph}, {ph}, NOW(), 1)
+                            ON DUPLICATE KEY UPDATE username={ph}, last_seen=NOW(), is_active=1
+                        """, (token, username, platform, device_name, username))
+                    else:
+                        c.execute("""
+                            INSERT INTO fcm_tokens (token, username, platform, device_name, last_seen, is_active)
+                            VALUES (?, ?, ?, ?, datetime('now'), 1)
+                            ON CONFLICT(token) DO UPDATE SET username=?, last_seen=datetime('now'), is_active=1
+                        """, (token, username, platform, device_name, username))
+                conn.commit()
+                app.logger.info(f"📱 Synced {len(tokens)} tokens to fcm_tokens for {username}")
+        except Exception as sync_err:
+            app.logger.warning(f"Could not sync to fcm_tokens: {sync_err}")
+        
         resp = jsonify({ 'success': True, 'updated': updated })
         _set_native_push_cookie(resp, install_id)
         return resp
