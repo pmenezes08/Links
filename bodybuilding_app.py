@@ -20545,6 +20545,13 @@ def get_post():
                 counts, user_reaction = get_reply_reaction_summary(c, reply['id'], username)
                 reply['reactions'] = counts
                 reply['user_reaction'] = user_reaction
+                # Count nested replies (replies to this reply)
+                try:
+                    c.execute("SELECT COUNT(*) as cnt FROM replies WHERE parent_reply_id = ?", (reply['id'],))
+                    cnt_row = c.fetchone()
+                    reply['reply_count'] = cnt_row['cnt'] if cnt_row and hasattr(cnt_row, 'keys') else (cnt_row[0] if cnt_row else 0)
+                except Exception:
+                    reply['reply_count'] = len(reply.get('children', []))
                 for ch in reply.get('children', []):
                     hydrate_reply_metrics(ch)
             for reply in post['replies']:
@@ -20584,6 +20591,104 @@ def get_post():
             
     except Exception as e:
         logger.error(f"Error fetching post {post_id}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/reply/<int:reply_id>')
+@login_required
+def api_get_reply(reply_id):
+    """Get a specific reply with its nested replies (X/Twitter style thread view)."""
+    username = session.get('username')
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Fetch the main reply
+            c.execute(f"SELECT * FROM replies WHERE id = {ph}", (reply_id,))
+            reply_raw = c.fetchone()
+            
+            if not reply_raw:
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+            
+            reply = dict(reply_raw)
+            post_id = reply.get('post_id')
+            
+            # Get the parent post info
+            c.execute(f"SELECT id, username, content, community_id, timestamp FROM posts WHERE id = {ph}", (post_id,))
+            post_raw = c.fetchone()
+            post_info = dict(post_raw) if post_raw else None
+            
+            # Get profile picture for the main reply
+            try:
+                c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (reply['username'],))
+                pp = c.fetchone()
+                reply['profile_picture'] = pp['profile_picture'] if pp and hasattr(pp, 'keys') else (pp[0] if pp else None)
+            except Exception:
+                reply['profile_picture'] = None
+            
+            # Get reaction counts and user reaction for main reply
+            reply_counts, reply_user_reaction = get_reply_reaction_summary(c, reply_id, username)
+            reply['reactions'] = reply_counts
+            reply['user_reaction'] = reply_user_reaction
+            
+            # Fetch all nested replies (replies to this reply)
+            c.execute(f"SELECT * FROM replies WHERE parent_reply_id = {ph} ORDER BY timestamp ASC", (reply_id,))
+            nested_replies_raw = c.fetchall()
+            nested_replies = [dict(r) for r in nested_replies_raw]
+            
+            # Collect usernames for profile pictures
+            nested_usernames = set(r['username'] for r in nested_replies if r.get('username'))
+            
+            # Batch fetch profile pictures
+            pp_map = {}
+            if nested_usernames:
+                user_placeholders = ','.join([ph for _ in nested_usernames])
+                c.execute(f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({user_placeholders})", tuple(nested_usernames))
+                for r in c.fetchall():
+                    uname = r['username'] if hasattr(r, 'keys') else r[0]
+                    pp = r['profile_picture'] if hasattr(r, 'keys') else r[1]
+                    pp_map[uname] = pp
+            
+            # Hydrate nested replies with profile pics and reactions
+            for nr in nested_replies:
+                nr['profile_picture'] = pp_map.get(nr['username'])
+                nr_counts, nr_user_reaction = get_reply_reaction_summary(c, nr['id'], username)
+                nr['reactions'] = nr_counts
+                nr['user_reaction'] = nr_user_reaction
+                # Count replies to this nested reply
+                c.execute(f"SELECT COUNT(*) as cnt FROM replies WHERE parent_reply_id = {ph}", (nr['id'],))
+                cnt_row = c.fetchone()
+                nr['reply_count'] = cnt_row['cnt'] if cnt_row and hasattr(cnt_row, 'keys') else (cnt_row[0] if cnt_row else 0)
+            
+            reply['nested_replies'] = nested_replies
+            
+            # Count direct replies to the main reply
+            c.execute(f"SELECT COUNT(*) as cnt FROM replies WHERE parent_reply_id = {ph}", (reply_id,))
+            cnt_row = c.fetchone()
+            reply['reply_count'] = cnt_row['cnt'] if cnt_row and hasattr(cnt_row, 'keys') else (cnt_row[0] if cnt_row else 0)
+            
+            # If this reply has a parent, get parent info for context
+            parent_reply = None
+            if reply.get('parent_reply_id'):
+                c.execute(f"SELECT id, username, content, timestamp FROM replies WHERE id = {ph}", (reply['parent_reply_id'],))
+                parent_raw = c.fetchone()
+                if parent_raw:
+                    parent_reply = dict(parent_raw)
+                    # Get parent's profile picture
+                    c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (parent_reply['username'],))
+                    pp = c.fetchone()
+                    parent_reply['profile_picture'] = pp['profile_picture'] if pp and hasattr(pp, 'keys') else (pp[0] if pp else None)
+            
+            return jsonify({
+                'success': True,
+                'reply': reply,
+                'post': post_info,
+                'parent_reply': parent_reply
+            })
+            
+    except Exception as e:
+        logger.error(f"Error fetching reply {reply_id}: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 # Community Routes

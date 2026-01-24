@@ -18,7 +18,7 @@ import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; media_paths?: MediaItem[] | string | null }
 
@@ -1584,7 +1584,8 @@ export default function PostDetail(){
         </div>
 
         <div className="mt-3 rounded-2xl border border-white/10">
-          {post.replies.map(r => (
+          {/* Only show top-level replies (X-style: no nested replies inline) */}
+          {post.replies.filter(r => !r.parent_reply_id).map(r => (
             <ReplyNodeMemo
               key={r.id}
               reply={r}
@@ -2150,7 +2151,8 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
   const [inlineGif, setInlineGif] = useState<GifSelection | null>(null)
   const [gifFile, setGifFile] = useState<File | null>(null)
   const [showInlineAttachMenu, setShowInlineAttachMenu] = useState(false)
-  const hasChildren = reply.children && reply.children.length > 0
+  // For X-style, we don't show nested children inline, so no connector line needed
+  const hasChildren = false // Was: reply.children && reply.children.length > 0
   useEffect(() => {
     if (!showComposer){
       setShowGifPicker(false)
@@ -2441,25 +2443,16 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
           />
         </div>
       ) : null}
-      {reply.children && reply.children.length ? (
-        <div className="relative">
-          {reply.children.map((ch) => (
-            <ReplyNodeMemo
-              key={ch.id}
-              reply={ch}
-              depth={Math.min(depth+1, 3)}
-              currentUser={currentUser}
-              onToggle={onToggle}
-              onInlineReply={onInlineReply}
-              onDelete={onDelete}
-              onPreviewImage={onPreviewImage}
-              inlineSendingFlag={false}
-              communityId={communityId}
-              postId={postId}
-              activeInlineReplyFor={activeInlineReplyFor}
-              onSetActiveInlineReply={onSetActiveInlineReply}
-            />
-          ))}
+      {/* Show reply count link instead of nested replies (X-style) */}
+      {((reply as any).reply_count > 0 || (reply.children && reply.children.length > 0)) ? (
+        <div className="px-3 pb-2">
+          <button
+            className="text-[12px] text-[#4db6ac] hover:underline flex items-center gap-1"
+            onClick={() => window.location.href = `/reply/${reply.id}`}
+          >
+            <i className="fa-regular fa-comment text-[11px]" />
+            {(reply as any).reply_count || reply.children?.length || 0} {((reply as any).reply_count || reply.children?.length || 0) === 1 ? 'reply' : 'replies'}
+          </button>
         </div>
       ) : null}
     </div>

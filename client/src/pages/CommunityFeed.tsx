@@ -22,7 +22,7 @@ import { handleLogoutClick } from '../utils/logout'
 
 type PollOption = { id: number; text: string; votes: number; user_voted?: boolean }
 type Poll = { id: number; question: string; is_active: number; options: PollOption[]; user_vote: number|null; total_votes: number; single_vote?: boolean; expires_at?: string | null }
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, profile_picture?: string|null, image_path?: string|null, audio_path?: string|null, parent_reply_id?: number | null, reply_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; poll?: Poll|null; replies: Reply[], profile_picture?: string|null, is_starred?: boolean, is_community_starred?: boolean, view_count?: number, has_viewed?: boolean, media_paths?: MediaItem[] | string | null }
 type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
@@ -4078,23 +4078,14 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
           </div>
         )}
         </div>
-        {/* Inline recent replies (last 1-2) */}
+        {/* Inline recent replies - only top-level comments (X-style) */}
         {!post.poll && Array.isArray(post.replies) && post.replies.length > 0 && (
           <div className="px-3 pb-2 pt-2 mt-2 border-t border-white/10 space-y-2" onClick={(e)=> e.stopPropagation()}>
             {(() => {
-            const ordered = (() => {
-              const pair = post.replies.slice(0, 2)
-              if (pair.length === 2){
-                const [a, b] = pair
-                if (a && b){
-                  // If one is the parent of the other, ensure parent appears first
-                  if ((a as any).parent_reply_id === b.id) return [b, a]
-                  if ((b as any).parent_reply_id === a.id) return [a, b]
-                }
-              }
-              return pair
-            })()
-            return ordered.map(r => (
+            // Filter to only show top-level replies (no parent_reply_id)
+            const topLevelReplies = post.replies.filter((r: any) => !r.parent_reply_id)
+            const displayReplies = topLevelReplies.slice(0, 2)
+            return displayReplies.map(r => (
               <div key={r.id} className="flex items-start gap-2 text-sm">
                 <Avatar username={r.username} url={r.profile_picture || undefined} size={22} linkToProfile />
                 <div className="flex-1 min-w-0">
@@ -4138,23 +4129,6 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       )}
                     </div>
                   </div>
-                  {r.parent_reply_id ? (() => {
-                    try {
-                      const parent = (post.replies || []).find((p:any) => p.id === r.parent_reply_id)
-                      const handle = parent?.username ? `@${parent.username}` : 'a comment'
-                      return (
-                        <div className="mb-1 text-[11px] text-white/60">
-                          <span className="opacity-70">Replying to</span> <span className="opacity-90">{handle}</span>
-                        </div>
-                      )
-                    } catch {
-                      return (
-                        <div className="mb-1 text-[11px] text-white/60">
-                          <span className="opacity-70">Replying to</span> <span className="opacity-90">a comment</span>
-                        </div>
-                      )
-                    }
-                  })() : null}
                   {r.content ? (
                     <div className="text-[#dfe6e9] whitespace-pre-wrap break-words">
                       {renderTextWithSourceLinks(r.content, false)}
@@ -4198,6 +4172,17 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       />
                     </div>
                   ) : null}
+
+                  {/* Reply count - click to view thread */}
+                  {((r as any).reply_count > 0 || (r as any).children?.length > 0) && (
+                    <button
+                      className="mt-1 text-[11px] text-[#4db6ac] hover:underline flex items-center gap-1"
+                      onClick={(e) => { e.stopPropagation(); window.location.href = `/reply/${r.id}` }}
+                    >
+                      <i className="fa-regular fa-comment text-[10px]" />
+                      {(r as any).reply_count || (r as any).children?.length || 0} {((r as any).reply_count || (r as any).children?.length || 0) === 1 ? 'reply' : 'replies'}
+                    </button>
+                  )}
 
                   {activeChildReplyFor === r.id && (
                     <div className="mt-2 rounded-lg border border-white/5 bg-white/[0.03] px-2 pt-2 pb-2 space-y-2" onClick={(e)=> e.stopPropagation()}>
@@ -4289,9 +4274,12 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
               </div>
             ))
           })()}
-          {post.replies.length > 2 && (
-            <button className="text-xs text-[#4db6ac] hover:underline" onClick={()=> onOpen()}>View all replies</button>
-          )}
+          {(() => {
+            const topLevelReplies = post.replies.filter((r: any) => !r.parent_reply_id)
+            return topLevelReplies.length > 2 && (
+              <button className="text-xs text-[#4db6ac] hover:underline" onClick={()=> onOpen()}>View all {topLevelReplies.length} comments</button>
+            )
+          })()}
           {/* Steve is typing indicator */}
           {steveIsTyping && (
             <div className="flex items-center gap-2 py-2 text-xs text-white/60">

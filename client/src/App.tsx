@@ -55,6 +55,7 @@ import VerifyOverlay from './components/VerifyOverlay'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
 import EncryptionSettings from './pages/EncryptionSettings'
+import CommentReply from './pages/CommentReply'
 
 const queryClient = new QueryClient()
 
@@ -699,6 +700,7 @@ function AppRoutes(){
                 <Route path="/community/:community_id/edit" element={<EditCommunity />} />
                 <Route path="/event/:event_id" element={<EventDetail />} />
                 <Route path="/post/:post_id" element={<PostDetail />} />
+                <Route path="/reply/:reply_id" element={<CommentReply />} />
                 <Route path="/compose" element={<CreatePost />} />
                 <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
                 <Route path="/encryption_settings" element={<EncryptionSettings />} />
