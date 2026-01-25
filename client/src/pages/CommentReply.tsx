@@ -170,32 +170,41 @@ export default function CommentReply() {
   // Steve AI state
   const [steveIsTyping, setSteveIsTyping] = useState(false)
 
-  // Check if message contains @Steve mention (case insensitive)
+  // Check if message contains @Steve mention (case insensitive) - same as CommunityFeed
   const containsSteveMention = (text: string) => {
-    return /@steve\b/i.test(text)
+    const result = /@steve\b/i.test(text)
+    console.log('[Steve AI] Checking for @Steve in:', text, '-> Found:', result)
+    return result
   }
 
-  // Call Steve AI to generate a reply (same as PostDetail.tsx)
+  // Call Steve AI to generate a reply - matching CommunityFeed implementation
   const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
-    if (!post || !containsSteveMention(userMessage)) return
+    console.log('[Steve AI] callSteveAI called with:', userMessage, 'parentReplyId:', parentReplyId)
+    if (!containsSteveMention(userMessage)) {
+      console.log('[Steve AI] No @Steve mention found, skipping')
+      return
+    }
     
     try {
+      console.log('[Steve AI] Calling API...')
       setSteveIsTyping(true)
       const response = await fetch('/api/ai/steve_reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          post_id: post.id,
+          post_id: post?.id,
           parent_reply_id: parentReplyId,
           user_message: userMessage,
-          community_id: post.community_id || null
+          community_id: post?.community_id ? Number(post.community_id) : null
         })
       })
       
       const data = await response.json()
+      console.log('[Steve AI] API response:', data)
       
       if (data.success && data.reply) {
+        console.log('[Steve AI] Success! Adding Steve reply')
         // Add Steve's reply to the nested replies
         setReply((prev) => {
           if (!prev) return prev
@@ -211,6 +220,7 @@ export default function CommentReply() {
     } catch (err) {
       console.error('[Steve AI] Failed to get Steve AI reply:', err)
     } finally {
+      console.log('[Steve AI] Done, hiding typing indicator')
       setSteveIsTyping(false)
     }
   }
@@ -400,7 +410,9 @@ export default function CommentReply() {
         })
         // Check if user mentioned @Steve and trigger AI reply
         const messageText = replyText.trim()
+        console.log('[Steve AI] Reply posted, checking message:', messageText)
         if (containsSteveMention(messageText)) {
+          console.log('[Steve AI] @Steve found, calling AI with user reply ID:', data.reply.id)
           callSteveAI(messageText, data.reply.id)
         }
         setReplyText('')
