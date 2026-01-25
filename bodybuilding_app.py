@@ -20050,6 +20050,8 @@ def ai_steve_reply():
         user_message = (data.get('user_message') or '').strip()
         community_id = data.get('community_id')
         
+        logger.info(f"[Steve AI] Request from {username}: post_id={post_id}, parent_reply_id={parent_reply_id}, community_id={community_id}, message_len={len(user_message) if user_message else 0}")
+        
         if not post_id:
             return jsonify({'success': False, 'error': 'Post ID is required'}), 400
         
@@ -20208,6 +20210,8 @@ def ai_steve_reply():
             context_parts = []
             post_description = f"Original post by {post_author}: {post_content}"
             
+            logger.info(f"[Steve AI] Building context for post {post_id}, author: {post_author}, content length: {len(post_content) if post_content else 0}")
+            
             # Note if post has media
             if has_images and has_video:
                 post_description += f"\n[This post includes {len(post_image_urls)} image(s) and a video]"
@@ -20254,6 +20258,8 @@ def ai_steve_reply():
             context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
             
             context = "\n\n".join(context_parts)
+            
+            logger.info(f"[Steve AI] Context built, length: {len(context)} chars, personality: {ai_personality}")
             
             # Call AI - use vision model if images present, web search for news, or regular model
             system_prompt = get_ai_personality_prompt(ai_personality)
