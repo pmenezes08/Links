@@ -421,7 +421,13 @@ export default function CommentReply() {
         })
         // Check if user mentioned @Steve and trigger AI reply
         const messageText = replyText.trim()
+        console.log('[Steve AI] Checking message for @Steve mention:', messageText)
+        console.log('[Steve AI] Contains mention:', containsSteveMention(messageText))
+        console.log('[Steve AI] Post object:', post)
+        console.log('[Steve AI] New reply ID:', data.reply.id)
+        
         if (containsSteveMention(messageText)) {
+          console.log('[Steve AI] Triggering callSteveAI...')
           callSteveAI(messageText, data.reply.id)
         }
         setReplyText('')
