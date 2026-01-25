@@ -4173,16 +4173,45 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                     </div>
                   ) : null}
 
-                  {/* Reply count - click to view thread */}
-                  {((r as any).reply_count > 0 || (r as any).children?.length > 0) && (
+                  {/* Heart reaction + Reply count */}
+                  <div className="mt-1 flex items-center gap-3">
+                    {/* Heart reaction */}
                     <button
-                      className="mt-1 text-[11px] text-[#4db6ac] hover:underline flex items-center gap-1"
+                      className={`text-[11px] flex items-center gap-1 transition ${
+                        r.user_reaction === '❤️' ? 'text-red-400' : 'text-[#9fb0b5] hover:text-red-400'
+                      }`}
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        try {
+                          const fd = new FormData()
+                          fd.append('reply_id', String(r.id))
+                          fd.append('reaction', '❤️')
+                          const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
+                          const data = await res.json()
+                          if (data.success) {
+                            // Update local state
+                            r.reactions = data.counts
+                            r.user_reaction = data.user_reaction
+                            // Force re-render
+                            setChildReplyText(prev => prev)
+                          }
+                        } catch (err) {
+                          console.error('Failed to add reaction:', err)
+                        }
+                      }}
+                    >
+                      <i className={`${r.user_reaction === '❤️' ? 'fa-solid' : 'fa-regular'} fa-heart text-[10px]`} />
+                      {(r.reactions?.['❤️'] || 0) > 0 && <span>{r.reactions?.['❤️']}</span>}
+                    </button>
+                    {/* Reply count - click to view thread */}
+                    <button
+                      className="text-[11px] text-[#9fb0b5] hover:text-[#4db6ac] flex items-center gap-1"
                       onClick={(e) => { e.stopPropagation(); window.location.href = `/reply/${r.id}` }}
                     >
                       <i className="fa-regular fa-comment text-[10px]" />
-                      {(r as any).reply_count || (r as any).children?.length || 0} {((r as any).reply_count || (r as any).children?.length || 0) === 1 ? 'reply' : 'replies'}
+                      {(r as any).reply_count || (r as any).children?.length || 0}
                     </button>
-                  )}
+                  </div>
 
                   {activeChildReplyFor === r.id && (
                     <div className="mt-2 rounded-lg border border-white/5 bg-white/[0.03] px-2 pt-2 pb-2 space-y-2" onClick={(e)=> e.stopPropagation()}>

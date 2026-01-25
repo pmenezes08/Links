@@ -167,6 +167,54 @@ export default function CommentReply() {
   const [editingNestedId, setEditingNestedId] = useState<number | null>(null)
   const [editNestedText, setEditNestedText] = useState('')
 
+  // Steve AI state
+  const [steveIsTyping, setSteveIsTyping] = useState(false)
+
+  // Check if message contains @Steve mention (case insensitive)
+  const containsSteveMention = (text: string) => {
+    return /@steve\b/i.test(text)
+  }
+
+  // Call Steve AI to generate a reply
+  const callSteveAI = async (userMessage: string, parentReplyId: number) => {
+    if (!post || !containsSteveMention(userMessage)) return
+
+    try {
+      setSteveIsTyping(true)
+      const response = await fetch('/api/ai/steve_reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          post_id: post.id,
+          parent_reply_id: parentReplyId,
+          user_message: userMessage,
+          community_id: post.community_id || null
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.reply) {
+        // Add Steve's reply to the nested replies
+        setReply((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            nested_replies: [...(prev.nested_replies || []), data.reply],
+            reply_count: (prev.reply_count || 0) + 1,
+          }
+        })
+      } else if (!data.success) {
+        console.error('[Steve AI] Error:', data.error)
+      }
+    } catch (err) {
+      console.error('[Steve AI] Failed to get Steve AI reply:', err)
+    } finally {
+      setSteveIsTyping(false)
+    }
+  }
+
   // Keyboard handling state
   const keyboardOffsetRef = useRef(0)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
@@ -350,6 +398,11 @@ export default function CommentReply() {
             reply_count: (prev.reply_count || 0) + 1,
           }
         })
+        // Check if user mentioned @Steve and trigger AI reply
+        const messageText = replyText.trim()
+        if (containsSteveMention(messageText)) {
+          callSteveAI(messageText, data.reply.id)
+        }
         setReplyText('')
         setSelectedGif(null)
       } else {
@@ -854,8 +907,21 @@ export default function CommentReply() {
             </div>
           )}
 
+          {/* Steve is typing indicator */}
+          {steveIsTyping && (
+            <div className="px-4 py-3 border-t border-white/5 flex items-center gap-2 text-xs text-white/60">
+              <span className="font-medium text-[#4db6ac]">Steve</span>
+              <span>is typing</span>
+              <span className="inline-flex gap-0.5">
+                <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1 h-1 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </span>
+            </div>
+          )}
+
           {/* Empty state */}
-          {(!reply.nested_replies || reply.nested_replies.length === 0) && (
+          {(!reply.nested_replies || reply.nested_replies.length === 0) && !steveIsTyping && (
             <div className="px-4 py-16 text-center text-white/30">
               <i className="fa-regular fa-comments text-3xl mb-3 block" />
               <p className="text-sm">No replies yet</p>
