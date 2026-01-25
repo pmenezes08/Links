@@ -175,24 +175,10 @@ export default function CommentReply() {
     return /@steve\b/i.test(text)
   }
 
-  // Call Steve AI to generate a reply
-  const callSteveAI = async (userMessage: string, parentReplyId: number) => {
-    if (!post) {
-      console.error('[Steve AI] No post context available')
-      return
-    }
-    if (!containsSteveMention(userMessage)) {
-      console.log('[Steve AI] No @Steve mention found in message')
-      return
-    }
-
-    console.log('[Steve AI] Calling Steve with:', {
-      post_id: post.id,
-      parent_reply_id: parentReplyId,
-      user_message: userMessage,
-      community_id: post.community_id
-    })
-
+  // Call Steve AI to generate a reply (same as PostDetail.tsx)
+  const callSteveAI = async (userMessage: string, parentReplyId: number | null) => {
+    if (!post || !containsSteveMention(userMessage)) return
+    
     try {
       setSteveIsTyping(true)
       const response = await fetch('/api/ai/steve_reply', {
@@ -206,11 +192,9 @@ export default function CommentReply() {
           community_id: post.community_id || null
         })
       })
-
-      console.log('[Steve AI] Response status:', response.status)
+      
       const data = await response.json()
-      console.log('[Steve AI] Response data:', data)
-
+      
       if (data.success && data.reply) {
         // Add Steve's reply to the nested replies
         setReply((prev) => {
@@ -221,13 +205,8 @@ export default function CommentReply() {
             reply_count: (prev.reply_count || 0) + 1,
           }
         })
-        console.log('[Steve AI] Reply added successfully')
       } else if (!data.success) {
-        console.error('[Steve AI] Error from server:', data.error)
-        // Show error to user if it's a meaningful message
-        if (data.error && !data.error.includes('Server error')) {
-          alert(`Steve: ${data.error}`)
-        }
+        console.error('[Steve AI] Error:', data.error)
       }
     } catch (err) {
       console.error('[Steve AI] Failed to get Steve AI reply:', err)
@@ -421,13 +400,7 @@ export default function CommentReply() {
         })
         // Check if user mentioned @Steve and trigger AI reply
         const messageText = replyText.trim()
-        console.log('[Steve AI] Checking message for @Steve mention:', messageText)
-        console.log('[Steve AI] Contains mention:', containsSteveMention(messageText))
-        console.log('[Steve AI] Post object:', post)
-        console.log('[Steve AI] New reply ID:', data.reply.id)
-        
         if (containsSteveMention(messageText)) {
-          console.log('[Steve AI] Triggering callSteveAI...')
           callSteveAI(messageText, data.reply.id)
         }
         setReplyText('')
