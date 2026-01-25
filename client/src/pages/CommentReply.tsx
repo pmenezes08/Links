@@ -171,6 +171,36 @@ export default function CommentReply() {
   const keyboardOffsetRef = useRef(0)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const viewportBaseRef = useRef<number | null>(null)
+  const [safeBottomPx, setSafeBottomPx] = useState(0)
+
+  // Measure safe-area-inset-bottom
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    const probe = document.createElement('div')
+    probe.style.position = 'fixed'
+    probe.style.bottom = '0'
+    probe.style.left = '0'
+    probe.style.width = '0'
+    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
+    probe.style.pointerEvents = 'none'
+    probe.style.opacity = '0'
+    probe.style.zIndex = '-1'
+    document.body.appendChild(probe)
+
+    const updateSafeBottom = () => {
+      const rect = probe.getBoundingClientRect()
+      const next = rect.height || 0
+      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
+    }
+
+    updateSafeBottom()
+    window.addEventListener('resize', updateSafeBottom)
+
+    return () => {
+      window.removeEventListener('resize', updateSafeBottom)
+      probe.remove()
+    }
+  }, [])
 
   // Visual viewport tracking for web keyboard
   useEffect(() => {
@@ -461,6 +491,10 @@ export default function CommentReply() {
 
   const heartCount = reply.reactions?.['❤️'] || 0
   const isHeartActive = reply.user_reaction === '❤️'
+  
+  // Calculate keyboard lift (subtract safe area since keyboard height includes it on iOS)
+  const keyboardLift = Math.max(0, keyboardOffset - safeBottomPx)
+  const showKeyboard = keyboardOffset > 2
 
   return (
     <div
@@ -499,9 +533,9 @@ export default function CommentReply() {
       <div 
         className="flex-1 overflow-y-auto"
         style={{ 
-          paddingBottom: keyboardOffset > 0 
-            ? `${90 + keyboardOffset}px`  // Composer height + keyboard + buffer
-            : 'calc(90px + env(safe-area-inset-bottom, 0px))'  // Composer height + safe area + buffer
+          paddingBottom: showKeyboard 
+            ? `${90 + keyboardLift}px`  // Composer height + keyboard lift + buffer
+            : `${90 + safeBottomPx}px`  // Composer height + safe area + buffer
         }}
       >
         <div className="max-w-2xl mx-auto">
@@ -833,7 +867,7 @@ export default function CommentReply() {
       {/* Fixed bottom reply composer */}
       <div 
         className="fixed left-0 right-0 z-[100] bg-black border-t border-white/10"
-        style={{ bottom: keyboardOffset }}
+        style={{ bottom: showKeyboard ? keyboardLift : 0 }}
       >
         <div className="max-w-2xl mx-auto px-3 py-3">
           {selectedGif && (
@@ -871,7 +905,7 @@ export default function CommentReply() {
           </div>
         </div>
         {/* Safe area spacer for iOS - only when keyboard is closed */}
-        {keyboardOffset === 0 && (
+        {!showKeyboard && (
           <div style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
         )}
       </div>
