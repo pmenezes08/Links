@@ -177,7 +177,21 @@ export default function CommentReply() {
 
   // Call Steve AI to generate a reply
   const callSteveAI = async (userMessage: string, parentReplyId: number) => {
-    if (!post || !containsSteveMention(userMessage)) return
+    if (!post) {
+      console.error('[Steve AI] No post context available')
+      return
+    }
+    if (!containsSteveMention(userMessage)) {
+      console.log('[Steve AI] No @Steve mention found in message')
+      return
+    }
+
+    console.log('[Steve AI] Calling Steve with:', {
+      post_id: post.id,
+      parent_reply_id: parentReplyId,
+      user_message: userMessage,
+      community_id: post.community_id
+    })
 
     try {
       setSteveIsTyping(true)
@@ -193,7 +207,9 @@ export default function CommentReply() {
         })
       })
 
+      console.log('[Steve AI] Response status:', response.status)
       const data = await response.json()
+      console.log('[Steve AI] Response data:', data)
 
       if (data.success && data.reply) {
         // Add Steve's reply to the nested replies
@@ -205,8 +221,13 @@ export default function CommentReply() {
             reply_count: (prev.reply_count || 0) + 1,
           }
         })
+        console.log('[Steve AI] Reply added successfully')
       } else if (!data.success) {
-        console.error('[Steve AI] Error:', data.error)
+        console.error('[Steve AI] Error from server:', data.error)
+        // Show error to user if it's a meaningful message
+        if (data.error && !data.error.includes('Server error')) {
+          alert(`Steve: ${data.error}`)
+        }
       }
     } catch (err) {
       console.error('[Steve AI] Failed to get Steve AI reply:', err)

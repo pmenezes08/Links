@@ -20050,27 +20050,55 @@ def ai_steve_reply():
             is_unlimited = username.lower() in AI_UNLIMITED_USERS
             
             if not is_unlimited:
-                if USE_MYSQL:
-                    c.execute(f"""
-                        SELECT COUNT(*) as cnt FROM ai_usage_log 
-                        WHERE username = {placeholder} 
-                        AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
-                    """, (username,))
-                else:
-                    c.execute(f"""
-                        SELECT COUNT(*) as cnt FROM ai_usage_log 
-                        WHERE username = {placeholder} 
-                        AND datetime(created_at) > datetime('now', '-24 hours')
-                    """, (username,))
-                
-                row = c.fetchone()
-                usage_count = row['cnt'] if hasattr(row, 'keys') else row[0] if row else 0
-                
-                if usage_count >= AI_DAILY_LIMIT:
-                    return jsonify({
-                        'success': False, 
-                        'error': f'Daily limit reached. You can ask Steve {AI_DAILY_LIMIT} questions per day.'
-                    }), 429
+                try:
+                    if USE_MYSQL:
+                        c.execute(f"""
+                            SELECT COUNT(*) as cnt FROM ai_usage_log 
+                            WHERE username = {placeholder} 
+                            AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                        """, (username,))
+                    else:
+                        c.execute(f"""
+                            SELECT COUNT(*) as cnt FROM ai_usage_log 
+                            WHERE username = {placeholder} 
+                            AND datetime(created_at) > datetime('now', '-24 hours')
+                        """, (username,))
+                    
+                    row = c.fetchone()
+                    usage_count = row['cnt'] if hasattr(row, 'keys') else row[0] if row else 0
+                    
+                    if usage_count >= AI_DAILY_LIMIT:
+                        return jsonify({
+                            'success': False, 
+                            'error': f'Daily limit reached. You can ask Steve {AI_DAILY_LIMIT} questions per day.'
+                        }), 429
+                except Exception as rate_limit_err:
+                    # Table might not exist yet - create it and continue (count=0)
+                    logger.warning(f"Rate limit check failed (table may not exist): {rate_limit_err}")
+                    try:
+                        if USE_MYSQL:
+                            c.execute("""
+                                CREATE TABLE IF NOT EXISTS ai_usage_log (
+                                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                                    username VARCHAR(191) NOT NULL,
+                                    request_type VARCHAR(50) NOT NULL,
+                                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                    INDEX idx_ai_usage_user (username),
+                                    INDEX idx_ai_usage_time (created_at)
+                                )
+                            """)
+                        else:
+                            c.execute("""
+                                CREATE TABLE IF NOT EXISTS ai_usage_log (
+                                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                    username TEXT NOT NULL,
+                                    request_type TEXT NOT NULL,
+                                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                                )
+                            """)
+                        conn.commit()
+                    except Exception as create_err:
+                        logger.warning(f"Could not create ai_usage_log table: {create_err}")
             
             # Get post content for context (including media)
             c.execute(f"SELECT content, username, image_path, video_path, media_paths FROM posts WHERE id = {placeholder}", (post_id,))
@@ -20422,7 +20450,16 @@ def ai_steve_reply():
             
             conn.commit()
             
-            # Return the AI reply
+            # Get Steve's profile picture
+            steve_profile_pic = None
+            try:
+                c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {placeholder}", (AI_USERNAME,))
+                steve_pp_row = c.fetchone()
+                steve_profile_pic = steve_pp_row['profile_picture'] if steve_pp_row and hasattr(steve_pp_row, 'keys') else (steve_pp_row[0] if steve_pp_row else None)
+            except Exception:
+                pass
+            
+            # Return the AI reply with all necessary fields for frontend
             return jsonify({
                 'success': True,
                 'reply': {
@@ -20431,7 +20468,11 @@ def ai_steve_reply():
                     'content': ai_response,
                     'timestamp': timestamp_db,
                     'post_id': post_id,
-                    'parent_reply_id': steve_parent_reply_id
+                    'parent_reply_id': steve_parent_reply_id,
+                    'reactions': {},
+                    'user_reaction': None,
+                    'profile_picture': steve_profile_pic,
+                    'reply_count': 0
                 },
                 'remaining_today': 'unlimited' if is_unlimited else AI_DAILY_LIMIT - usage_count - 1
             })
