@@ -396,9 +396,9 @@ export default function CommentReply() {
         bottom: 0,
       }}
     >
-      {/* Fixed Header - same style as PostDetail */}
+      {/* Fixed Header - exactly like PostDetail */}
       <div
-        className="flex-shrink-0 border-b border-white/10"
+        className="flex-shrink-0 border-b border-white/10 z-50"
         style={{
           paddingTop: 'env(safe-area-inset-top, 0px)',
           background: '#000',
@@ -410,10 +410,10 @@ export default function CommentReply() {
             onClick={() => navigate(-1)} 
             aria-label="Back"
           >
-            <i className="fa-solid fa-arrow-left text-white" />
+            <i className="fa-solid fa-arrow-left text-white text-lg" />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="font-semibold tracking-[-0.01em] text-sm">Thread</div>
+            <div className="font-semibold tracking-[-0.01em] text-sm text-white">Thread</div>
           </div>
         </div>
       </div>
