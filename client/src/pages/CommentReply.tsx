@@ -955,6 +955,9 @@ export default function CommentReply() {
               <MentionTextarea
                 value={replyText}
                 onChange={setReplyText}
+                communityId={post?.community_id}
+                postId={post?.id}
+                replyId={reply.id}
                 placeholder={`Reply to @${reply.username}...`}
                 className="flex-1 bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/40 outline-none resize-none max-h-24 min-h-[36px]"
                 rows={1}
