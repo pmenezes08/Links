@@ -135,12 +135,19 @@ export default function CommentReply() {
   const [loading, setLoading] = useState(true)
   const [reply, setReply] = useState<Reply | null>(null)
   const [post, setPost] = useState<PostInfo | null>(null)
-  const [parentReply, setParentReply] = useState<Reply | null>(null)
   const [currentUser, setCurrentUser] = useState<string>('')
   const [replyText, setReplyText] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
   const [showGifPicker, setShowGifPicker] = useState(false)
   const [selectedGif, setSelectedGif] = useState<GifSelection | null>(null)
+  
+  // Edit state for main reply
+  const [isEditingMain, setIsEditingMain] = useState(false)
+  const [editMainText, setEditMainText] = useState('')
+  
+  // Edit state for nested replies (keyed by reply id)
+  const [editingNestedId, setEditingNestedId] = useState<number | null>(null)
+  const [editNestedText, setEditNestedText] = useState('')
 
   // Fetch current user
   useEffect(() => {
@@ -162,7 +169,7 @@ export default function CommentReply() {
       if (data.success) {
         setReply(data.reply)
         setPost(data.post)
-        setParentReply(data.parent_reply)
+        setEditMainText(data.reply.content)
       }
     } catch (err) {
       console.error('Failed to fetch reply:', err)
@@ -279,6 +286,56 @@ export default function CommentReply() {
     }
   }
 
+  // Edit main reply
+  const handleEditMain = async () => {
+    if (!reply) return
+    try {
+      const fd = new FormData()
+      fd.append('reply_id', String(reply.id))
+      fd.append('content', editMainText)
+      const res = await fetch('/edit_reply', { method: 'POST', credentials: 'include', body: fd })
+      const data = await res.json()
+      if (data.success) {
+        setReply((prev) => prev ? { ...prev, content: editMainText } : prev)
+        setIsEditingMain(false)
+      } else {
+        alert(data.error || 'Failed to edit')
+      }
+    } catch (err) {
+      console.error('Failed to edit reply:', err)
+      alert('Failed to edit reply')
+    }
+  }
+
+  // Edit nested reply
+  const handleEditNested = async (nestedId: number) => {
+    try {
+      const fd = new FormData()
+      fd.append('reply_id', String(nestedId))
+      fd.append('content', editNestedText)
+      const res = await fetch('/edit_reply', { method: 'POST', credentials: 'include', body: fd })
+      const data = await res.json()
+      if (data.success) {
+        setReply((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            nested_replies: (prev.nested_replies || []).map((nr) =>
+              nr.id === nestedId ? { ...nr, content: editNestedText } : nr
+            ),
+          }
+        })
+        setEditingNestedId(null)
+        setEditNestedText('')
+      } else {
+        alert(data.error || 'Failed to edit')
+      }
+    } catch (err) {
+      console.error('Failed to edit reply:', err)
+      alert('Failed to edit reply')
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -317,22 +374,6 @@ export default function CommentReply() {
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto pb-32">
         <div className="max-w-2xl mx-auto">
-          {/* Parent reply context (if this is a nested reply) */}
-          {parentReply && (
-            <div
-              className="px-4 py-3 border-b border-white/10 cursor-pointer hover:bg-white/[0.02]"
-              onClick={() => navigate(`/reply/${parentReply.id}`)}
-            >
-              <div className="flex items-center gap-2 text-sm text-white/50">
-                <i className="fa-solid fa-reply fa-flip-horizontal text-xs" />
-                <span>
-                  Replying to <span className="text-[#4db6ac]">@{parentReply.username}</span>
-                </span>
-              </div>
-              <p className="text-sm text-white/40 truncate mt-1">{parentReply.content}</p>
-            </div>
-          )}
-
           {/* Main Reply */}
           <div className="px-4 py-4 border-b border-white/10">
             <div className="flex gap-3">
@@ -342,25 +383,67 @@ export default function CommentReply() {
                   <span className="font-semibold">{reply.username}</span>
                   <span className="text-sm text-white/40">{formatSmartTime(reply.timestamp)}</span>
                   {(reply.username === currentUser || currentUser === 'admin') && (
-                    <button
-                      onClick={() => handleDelete(reply.id)}
-                      className="ml-auto p-1 text-white/30 hover:text-red-400"
-                      title="Delete"
-                    >
-                      <i className="fa-regular fa-trash-can text-sm" />
-                    </button>
+                    <div className="ml-auto flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          setEditMainText(reply.content)
+                          setIsEditingMain(true)
+                        }}
+                        className="p-1.5 text-white/30 hover:text-[#4db6ac]"
+                        title="Edit"
+                      >
+                        <i className="fa-regular fa-pen-to-square text-sm" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(reply.id)}
+                        className="p-1.5 text-white/30 hover:text-red-400"
+                        title="Delete"
+                      >
+                        <i className="fa-regular fa-trash-can text-sm" />
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                {/* Reply content */}
-                {reply.content && (
-                  <div className="mt-2 text-[15px] whitespace-pre-wrap break-words text-white/90">
-                    {renderRichText(reply.content)}
+                {/* Reply content or edit form */}
+                {!isEditingMain ? (
+                  <>
+                    {reply.content && (
+                      <div className="mt-2 text-[15px] whitespace-pre-wrap break-words text-white/90">
+                        {renderRichText(reply.content)}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="mt-2">
+                    <textarea
+                      className="w-full resize-none max-h-60 min-h-[100px] px-3 py-2 rounded-md bg-black border border-[#4db6ac] text-[14px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+                      value={editMainText}
+                      onChange={(e) => setEditMainText(e.target.value)}
+                      autoFocus
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        className="px-3 py-1.5 rounded-md bg-[#4db6ac] text-black text-sm font-medium"
+                        onClick={handleEditMain}
+                      >
+                        Save
+                      </button>
+                      <button
+                        className="px-3 py-1.5 rounded-md border border-white/10 text-sm"
+                        onClick={() => {
+                          setIsEditingMain(false)
+                          setEditMainText(reply.content)
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
 
                 {/* Reply image */}
-                {reply.image_path && (
+                {reply.image_path && !isEditingMain && (
                   <div className="mt-3">
                     <ImageLoader
                       src={
@@ -375,7 +458,7 @@ export default function CommentReply() {
                 )}
 
                 {/* Reply audio */}
-                {reply.audio_path && (
+                {reply.audio_path && !isEditingMain && (
                   <div className="mt-3">
                     <audio
                       controls
@@ -390,21 +473,23 @@ export default function CommentReply() {
                 )}
 
                 {/* Heart + Reply count - same line */}
-                <div className="mt-3 flex items-center gap-4">
-                  <button
-                    onClick={() => handleReaction(reply.id)}
-                    className={`flex items-center gap-1.5 text-sm transition ${
-                      isHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'
-                    }`}
-                  >
-                    <i className={`${isHeartActive ? 'fa-solid' : 'fa-regular'} fa-heart`} />
-                    {heartCount > 0 && <span>{heartCount}</span>}
-                  </button>
-                  <span className="flex items-center gap-1.5 text-sm text-white/40">
-                    <i className="fa-regular fa-comment" />
-                    {reply.reply_count || 0}
-                  </span>
-                </div>
+                {!isEditingMain && (
+                  <div className="mt-3 flex items-center gap-4">
+                    <button
+                      onClick={() => handleReaction(reply.id)}
+                      className={`flex items-center gap-1.5 text-sm transition ${
+                        isHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'
+                      }`}
+                    >
+                      <i className={`${isHeartActive ? 'fa-solid' : 'fa-regular'} fa-heart`} />
+                      {heartCount > 0 && <span>{heartCount}</span>}
+                    </button>
+                    <span className="flex items-center gap-1.5 text-sm text-white/40">
+                      <i className="fa-regular fa-comment" />
+                      {reply.reply_count || 0}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -416,12 +501,13 @@ export default function CommentReply() {
                 const nrHeartCount = nr.reactions?.['❤️'] || 0
                 const nrIsHeartActive = nr.user_reaction === '❤️'
                 const nrReplyCount = nr.reply_count || 0
+                const isEditingThis = editingNestedId === nr.id
 
                 return (
                   <div
                     key={nr.id}
                     className="px-4 py-4 hover:bg-white/[0.02] cursor-pointer"
-                    onClick={() => navigate(`/reply/${nr.id}`)}
+                    onClick={() => !isEditingThis && navigate(`/reply/${nr.id}`)}
                   >
                     <div className="flex gap-3">
                       <div onClick={(e) => e.stopPropagation()}>
@@ -432,26 +518,66 @@ export default function CommentReply() {
                           <span className="font-medium text-sm">{nr.username}</span>
                           <span className="text-xs text-white/40">{formatSmartTime(nr.timestamp)}</span>
                           {(nr.username === currentUser || currentUser === 'admin') && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDelete(nr.id)
-                              }}
-                              className="ml-auto p-1 text-white/30 hover:text-red-400"
-                              title="Delete"
-                            >
-                              <i className="fa-regular fa-trash-can text-xs" />
-                            </button>
+                            <div className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => {
+                                  setEditNestedText(nr.content)
+                                  setEditingNestedId(nr.id)
+                                }}
+                                className="p-1 text-white/30 hover:text-[#4db6ac]"
+                                title="Edit"
+                              >
+                                <i className="fa-regular fa-pen-to-square text-xs" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(nr.id)}
+                                className="p-1 text-white/30 hover:text-red-400"
+                                title="Delete"
+                              >
+                                <i className="fa-regular fa-trash-can text-xs" />
+                              </button>
+                            </div>
                           )}
                         </div>
 
-                        {nr.content && (
-                          <div className="mt-1 text-[14px] whitespace-pre-wrap break-words text-white/80">
-                            {renderRichText(nr.content)}
+                        {/* Content or edit form */}
+                        {!isEditingThis ? (
+                          <>
+                            {nr.content && (
+                              <div className="mt-1 text-[14px] whitespace-pre-wrap break-words text-white/80">
+                                {renderRichText(nr.content)}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                            <textarea
+                              className="w-full resize-none max-h-40 min-h-[80px] px-3 py-2 rounded-md bg-black border border-[#4db6ac] text-[13px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
+                              value={editNestedText}
+                              onChange={(e) => setEditNestedText(e.target.value)}
+                              autoFocus
+                            />
+                            <div className="mt-2 flex gap-2">
+                              <button
+                                className="px-3 py-1 rounded-md bg-[#4db6ac] text-black text-xs font-medium"
+                                onClick={() => handleEditNested(nr.id)}
+                              >
+                                Save
+                              </button>
+                              <button
+                                className="px-3 py-1 rounded-md border border-white/10 text-xs"
+                                onClick={() => {
+                                  setEditingNestedId(null)
+                                  setEditNestedText('')
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
                           </div>
                         )}
 
-                        {nr.image_path && (
+                        {nr.image_path && !isEditingThis && (
                           <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                             <ImageLoader
                               src={
@@ -466,21 +592,23 @@ export default function CommentReply() {
                         )}
 
                         {/* Heart + Reply count - same line */}
-                        <div className="mt-2 flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => handleReaction(nr.id)}
-                            className={`flex items-center gap-1 text-xs transition ${
-                              nrIsHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'
-                            }`}
-                          >
-                            <i className={`${nrIsHeartActive ? 'fa-solid' : 'fa-regular'} fa-heart`} />
-                            {nrHeartCount > 0 && <span>{nrHeartCount}</span>}
-                          </button>
-                          <span className="flex items-center gap-1 text-xs text-white/40">
-                            <i className="fa-regular fa-comment" />
-                            {nrReplyCount}
-                          </span>
-                        </div>
+                        {!isEditingThis && (
+                          <div className="mt-2 flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => handleReaction(nr.id)}
+                              className={`flex items-center gap-1 text-xs transition ${
+                                nrIsHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'
+                              }`}
+                            >
+                              <i className={`${nrIsHeartActive ? 'fa-solid' : 'fa-regular'} fa-heart`} />
+                              {nrHeartCount > 0 && <span>{nrHeartCount}</span>}
+                            </button>
+                            <span className="flex items-center gap-1 text-xs text-white/40">
+                              <i className="fa-regular fa-comment" />
+                              {nrReplyCount}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

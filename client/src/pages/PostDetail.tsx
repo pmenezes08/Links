@@ -1599,6 +1599,7 @@ export default function PostDetail(){
               postId={post?.id}
               activeInlineReplyFor={activeInlineReplyFor}
               onSetActiveInlineReply={setActiveInlineReplyFor}
+              onNavigateToReply={(id) => navigate(`/reply/${id}`)}
             />
           ))}
           {/* Steve is typing indicator */}
@@ -2125,10 +2126,11 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   if (prev.currentUser !== next.currentUser) return false
   if (prev.depth !== next.depth) return false
   if (prev.activeInlineReplyFor !== next.activeInlineReplyFor) return false
+  if (prev.onNavigateToReply !== next.onNavigateToReply) return false
   return true
 })
 
-function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, activeInlineReplyFor, onSetActiveInlineReply }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, activeInlineReplyFor?: number | null, onSetActiveInlineReply?: (id: number | null) => void }){
+function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, activeInlineReplyFor, onSetActiveInlineReply, onNavigateToReply }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, activeInlineReplyFor?: number | null, onSetActiveInlineReply?: (id: number | null) => void, onNavigateToReply?: (id: number) => void }){
   const currentUser = currentUserName
   // Use parent's activeInlineReplyFor if provided, otherwise use local state
   const [localShowComposer, setLocalShowComposer] = useState(false)
@@ -2178,9 +2180,9 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
     }
   }, [showInlineAttachMenu])
   return (
-    <div data-reply-node className={`relative py-2 ${depth === 0 ? 'border-b border-white/10' : ''}`}>
+    <div data-reply-node className={`relative py-2 ${depth === 0 ? 'border-b border-white/10' : ''} cursor-pointer hover:bg-white/[0.02]`} onClick={() => onNavigateToReply?.(reply.id)}>
       <div className="relative flex items-start gap-2 px-3">
-        <div className="relative w-10 flex-shrink-0 self-stretch" style={{ zIndex: 1 }}>
+        <div className="relative w-10 flex-shrink-0 self-stretch" style={{ zIndex: 1 }} onClick={(e) => e.stopPropagation()}>
           <Avatar username={reply.username} url={reply.profile_picture || undefined} size={28} linkToProfile />
           {/* Vertical connector line from avatar to children */}
           {hasChildren && (
@@ -2195,7 +2197,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             <div className="font-medium">{reply.username}</div>
             <div className="text-[11px] text-[#9fb0b5] ml-auto">{formatSmartTime(reply.timestamp)}</div>
             {(currentUser && (currentUser === reply.username || currentUser === 'admin')) ? (
-              <>
+              <div onClick={(e) => e.stopPropagation()}>
                 <button
                   className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
                   title="Edit reply"
@@ -2210,13 +2212,13 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
                 >
                   <i className="fa-regular fa-trash-can" />
                 </button>
-              </>
+              </div>
             ) : null}
           </div>
           {!isEditing ? (
             <div className="text-[#dfe6e9] whitespace-pre-wrap mt-0.5 break-words">{renderRichText(reply.content, false)}</div>
           ) : (
-            <div className="mt-1">
+            <div className="mt-1" onClick={(e) => e.stopPropagation()}>
               <textarea
                 className="w-full resize-none max-h-60 min-h-[100px] px-3 py-2 rounded-md bg-black border border-[#4db6ac] text-[14px] focus:outline-none focus:ring-1 focus:ring-[#4db6ac]"
                 value={editText}
@@ -2241,7 +2243,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             </div>
           )}
           {reply.image_path ? (
-            <div className="mt-2 flex justify-center">
+            <div className="mt-2 flex justify-center" onClick={(e) => e.stopPropagation()}>
               <div onClick={()=> onPreviewImage(normalizePath(reply.image_path as string))}>
                 <ImageLoader
                   src={normalizePath(reply.image_path as string)}
@@ -2252,7 +2254,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             </div>
           ) : null}
           {reply.video_path ? (
-            <div className="mt-2">
+            <div className="mt-2" onClick={(e) => e.stopPropagation()}>
               <video
                 className="w-full max-h-[320px] rounded border border-white/10 bg-black"
                 src={normalizePath(reply.video_path)}
@@ -2262,7 +2264,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             </div>
           ) : null}
           {(reply as any)?.audio_path ? (
-            <div className="mt-2">
+            <div className="mt-2" onClick={(e) => e.stopPropagation()}>
               <audio controls className="w-full" playsInline webkit-playsinline="true" src={(() => {
                 const path = normalizePath((reply as any).audio_path as string);
                 const separator = path.includes('?') ? '&' : '?';
@@ -2270,12 +2272,13 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
               })()} />
             </div>
           ) : null}
-          <div className="mt-1 flex items-center gap-2 text-[11px]">
+          <div className="mt-1 flex items-center gap-2 text-[11px]" onClick={(e) => e.stopPropagation()}>
             <Reaction icon="fa-regular fa-heart" count={reply.reactions?.['heart']||0} active={reply.user_reaction==='heart'} onClick={()=> onToggle(reply.id, 'heart')} />
             <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
             <Reaction icon="fa-regular fa-thumbs-down" count={reply.reactions?.['thumbs-down']||0} active={reply.user_reaction==='thumbs-down'} onClick={()=> onToggle(reply.id, 'thumbs-down')} />
             <div className="ml-auto flex items-center gap-1">
               <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={(e)=> {
+                e.stopPropagation()
                 setShowComposer(v => !v)
                 // Scroll to show the composer under the reply
                 setTimeout(() => {
@@ -2289,7 +2292,7 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
       </div>
       {/* Inline reply composer - full width outside the avatar+content flex */}
       {showComposer ? (
-        <div className="mt-2 mx-3 space-y-2 rounded-xl bg-[#0a0a0c] p-3" data-inline-reply-id={reply.id}>
+        <div className="mt-2 mx-3 space-y-2 rounded-xl bg-[#0a0a0c] p-3" data-inline-reply-id={reply.id} onClick={(e) => e.stopPropagation()}>
           {/* Attachment previews */}
           {(img || inlineGif || inlinePreview) && (
             <div className="flex items-center gap-2 flex-wrap mb-1">
