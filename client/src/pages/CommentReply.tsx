@@ -498,27 +498,27 @@ export default function CommentReply() {
                   <span className="font-semibold">{reply.username}</span>
                   <span className="text-sm text-white/40">{formatSmartTime(reply.timestamp)}</span>
                   {/* Edit/Delete buttons for main reply - show for author or admin */}
-                  {(currentUser === reply.username || currentUser === 'admin') && (
-                    <div className="ml-auto flex items-center gap-1">
+                  {(currentUser === reply.username || currentUser === 'admin') ? (
+                    <>
                       <button
+                        className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
+                        title="Edit reply"
                         onClick={() => {
                           setEditMainText(reply.content)
                           setIsEditingMain(true)
                         }}
-                        className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac] hover:bg-white/10 transition-colors"
-                        title="Edit reply"
                       >
                         <i className="fa-regular fa-pen-to-square" />
                       </button>
                       <button
-                        onClick={() => handleDelete(reply.id)}
-                        className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400 hover:bg-white/10 transition-colors"
+                        className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
                         title="Delete reply"
+                        onClick={() => handleDelete(reply.id)}
                       >
                         <i className="fa-regular fa-trash-can" />
                       </button>
-                    </div>
-                  )}
+                    </>
+                  ) : null}
                 </div>
 
                 {/* Reply content or edit form */}
@@ -634,27 +634,27 @@ export default function CommentReply() {
                           <span className="font-medium text-sm">{nr.username}</span>
                           <span className="text-xs text-white/40">{formatSmartTime(nr.timestamp)}</span>
                           {/* Edit/Delete buttons for nested reply - show for author or admin */}
-                          {(currentUser === nr.username || currentUser === 'admin') && (
-                            <div className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          {(currentUser === nr.username || currentUser === 'admin') ? (
+                            <div onClick={(e) => e.stopPropagation()}>
                               <button
+                                className="ml-2 px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac]"
+                                title="Edit reply"
                                 onClick={() => {
                                   setEditNestedText(nr.content)
                                   setEditingNestedId(nr.id)
                                 }}
-                                className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac] hover:bg-white/10 transition-colors"
-                                title="Edit reply"
                               >
                                 <i className="fa-regular fa-pen-to-square" />
                               </button>
                               <button
-                                onClick={() => handleDelete(nr.id)}
-                                className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400 hover:bg-white/10 transition-colors"
+                                className="ml-1 px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400"
                                 title="Delete reply"
+                                onClick={() => handleDelete(nr.id)}
                               >
                                 <i className="fa-regular fa-trash-can" />
                               </button>
                             </div>
-                          )}
+                          ) : null}
                         </div>
 
                         {/* Content or edit form */}
