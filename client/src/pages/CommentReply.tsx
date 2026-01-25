@@ -222,12 +222,12 @@ export default function CommentReply() {
     }
   }
 
-  // Handle reaction on a reply
-  const handleReaction = async (targetReplyId: number, reaction: string) => {
+  // Handle reaction on a reply (heart only)
+  const handleReaction = async (targetReplyId: number) => {
     try {
       const fd = new FormData()
       fd.append('reply_id', String(targetReplyId))
-      fd.append('reaction', reaction)
+      fd.append('reaction', '❤️')
       const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
       const data = await res.json()
       if (data.success) {
@@ -281,7 +281,7 @@ export default function CommentReply() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0d1117] text-white flex items-center justify-center">
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <i className="fa-solid fa-spinner fa-spin text-2xl text-[#4db6ac]" />
       </div>
     )
@@ -289,7 +289,7 @@ export default function CommentReply() {
 
   if (!reply) {
     return (
-      <div className="min-h-screen bg-[#0d1117] text-white flex flex-col items-center justify-center gap-4">
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center gap-4">
         <p className="text-white/60">Reply not found</p>
         <button
           onClick={() => navigate(-1)}
@@ -301,261 +301,243 @@ export default function CommentReply() {
     )
   }
 
-  const reactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥']
+  const heartCount = reply.reactions?.['❤️'] || 0
+  const isHeartActive = reply.user_reaction === '❤️'
 
   return (
-    <div className="min-h-screen bg-[#0d1117] text-white">
+    <div className="min-h-screen bg-black text-white flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-[#0d1117]/95 backdrop-blur border-b border-white/10 px-4 py-3 flex items-center gap-3">
+      <header className="sticky top-0 z-50 bg-black/95 backdrop-blur border-b border-white/10 px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-white/10">
           <i className="fa-solid fa-arrow-left text-lg" />
         </button>
         <h1 className="font-semibold text-lg">Thread</h1>
       </header>
 
-      <div className="max-w-2xl mx-auto">
-        {/* Context: link to original post */}
-        {post && (
-          <div
-            className="px-4 py-3 border-b border-white/10 bg-white/[0.02] cursor-pointer hover:bg-white/[0.04]"
-            onClick={() => navigate(`/post/${post.id}`)}
-          >
-            <div className="flex items-center gap-2 text-sm text-white/60">
-              <i className="fa-solid fa-reply fa-flip-horizontal text-xs" />
-              <span>
-                Replying in <span className="text-[#4db6ac]">@{post.username}</span>'s post
-              </span>
-            </div>
-            <p className="text-sm text-white/50 truncate mt-1">{post.content}</p>
-          </div>
-        )}
-
-        {/* Parent reply context (if this is a nested reply) */}
-        {parentReply && (
-          <div
-            className="px-4 py-3 border-b border-white/10 bg-white/[0.02] cursor-pointer hover:bg-white/[0.04]"
-            onClick={() => navigate(`/reply/${parentReply.id}`)}
-          >
-            <div className="flex items-center gap-2 text-sm text-white/60">
-              <i className="fa-solid fa-reply fa-flip-horizontal text-xs" />
-              <span>
-                Replying to <span className="text-[#4db6ac]">@{parentReply.username}</span>
-              </span>
-            </div>
-            <p className="text-sm text-white/50 truncate mt-1">{parentReply.content}</p>
-          </div>
-        )}
-
-        {/* Main Reply */}
-        <div className="px-4 py-4 border-b border-white/10">
-          <div className="flex gap-3">
-            <Avatar username={reply.username} url={reply.profile_picture || undefined} size={44} linkToProfile />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold">{reply.username}</span>
-                <span className="text-sm text-white/50">{formatSmartTime(reply.timestamp)}</span>
-                {(reply.username === currentUser || currentUser === 'admin') && (
-                  <button
-                    onClick={() => handleDelete(reply.id)}
-                    className="ml-auto p-1 text-white/40 hover:text-red-400"
-                    title="Delete"
-                  >
-                    <i className="fa-regular fa-trash-can text-sm" />
-                  </button>
-                )}
-              </div>
-
-              {/* Reply content */}
-              {reply.content && (
-                <div className="mt-2 text-[15px] whitespace-pre-wrap break-words">
-                  {renderRichText(reply.content)}
-                </div>
-              )}
-
-              {/* Reply image */}
-              {reply.image_path && (
-                <div className="mt-3">
-                  <ImageLoader
-                    src={
-                      reply.image_path.startsWith('http') || reply.image_path.startsWith('/')
-                        ? reply.image_path
-                        : `/uploads/${reply.image_path}`
-                    }
-                    alt="Reply image"
-                    className="rounded-xl max-h-[400px] object-contain"
-                  />
-                </div>
-              )}
-
-              {/* Reply audio */}
-              {reply.audio_path && (
-                <div className="mt-3">
-                  <audio
-                    controls
-                    className="w-full"
-                    src={
-                      reply.audio_path.startsWith('http') || reply.audio_path.startsWith('/')
-                        ? reply.audio_path
-                        : `/uploads/${reply.audio_path}`
-                    }
-                  />
-                </div>
-              )}
-
-              {/* Reactions */}
-              <div className="mt-3 flex items-center gap-1 flex-wrap">
-                {reactionEmojis.map((emoji) => {
-                  const count = reply.reactions?.[emoji] || 0
-                  const isActive = reply.user_reaction === emoji
-                  return (
-                    <button
-                      key={emoji}
-                      onClick={() => handleReaction(reply.id, emoji)}
-                      className={`px-2 py-1 rounded-full text-sm flex items-center gap-1 transition ${
-                        isActive
-                          ? 'bg-[#4db6ac]/20 text-[#4db6ac]'
-                          : 'bg-white/5 text-white/60 hover:bg-white/10'
-                      }`}
-                    >
-                      <span>{emoji}</span>
-                      {count > 0 && <span className="text-xs">{count}</span>}
-                    </button>
-                  )
-                })}
-                <span className="ml-2 text-sm text-white/50">
-                  <i className="fa-regular fa-comment mr-1" />
-                  {reply.reply_count || 0} {(reply.reply_count || 0) === 1 ? 'reply' : 'replies'}
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto pb-32">
+        <div className="max-w-2xl mx-auto">
+          {/* Parent reply context (if this is a nested reply) */}
+          {parentReply && (
+            <div
+              className="px-4 py-3 border-b border-white/10 cursor-pointer hover:bg-white/[0.02]"
+              onClick={() => navigate(`/reply/${parentReply.id}`)}
+            >
+              <div className="flex items-center gap-2 text-sm text-white/50">
+                <i className="fa-solid fa-reply fa-flip-horizontal text-xs" />
+                <span>
+                  Replying to <span className="text-[#4db6ac]">@{parentReply.username}</span>
                 </span>
               </div>
+              <p className="text-sm text-white/40 truncate mt-1">{parentReply.content}</p>
+            </div>
+          )}
+
+          {/* Main Reply */}
+          <div className="px-4 py-4 border-b border-white/10">
+            <div className="flex gap-3">
+              <Avatar username={reply.username} url={reply.profile_picture || undefined} size={44} linkToProfile />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">{reply.username}</span>
+                  <span className="text-sm text-white/40">{formatSmartTime(reply.timestamp)}</span>
+                  {(reply.username === currentUser || currentUser === 'admin') && (
+                    <button
+                      onClick={() => handleDelete(reply.id)}
+                      className="ml-auto p-1 text-white/30 hover:text-red-400"
+                      title="Delete"
+                    >
+                      <i className="fa-regular fa-trash-can text-sm" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Reply content */}
+                {reply.content && (
+                  <div className="mt-2 text-[15px] whitespace-pre-wrap break-words text-white/90">
+                    {renderRichText(reply.content)}
+                  </div>
+                )}
+
+                {/* Reply image */}
+                {reply.image_path && (
+                  <div className="mt-3">
+                    <ImageLoader
+                      src={
+                        reply.image_path.startsWith('http') || reply.image_path.startsWith('/')
+                          ? reply.image_path
+                          : `/uploads/${reply.image_path}`
+                      }
+                      alt="Reply image"
+                      className="rounded-xl max-h-[400px] object-contain"
+                    />
+                  </div>
+                )}
+
+                {/* Reply audio */}
+                {reply.audio_path && (
+                  <div className="mt-3">
+                    <audio
+                      controls
+                      className="w-full"
+                      src={
+                        reply.audio_path.startsWith('http') || reply.audio_path.startsWith('/')
+                          ? reply.audio_path
+                          : `/uploads/${reply.audio_path}`
+                      }
+                    />
+                  </div>
+                )}
+
+                {/* Heart + Reply count - same line */}
+                <div className="mt-3 flex items-center gap-4">
+                  <button
+                    onClick={() => handleReaction(reply.id)}
+                    className={`flex items-center gap-1.5 text-sm transition ${
+                      isHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'
+                    }`}
+                  >
+                    <i className={`${isHeartActive ? 'fa-solid' : 'fa-regular'} fa-heart`} />
+                    {heartCount > 0 && <span>{heartCount}</span>}
+                  </button>
+                  <span className="flex items-center gap-1.5 text-sm text-white/40">
+                    <i className="fa-regular fa-comment" />
+                    {reply.reply_count || 0}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Reply input */}
-        <div className="px-4 py-3 border-b border-white/10 bg-white/[0.02]">
-          <div className="flex gap-3">
-            <Avatar username={currentUser} size={36} />
-            <div className="flex-1">
+          {/* Nested replies */}
+          {reply.nested_replies && reply.nested_replies.length > 0 && (
+            <div className="divide-y divide-white/5">
+              {reply.nested_replies.map((nr) => {
+                const nrHeartCount = nr.reactions?.['❤️'] || 0
+                const nrIsHeartActive = nr.user_reaction === '❤️'
+                const nrReplyCount = nr.reply_count || 0
+
+                return (
+                  <div
+                    key={nr.id}
+                    className="px-4 py-4 hover:bg-white/[0.02] cursor-pointer"
+                    onClick={() => navigate(`/reply/${nr.id}`)}
+                  >
+                    <div className="flex gap-3">
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <Avatar username={nr.username} url={nr.profile_picture || undefined} size={36} linkToProfile />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">{nr.username}</span>
+                          <span className="text-xs text-white/40">{formatSmartTime(nr.timestamp)}</span>
+                          {(nr.username === currentUser || currentUser === 'admin') && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDelete(nr.id)
+                              }}
+                              className="ml-auto p-1 text-white/30 hover:text-red-400"
+                              title="Delete"
+                            >
+                              <i className="fa-regular fa-trash-can text-xs" />
+                            </button>
+                          )}
+                        </div>
+
+                        {nr.content && (
+                          <div className="mt-1 text-[14px] whitespace-pre-wrap break-words text-white/80">
+                            {renderRichText(nr.content)}
+                          </div>
+                        )}
+
+                        {nr.image_path && (
+                          <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                            <ImageLoader
+                              src={
+                                nr.image_path.startsWith('http') || nr.image_path.startsWith('/')
+                                  ? nr.image_path
+                                  : `/uploads/${nr.image_path}`
+                              }
+                              alt="Reply image"
+                              className="rounded-lg max-h-[200px] object-contain"
+                            />
+                          </div>
+                        )}
+
+                        {/* Heart + Reply count - same line */}
+                        <div className="mt-2 flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => handleReaction(nr.id)}
+                            className={`flex items-center gap-1 text-xs transition ${
+                              nrIsHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'
+                            }`}
+                          >
+                            <i className={`${nrIsHeartActive ? 'fa-solid' : 'fa-regular'} fa-heart`} />
+                            {nrHeartCount > 0 && <span>{nrHeartCount}</span>}
+                          </button>
+                          <span className="flex items-center gap-1 text-xs text-white/40">
+                            <i className="fa-regular fa-comment" />
+                            {nrReplyCount}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {(!reply.nested_replies || reply.nested_replies.length === 0) && (
+            <div className="px-4 py-16 text-center text-white/30">
+              <i className="fa-regular fa-comments text-3xl mb-3 block" />
+              <p className="text-sm">No replies yet</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Fixed bottom reply composer */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-black border-t border-white/10">
+        <div className="max-w-2xl mx-auto px-3 py-3">
+          {selectedGif && (
+            <div className="mb-2 flex items-center gap-2 p-2 bg-white/5 rounded-lg">
+              <img src={selectedGif.previewUrl} alt="GIF" className="h-12 rounded" />
+              <button onClick={() => setSelectedGif(null)} className="ml-auto text-white/60 hover:text-white">
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <button
+              onClick={() => setShowGifPicker(true)}
+              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/15"
+            >
+              <i className="fa-solid fa-images text-sm text-white/70" />
+            </button>
+            <div className="flex-1 flex items-center rounded-lg border border-white/20 bg-white/5 overflow-hidden">
               <MentionTextarea
                 value={replyText}
                 onChange={setReplyText}
                 placeholder={`Reply to @${reply.username}...`}
-                className="w-full bg-transparent border-0 outline-none resize-none text-[15px] placeholder-white/40"
-                rows={2}
+                className="flex-1 bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/40 outline-none resize-none max-h-24 min-h-[36px]"
+                rows={1}
+                autoExpand
               />
-              {selectedGif && (
-                <div className="mt-2 flex items-center gap-2 p-2 bg-white/5 rounded-lg">
-                  <img src={selectedGif.previewUrl} alt="GIF" className="h-16 rounded" />
-                  <button onClick={() => setSelectedGif(null)} className="ml-auto text-white/60 hover:text-white">
-                    <i className="fa-solid fa-xmark" />
-                  </button>
-                </div>
-              )}
-              <div className="mt-2 flex items-center justify-between">
-                <button
-                  onClick={() => setShowGifPicker(true)}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 text-white/70 hover:bg-white/10 text-sm"
-                >
-                  <i className="fa-solid fa-images mr-1" /> GIF
-                </button>
-                <button
-                  onClick={handleSubmitReply}
-                  disabled={sendingReply || (!replyText.trim() && !selectedGif)}
-                  className="px-4 py-1.5 rounded-full bg-[#4db6ac] text-black font-semibold text-sm disabled:opacity-40"
-                >
-                  {sendingReply ? <i className="fa-solid fa-spinner fa-spin" /> : 'Reply'}
-                </button>
-              </div>
             </div>
+            <button
+              onClick={handleSubmitReply}
+              disabled={sendingReply || (!replyText.trim() && !selectedGif)}
+              className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] text-white disabled:opacity-40"
+            >
+              {sendingReply ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
+            </button>
           </div>
         </div>
-
-        {/* Nested replies */}
-        {reply.nested_replies && reply.nested_replies.length > 0 && (
-          <div className="divide-y divide-white/10">
-            {reply.nested_replies.map((nr) => (
-              <div key={nr.id} className="px-4 py-4 hover:bg-white/[0.02]">
-                <div className="flex gap-3">
-                  <Avatar username={nr.username} url={nr.profile_picture || undefined} size={36} linkToProfile />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{nr.username}</span>
-                      <span className="text-sm text-white/50">{formatSmartTime(nr.timestamp)}</span>
-                      {(nr.username === currentUser || currentUser === 'admin') && (
-                        <button
-                          onClick={() => handleDelete(nr.id)}
-                          className="ml-auto p-1 text-white/40 hover:text-red-400"
-                          title="Delete"
-                        >
-                          <i className="fa-regular fa-trash-can text-xs" />
-                        </button>
-                      )}
-                    </div>
-
-                    {nr.content && (
-                      <div className="mt-1 text-[14px] whitespace-pre-wrap break-words">
-                        {renderRichText(nr.content)}
-                      </div>
-                    )}
-
-                    {nr.image_path && (
-                      <div className="mt-2">
-                        <ImageLoader
-                          src={
-                            nr.image_path.startsWith('http') || nr.image_path.startsWith('/')
-                              ? nr.image_path
-                              : `/uploads/${nr.image_path}`
-                          }
-                          alt="Reply image"
-                          className="rounded-lg max-h-[200px] object-contain"
-                        />
-                      </div>
-                    )}
-
-                    {/* Reactions for nested reply */}
-                    <div className="mt-2 flex items-center gap-1 flex-wrap">
-                      {reactionEmojis.map((emoji) => {
-                        const count = nr.reactions?.[emoji] || 0
-                        const isActive = nr.user_reaction === emoji
-                        return (
-                          <button
-                            key={emoji}
-                            onClick={() => handleReaction(nr.id, emoji)}
-                            className={`px-1.5 py-0.5 rounded-full text-xs flex items-center gap-0.5 transition ${
-                              isActive
-                                ? 'bg-[#4db6ac]/20 text-[#4db6ac]'
-                                : 'bg-white/5 text-white/60 hover:bg-white/10'
-                            }`}
-                          >
-                            <span>{emoji}</span>
-                            {count > 0 && <span>{count}</span>}
-                          </button>
-                        )
-                      })}
-                      {(nr.reply_count || 0) > 0 && (
-                        <button
-                          onClick={() => navigate(`/reply/${nr.id}`)}
-                          className="ml-2 text-xs text-[#4db6ac] hover:underline"
-                        >
-                          <i className="fa-regular fa-comment mr-1" />
-                          {nr.reply_count} {nr.reply_count === 1 ? 'reply' : 'replies'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Empty state */}
-        {(!reply.nested_replies || reply.nested_replies.length === 0) && (
-          <div className="px-4 py-12 text-center text-white/40">
-            <i className="fa-regular fa-comments text-4xl mb-3 block" />
-            <p>No replies yet. Be the first to reply!</p>
-          </div>
-        )}
+        {/* Safe area spacer for iOS */}
+        <div className="h-[env(safe-area-inset-bottom)]" />
       </div>
 
       {/* GIF Picker Modal */}
