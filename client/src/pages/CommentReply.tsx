@@ -222,7 +222,6 @@ export default function CommentReply() {
         fd.append('image', gifFile)
       }
 
-      // Get the post_id from the reply
       if (post) {
         fd.set('post_id', String(post.id))
       }
@@ -231,7 +230,6 @@ export default function CommentReply() {
       const data = await res.json()
       
       if (data.success && data.reply) {
-        // Add the new reply to the list
         setReply((prev) => {
           if (!prev) return prev
           return {
@@ -262,7 +260,6 @@ export default function CommentReply() {
       const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
       const data = await res.json()
       if (data.success) {
-        // Update the reply or nested reply with new reaction counts
         setReply((prev) => {
           if (!prev) return prev
           if (prev.id === targetReplyId) {
@@ -291,10 +288,8 @@ export default function CommentReply() {
       const data = await res.json()
       if (data.success) {
         if (targetReplyId === reply?.id) {
-          // Main reply deleted, go back
           navigate(-1)
         } else {
-          // Nested reply deleted
           setReply((prev) => {
             if (!prev) return prev
             return {
@@ -360,6 +355,11 @@ export default function CommentReply() {
     }
   }
 
+  // Check if user can edit/delete a reply
+  const canEditDelete = (username: string) => {
+    return currentUser === username || currentUser === 'admin'
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -386,17 +386,43 @@ export default function CommentReply() {
   const isHeartActive = reply.user_reaction === '❤️'
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-black/95 backdrop-blur border-b border-white/10 px-4 py-3 flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-white/10">
-          <i className="fa-solid fa-arrow-left text-lg" />
-        </button>
-        <h1 className="font-semibold text-lg">Thread</h1>
-      </header>
+    <div
+      className="min-h-screen bg-black text-white flex flex-col overflow-hidden"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+      }}
+    >
+      {/* Fixed Header - same style as PostDetail */}
+      <div
+        className="flex-shrink-0 border-b border-white/10"
+        style={{
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          background: '#000',
+        }}
+      >
+        <div className="h-14 flex items-center gap-2 px-3">
+          <button 
+            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            onClick={() => navigate(-1)} 
+            aria-label="Back"
+          >
+            <i className="fa-solid fa-arrow-left text-white" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold tracking-[-0.01em] text-sm">Thread</div>
+          </div>
+        </div>
+      </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto pb-32">
+      <div 
+        className="flex-1 overflow-y-auto"
+        style={{ paddingBottom: '120px' }}
+      >
         <div className="max-w-2xl mx-auto">
           
           {/* Original Post Context */}
@@ -476,24 +502,25 @@ export default function CommentReply() {
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{reply.username}</span>
                   <span className="text-sm text-white/40">{formatSmartTime(reply.timestamp)}</span>
-                  {(reply.username === currentUser || currentUser === 'admin') && (
-                    <div className="ml-auto flex items-center gap-1">
+                  {/* Edit/Delete buttons for main reply */}
+                  {canEditDelete(reply.username) && (
+                    <div className="ml-auto flex items-center">
                       <button
                         onClick={() => {
                           setEditMainText(reply.content)
                           setIsEditingMain(true)
                         }}
-                        className="p-1.5 text-white/30 hover:text-[#4db6ac]"
-                        title="Edit"
+                        className="p-2 text-white/50 hover:text-[#4db6ac] transition-colors"
+                        title="Edit reply"
                       >
-                        <i className="fa-regular fa-pen-to-square text-sm" />
+                        <i className="fa-regular fa-pen-to-square" />
                       </button>
                       <button
                         onClick={() => handleDelete(reply.id)}
-                        className="p-1.5 text-white/30 hover:text-red-400"
-                        title="Delete"
+                        className="p-2 text-white/50 hover:text-red-400 transition-colors"
+                        title="Delete reply"
                       >
-                        <i className="fa-regular fa-trash-can text-sm" />
+                        <i className="fa-regular fa-trash-can" />
                       </button>
                     </div>
                   )}
@@ -611,24 +638,25 @@ export default function CommentReply() {
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-sm">{nr.username}</span>
                           <span className="text-xs text-white/40">{formatSmartTime(nr.timestamp)}</span>
-                          {(nr.username === currentUser || currentUser === 'admin') && (
-                            <div className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          {/* Edit/Delete buttons for nested reply */}
+                          {canEditDelete(nr.username) && (
+                            <div className="ml-auto flex items-center" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => {
                                   setEditNestedText(nr.content)
                                   setEditingNestedId(nr.id)
                                 }}
-                                className="p-1 text-white/30 hover:text-[#4db6ac]"
-                                title="Edit"
+                                className="p-1.5 text-white/50 hover:text-[#4db6ac] transition-colors"
+                                title="Edit reply"
                               >
-                                <i className="fa-regular fa-pen-to-square text-xs" />
+                                <i className="fa-regular fa-pen-to-square text-sm" />
                               </button>
                               <button
                                 onClick={() => handleDelete(nr.id)}
-                                className="p-1 text-white/30 hover:text-red-400"
-                                title="Delete"
+                                className="p-1.5 text-white/50 hover:text-red-400 transition-colors"
+                                title="Delete reply"
                               >
-                                <i className="fa-regular fa-trash-can text-xs" />
+                                <i className="fa-regular fa-trash-can text-sm" />
                               </button>
                             </div>
                           )}
@@ -722,7 +750,10 @@ export default function CommentReply() {
       </div>
 
       {/* Fixed bottom reply composer */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-black border-t border-white/10">
+      <div 
+        className="fixed left-0 right-0 z-50 bg-black border-t border-white/10"
+        style={{ bottom: 0 }}
+      >
         <div className="max-w-2xl mx-auto px-3 py-3">
           {selectedGif && (
             <div className="mb-2 flex items-center gap-2 p-2 bg-white/5 rounded-lg">
@@ -759,7 +790,7 @@ export default function CommentReply() {
           </div>
         </div>
         {/* Safe area spacer for iOS */}
-        <div className="h-[env(safe-area-inset-bottom)]" />
+        <div style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
       </div>
 
       {/* GIF Picker Modal */}
