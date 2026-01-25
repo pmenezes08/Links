@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
@@ -29,6 +29,18 @@ type PostInfo = {
   content: string
   community_id?: number
   timestamp: string
+  profile_picture?: string | null
+  image_path?: string | null
+}
+
+type ParentReply = {
+  id: number
+  username: string
+  content: string
+  timestamp: string
+  profile_picture?: string | null
+  image_path?: string | null
+  parent_reply_id?: number | null
 }
 
 function renderRichText(input: string) {
@@ -132,9 +144,11 @@ function colorizeMentions(nodes: Array<React.ReactNode>): Array<React.ReactNode>
 export default function CommentReply() {
   const { reply_id } = useParams<{ reply_id: string }>()
   const navigate = useNavigate()
+  const mainReplyRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   const [reply, setReply] = useState<Reply | null>(null)
   const [post, setPost] = useState<PostInfo | null>(null)
+  const [parentChain, setParentChain] = useState<ParentReply[]>([])
   const [currentUser, setCurrentUser] = useState<string>('')
   const [replyText, setReplyText] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
@@ -169,6 +183,7 @@ export default function CommentReply() {
       if (data.success) {
         setReply(data.reply)
         setPost(data.post)
+        setParentChain(data.parent_chain || [])
         setEditMainText(data.reply.content)
       }
     } catch (err) {
@@ -181,6 +196,15 @@ export default function CommentReply() {
   useEffect(() => {
     fetchReply()
   }, [fetchReply])
+
+  // Scroll to main reply on load
+  useEffect(() => {
+    if (!loading && mainReplyRef.current) {
+      setTimeout(() => {
+        mainReplyRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' })
+      }, 100)
+    }
+  }, [loading, reply_id])
 
   // Submit a reply
   const handleSubmitReply = async () => {
@@ -374,8 +398,78 @@ export default function CommentReply() {
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto pb-32">
         <div className="max-w-2xl mx-auto">
-          {/* Main Reply */}
-          <div className="px-4 py-4 border-b border-white/10">
+          
+          {/* Original Post Context */}
+          {post && (
+            <div
+              className="px-4 py-4 border-b border-white/10 cursor-pointer hover:bg-white/[0.02]"
+              onClick={() => navigate(`/post/${post.id}`)}
+            >
+              <div className="flex gap-3">
+                <div className="flex flex-col items-center">
+                  <Avatar username={post.username} url={post.profile_picture || undefined} size={40} />
+                  {/* Connector line to next item */}
+                  <div className="flex-1 w-0.5 bg-white/20 mt-2 min-h-[20px]" />
+                </div>
+                <div className="flex-1 min-w-0 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm">{post.username}</span>
+                    <span className="text-xs text-white/40">{formatSmartTime(post.timestamp)}</span>
+                  </div>
+                  <div className="mt-1 text-[14px] text-white/70 line-clamp-3">
+                    {renderRichText(post.content)}
+                  </div>
+                  {post.image_path && (
+                    <div className="mt-2">
+                      <ImageLoader
+                        src={post.image_path.startsWith('http') || post.image_path.startsWith('/') ? post.image_path : `/uploads/${post.image_path}`}
+                        alt="Post image"
+                        className="rounded-lg max-h-[150px] object-contain"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Parent Chain Context (ancestors from root comment to immediate parent) */}
+          {parentChain.map((parent) => (
+            <div
+              key={parent.id}
+              className="px-4 py-3 border-b border-white/10 cursor-pointer hover:bg-white/[0.02]"
+              onClick={() => navigate(`/reply/${parent.id}`)}
+            >
+              <div className="flex gap-3">
+                <div className="flex flex-col items-center">
+                  <Avatar username={parent.username} url={parent.profile_picture || undefined} size={36} />
+                  {/* Connector line to next item */}
+                  <div className="flex-1 w-0.5 bg-white/20 mt-2 min-h-[16px]" />
+                </div>
+                <div className="flex-1 min-w-0 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{parent.username}</span>
+                    <span className="text-xs text-white/40">{formatSmartTime(parent.timestamp)}</span>
+                  </div>
+                  <div className="mt-1 text-[13px] text-white/60 line-clamp-2">
+                    {renderRichText(parent.content)}
+                  </div>
+                  {parent.image_path && (
+                    <div className="mt-2">
+                      <ImageLoader
+                        src={parent.image_path.startsWith('http') || parent.image_path.startsWith('/') ? parent.image_path : `/uploads/${parent.image_path}`}
+                        alt="Reply image"
+                        className="rounded-lg max-h-[100px] object-contain"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* Main Reply (the focus of this page) */}
+          <div ref={mainReplyRef} className="px-4 py-4 border-b border-white/10 bg-white/[0.02]">
             <div className="flex gap-3">
               <Avatar username={reply.username} url={reply.profile_picture || undefined} size={44} linkToProfile />
               <div className="flex-1 min-w-0">

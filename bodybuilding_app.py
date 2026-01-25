@@ -20668,23 +20668,37 @@ def api_get_reply(reply_id):
             cnt_row = c.fetchone()
             reply['reply_count'] = cnt_row['cnt'] if cnt_row and hasattr(cnt_row, 'keys') else (cnt_row[0] if cnt_row else 0)
             
-            # If this reply has a parent, get parent info for context
-            parent_reply = None
-            if reply.get('parent_reply_id'):
-                c.execute(f"SELECT id, username, content, timestamp FROM replies WHERE id = {ph}", (reply['parent_reply_id'],))
+            # Build the full parent chain (all ancestors from root comment to immediate parent)
+            parent_chain = []
+            current_parent_id = reply.get('parent_reply_id')
+            while current_parent_id:
+                c.execute(f"SELECT id, username, content, timestamp, parent_reply_id, image_path FROM replies WHERE id = {ph}", (current_parent_id,))
                 parent_raw = c.fetchone()
-                if parent_raw:
-                    parent_reply = dict(parent_raw)
-                    # Get parent's profile picture
-                    c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (parent_reply['username'],))
-                    pp = c.fetchone()
-                    parent_reply['profile_picture'] = pp['profile_picture'] if pp and hasattr(pp, 'keys') else (pp[0] if pp else None)
+                if not parent_raw:
+                    break
+                parent_data = dict(parent_raw)
+                # Get profile picture
+                c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (parent_data['username'],))
+                pp = c.fetchone()
+                parent_data['profile_picture'] = pp['profile_picture'] if pp and hasattr(pp, 'keys') else (pp[0] if pp else None)
+                parent_chain.insert(0, parent_data)  # Insert at beginning to maintain order (oldest first)
+                current_parent_id = parent_data.get('parent_reply_id')
+            
+            # Also get post author's profile picture
+            if post_info:
+                c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (post_info['username'],))
+                pp = c.fetchone()
+                post_info['profile_picture'] = pp['profile_picture'] if pp and hasattr(pp, 'keys') else (pp[0] if pp else None)
+                # Get post image if any
+                c.execute(f"SELECT image_path FROM posts WHERE id = {ph}", (post_id,))
+                post_img = c.fetchone()
+                post_info['image_path'] = post_img['image_path'] if post_img and hasattr(post_img, 'keys') else (post_img[0] if post_img else None)
             
             return jsonify({
                 'success': True,
                 'reply': reply,
                 'post': post_info,
-                'parent_reply': parent_reply
+                'parent_chain': parent_chain  # Full chain from root comment to immediate parent
             })
             
     except Exception as e:
