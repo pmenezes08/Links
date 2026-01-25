@@ -622,6 +622,7 @@ function AppRoutes(){
     currentPath === '/signup_react' ||
     currentPath.startsWith('/user_chat/chat/') ||  // Chat thread has its own header
     currentPath.startsWith('/post/') ||  // Post detail has its own header
+    currentPath.startsWith('/reply/') ||  // Reply/thread page has its own header
     currentPath.startsWith('/community_feed_react/') ||  // Community feed has its own header
     currentPath.startsWith('/community/') && currentPath.includes('/feed')  // Community feed alternate route
   const showHeader = !hideHeader
