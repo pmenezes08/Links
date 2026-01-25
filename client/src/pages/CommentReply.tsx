@@ -168,7 +168,9 @@ export default function CommentReply() {
     fetch('/api/profile_me', { credentials: 'include' })
       .then((r) => r.json())
       .then((d) => {
-        if (d.username) setCurrentUser(d.username)
+        if (d?.success && d.profile?.username) {
+          setCurrentUser(d.profile.username)
+        }
       })
       .catch(() => {})
   }, [])
