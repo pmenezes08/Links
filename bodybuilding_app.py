@@ -25675,6 +25675,25 @@ def react_post_detail(post_id):
         logger.error(f"Error serving React post detail: {str(e)}")
         abort(500)
 
+@app.route('/reply/<int:reply_id>')
+@login_required
+def react_reply_detail(reply_id):
+    """Serve React app for reply/thread detail page (X-style nested replies)."""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.error(f"Error serving React reply detail: {str(e)}")
+        abort(500)
+
 @app.route('/community/<int:community_id>/members')
 @login_required
 def react_members_page(community_id):
