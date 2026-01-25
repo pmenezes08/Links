@@ -12788,8 +12788,7 @@ def add_reaction():
 
 def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: int|None, parent_reply_id: int|None, reply_id: int|None = None):
     """Create in-app notifications and web push for post reply recipients.
-    Recipients: post owner and (if applicable) parent reply author; excludes sender; dedup within short window.
-    Additionally notify prior engagers (users who replied or reacted on the post), excluding the actor and already-notified recipients.
+    Recipients: post owner (ALWAYS unless they are the sender), parent reply author, and prior engagers.
     
     If reply_id is provided, notifications will link to /reply/{reply_id} for nested replies,
     allowing users to navigate directly to the relevant thread.
@@ -12797,20 +12796,29 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Determine recipients
+            # Determine recipients - post owner ALWAYS gets notified (unless they wrote the reply)
             recipients = set()
+            
+            # 1. ALWAYS notify the post owner (unless they're the one replying)
             c.execute("SELECT username FROM posts WHERE id=?", (post_id,))
             row = c.fetchone()
             post_owner = (row['username'] if hasattr(row,'keys') else row[0]) if row else None
+            logger.info(f"[Reply Notify] Post {post_id} owner: {post_owner}, replier: {from_user}, parent_reply_id: {parent_reply_id}")
+            
             if post_owner and post_owner != from_user:
                 recipients.add(post_owner)
+                logger.info(f"[Reply Notify] Added post owner {post_owner} to recipients")
+            
+            # 2. Notify the parent reply author (for nested replies)
             parent_author = None
             if parent_reply_id:
                 c.execute("SELECT username FROM replies WHERE id=?", (parent_reply_id,))
                 r2 = c.fetchone()
                 parent_author = (r2['username'] if hasattr(r2,'keys') else r2[0]) if r2 else None
-                if parent_author and parent_author not in (from_user, post_owner):
+                if parent_author and parent_author not in (from_user,):
+                    # Add parent author even if they're the post owner (they'll be deduped by the set)
                     recipients.add(parent_author)
+                    logger.info(f"[Reply Notify] Added parent reply author {parent_author} to recipients")
 
             # Include prior engagers: anyone who replied on this post
             try:
@@ -12886,6 +12894,8 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
                     })
                 except Exception as pe:
                     logger.warning(f"reply push error to {target}: {pe}")
+            
+            logger.info(f"[Reply Notify] Notified {len(recipients)} users for post {post_id}: {list(recipients)}")
     except Exception as e:
         logger.error(f"notify_post_reply_recipients error: {e}")
 
