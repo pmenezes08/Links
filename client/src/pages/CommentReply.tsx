@@ -355,11 +355,6 @@ export default function CommentReply() {
     }
   }
 
-  // Check if user can edit/delete a reply
-  const canEditDelete = (username: string) => {
-    return currentUser === username || currentUser === 'admin'
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -502,22 +497,22 @@ export default function CommentReply() {
                 <div className="flex items-center gap-2">
                   <span className="font-semibold">{reply.username}</span>
                   <span className="text-sm text-white/40">{formatSmartTime(reply.timestamp)}</span>
-                  {/* Edit/Delete buttons for main reply */}
-                  {canEditDelete(reply.username) && (
-                    <div className="ml-auto flex items-center">
+                  {/* Edit/Delete buttons for main reply - show for author or admin */}
+                  {(currentUser === reply.username || currentUser === 'admin') && (
+                    <div className="ml-auto flex items-center gap-1">
                       <button
                         onClick={() => {
                           setEditMainText(reply.content)
                           setIsEditingMain(true)
                         }}
-                        className="p-2 text-white/50 hover:text-[#4db6ac] transition-colors"
+                        className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac] hover:bg-white/10 transition-colors"
                         title="Edit reply"
                       >
                         <i className="fa-regular fa-pen-to-square" />
                       </button>
                       <button
                         onClick={() => handleDelete(reply.id)}
-                        className="p-2 text-white/50 hover:text-red-400 transition-colors"
+                        className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400 hover:bg-white/10 transition-colors"
                         title="Delete reply"
                       >
                         <i className="fa-regular fa-trash-can" />
@@ -638,25 +633,25 @@ export default function CommentReply() {
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-sm">{nr.username}</span>
                           <span className="text-xs text-white/40">{formatSmartTime(nr.timestamp)}</span>
-                          {/* Edit/Delete buttons for nested reply */}
-                          {canEditDelete(nr.username) && (
-                            <div className="ml-auto flex items-center" onClick={(e) => e.stopPropagation()}>
+                          {/* Edit/Delete buttons for nested reply - show for author or admin */}
+                          {(currentUser === nr.username || currentUser === 'admin') && (
+                            <div className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => {
                                   setEditNestedText(nr.content)
                                   setEditingNestedId(nr.id)
                                 }}
-                                className="p-1.5 text-white/50 hover:text-[#4db6ac] transition-colors"
+                                className="px-2 py-1 rounded-full text-[#6c757d] hover:text-[#4db6ac] hover:bg-white/10 transition-colors"
                                 title="Edit reply"
                               >
-                                <i className="fa-regular fa-pen-to-square text-sm" />
+                                <i className="fa-regular fa-pen-to-square" />
                               </button>
                               <button
                                 onClick={() => handleDelete(nr.id)}
-                                className="p-1.5 text-white/50 hover:text-red-400 transition-colors"
+                                className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400 hover:bg-white/10 transition-colors"
                                 title="Delete reply"
                               >
-                                <i className="fa-regular fa-trash-can text-sm" />
+                                <i className="fa-regular fa-trash-can" />
                               </button>
                             </div>
                           )}
