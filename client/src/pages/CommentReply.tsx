@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
+import { Keyboard } from '@capacitor/keyboard'
+import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
@@ -162,6 +166,82 @@ export default function CommentReply() {
   // Edit state for nested replies (keyed by reply id)
   const [editingNestedId, setEditingNestedId] = useState<number | null>(null)
   const [editNestedText, setEditNestedText] = useState('')
+
+  // Keyboard handling state
+  const keyboardOffsetRef = useRef(0)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const viewportBaseRef = useRef<number | null>(null)
+
+  // Visual viewport tracking for web keyboard
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    let rafId: number | null = null
+
+    const updateOffset = () => {
+      const currentHeight = viewport.height
+      if (
+        viewportBaseRef.current === null ||
+        currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
+      ) {
+        viewportBaseRef.current = currentHeight
+      }
+      const baseHeight = viewportBaseRef.current ?? currentHeight
+      const nextOffset = Math.max(0, baseHeight - currentHeight - viewport.offsetTop)
+      if (Math.abs(keyboardOffsetRef.current - nextOffset) < 1) return
+      keyboardOffsetRef.current = nextOffset
+      setKeyboardOffset(nextOffset)
+    }
+
+    const handleChange = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updateOffset)
+    }
+
+    viewport.addEventListener('resize', handleChange)
+    viewport.addEventListener('scroll', handleChange)
+    updateOffset()
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', handleChange)
+      viewport.removeEventListener('scroll', handleChange)
+    }
+  }, [])
+
+  // Native keyboard events for Capacitor
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+    let showSub: PluginListenerHandle | undefined
+    let hideSub: PluginListenerHandle | undefined
+
+    const handleShow = (info: KeyboardInfo) => {
+      const height = info?.keyboardHeight ?? 0
+      if (Math.abs(keyboardOffsetRef.current - height) < 2) return
+      keyboardOffsetRef.current = height
+      setKeyboardOffset(height)
+    }
+
+    const handleHide = () => {
+      if (keyboardOffsetRef.current === 0) return
+      keyboardOffsetRef.current = 0
+      setKeyboardOffset(0)
+    }
+
+    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
+      showSub = handle
+    })
+    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
+      hideSub = handle
+    })
+
+    return () => {
+      showSub?.remove()
+      hideSub?.remove()
+    }
+  }, [])
 
   // Fetch current user
   useEffect(() => {
@@ -418,7 +498,7 @@ export default function CommentReply() {
       {/* Scrollable content */}
       <div 
         className="flex-1 overflow-y-auto"
-        style={{ paddingBottom: '120px' }}
+        style={{ paddingBottom: keyboardOffset > 0 ? `${120 + keyboardOffset}px` : '120px' }}
       >
         <div className="max-w-2xl mx-auto">
           
@@ -749,7 +829,7 @@ export default function CommentReply() {
       {/* Fixed bottom reply composer */}
       <div 
         className="fixed left-0 right-0 z-50 bg-black border-t border-white/10"
-        style={{ bottom: 0 }}
+        style={{ bottom: keyboardOffset > 0 ? `${keyboardOffset}px` : 0 }}
       >
         <div className="max-w-2xl mx-auto px-3 py-3">
           {selectedGif && (
