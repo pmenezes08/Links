@@ -6292,7 +6292,27 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'version': '2025.01.15'
+        'version': '2025.01.18'
+    })
+
+@app.route('/keep-warm', methods=['GET', 'POST'])
+def keep_warm():
+    """
+    Keep-warm endpoint for Cloud Scheduler to prevent cold starts.
+    This endpoint does minimal work but enough to keep the instance warm.
+    """
+    # Do a quick DB connection to keep that warm too
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT 1")
+            c.fetchone()
+    except Exception as e:
+        logger.warning(f"Keep-warm DB ping failed: {e}")
+    
+    return jsonify({
+        'status': 'warm',
+        'timestamp': datetime.now().isoformat()
     })
 
 @app.route('/api/test', methods=['GET'])
