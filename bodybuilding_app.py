@@ -4587,7 +4587,7 @@ def create_imagine_reply(job_row: Dict[str, Any], video_path: str, style: str) -
             if not USE_MYSQL:
                 conn.commit()
         try:
-            notify_post_reply_recipients(post_id=post_id, from_user=username, community_id=community_id, parent_reply_id=parent_reply_id)
+            notify_post_reply_recipients(post_id=post_id, from_user=username, community_id=community_id, parent_reply_id=parent_reply_id, reply_id=reply_id)
         except Exception as notify_err:
             logger.warning(f"Imagine reply notification error: {notify_err}")
         return reply_id
@@ -12786,10 +12786,13 @@ def add_reaction():
 
 
 
-def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: int|None, parent_reply_id: int|None):
+def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: int|None, parent_reply_id: int|None, reply_id: int|None = None):
     """Create in-app notifications and web push for post reply recipients.
     Recipients: post owner and (if applicable) parent reply author; excludes sender; dedup within short window.
     Additionally notify prior engagers (users who replied or reacted on the post), excluding the actor and already-notified recipients.
+    
+    If reply_id is provided, notifications will link to /reply/{reply_id} for nested replies,
+    allowing users to navigate directly to the relevant thread.
     """
     try:
         with get_db_connection() as conn:
@@ -12847,24 +12850,38 @@ def notify_post_reply_recipients(*, post_id: int, from_user: str, community_id: 
                         """, (target, from_user, post_id))
                     exists = c.fetchone()
                     if not exists:
+                        # Determine notification URL - use reply page for all replies
+                        if reply_id:
+                            notif_link = f'/reply/{reply_id}'
+                        else:
+                            notif_link = f'/post/{post_id}'
+                        
                         c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                            VALUES (?, ?, 'reply', ?, ?, ?, NOW(), 0)
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                            VALUES (?, ?, 'reply', ?, ?, ?, NOW(), 0, ?)
                             ON DUPLICATE KEY UPDATE
                                 created_at = NOW(),
                                 message = VALUES(message),
-                                is_read = 0
-                        """, (target, from_user, post_id, community_id, f"{from_user} replied"))
+                                is_read = 0,
+                                link = VALUES(link)
+                        """, (target, from_user, post_id, community_id, f"{from_user} replied", notif_link))
                         conn.commit()
                 except Exception as ne:
                     logger.warning(f"reply notify db error to {target}: {ne}")
 
                 # Push notify (tag per user+post to allow coalescing)
+                # Use reply page for all replies
+                if reply_id:
+                    notification_url = f'/reply/{reply_id}'
+                else:
+                    # Fallback to post page
+                    notification_url = f'/post/{post_id}'
+                
                 try:
                     send_push_to_user(target, {
                         'title': f'New reply from {from_user}',
                         'body': 'Tap to view the conversation',
-                        'url': f'/post/{post_id}',
+                        'url': notification_url,
                         'tag': f'post-reply-{post_id}-{target}'
                     })
                 except Exception as pe:
@@ -14169,7 +14186,7 @@ def post_reply():
 
             # Notify recipients (post owner and parent reply author)
             try:
-                notify_post_reply_recipients(post_id=post_id, from_user=username, community_id=community_id, parent_reply_id=parent_reply_id)
+                notify_post_reply_recipients(post_id=post_id, from_user=username, community_id=community_id, parent_reply_id=parent_reply_id, reply_id=reply_id)
             except Exception as ne:
                 logger.warning(f"notify recipients failed: {ne}")
             
@@ -31656,26 +31673,28 @@ def process_mentions_for_reply(post_id: int, author_username: str, community_id:
                     logger.warning(f"mentions-reply fallback error: {fe}")
             for target_lower in allowed:
                 target = members_map.get(target_lower, target_lower)
+                # Use reply page URL if reply_id available, otherwise post page
+                mention_url = f"/reply/{reply_id}" if reply_id else f"/post/{post_id}"
                 try:
                     if USE_MYSQL:
                         c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                            VALUES (?, ?, 'mention_reply', ?, ?, ?, NOW(), 0)
-                            ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message)
-                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply"))
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                            VALUES (?, ?, 'mention_reply', ?, ?, ?, NOW(), 0, ?)
+                            ON DUPLICATE KEY UPDATE created_at = NOW(), is_read = 0, message = VALUES(message), link = VALUES(link)
+                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply", mention_url))
                     else:
                         now_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         c.execute("""
-                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read)
-                            VALUES (?, ?, 'mention_reply', ?, ?, ?, ?, 0)
-                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply", now_ts))
+                            INSERT INTO notifications (user_id, from_user, type, post_id, community_id, message, created_at, is_read, link)
+                            VALUES (?, ?, 'mention_reply', ?, ?, ?, ?, 0, ?)
+                        """, (target, author_username, post_id, community_id, f"{author_username} mentioned you in a reply", now_ts, mention_url))
                     conn.commit()
                     try:
                         send_push_to_user(target, {
                             'title': 'You were mentioned',
                             'body': f"{author_username} mentioned you in a reply",
-                            'url': f"/post/{post_id}",
-                            'tag': f"mention-reply-{post_id}-{target}"
+                            'url': mention_url,
+                            'tag': f"mention-reply-{reply_id or post_id}-{target}"
                         })
                     except Exception as pe:
                         logger.warning(f"push mention reply helper warn: {pe}")
