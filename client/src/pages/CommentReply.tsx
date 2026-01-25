@@ -498,7 +498,7 @@ export default function CommentReply() {
       {/* Scrollable content */}
       <div 
         className="flex-1 overflow-y-auto"
-        style={{ paddingBottom: keyboardOffset > 0 ? `${120 + keyboardOffset}px` : '120px' }}
+        style={{ paddingBottom: `${80 + keyboardOffset}px` }}
       >
         <div className="max-w-2xl mx-auto">
           
@@ -829,7 +829,7 @@ export default function CommentReply() {
       {/* Fixed bottom reply composer */}
       <div 
         className="fixed left-0 right-0 z-50 bg-black border-t border-white/10"
-        style={{ bottom: keyboardOffset > 0 ? `${keyboardOffset}px` : 0 }}
+        style={{ bottom: keyboardOffset }}
       >
         <div className="max-w-2xl mx-auto px-3 py-3">
           {selectedGif && (
@@ -866,8 +866,10 @@ export default function CommentReply() {
             </button>
           </div>
         </div>
-        {/* Safe area spacer for iOS */}
-        <div style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
+        {/* Safe area spacer for iOS - only when keyboard is closed */}
+        {keyboardOffset === 0 && (
+          <div style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
+        )}
       </div>
 
       {/* GIF Picker Modal */}
