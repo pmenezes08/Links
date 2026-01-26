@@ -23859,6 +23859,19 @@ def api_community_feed(community_id):
                     except Exception:
                         pass
                 
+                # BATCH 15: Get reply counts (nested replies) for each reply
+                reply_counts: Dict[int, int] = {rid: 0 for rid in all_reply_ids}
+                if all_reply_ids:
+                    try:
+                        c.execute(f"SELECT parent_reply_id, COUNT(*) as cnt FROM replies WHERE parent_reply_id IN ({reply_placeholders}) GROUP BY parent_reply_id", tuple(all_reply_ids))
+                        for row in c.fetchall():
+                            parent_id = row['parent_reply_id'] if hasattr(row, 'keys') else row[0]
+                            cnt = row['cnt'] if hasattr(row, 'keys') else row[1]
+                            if parent_id in reply_counts:
+                                reply_counts[parent_id] = cnt
+                    except Exception as e:
+                        logger.warning(f"Failed to batch fetch reply counts: {e}")
+                
                 # Now enrich posts with all the batched data (no more individual queries!)
                 for post in posts:
                     post_id = post['id']
@@ -23900,6 +23913,7 @@ def api_community_feed(community_id):
                         reply['profile_picture'] = reply_profile_pics.get(reply['username'])
                         reply['reactions'] = reply_reactions.get(reply['id'], {})
                         reply['user_reaction'] = user_reply_reactions.get(reply['id'])
+                        reply['reply_count'] = reply_counts.get(reply['id'], 0)
                     post['replies'] = post_replies
 
             response_payload = {

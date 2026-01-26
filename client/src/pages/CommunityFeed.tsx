@@ -4203,13 +4203,65 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       <i className={`${r.user_reaction === '❤️' ? 'fa-solid' : 'fa-regular'} fa-heart text-[10px]`} />
                       {(r.reactions?.['❤️'] || 0) > 0 && <span>{r.reactions?.['❤️']}</span>}
                     </button>
+                    {/* Thumbs up */}
+                    <button
+                      className={`text-[11px] flex items-center gap-1 transition ${
+                        r.user_reaction === '👍' ? 'text-[#4db6ac]' : 'text-[#9fb0b5] hover:text-[#4db6ac]'
+                      }`}
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        try {
+                          const fd = new FormData()
+                          fd.append('reply_id', String(r.id))
+                          fd.append('reaction', '👍')
+                          const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
+                          const data = await res.json()
+                          if (data.success) {
+                            r.reactions = data.counts
+                            r.user_reaction = data.user_reaction
+                            setChildReplyText(prev => prev)
+                          }
+                        } catch (err) {
+                          console.error('Failed to add reaction:', err)
+                        }
+                      }}
+                    >
+                      <i className={`${r.user_reaction === '👍' ? 'fa-solid' : 'fa-regular'} fa-thumbs-up text-[10px]`} />
+                      {(r.reactions?.['👍'] || 0) > 0 && <span>{r.reactions?.['👍']}</span>}
+                    </button>
+                    {/* Thumbs down */}
+                    <button
+                      className={`text-[11px] flex items-center gap-1 transition ${
+                        r.user_reaction === '👎' ? 'text-[#e57373]' : 'text-[#9fb0b5] hover:text-[#e57373]'
+                      }`}
+                      onClick={async (e) => {
+                        e.stopPropagation()
+                        try {
+                          const fd = new FormData()
+                          fd.append('reply_id', String(r.id))
+                          fd.append('reaction', '👎')
+                          const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
+                          const data = await res.json()
+                          if (data.success) {
+                            r.reactions = data.counts
+                            r.user_reaction = data.user_reaction
+                            setChildReplyText(prev => prev)
+                          }
+                        } catch (err) {
+                          console.error('Failed to add reaction:', err)
+                        }
+                      }}
+                    >
+                      <i className={`${r.user_reaction === '👎' ? 'fa-solid' : 'fa-regular'} fa-thumbs-down text-[10px]`} />
+                      {(r.reactions?.['👎'] || 0) > 0 && <span>{r.reactions?.['👎']}</span>}
+                    </button>
                     {/* Reply count - click to view thread */}
                     <button
                       className="text-[11px] text-[#9fb0b5] hover:text-[#4db6ac] flex items-center gap-1"
                       onClick={(e) => { e.stopPropagation(); window.location.href = `/reply/${r.id}` }}
                     >
                       <i className="fa-regular fa-comment text-[10px]" />
-                      {(r as any).reply_count || (r as any).children?.length || 0}
+                      {(r as any).reply_count || 0}
                     </button>
                   </div>
 
