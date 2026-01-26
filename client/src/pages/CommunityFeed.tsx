@@ -4086,8 +4086,14 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
             const topLevelReplies = post.replies.filter((r: any) => !r.parent_reply_id)
             const displayReplies = topLevelReplies.slice(0, 2)
             return displayReplies.map(r => (
-              <div key={r.id} className="flex items-start gap-2 text-sm">
-                <Avatar username={r.username} url={r.profile_picture || undefined} size={22} linkToProfile />
+              <div 
+                key={r.id} 
+                className="flex items-start gap-2 text-sm cursor-pointer hover:bg-white/[0.02] rounded-lg p-1 -m-1"
+                onClick={() => window.location.href = `/reply/${r.id}`}
+              >
+                <div onClick={(e) => e.stopPropagation()}>
+                  <Avatar username={r.username} url={r.profile_picture || undefined} size={22} linkToProfile />
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{r.username}</span>
@@ -4185,14 +4191,13 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                         try {
                           const fd = new FormData()
                           fd.append('reply_id', String(r.id))
+                          // Toggle: if already selected, send same reaction to remove it
                           fd.append('reaction', '❤️')
                           const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
                           const data = await res.json()
                           if (data.success) {
-                            // Update local state
                             r.reactions = data.counts
                             r.user_reaction = data.user_reaction
-                            // Force re-render
                             setChildReplyText(prev => prev)
                           }
                         } catch (err) {
