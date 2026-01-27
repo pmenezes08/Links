@@ -455,3 +455,258 @@ def remove_community_member():
     except Exception as exc:
         logger.error("Error removing community member for %s: %s", username, exc)
         return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@communities_bp.route("/api/member/accessible_subcommunities", methods=["POST"])
+@_login_required
+def get_accessible_subcommunities():
+    """
+    Get sub-communities where an admin can add a specific member.
+    Respects admin access levels:
+    - Parent community admin: can add to any descendant
+    - Sub-community admin: can only add to descendants of that sub-community
+    Returns only communities where the target member is NOT already a member.
+    """
+    username = session["username"]
+    data = request.get_json() or {}
+    community_id = data.get("community_id")
+    target_username = data.get("target_username")
+    _, _, is_app_admin_fn = _legacy_community_helpers()
+
+    if not community_id or not target_username:
+        return jsonify({"success": False, "error": "Missing required parameters"}), 400
+
+    try:
+        community_id = int(community_id)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "Invalid community_id"}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get target user's ID
+            c.execute("SELECT id FROM users WHERE username = ?", (target_username,))
+            target_user = c.fetchone()
+            if not target_user:
+                return jsonify({"success": False, "error": "User not found"}), 404
+            target_user_id = target_user["id"] if hasattr(target_user, "keys") else target_user[0]
+            
+            # Get all communities where the target is already a member
+            c.execute("SELECT community_id FROM user_communities WHERE user_id = ?", (target_user_id,))
+            member_of = {row["community_id"] if hasattr(row, "keys") else row[0] for row in c.fetchall()}
+            
+            # Find all communities where the current user is admin/owner
+            admin_communities = set()
+            is_global_admin = is_app_admin_fn(username)
+            
+            if is_global_admin:
+                # App admin can access everything
+                c.execute("SELECT id FROM communities WHERE is_active = 1")
+                admin_communities = {row["id"] if hasattr(row, "keys") else row[0] for row in c.fetchall()}
+            else:
+                # Get communities where user is admin or owner
+                c.execute("""
+                    SELECT uc.community_id, uc.role, c.creator_username
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    JOIN communities c ON uc.community_id = c.id
+                    WHERE u.username = ? AND c.is_active = 1
+                """, (username,))
+                for row in c.fetchall():
+                    cid = row["community_id"] if hasattr(row, "keys") else row[0]
+                    role = row["role"] if hasattr(row, "keys") else row[1]
+                    creator = row["creator_username"] if hasattr(row, "keys") else row[2]
+                    if role in ("admin", "owner") or username == creator:
+                        admin_communities.add(cid)
+            
+            if not admin_communities:
+                return jsonify({"success": False, "error": "You don't have admin access"}), 403
+            
+            # Get all descendant communities of communities where user is admin
+            accessible_communities = set()
+            for admin_cid in admin_communities:
+                # Get all descendants
+                descendants = _get_descendant_communities(c, admin_cid)
+                accessible_communities.update(descendants)
+            
+            # Also include the communities they're admin of
+            accessible_communities.update(admin_communities)
+            
+            # Filter to only descendants of the current community being viewed
+            current_descendants = _get_descendant_communities(c, community_id)
+            # Don't include the current community itself, only its children
+            if community_id in current_descendants:
+                current_descendants.remove(community_id)
+            
+            # Intersection: accessible AND descendants of current community AND not already a member
+            available_communities = accessible_communities & current_descendants - member_of
+            
+            if not available_communities:
+                return jsonify({"success": True, "subcommunities": []})
+            
+            # Get community details
+            placeholders = ",".join(["?" for _ in available_communities])
+            c.execute(f"""
+                SELECT id, name, parent_community_id 
+                FROM communities 
+                WHERE id IN ({placeholders}) AND is_active = 1
+                ORDER BY name
+            """, tuple(available_communities))
+            
+            subcommunities = []
+            for row in c.fetchall():
+                subcommunities.append({
+                    "id": row["id"] if hasattr(row, "keys") else row[0],
+                    "name": row["name"] if hasattr(row, "keys") else row[1],
+                    "parent_community_id": row["parent_community_id"] if hasattr(row, "keys") else row[2],
+                })
+            
+            return jsonify({"success": True, "subcommunities": subcommunities})
+            
+    except Exception as exc:
+        logger.error("Error getting accessible subcommunities: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@communities_bp.route("/api/member/add_to_subcommunity", methods=["POST"])
+@_login_required
+def add_member_to_subcommunity():
+    """
+    Add a member to a sub-community.
+    Validates that the current user has admin access to the target sub-community.
+    """
+    username = session["username"]
+    data = request.get_json() or {}
+    target_username = data.get("target_username")
+    target_community_id = data.get("target_community_id")
+    source_community_id = data.get("source_community_id")  # The community page we're on
+    CommunityMembershipLimitError, add_user_to_community_fn, is_app_admin_fn = _legacy_community_helpers()
+
+    if not target_username or not target_community_id:
+        return jsonify({"success": False, "error": "Missing required parameters"}), 400
+
+    try:
+        target_community_id = int(target_community_id)
+        if source_community_id:
+            source_community_id = int(source_community_id)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "Invalid community_id"}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            
+            # Get target user
+            c.execute("SELECT id FROM users WHERE username = ?", (target_username,))
+            target_user = c.fetchone()
+            if not target_user:
+                return jsonify({"success": False, "error": "User not found"}), 404
+            target_user_id = target_user["id"] if hasattr(target_user, "keys") else target_user[0]
+            
+            # Check if user is already a member
+            c.execute(
+                "SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?",
+                (target_user_id, target_community_id)
+            )
+            if c.fetchone():
+                return jsonify({"success": False, "error": "User is already a member of this community"}), 400
+            
+            # Verify admin has access to the target community
+            is_global_admin = is_app_admin_fn(username)
+            has_access = False
+            
+            if is_global_admin:
+                has_access = True
+            else:
+                # Check if user is admin of target community or any of its ancestors
+                c.execute("""
+                    SELECT uc.role, c.creator_username
+                    FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    JOIN communities c ON uc.community_id = c.id
+                    WHERE u.username = ? AND c.id = ?
+                """, (username, target_community_id))
+                row = c.fetchone()
+                if row:
+                    role = row["role"] if hasattr(row, "keys") else row[0]
+                    creator = row["creator_username"] if hasattr(row, "keys") else row[1]
+                    if role in ("admin", "owner") or username == creator:
+                        has_access = True
+                
+                if not has_access:
+                    # Check ancestors
+                    ancestors = _get_ancestor_communities(c, target_community_id)
+                    for anc_id in ancestors:
+                        c.execute("""
+                            SELECT uc.role, c.creator_username
+                            FROM user_communities uc
+                            JOIN users u ON uc.user_id = u.id
+                            JOIN communities c ON uc.community_id = c.id
+                            WHERE u.username = ? AND c.id = ?
+                        """, (username, anc_id))
+                        row = c.fetchone()
+                        if row:
+                            role = row["role"] if hasattr(row, "keys") else row[0]
+                            creator = row["creator_username"] if hasattr(row, "keys") else row[1]
+                            if role in ("admin", "owner") or username == creator:
+                                has_access = True
+                                break
+            
+            if not has_access:
+                return jsonify({"success": False, "error": "You don't have admin access to this community"}), 403
+            
+            # Add user to community
+            try:
+                add_user_to_community_fn(c, target_user_id, target_community_id, role="member")
+                conn.commit()
+            except CommunityMembershipLimitError as limit_err:
+                return jsonify({"success": False, "error": str(limit_err)}), 403
+            
+            # Get community name for response
+            c.execute("SELECT name FROM communities WHERE id = ?", (target_community_id,))
+            comm_row = c.fetchone()
+            community_name = comm_row["name"] if comm_row and hasattr(comm_row, "keys") else (comm_row[0] if comm_row else "the community")
+            
+            return jsonify({
+                "success": True, 
+                "message": f"{target_username} has been added to {community_name}"
+            })
+            
+    except Exception as exc:
+        logger.error("Error adding member to subcommunity: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+def _get_descendant_communities(cursor, community_id: int) -> set:
+    """Get all descendant community IDs including the given community."""
+    descendants = {community_id}
+    queue = [community_id]
+    
+    while queue:
+        current_id = queue.pop(0)
+        cursor.execute("SELECT id FROM communities WHERE parent_community_id = ? AND is_active = 1", (current_id,))
+        for row in cursor.fetchall():
+            child_id = row["id"] if hasattr(row, "keys") else row[0]
+            if child_id not in descendants:
+                descendants.add(child_id)
+                queue.append(child_id)
+    
+    return descendants
+
+
+def _get_ancestor_communities(cursor, community_id: int) -> list:
+    """Get all ancestor community IDs (parent chain)."""
+    ancestors = []
+    cursor.execute("SELECT parent_community_id FROM communities WHERE id = ?", (community_id,))
+    row = cursor.fetchone()
+    
+    while row:
+        parent_id = row["parent_community_id"] if hasattr(row, "keys") else row[0]
+        if not parent_id or parent_id in ancestors:
+            break
+        ancestors.append(parent_id)
+        cursor.execute("SELECT parent_community_id FROM communities WHERE id = ?", (parent_id,))
+        row = cursor.fetchone()
+    
+    return ancestors

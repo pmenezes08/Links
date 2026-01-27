@@ -497,6 +497,8 @@ export default function Members(){
                   {canManage && m.username !== ownerUsername ? (
                     <MemberActions
                       memberRole={m.role || 'member'}
+                      memberUsername={m.username}
+                      communityId={numericCommunityId}
                       onPromote={()=> updateRole(m.username, 'admin')}
                       onDemote={()=> updateRole(m.username, 'member')}
                       onTransfer={currentUserRole === 'app_admin' ? ()=> updateRole(m.username, 'owner') : undefined}
@@ -774,32 +776,190 @@ export default function Members(){
 }
 
 
-function MemberActions({ memberRole, onPromote, onDemote, onTransfer, onRemove }:{ memberRole: string, onPromote: ()=>void, onDemote: ()=>void, onTransfer?: ()=>void, onRemove: ()=>void }){
+type SubCommunity = {
+  id: number
+  name: string
+  parent_community_id?: number | null
+}
+
+function MemberActions({ 
+  memberRole, 
+  memberUsername,
+  communityId,
+  onPromote, 
+  onDemote, 
+  onTransfer, 
+  onRemove,
+  onMemberUpdated
+}:{ 
+  memberRole: string, 
+  memberUsername: string,
+  communityId: number | null,
+  onPromote: ()=>void, 
+  onDemote: ()=>void, 
+  onTransfer?: ()=>void, 
+  onRemove: ()=>void,
+  onMemberUpdated?: ()=>void
+}){
   const [open, setOpen] = useState(false)
+  const [showSubCommunityModal, setShowSubCommunityModal] = useState(false)
+  const [subCommunities, setSubCommunities] = useState<SubCommunity[]>([])
+  const [loadingSubCommunities, setLoadingSubCommunities] = useState(false)
+  const [addingToSubCommunity, setAddingToSubCommunity] = useState(false)
+  const [subCommunityError, setSubCommunityError] = useState('')
   const isAdmin = memberRole === 'admin'
   const isMember = memberRole === 'member'
+
+  const handleOpenSubCommunityModal = async () => {
+    setOpen(false)
+    setShowSubCommunityModal(true)
+    setSubCommunityError('')
+    setLoadingSubCommunities(true)
+    
+    try {
+      const response = await fetch('/api/member/accessible_subcommunities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          community_id: communityId,
+          target_username: memberUsername
+        })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setSubCommunities(data.subcommunities || [])
+      } else {
+        setSubCommunityError(data.error || 'Failed to load sub-communities')
+      }
+    } catch (err) {
+      console.error('Failed to load sub-communities:', err)
+      setSubCommunityError('Failed to load sub-communities')
+    } finally {
+      setLoadingSubCommunities(false)
+    }
+  }
+
+  const handleAddToSubCommunity = async (targetCommunityId: number) => {
+    setAddingToSubCommunity(true)
+    setSubCommunityError('')
+    
+    try {
+      const response = await fetch('/api/member/add_to_subcommunity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          target_username: memberUsername,
+          target_community_id: targetCommunityId,
+          source_community_id: communityId
+        })
+      })
+      const data = await response.json()
+      if (data.success) {
+        // Remove the community from the list since they're now a member
+        setSubCommunities(prev => prev.filter(c => c.id !== targetCommunityId))
+        if (onMemberUpdated) onMemberUpdated()
+        // If no more communities, close the modal
+        if (subCommunities.length <= 1) {
+          setShowSubCommunityModal(false)
+        }
+      } else {
+        setSubCommunityError(data.error || 'Failed to add member')
+      }
+    } catch (err) {
+      console.error('Failed to add member to sub-community:', err)
+      setSubCommunityError('Failed to add member')
+    } finally {
+      setAddingToSubCommunity(false)
+    }
+  }
   
   return (
-    <div className="relative" onClick={(e)=> e.stopPropagation()}>
-      <button className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#cfd8dc] hover:bg-white/5" onClick={()=> setOpen(v=>!v)} aria-expanded={open} aria-haspopup="menu">
-        Manage
-      </button>
-      {open && (
-        <div className="absolute right-0 mt-1 w-40 rounded-md border border-white/10 bg-black shadow-lg z-20">
-          {isMember && (
-            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onPromote() }}>Make admin</button>
-          )}
-          {isAdmin && (
-            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onDemote() }}>Remove admin</button>
-          )}
-          {onTransfer ? (
-            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onTransfer() }}>Transfer ownership</button>
-          ) : null}
-          <div className="h-px bg-white/10" />
-          <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 text-red-400" onClick={()=> { setOpen(false); onRemove() }}>Remove member</button>
+    <>
+      <div className="relative" onClick={(e)=> e.stopPropagation()}>
+        <button className="px-2 py-1 rounded-md border border-white/10 text-xs text-[#cfd8dc] hover:bg-white/5" onClick={()=> setOpen(v=>!v)} aria-expanded={open} aria-haspopup="menu">
+          Manage
+        </button>
+        {open && (
+          <div className="absolute right-0 mt-1 w-48 rounded-md border border-white/10 bg-black shadow-lg z-20">
+            {isMember && (
+              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onPromote() }}>Make admin</button>
+            )}
+            {isAdmin && (
+              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onDemote() }}>Remove admin</button>
+            )}
+            {onTransfer ? (
+              <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" onClick={()=> { setOpen(false); onTransfer() }}>Transfer ownership</button>
+            ) : null}
+            <div className="h-px bg-white/10" />
+            <button 
+              className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 text-[#4db6ac]" 
+              onClick={handleOpenSubCommunityModal}
+            >
+              <i className="fa-solid fa-plus mr-2" />
+              Add to sub-community
+            </button>
+            <div className="h-px bg-white/10" />
+            <button className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 text-red-400" onClick={()=> { setOpen(false); onRemove() }}>Remove member</button>
+          </div>
+        )}
+      </div>
+
+      {/* Add to Sub-Community Modal */}
+      {showSubCommunityModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-white/10 max-h-[80vh] overflow-hidden flex flex-col">
+            <h2 className="text-lg font-semibold mb-2">Add @{memberUsername} to Sub-Community</h2>
+            <p className="text-sm text-white/60 mb-4">Select a sub-community to add this member to</p>
+
+            {subCommunityError && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+                {subCommunityError}
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto">
+              {loadingSubCommunities ? (
+                <div className="text-center py-8 text-white/60">
+                  <i className="fa-solid fa-spinner fa-spin text-xl mb-2" />
+                  <div className="text-sm">Loading sub-communities...</div>
+                </div>
+              ) : subCommunities.length === 0 ? (
+                <div className="text-center py-8 text-white/40">
+                  <i className="fa-solid fa-folder-open text-2xl mb-2" />
+                  <div className="text-sm">No available sub-communities</div>
+                  <div className="text-xs mt-1">Either there are no sub-communities, or this member is already in all of them.</div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {subCommunities.map(sc => (
+                    <button
+                      key={sc.id}
+                      onClick={() => handleAddToSubCommunity(sc.id)}
+                      disabled={addingToSubCommunity}
+                      className="w-full text-left px-4 py-3 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 hover:border-[#4db6ac]/50 transition disabled:opacity-50"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{sc.name}</span>
+                        <i className="fa-solid fa-plus text-[#4db6ac]" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowSubCommunityModal(false)}
+              className="mt-4 w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-medium hover:bg-white/10"
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 
