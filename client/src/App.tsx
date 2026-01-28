@@ -39,6 +39,7 @@ import YourSports from './pages/YourSports'
 import Messages from './pages/Messages'
 import NewMessage from './pages/NewMessage'
 import ChatThread from './pages/ChatThread'
+import GroupChatThread from './pages/GroupChatThread'
 import Profile from './pages/Profile'
 import PublicProfile from './pages/PublicProfile'
 import AccountSettings from './pages/AccountSettings'
@@ -621,6 +622,7 @@ function AppRoutes(){
     currentPath === '/signup' ||
     currentPath === '/signup_react' ||
     currentPath.startsWith('/user_chat/chat/') ||  // Chat thread has its own header
+    currentPath.startsWith('/group_chat/') ||  // Group chat has its own header
     currentPath.startsWith('/post/') ||  // Post detail has its own header
     currentPath.startsWith('/reply/') ||  // Reply/thread page has its own header
     currentPath.startsWith('/community_feed_react/') ||  // Community feed has its own header
@@ -674,6 +676,7 @@ function AppRoutes(){
                 <Route path="/user_chat" element={<Messages />} />
                   <Route path="/user_chat/new" element={<NewMessage />} />
                   <Route path="/user_chat/chat/:username" element={<ChatThread />} />
+                  <Route path="/group_chat/:group_id" element={<GroupChatThread />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/profile_react" element={<Profile />} />
                   <Route path="/profile/:username" element={<PublicProfile />} />

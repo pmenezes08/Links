@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
 import Avatar from '../components/Avatar'
 import ParentCommunityPicker from '../components/ParentCommunityPicker'
+import GroupChatCreator from '../components/GroupChatCreator'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 
 type Thread = {
@@ -93,6 +94,18 @@ export default function Messages(){
   const [showArchived, setShowArchived] = useState(false)
   const [archivedThreads, setArchivedThreads] = useState<Thread[]>([])
   const [archivedLoading, setArchivedLoading] = useState(false)
+  
+  // Group chats
+  type GroupChat = {
+    id: number
+    name: string
+    member_count: number
+    last_message: { sender: string; text: string; time: string } | null
+    unread_count: number
+  }
+  const [groupChats, setGroupChats] = useState<GroupChat[]>([])
+  const [_groupChatsLoading, setGroupChatsLoading] = useState(false)
+  void _groupChatsLoading // Suppress unused warning - reserved for future loading state
 
   // Fetch threads with caching
   const loadThreads = useCallback((silent: boolean = false) => {
@@ -137,6 +150,22 @@ export default function Messages(){
       .finally(() => setArchivedLoading(false))
   }, [])
 
+  // Load group chats
+  const loadGroupChats = useCallback((silent = false) => {
+    if (!silent) setGroupChatsLoading(true)
+    fetch('/api/group_chat/list', { credentials: 'include' })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success && Array.isArray(j.groups)) {
+          setGroupChats(j.groups)
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!silent) setGroupChatsLoading(false)
+      })
+  }, [])
+
   // Archive a chat
   const archiveChat = useCallback((otherUsername: string) => {
     const fd = new URLSearchParams({ other_username: otherUsername })
@@ -177,6 +206,7 @@ export default function Messages(){
   useEffect(() => {
     // Fetch fresh data immediately (non-silent to ensure UI updates quickly)
     loadThreads(false)
+    loadGroupChats(false)
     
     // Also load archived chats count on mount
     loadArchivedThreads()
@@ -205,6 +235,7 @@ export default function Messages(){
     const onVis = () => {
       if (!document.hidden) {
         loadThreads(true)
+        loadGroupChats(true)
         syncBadge() // Also sync badge when returning to app
       }
     }
@@ -214,11 +245,15 @@ export default function Messages(){
     const onPopState = () => {
       console.log('🔙 Detected back navigation, refreshing threads')
       loadThreads(false) // Non-silent refresh on back navigation
+      loadGroupChats(false)
     }
     window.addEventListener('popstate', onPopState)
     
     // Poll every 3 seconds for faster updates (was 5s)
-    const t = setInterval(() => loadThreads(true), 3000)
+    const t = setInterval(() => {
+      loadThreads(true)
+      loadGroupChats(true)
+    }, 3000)
     
     return () => {
       document.removeEventListener('visibilitychange', onVis)
@@ -226,7 +261,7 @@ export default function Messages(){
       clearInterval(t)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadThreads, loadArchivedThreads, location.key])
+  }, [loadThreads, loadArchivedThreads, loadGroupChats, location.key])
 
   // Function to fetch communities with optional cache-busting
   const fetchCommunitiesData = useCallback(async (forceRefresh = false) => {
@@ -614,13 +649,67 @@ export default function Messages(){
                 }
               }
               return (
+            <>
+            {/* Group Chats Section */}
+            {groupChats.length > 0 && communityFilter === 'all' && (
+              <div className="rounded-xl border border-white/10 bg-black mb-3">
+                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+                  <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
+                  <span className="text-sm font-semibold text-white/80">Group Chats</span>
+                  <span className="text-xs text-white/40">({groupChats.length})</span>
+                </div>
+                <div className="divide-y divide-white/10">
+                  {groupChats.map((gc) => (
+                    <button
+                      key={gc.id}
+                      onClick={() => navigate(`/group_chat/${gc.id}`)}
+                      className="w-full px-3 py-3 flex items-center gap-3 hover:bg-white/5 text-left"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                        <i className="fa-solid fa-users text-[#4db6ac]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <div className="font-medium truncate">{gc.name}</div>
+                          {gc.last_message?.time && (
+                            <div className="ml-3 flex-shrink-0 text-[11px] text-[#9fb0b5]">
+                              {new Date(gc.last_message.time).toLocaleDateString()}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[13px] text-[#9fb0b5] truncate">
+                          {gc.last_message ? (
+                            <span><span className="font-medium">{gc.last_message.sender}:</span> {gc.last_message.text}</span>
+                          ) : (
+                            <span>{gc.member_count} members</span>
+                          )}
+                        </div>
+                      </div>
+                      {gc.unread_count > 0 && (
+                        <div className="ml-2 px-2 h-5 rounded-full bg-[#4db6ac] text-black text-[11px] flex items-center justify-center">
+                          {gc.unread_count > 99 ? '99+' : gc.unread_count}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Direct Messages Section */}
             <div className="rounded-xl border border-white/10 bg-black divide-y divide-white/10">
+              {groupChats.length > 0 && communityFilter === 'all' && (
+                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
+                  <i className="fa-solid fa-user text-[#4db6ac] text-sm" />
+                  <span className="text-sm font-semibold text-white/80">Direct Messages</span>
+                </div>
+              )}
               {loading ? (
                 <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
               ) : visibleThreads.length === 0 ? (
                 <div className="px-4 py-4 text-sm text-[#9fb0b5]">
                   {communityFilter === 'all'
-                    ? 'No chats yet. Start a new one from the New Message tab.'
+                    ? 'No direct messages yet. Start a new one from the New Message tab.'
                     : 'No chats match this community filter.'}
                 </div>
               ) : (
@@ -736,6 +825,7 @@ export default function Messages(){
               })
             )}
             </div>
+            </>
               )
             })()}
             
@@ -853,5 +943,46 @@ export default function Messages(){
 }
 
 function NewMessageInline(){
-  return <ParentCommunityPicker title="Start a New Message" variant="compact" />
+  const [mode, setMode] = useState<'direct' | 'group'>('direct')
+  
+  return (
+    <div className="space-y-3">
+      {/* Mode Toggle */}
+      <div className="rounded-xl border border-white/10 bg-black p-3">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setMode('direct')}
+            className={`flex-1 px-3 py-2 text-sm rounded-lg transition ${
+              mode === 'direct'
+                ? 'bg-[#4db6ac]/20 border border-[#4db6ac]/50 text-[#4db6ac]'
+                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <i className="fa-solid fa-user mr-2" />
+            Direct Message
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('group')}
+            className={`flex-1 px-3 py-2 text-sm rounded-lg transition ${
+              mode === 'group'
+                ? 'bg-[#4db6ac]/20 border border-[#4db6ac]/50 text-[#4db6ac]'
+                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+            }`}
+          >
+            <i className="fa-solid fa-users mr-2" />
+            Group Chat
+          </button>
+        </div>
+      </div>
+      
+      {/* Content based on mode */}
+      {mode === 'direct' ? (
+        <ParentCommunityPicker title="Start a New Message" variant="compact" />
+      ) : (
+        <GroupChatCreator />
+      )}
+    </div>
+  )
 }
