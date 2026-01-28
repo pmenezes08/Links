@@ -10,6 +10,7 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
+import LongPressActionable from '../chat/LongPressActionable'
 
 type Message = {
   id: number
@@ -53,8 +54,6 @@ export default function GroupChatThread() {
   const [previewPlaying, setPreviewPlaying] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const [reactions, setReactions] = useState<Record<number, string>>({})
-  const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null)
-  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -680,23 +679,7 @@ export default function GroupChatThread() {
     }
   }
 
-  // Reaction emojis
-  const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '😡', '👍']
-
-  const handleLongPressStart = (messageId: number) => {
-    const timer = setTimeout(() => {
-      setReactionPickerMessageId(messageId)
-    }, 500)
-    setLongPressTimer(timer)
-  }
-
-  const handleLongPressEnd = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer)
-      setLongPressTimer(null)
-    }
-  }
-
+  // Message action handlers
   const handleReaction = (messageId: number, emoji: string) => {
     setReactions(prev => {
       if (prev[messageId] === emoji) {
@@ -706,7 +689,18 @@ export default function GroupChatThread() {
       }
       return { ...prev, [messageId]: emoji }
     })
-    setReactionPickerMessageId(null)
+  }
+
+  const handleCopyMessage = (text: string | null) => {
+    if (text) {
+      navigator.clipboard.writeText(text).catch(() => {})
+    }
+  }
+
+  const handleDeleteMessage = (messageId: number) => {
+    // For now, just remove from local state
+    // TODO: Add backend API for message deletion
+    setMessages(prev => prev.filter(m => m.id !== messageId))
   }
 
   if (loading && !group) {
@@ -887,52 +881,57 @@ export default function GroupChatThread() {
                           </div>
                         )}
                         <div className="flex items-end gap-2">
-                          <div 
-                            className={`flex-1 min-w-0 relative ${isOptimistic ? 'opacity-60' : ''}`}
-                            onPointerDown={() => !isOptimistic && handleLongPressStart(msg.id)}
-                            onPointerUp={handleLongPressEnd}
-                            onPointerCancel={handleLongPressEnd}
-                            onPointerLeave={handleLongPressEnd}
+                          <LongPressActionable
+                            onReact={(emoji) => handleReaction(msg.id, emoji)}
+                            onReply={() => {/* TODO: Implement reply */}}
+                            onCopy={() => handleCopyMessage(msg.text)}
+                            onDelete={() => handleDeleteMessage(msg.id)}
+                            disabled={isOptimistic}
                           >
-                            {msg.text && (
-                              <div className="text-[14px] text-white/90 whitespace-pre-wrap break-words">
-                                {msg.text}
-                              </div>
-                            )}
-                            {msg.image && (
-                              <img
-                                src={msg.image.startsWith('http') ? msg.image : `/uploads/${msg.image}`}
-                                alt="Shared image"
-                                className="mt-1 max-w-[280px] rounded-lg border border-white/10"
-                              />
-                            )}
-                            {msg.voice && (
-                              <div className="mt-1 max-w-[280px]">
-                                <audio
-                                  controls
-                                  className="w-full h-10"
-                                  style={{ 
-                                    filter: 'invert(1) hue-rotate(180deg)',
-                                    borderRadius: '8px'
+                            <div className={`relative ${isOptimistic ? 'opacity-60' : ''} ${messageReaction ? 'mb-5' : ''}`}>
+                              {msg.text && (
+                                <div className="text-[14px] text-white/90 whitespace-pre-wrap break-words">
+                                  {msg.text}
+                                </div>
+                              )}
+                              {msg.image && (
+                                <img
+                                  src={msg.image.startsWith('http') ? msg.image : `/uploads/${msg.image}`}
+                                  alt="Shared image"
+                                  className="mt-1 max-w-[280px] rounded-lg border border-white/10"
+                                />
+                              )}
+                              {msg.voice && (
+                                <div className="mt-1 max-w-[280px]">
+                                  <audio
+                                    controls
+                                    className="w-full h-10"
+                                    style={{ 
+                                      filter: 'invert(1) hue-rotate(180deg)',
+                                      borderRadius: '8px'
+                                    }}
+                                  >
+                                    <source 
+                                      src={msg.voice.startsWith('http') ? msg.voice : `/uploads/${msg.voice}`} 
+                                      type={msg.voice.includes('.mp4') ? 'audio/mp4' : 'audio/webm'} 
+                                    />
+                                  </audio>
+                                </div>
+                              )}
+                              {/* Reaction display */}
+                              {messageReaction && (
+                                <div 
+                                  className="absolute -bottom-5 left-0 bg-[#1a1a1a] border border-white/10 rounded-full px-1.5 py-0.5 text-sm cursor-pointer hover:bg-white/10"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleReaction(msg.id, messageReaction)
                                   }}
                                 >
-                                  <source 
-                                    src={msg.voice.startsWith('http') ? msg.voice : `/uploads/${msg.voice}`} 
-                                    type={msg.voice.includes('.mp4') ? 'audio/mp4' : 'audio/webm'} 
-                                  />
-                                </audio>
-                              </div>
-                            )}
-                            {/* Reaction display */}
-                            {messageReaction && (
-                              <div 
-                                className="absolute -bottom-4 left-0 bg-[#1a1a1a] border border-white/10 rounded-full px-1.5 py-0.5 text-sm cursor-pointer hover:bg-white/10"
-                                onClick={() => handleReaction(msg.id, messageReaction)}
-                              >
-                                {messageReaction}
-                              </div>
-                            )}
-                          </div>
+                                  {messageReaction}
+                                </div>
+                              )}
+                            </div>
+                          </LongPressActionable>
                           {!showAvatar && showTime && (
                             <span className="text-[10px] text-[#9fb0b5]/60 flex-shrink-0 pb-0.5">
                               {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1408,32 +1407,6 @@ export default function GroupChatThread() {
         </div>
       )}
 
-      {/* Reaction Picker Modal */}
-      {reactionPickerMessageId !== null && (
-        <div
-          className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center"
-          onClick={() => setReactionPickerMessageId(null)}
-        >
-          <div
-            className="bg-[#1a1a1a] border border-white/10 rounded-2xl p-3 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex gap-2">
-              {REACTION_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl hover:bg-white/10 active:scale-90 transition-transform ${
-                    reactions[reactionPickerMessageId] === emoji ? 'bg-white/20' : ''
-                  }`}
-                  onClick={() => handleReaction(reactionPickerMessageId, emoji)}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
