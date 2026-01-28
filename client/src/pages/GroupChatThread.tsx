@@ -680,7 +680,19 @@ export default function GroupChatThread() {
   }
 
   return (
-    <div className="fixed inset-0 bg-black text-white flex flex-col">
+    <div 
+      className="bg-black text-white"
+      style={{
+        position: 'fixed',
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
       {/* Header - fixed at top with safe area */}
       <div 
         className="flex-shrink-0 border-b border-[#262f30]"
