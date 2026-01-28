@@ -52,6 +52,9 @@ export default function GroupChatThread() {
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [previewPlaying, setPreviewPlaying] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const [reactions, setReactions] = useState<Record<number, string>>({})
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState<number | null>(null)
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -360,8 +363,27 @@ export default function GroupChatThread() {
     const text = draft.trim()
     if (!text || sending) return
 
-    setSending(true)
+    // Clear draft immediately for instant feedback
     setDraft('')
+    setSending(true)
+    
+    // Create optimistic message
+    const now = new Date().toISOString()
+    const optimisticMessage: Message = {
+      id: -Date.now(), // Negative temp ID
+      sender: '', // Will be filled by server
+      text: text,
+      image: null,
+      voice: null,
+      created_at: now,
+      profile_picture: null,
+    }
+    
+    // Add optimistic message immediately
+    setMessages(prev => [...prev, optimisticMessage])
+    
+    // Scroll to bottom immediately
+    requestAnimationFrame(scrollToBottom)
 
     try {
       const response = await fetch(`/api/group_chat/${group_id}/send`, {
@@ -373,14 +395,20 @@ export default function GroupChatThread() {
       const data = await response.json()
 
       if (data.success) {
-        setMessages(prev => [...prev, data.message])
+        // Replace optimistic message with real one
+        setMessages(prev => prev.map(m => 
+          m.id === optimisticMessage.id ? data.message : m
+        ))
         lastMessageIdRef.current = data.message.id
-        setTimeout(scrollToBottom, 100)
       } else {
+        // Remove optimistic message and restore draft on failure
+        setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
         setDraft(text)
         console.error('Failed to send:', data.error)
       }
     } catch (err) {
+      // Remove optimistic message and restore draft on error
+      setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
       setDraft(text)
       console.error('Error sending message:', err)
     } finally {
@@ -652,6 +680,35 @@ export default function GroupChatThread() {
     }
   }
 
+  // Reaction emojis
+  const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '😡', '👍']
+
+  const handleLongPressStart = (messageId: number) => {
+    const timer = setTimeout(() => {
+      setReactionPickerMessageId(messageId)
+    }, 500)
+    setLongPressTimer(timer)
+  }
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer)
+      setLongPressTimer(null)
+    }
+  }
+
+  const handleReaction = (messageId: number, emoji: string) => {
+    setReactions(prev => {
+      if (prev[messageId] === emoji) {
+        // Remove reaction if same emoji
+        const { [messageId]: _, ...rest } = prev
+        return rest
+      }
+      return { ...prev, [messageId]: emoji }
+    })
+    setReactionPickerMessageId(null)
+  }
+
   if (loading && !group) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -807,11 +864,13 @@ export default function GroupChatThread() {
                   const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender
                   const showTime = showAvatar || (idx > 0 && 
                     new Date(msg.created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 60000)
+                  const messageReaction = reactions[msg.id]
+                  const isOptimistic = msg.id < 0
 
                   return (
                     <div key={msg.id} className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'}`}>
                       <div className="w-8 flex-shrink-0">
-                        {showAvatar && (
+                        {showAvatar && msg.sender && (
                           <Avatar
                             username={msg.sender}
                             url={msg.profile_picture || undefined}
@@ -821,14 +880,20 @@ export default function GroupChatThread() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        {showAvatar && (
+                        {showAvatar && msg.sender && (
                           <div className="flex items-baseline gap-2 mb-0.5">
                             <span className="text-sm font-medium text-white/90">{msg.sender}</span>
                             <span className="text-[11px] text-[#9fb0b5]">{formatTime(msg.created_at)}</span>
                           </div>
                         )}
                         <div className="flex items-end gap-2">
-                          <div className="flex-1 min-w-0">
+                          <div 
+                            className={`flex-1 min-w-0 relative ${isOptimistic ? 'opacity-60' : ''}`}
+                            onPointerDown={() => !isOptimistic && handleLongPressStart(msg.id)}
+                            onPointerUp={handleLongPressEnd}
+                            onPointerCancel={handleLongPressEnd}
+                            onPointerLeave={handleLongPressEnd}
+                          >
                             {msg.text && (
                               <div className="text-[14px] text-white/90 whitespace-pre-wrap break-words">
                                 {msg.text}
@@ -856,6 +921,15 @@ export default function GroupChatThread() {
                                     type={msg.voice.includes('.mp4') ? 'audio/mp4' : 'audio/webm'} 
                                   />
                                 </audio>
+                              </div>
+                            )}
+                            {/* Reaction display */}
+                            {messageReaction && (
+                              <div 
+                                className="absolute -bottom-4 left-0 bg-[#1a1a1a] border border-white/10 rounded-full px-1.5 py-0.5 text-sm cursor-pointer hover:bg-white/10"
+                                onClick={() => handleReaction(msg.id, messageReaction)}
+                              >
+                                {messageReaction}
                               </div>
                             )}
                           </div>
@@ -1329,6 +1403,33 @@ export default function GroupChatThread() {
                 <i className="fa-solid fa-arrow-right-from-bracket mr-2" />
                 Leave Group
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reaction Picker Modal */}
+      {reactionPickerMessageId !== null && (
+        <div
+          className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center"
+          onClick={() => setReactionPickerMessageId(null)}
+        >
+          <div
+            className="bg-[#1a1a1a] border border-white/10 rounded-2xl p-3 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex gap-2">
+              {REACTION_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl hover:bg-white/10 active:scale-90 transition-transform ${
+                    reactions[reactionPickerMessageId] === emoji ? 'bg-white/20' : ''
+                  }`}
+                  onClick={() => handleReaction(reactionPickerMessageId, emoji)}
+                >
+                  {emoji}
+                </button>
+              ))}
             </div>
           </div>
         </div>
