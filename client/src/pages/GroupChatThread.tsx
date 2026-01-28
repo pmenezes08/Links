@@ -51,6 +51,7 @@ export default function GroupChatThread() {
   const [uploadingImage, setUploadingImage] = useState(false)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [previewPlaying, setPreviewPlaying] = useState(false)
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -59,6 +60,7 @@ export default function GroupChatThread() {
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const lastMessageIdRef = useRef<number>(0)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
+  const headerMenuRef = useRef<HTMLDivElement>(null)
 
   // Voice recording
   const { 
@@ -99,6 +101,18 @@ export default function GroupChatThread() {
     const seconds = totalSeconds % 60
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
+
+  // Close header menu when clicking outside
+  useEffect(() => {
+    if (!headerMenuOpen) return
+    const handleClick = (e: MouseEvent) => {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target as Node)) {
+        setHeaderMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [headerMenuOpen])
 
   // Composer height observer
   useLayoutEffect(() => {
@@ -666,119 +680,188 @@ export default function GroupChatThread() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
-      {/* Header */}
-      <div
-        className="fixed left-0 right-0 h-14 bg-black/95 backdrop-blur border-b border-white/10 z-40 flex items-center px-3 gap-3"
-        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
+    <div className="fixed inset-0 bg-black text-white flex flex-col">
+      {/* Header - fixed at top with safe area */}
+      <div 
+        className="flex-shrink-0 border-b border-[#262f30]"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          width: '100vw',
+          zIndex: 1001,
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingLeft: 'env(safe-area-inset-left, 0px)',
+          paddingRight: 'env(safe-area-inset-right, 0px)',
+          background: '#000',
+        }}
       >
-        <button
-          onClick={() => navigate('/user_chat')}
-          className="p-2 rounded-full hover:bg-white/5"
-          aria-label="Back"
-        >
-          <i className="fa-solid fa-arrow-left" />
-        </button>
-
-        <button
-          onClick={() => setShowMembers(true)}
-          className="flex-1 min-w-0 flex items-center gap-3"
-        >
-          <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
-            <i className="fa-solid fa-users text-[#4db6ac]" />
+        <div className="h-12 flex items-center gap-2 px-3">
+          <button 
+            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            onClick={() => navigate('/user_chat')} 
+            aria-label="Back to Messages"
+          >
+            <i className="fa-solid fa-arrow-left text-white" />
+          </button>
+          <div className="w-9 h-9 rounded-full bg-[#4db6ac]/20 flex items-center justify-center">
+            <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
           </div>
-          <div className="min-w-0 flex-1 text-left">
-            <div className="font-semibold truncate">{group?.name}</div>
-            <div className="text-xs text-[#9fb0b5] truncate">
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold truncate text-white text-sm">
+              {group?.name || 'Group Chat'}
+            </div>
+            <div className="text-xs text-[#9fb0b5]">
               {group?.members.length} members
             </div>
           </div>
-        </button>
-
-        <button
-          onClick={() => setShowMembers(true)}
-          className="p-2 rounded-full hover:bg-white/5"
-          aria-label="Group info"
-        >
-          <i className="fa-solid fa-ellipsis-vertical" />
-        </button>
+          <button 
+            type="button"
+            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+            aria-label="More options"
+            aria-haspopup="true"
+            aria-expanded={headerMenuOpen}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              setHeaderMenuOpen(prev => !prev)
+            }}
+          >
+            <i className="fa-solid fa-ellipsis-vertical text-white/70" />
+          </button>
+          {headerMenuOpen && (
+            <div
+              ref={headerMenuRef}
+              className="absolute right-3 top-full mt-2 z-[10020] w-48"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="rounded-xl border border-white/10 bg-[#111111] shadow-lg shadow-black/40 py-1">
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  onClick={() => {
+                    setHeaderMenuOpen(false)
+                    setShowMembers(true)
+                  }}
+                >
+                  <i className="fa-solid fa-users text-xs text-[#4db6ac]" />
+                  <span>View Members</span>
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10 transition-colors"
+                  onClick={() => {
+                    setHeaderMenuOpen(false)
+                    handleLeave()
+                  }}
+                >
+                  <i className="fa-solid fa-arrow-right-from-bracket text-xs" />
+                  <span>Leave Group</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Messages Container */}
-      <div
-        ref={listRef}
-        className="flex-1 overflow-y-auto px-3"
+      {/* Content area - with top padding for fixed header */}
+      <div 
+        className="flex-1 flex flex-col min-h-0"
         style={{
-          paddingTop: 'calc(var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px))) + 56px + 16px)',
-          paddingBottom: listPaddingBottom,
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 48px)',
         }}
       >
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-[#9fb0b5]">
-            <i className="fa-solid fa-comments text-4xl mb-3 opacity-50" />
-            <div className="text-sm">No messages yet</div>
-            <div className="text-xs mt-1">Send a message to start the conversation</div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {messages.map((msg, idx) => {
-              const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender
+        <div className="flex-1 flex flex-col min-h-0 max-w-3xl w-full mx-auto">
+          {/* Messages List */}
+          <div
+            ref={listRef}
+            className="flex-1 overflow-y-auto overflow-x-hidden px-3"
+            style={{
+              WebkitOverflowScrolling: 'touch',
+              overscrollBehaviorY: 'auto',
+              paddingBottom: listPaddingBottom,
+              minHeight: 0,
+            } as CSSProperties}
+          >
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
+                <i className="fa-solid fa-comments text-4xl mb-3 opacity-50" />
+                <div className="text-sm">No messages yet</div>
+                <div className="text-xs mt-1">Send a message to start the conversation</div>
+              </div>
+            ) : (
+              <div className="space-y-1 py-3">
+                {messages.map((msg, idx) => {
+                  const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender
+                  const showTime = showAvatar || (idx > 0 && 
+                    new Date(msg.created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 60000)
 
-              return (
-                <div key={msg.id} className={`flex gap-2 ${showAvatar ? 'mt-4' : 'mt-1'}`}>
-                  <div className="w-8 flex-shrink-0">
-                    {showAvatar && (
-                      <Avatar
-                        username={msg.sender}
-                        url={msg.profile_picture || undefined}
-                        size={32}
-                        linkToProfile
-                      />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    {showAvatar && (
-                      <div className="flex items-baseline gap-2 mb-1">
-                        <span className="text-sm font-medium text-white/90">{msg.sender}</span>
-                        <span className="text-xs text-[#9fb0b5]">{formatTime(msg.created_at)}</span>
-                      </div>
-                    )}
-                    {msg.text && (
-                      <div className="text-[14px] text-white/90 whitespace-pre-wrap break-words">
-                        {msg.text}
-                      </div>
-                    )}
-                    {msg.image && (
-                      <img
-                        src={msg.image.startsWith('http') ? msg.image : `/uploads/${msg.image}`}
-                        alt="Shared image"
-                        className="mt-2 max-w-[280px] rounded-lg border border-white/10"
-                      />
-                    )}
-                    {msg.voice && (
-                      <div className="mt-2 max-w-[280px]">
-                        <audio
-                          controls
-                          className="w-full h-10"
-                          style={{ 
-                            filter: 'invert(1) hue-rotate(180deg)',
-                            borderRadius: '8px'
-                          }}
-                        >
-                          <source 
-                            src={msg.voice.startsWith('http') ? msg.voice : `/uploads/${msg.voice}`} 
-                            type={msg.voice.includes('.mp4') ? 'audio/mp4' : 'audio/webm'} 
+                  return (
+                    <div key={msg.id} className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'}`}>
+                      <div className="w-8 flex-shrink-0">
+                        {showAvatar && (
+                          <Avatar
+                            username={msg.sender}
+                            url={msg.profile_picture || undefined}
+                            size={32}
+                            linkToProfile
                           />
-                        </audio>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-            <div ref={messagesEndRef} />
+                      <div className="flex-1 min-w-0">
+                        {showAvatar && (
+                          <div className="flex items-baseline gap-2 mb-0.5">
+                            <span className="text-sm font-medium text-white/90">{msg.sender}</span>
+                            <span className="text-[11px] text-[#9fb0b5]">{formatTime(msg.created_at)}</span>
+                          </div>
+                        )}
+                        <div className="flex items-end gap-2">
+                          <div className="flex-1 min-w-0">
+                            {msg.text && (
+                              <div className="text-[14px] text-white/90 whitespace-pre-wrap break-words">
+                                {msg.text}
+                              </div>
+                            )}
+                            {msg.image && (
+                              <img
+                                src={msg.image.startsWith('http') ? msg.image : `/uploads/${msg.image}`}
+                                alt="Shared image"
+                                className="mt-1 max-w-[280px] rounded-lg border border-white/10"
+                              />
+                            )}
+                            {msg.voice && (
+                              <div className="mt-1 max-w-[280px]">
+                                <audio
+                                  controls
+                                  className="w-full h-10"
+                                  style={{ 
+                                    filter: 'invert(1) hue-rotate(180deg)',
+                                    borderRadius: '8px'
+                                  }}
+                                >
+                                  <source 
+                                    src={msg.voice.startsWith('http') ? msg.voice : `/uploads/${msg.voice}`} 
+                                    type={msg.voice.includes('.mp4') ? 'audio/mp4' : 'audio/webm'} 
+                                  />
+                                </audio>
+                              </div>
+                            )}
+                          </div>
+                          {!showAvatar && showTime && (
+                            <span className="text-[10px] text-[#9fb0b5]/60 flex-shrink-0 pb-0.5">
+                              {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                <div ref={messagesEndRef} className="h-1" />
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* ====== COMPOSER - FIXED AT BOTTOM ====== */}
