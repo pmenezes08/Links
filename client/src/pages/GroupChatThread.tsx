@@ -1187,8 +1187,8 @@ export default function GroupChatThread() {
               )}
             </div>
 
-            {/* Mic button - shown when not recording, no preview, and no text */}
-            {MIC_ENABLED && !recording && !recordingPreview && !draft.trim() && (
+            {/* Mic button - shown when not recording, no preview, no text, and not sending */}
+            {MIC_ENABLED && !recording && !recordingPreview && !draft.trim() && !sending && (
               <button
                 className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
                 onPointerDown={(e) => {
@@ -1288,8 +1288,8 @@ export default function GroupChatThread() {
               </button>
             )}
 
-            {/* Normal send button */}
-            {!(MIC_ENABLED && (recording || recordingPreview)) && (draft.trim() || !MIC_ENABLED) && (
+            {/* Normal send button - show when there's text OR when sending */}
+            {!(MIC_ENABLED && (recording || recordingPreview)) && (draft.trim() || sending || !MIC_ENABLED) && (
               <button
                 className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
                   sending
