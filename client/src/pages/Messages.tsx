@@ -100,12 +100,19 @@ export default function Messages(){
     id: number
     name: string
     member_count: number
+    creator: string
     last_message: { sender: string; text: string; time: string } | null
     unread_count: number
   }
   const [groupChats, setGroupChats] = useState<GroupChat[]>([])
   const [_groupChatsLoading, setGroupChatsLoading] = useState(false)
   void _groupChatsLoading // Suppress unused warning - reserved for future loading state
+  
+  // Group chat swipe state
+  const [groupSwipeId, setGroupSwipeId] = useState<number | null>(null)
+  const [groupDragX, setGroupDragX] = useState(0)
+  const groupStartXRef = useRef(0)
+  const groupDraggingIdRef = useRef<number | null>(null)
 
   // Fetch threads with caching
   const loadThreads = useCallback((silent: boolean = false) => {
@@ -163,6 +170,33 @@ export default function Messages(){
       .catch(() => {})
       .finally(() => {
         if (!silent) setGroupChatsLoading(false)
+      })
+  }, [])
+  
+  // Delete group chat (only creator can delete)
+  const deleteGroupChat = useCallback((groupId: number) => {
+    if (!confirm('Are you sure you want to delete this group chat? This action cannot be undone.')) {
+      setGroupSwipeId(null)
+      return
+    }
+    
+    fetch(`/api/group_chat/${groupId}/delete`, { 
+      method: 'POST', 
+      credentials: 'include' 
+    })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success) {
+          setGroupChats(prev => prev.filter(g => g.id !== groupId))
+          setGroupSwipeId(null)
+        } else {
+          alert(j?.error || 'Failed to delete group')
+          setGroupSwipeId(null)
+        }
+      })
+      .catch(() => {
+        alert('Failed to delete group')
+        setGroupSwipeId(null)
       })
   }, [])
 
@@ -659,39 +693,103 @@ export default function Messages(){
                   <span className="text-xs text-white/40">({groupChats.length})</span>
                 </div>
                 <div className="divide-y divide-white/10">
-                  {groupChats.map((gc) => (
-                    <button
-                      key={gc.id}
-                      onClick={() => navigate(`/group_chat/${gc.id}`)}
-                      className="w-full px-3 py-3 flex items-center gap-3 hover:bg-white/5 text-left"
-                    >
-                      <div className="w-12 h-12 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                        <i className="fa-solid fa-users text-[#4db6ac]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <div className="font-medium truncate">{gc.name}</div>
-                          {gc.last_message?.time && (
-                            <div className="ml-3 flex-shrink-0 text-[11px] text-[#9fb0b5]">
-                              {new Date(gc.last_message.time).toLocaleDateString()}
+                  {groupChats.map((gc) => {
+                    const isGDragging = groupDraggingIdRef.current === gc.id
+                    const gtx = isGDragging ? Math.min(0, groupDragX) : (groupSwipeId === gc.id ? -60 : 0)
+                    const gTransition = isGDragging ? 'none' : 'transform 150ms ease-out'
+                    const gShowActions = isGDragging ? (groupDragX < -20) : (groupSwipeId === gc.id)
+                    
+                    return (
+                      <div key={gc.id} className="relative w-full overflow-hidden">
+                        {/* Delete action (revealed on swipe) */}
+                        <div 
+                          className="absolute inset-y-0 right-0 flex items-stretch pr-2" 
+                          style={{ 
+                            opacity: gShowActions ? 1 : 0, 
+                            pointerEvents: gShowActions ? 'auto' : 'none', 
+                            transition: 'opacity 150ms ease-out' 
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => deleteGroupChat(gc.id)}
+                            className="my-1 h-[44px] w-[52px] rounded-md bg-red-500/20 text-red-300 hover:bg-red-500/30 flex items-center justify-center"
+                            aria-label="Delete group"
+                          >
+                            <i className="fa-solid fa-trash text-lg" />
+                          </button>
+                        </div>
+                        
+                        {/* Group chat row */}
+                        <div
+                          className="relative bg-black"
+                          style={{ transform: `translateX(${gtx}px)`, transition: gTransition }}
+                          onPointerDown={(e) => {
+                            if (e.button !== 0) return
+                            groupStartXRef.current = e.clientX
+                            groupDraggingIdRef.current = gc.id
+                            setGroupDragX(0)
+                          }}
+                          onPointerMove={(e) => {
+                            if (groupDraggingIdRef.current !== gc.id) return
+                            const dx = e.clientX - groupStartXRef.current
+                            setGroupDragX(dx)
+                          }}
+                          onPointerUp={() => {
+                            if (groupDraggingIdRef.current !== gc.id) return
+                            if (groupDragX < -40) {
+                              setGroupSwipeId(gc.id)
+                            } else if (groupDragX > 20) {
+                              setGroupSwipeId(null)
+                            }
+                            groupDraggingIdRef.current = null
+                            setGroupDragX(0)
+                          }}
+                          onPointerCancel={() => {
+                            groupDraggingIdRef.current = null
+                            setGroupDragX(0)
+                          }}
+                        >
+                          <button
+                            onClick={() => {
+                              if (groupSwipeId === gc.id) {
+                                setGroupSwipeId(null)
+                              } else {
+                                navigate(`/group_chat/${gc.id}`)
+                              }
+                            }}
+                            className="w-full px-3 py-3 flex items-center gap-3 hover:bg-white/5 text-left"
+                          >
+                            <div className="w-12 h-12 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                              <i className="fa-solid fa-users text-[#4db6ac]" />
                             </div>
-                          )}
-                        </div>
-                        <div className="text-[13px] text-[#9fb0b5] truncate">
-                          {gc.last_message ? (
-                            <span><span className="font-medium">{gc.last_message.sender}:</span> {gc.last_message.text}</span>
-                          ) : (
-                            <span>{gc.member_count} members</span>
-                          )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <div className="font-medium truncate">{gc.name}</div>
+                                {gc.last_message?.time && (
+                                  <div className="ml-3 flex-shrink-0 text-[11px] text-[#9fb0b5]">
+                                    {new Date(gc.last_message.time).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-[13px] text-[#9fb0b5] truncate">
+                                {gc.last_message ? (
+                                  <span><span className="font-medium">{gc.last_message.sender}:</span> {gc.last_message.text}</span>
+                                ) : (
+                                  <span>{gc.member_count} members</span>
+                                )}
+                              </div>
+                            </div>
+                            {gc.unread_count > 0 && (
+                              <div className="ml-2 px-2 h-5 rounded-full bg-[#4db6ac] text-black text-[11px] flex items-center justify-center">
+                                {gc.unread_count > 99 ? '99+' : gc.unread_count}
+                              </div>
+                            )}
+                          </button>
                         </div>
                       </div>
-                      {gc.unread_count > 0 && (
-                        <div className="ml-2 px-2 h-5 rounded-full bg-[#4db6ac] text-black text-[11px] flex items-center justify-center">
-                          {gc.unread_count > 99 ? '99+' : gc.unread_count}
-                        </div>
-                      )}
-                    </button>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}

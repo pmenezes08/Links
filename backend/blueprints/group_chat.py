@@ -29,6 +29,23 @@ def _login_required(view_func):
     return wrapper
 
 
+def _ensure_voice_column(cursor):
+    """Ensure voice_path column exists in group_chat_messages."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT voice_path FROM group_chat_messages LIMIT 1")
+    except Exception:
+        # Column doesn't exist, add it
+        try:
+            if USE_MYSQL:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN voice_path VARCHAR(500)")
+            else:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN voice_path TEXT")
+            logger.info("Added voice_path column to group_chat_messages")
+        except Exception as e:
+            logger.warning(f"Could not add voice_path column: {e}")
+
+
 def _ensure_group_chat_tables(cursor):
     """Ensure group chat tables exist."""
     from backend.services.database import USE_MYSQL
@@ -36,6 +53,7 @@ def _ensure_group_chat_tables(cursor):
     # Check if table exists
     try:
         cursor.execute("SELECT 1 FROM group_chats LIMIT 1")
+        _ensure_voice_column(cursor)  # Ensure voice column exists
         return  # Table exists, no need to create
     except Exception:
         pass  # Table doesn't exist, create it
@@ -73,6 +91,7 @@ def _ensure_group_chat_tables(cursor):
                 sender_username VARCHAR(100) NOT NULL,
                 message_text TEXT,
                 image_path VARCHAR(500),
+                voice_path VARCHAR(500),
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 is_deleted TINYINT DEFAULT 0,
                 INDEX idx_group_created (group_id, created_at)
@@ -120,6 +139,7 @@ def _ensure_group_chat_tables(cursor):
                 sender_username VARCHAR(100) NOT NULL,
                 message_text TEXT,
                 image_path VARCHAR(500),
+                voice_path TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 is_deleted INTEGER DEFAULT 0
             )
@@ -394,7 +414,7 @@ def get_group_messages(group_id: int):
             # Get messages
             if before_id:
                 c.execute(f"""
-                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.created_at,
+                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.created_at,
                            up.profile_picture
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
@@ -404,7 +424,7 @@ def get_group_messages(group_id: int):
                 """, (group_id, before_id, limit))
             else:
                 c.execute(f"""
-                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.created_at,
+                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.created_at,
                            up.profile_picture
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
@@ -420,8 +440,9 @@ def get_group_messages(group_id: int):
                     "sender": row["sender_username"] if hasattr(row, "keys") else row[1],
                     "text": row["message_text"] if hasattr(row, "keys") else row[2],
                     "image": row["image_path"] if hasattr(row, "keys") else row[3],
-                    "created_at": row["created_at"] if hasattr(row, "keys") else row[4],
-                    "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[5],
+                    "voice": row["voice_path"] if hasattr(row, "keys") else row[4],
+                    "created_at": row["created_at"] if hasattr(row, "keys") else row[5],
+                    "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[6],
                 })
             
             # Update read receipt
@@ -465,10 +486,13 @@ def send_group_message(group_id: int):
     data = request.get_json() or {}
     
     message_text = data.get("message", "").strip()
-    image_path = data.get("image_path", "").strip() or None
+    # Support both "image_path" and "image" keys for compatibility
+    image_path = data.get("image_path", "").strip() or data.get("image", "").strip() or None
+    # Support voice messages
+    voice_path = data.get("voice", "").strip() or None
     
-    if not message_text and not image_path:
-        return jsonify({"success": False, "error": "Message or image required"}), 400
+    if not message_text and not image_path and not voice_path:
+        return jsonify({"success": False, "error": "Message, image, or voice required"}), 400
     
     try:
         with get_db_connection() as conn:
@@ -489,9 +513,9 @@ def send_group_message(group_id: int):
             # Insert message
             now = datetime.now().isoformat()
             c.execute(f"""
-                INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, created_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
-            """, (group_id, username, message_text or None, image_path, now))
+                INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, voice_path, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (group_id, username, message_text or None, image_path, voice_path, now))
             
             message_id = c.lastrowid
             
@@ -523,6 +547,7 @@ def send_group_message(group_id: int):
                     "sender": username,
                     "text": message_text,
                     "image": image_path,
+                    "voice": voice_path,
                     "created_at": now,
                     "profile_picture": profile_picture,
                 }
@@ -587,3 +612,48 @@ def leave_group_chat(group_id: int):
     except Exception as e:
         logger.error(f"Error leaving group {group_id}: {e}")
         return jsonify({"success": False, "error": "Failed to leave group"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/delete", methods=["POST"])
+@_login_required
+def delete_group_chat(group_id: int):
+    """Delete a group chat. Only the creator can delete."""
+    username = session["username"]
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            _ensure_group_chat_tables(c)
+            
+            # Check if user is the creator
+            c.execute(f"""
+                SELECT creator_username FROM group_chats
+                WHERE id = {ph} AND is_active = 1
+            """, (group_id,))
+            
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Group not found"}), 404
+            
+            creator = row["creator_username"] if hasattr(row, "keys") else row[0]
+            
+            if creator != username:
+                return jsonify({"success": False, "error": "Only the creator can delete this group"}), 403
+            
+            # Delete all related data
+            c.execute(f"DELETE FROM group_chat_read_receipts WHERE group_id = {ph}", (group_id,))
+            c.execute(f"DELETE FROM group_chat_messages WHERE group_id = {ph}", (group_id,))
+            c.execute(f"DELETE FROM group_chat_members WHERE group_id = {ph}", (group_id,))
+            
+            # Deactivate the group (soft delete)
+            c.execute(f"UPDATE group_chats SET is_active = 0 WHERE id = {ph}", (group_id,))
+            
+            conn.commit()
+            
+            return jsonify({"success": True})
+            
+    except Exception as e:
+        logger.error(f"Error deleting group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to delete group"}), 500

@@ -6,12 +6,17 @@ import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import Avatar from '../components/Avatar'
+import GifPicker from '../components/GifPicker'
+import type { GifSelection } from '../components/GifPicker'
+import { gifSelectionToFile } from '../utils/gif'
+import { useAudioRecorder } from '../components/useAudioRecorder'
 
 type Message = {
   id: number
   sender: string
   text: string | null
   image: string | null
+  voice: string | null
   created_at: string
   profile_picture: string | null
 }
@@ -44,6 +49,8 @@ export default function GroupChatThread() {
   const [showMembers, setShowMembers] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [gifPickerOpen, setGifPickerOpen] = useState(false)
+  const [previewPlaying, setPreviewPlaying] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -51,9 +58,23 @@ export default function GroupChatThread() {
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const lastMessageIdRef = useRef<number>(0)
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Voice recording
+  const { 
+    recording, 
+    recordMs, 
+    preview: recordingPreview, 
+    start: startVoiceRecording, 
+    stop: stopVoiceRecording, 
+    clearPreview: cancelRecordingPreview, 
+    level, 
+    stopAndGetBlob 
+  } = useAudioRecorder()
 
   // Check if mobile
   const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  const MIC_ENABLED = true
 
   // Layout helpers - matching ChatThread exactly
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
@@ -70,6 +91,14 @@ export default function GroupChatThread() {
   const composerCardRef = useRef<HTMLDivElement | null>(null)
   const keyboardOffsetRef = useRef(0)
   const viewportBaseRef = useRef<number | null>(null)
+
+  // Format recording time
+  const formatRecordingTime = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000)
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
 
   // Composer height observer
   useLayoutEffect(() => {
@@ -136,12 +165,13 @@ export default function GroupChatThread() {
   }, [])
 
   const focusTextarea = useCallback(() => {
+    if (MIC_ENABLED && recording) return
     const el = textareaRef.current
     if (!el) return
     el.focus()
     const len = el.value.length
     el.setSelectionRange(len, len)
-  }, [])
+  }, [recording])
 
   // Visual viewport keyboard handling (web)
   useEffect(() => {
@@ -372,7 +402,6 @@ export default function GroupChatThread() {
       const uploadData = await uploadResponse.json()
 
       if (uploadData.success && uploadData.image_path) {
-        // Send the image as a message
         const response = await fetch(`/api/group_chat/${group_id}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -391,9 +420,181 @@ export default function GroupChatThread() {
       console.error('Error uploading image:', err)
     } finally {
       setUploadingImage(false)
-      // Reset file input
       if (fileInputRef.current) fileInputRef.current.value = ''
       if (cameraInputRef.current) cameraInputRef.current.value = ''
+    }
+  }
+
+  // GIF selection handler
+  const handleGifSelection = async (gif: GifSelection) => {
+    try {
+      const file = await gifSelectionToFile(gif, 'group-gif')
+      
+      setUploadingImage(true)
+      const formData = new FormData()
+      formData.append('image', file)
+
+      const uploadResponse = await fetch('/api/upload_chat_image', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+      const uploadData = await uploadResponse.json()
+
+      if (uploadData.success && uploadData.image_path) {
+        const response = await fetch(`/api/group_chat/${group_id}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ image: uploadData.image_path }),
+        })
+        const data = await response.json()
+
+        if (data.success) {
+          setMessages(prev => [...prev, data.message])
+          lastMessageIdRef.current = data.message.id
+          setTimeout(scrollToBottom, 100)
+        }
+      }
+    } catch (err) {
+      console.error('Error sending GIF:', err)
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  // Voice recording handlers
+  const checkMicrophonePermission = () => {
+    const hasGrantedBefore = localStorage.getItem('mic_permission_granted') === 'true'
+    if (hasGrantedBefore) {
+      startVoiceRecording()
+      return
+    }
+    
+    try {
+      navigator.permissions?.query({ name: 'microphone' as PermissionName }).then((permissionStatus) => {
+        if (permissionStatus.state === 'granted') {
+          localStorage.setItem('mic_permission_granted', 'true')
+          startVoiceRecording()
+        } else {
+          startVoiceRecording()
+        }
+      }).catch(() => {
+        startVoiceRecording()
+      })
+    } catch {
+      startVoiceRecording()
+    }
+  }
+
+  const sendVoiceDirectly = async () => {
+    if (!recording) return
+    
+    setSending(true)
+    try {
+      const previewData = await stopAndGetBlob()
+      if (!previewData?.blob) {
+        setSending(false)
+        return
+      }
+
+      const formData = new FormData()
+      const ext = previewData.blob.type.includes('mp4') ? 'mp4' : 'webm'
+      formData.append('audio', previewData.blob, `voice.${ext}`)
+
+      const uploadResponse = await fetch('/api/upload_voice_message', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+      const uploadData = await uploadResponse.json()
+
+      if (uploadData.success && uploadData.audio_path) {
+        const response = await fetch(`/api/group_chat/${group_id}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ voice: uploadData.audio_path }),
+        })
+        const data = await response.json()
+
+        if (data.success) {
+          setMessages(prev => [...prev, data.message])
+          lastMessageIdRef.current = data.message.id
+          setTimeout(scrollToBottom, 100)
+        }
+      }
+
+      if (previewData.url) {
+        try { URL.revokeObjectURL(previewData.url) } catch {}
+      }
+    } catch (err) {
+      console.error('Error sending voice:', err)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const sendRecordingPreview = async () => {
+    if (!recordingPreview?.blob) return
+    
+    setSending(true)
+    try {
+      const formData = new FormData()
+      const ext = recordingPreview.blob.type.includes('mp4') ? 'mp4' : 'webm'
+      formData.append('audio', recordingPreview.blob, `voice.${ext}`)
+
+      const uploadResponse = await fetch('/api/upload_voice_message', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+      const uploadData = await uploadResponse.json()
+
+      if (uploadData.success && uploadData.audio_path) {
+        const response = await fetch(`/api/group_chat/${group_id}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ voice: uploadData.audio_path }),
+        })
+        const data = await response.json()
+
+        if (data.success) {
+          setMessages(prev => [...prev, data.message])
+          lastMessageIdRef.current = data.message.id
+          setTimeout(scrollToBottom, 100)
+        }
+      }
+
+      cancelRecordingPreview()
+      setPreviewPlaying(false)
+    } catch (err) {
+      console.error('Error sending voice:', err)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const togglePreviewPlayback = () => {
+    if (!recordingPreview?.url) return
+
+    if (previewPlaying && previewAudioRef.current) {
+      previewAudioRef.current.pause()
+      previewAudioRef.current = null
+      setPreviewPlaying(false)
+    } else {
+      const audio = new Audio(recordingPreview.url)
+      previewAudioRef.current = audio
+      audio.onended = () => {
+        setPreviewPlaying(false)
+        previewAudioRef.current = null
+      }
+      audio.play().catch(() => {
+        setPreviewPlaying(false)
+        previewAudioRef.current = null
+      })
+      setPreviewPlaying(true)
     }
   }
 
@@ -554,6 +755,23 @@ export default function GroupChatThread() {
                         className="mt-2 max-w-[280px] rounded-lg border border-white/10"
                       />
                     )}
+                    {msg.voice && (
+                      <div className="mt-2 max-w-[280px]">
+                        <audio
+                          controls
+                          className="w-full h-10"
+                          style={{ 
+                            filter: 'invert(1) hue-rotate(180deg)',
+                            borderRadius: '8px'
+                          }}
+                        >
+                          <source 
+                            src={msg.voice.startsWith('http') ? msg.voice : `/uploads/${msg.voice}`} 
+                            type={msg.voice.includes('.mp4') ? 'audio/mp4' : 'audio/webm'} 
+                          />
+                        </audio>
+                      </div>
+                    )}
                   </div>
                 </div>
               )
@@ -563,7 +781,7 @@ export default function GroupChatThread() {
         )}
       </div>
 
-      {/* ====== COMPOSER - FIXED AT BOTTOM - Matching ChatThread exactly ====== */}
+      {/* ====== COMPOSER - FIXED AT BOTTOM ====== */}
       <div
         ref={composerRef}
         className="fixed left-0 right-0"
@@ -627,6 +845,18 @@ export default function GroupChatThread() {
                     <div className="text-white/60 text-[10px] sm:text-xs">Take a photo</div>
                   </div>
                 </button>
+                <button
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+                  onClick={() => { setShowAttachMenu(false); setGifPickerOpen(true) }}
+                >
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-images text-[#4db6ac] text-sm sm:text-base" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-white font-medium text-sm sm:text-base">GIF</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">Powered by GIPHY</div>
+                  </div>
+                </button>
               </div>
             </>
           )}
@@ -675,6 +905,17 @@ export default function GroupChatThread() {
               className="hidden"
             />
 
+            {/* Recording indicator */}
+            {MIC_ENABLED && recording && (
+              <div className="flex items-center gap-1.5 flex-shrink-0 pr-2">
+                <span
+                  className="inline-block w-3 h-3 bg-red-500 rounded-full animate-pulse"
+                  style={{ boxShadow: '0 0 8px 2px rgba(239, 68, 68, 0.6)' }}
+                />
+                <span className="text-red-400 text-xs font-semibold tracking-wide">REC</span>
+              </div>
+            )}
+
             {/* Uploading indicator */}
             {uploadingImage && (
               <div className="flex items-center gap-1.5 flex-shrink-0 pr-2">
@@ -692,72 +933,229 @@ export default function GroupChatThread() {
               }}
               onPointerDown={focusTextarea}
             >
-              <textarea
-                ref={textareaRef}
-                rows={1}
-                className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
-                placeholder="Message"
-                value={draft}
-                autoComplete="off"
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                spellCheck="true"
-                tabIndex={0}
-                inputMode="text"
-                enterKeyHint="send"
-                style={{
-                  touchAction: 'manipulation',
-                  WebkitUserSelect: 'text',
-                  userSelect: 'text',
-                  pointerEvents: 'auto'
-                } as CSSProperties}
-                onPointerDown={() => {
-                  focusTextarea()
-                }}
-                onTouchEnd={(e) => {
-                  e.preventDefault()
-                  focusTextarea()
-                }}
-                onChange={(e) => {
-                  setDraft(e.target.value)
-                }}
-              />
+              {/* Recording sound bar */}
+              {MIC_ENABLED && recording && (
+                <div className="flex-1 flex items-center px-3 py-2 gap-2">
+                  <div className="flex-1 h-2 bg-white/10 rounded overflow-hidden">
+                    <div className="h-full bg-[#7fe7df] transition-all" style={{ width: `${Math.max(6, Math.min(96, (level||0)*100))}%` }} />
+                  </div>
+                  <div className="text-sm font-mono text-white tabular-nums flex-shrink-0 min-w-[45px] text-right">
+                    {formatRecordingTime(recordMs || 0)}
+                  </div>
+                </div>
+              )}
+
+              {/* Voice preview - WhatsApp style */}
+              {MIC_ENABLED && !recording && recordingPreview && (
+                <div className="flex-1 flex items-center px-2 py-1.5 gap-2">
+                  <button
+                    onPointerDown={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      cancelRecordingPreview()
+                      setPreviewPlaying(false)
+                    }}
+                    className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors active:scale-95"
+                    aria-label="Delete recording"
+                    style={{ touchAction: 'manipulation' }}
+                  >
+                    <i className="fa-solid fa-trash text-sm pointer-events-none" />
+                  </button>
+                  <button
+                    onPointerDown={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      togglePreviewPlayback()
+                    }}
+                    className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+                    aria-label={previewPlaying ? 'Pause' : 'Play'}
+                    style={{ touchAction: 'manipulation' }}
+                  >
+                    <i className={`fa-solid ${previewPlaying ? 'fa-pause' : 'fa-play'} text-sm pointer-events-none ${!previewPlaying ? 'ml-0.5' : ''}`} />
+                  </button>
+                  <div className="flex-1 flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#4db6ac] w-full" />
+                    </div>
+                    <span className="text-xs text-white/70 tabular-nums flex-shrink-0">
+                      {formatRecordingTime((recordingPreview.duration || 0) * 1000)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Regular text input */}
+              {!(MIC_ENABLED && (recording || recordingPreview)) && (
+                <textarea
+                  ref={textareaRef}
+                  rows={1}
+                  className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
+                  placeholder="Message"
+                  value={draft}
+                  autoComplete="off"
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  spellCheck="true"
+                  tabIndex={0}
+                  inputMode="text"
+                  enterKeyHint="send"
+                  style={{
+                    touchAction: 'manipulation',
+                    WebkitUserSelect: 'text',
+                    userSelect: 'text',
+                    pointerEvents: 'auto'
+                  } as CSSProperties}
+                  onPointerDown={() => {
+                    focusTextarea()
+                  }}
+                  onTouchEnd={(e) => {
+                    e.preventDefault()
+                    focusTextarea()
+                  }}
+                  onChange={(e) => {
+                    setDraft(e.target.value)
+                  }}
+                />
+              )}
             </div>
 
-            {/* Send button */}
-            <button
-              className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
-                sending
-                  ? 'bg-gray-600 text-gray-300'
-                  : draft.trim()
-                    ? 'bg-[#4db6ac] text-black'
-                    : 'bg-white/12 text-white/70'
-              } active:scale-95`}
-              onPointerDown={(e) => {
-                if (!draft.trim() || sending) return
-                e.preventDefault()
-                e.stopPropagation()
-                handleSend()
-              }}
-              onClick={(e) => {
-                if (!draft.trim() || sending) return
-                e.preventDefault()
-                e.stopPropagation()
-                handleSend()
-              }}
-              disabled={sending || !draft.trim()}
-              aria-label="Send"
-              style={{
-                touchAction: 'manipulation',
-                WebkitTapHighlightColor: 'transparent',
-              }}
-            >
-              {sending ? (
-                <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
-              ) : (
-                <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
-              )}
-            </button>
+            {/* Mic button - shown when not recording, no preview, and no text */}
+            {MIC_ENABLED && !recording && !recordingPreview && !draft.trim() && (
+              <button
+                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  checkMicrophonePermission()
+                }}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  checkMicrophonePermission()
+                }}
+                aria-label="Start voice message"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                <i className="fa-solid fa-microphone text-base pointer-events-none" />
+              </button>
+            )}
+
+            {/* Recording controls - Pause + Send */}
+            {MIC_ENABLED && recording && (
+              <>
+                <button
+                  className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-white/15 hover:bg-white/25 text-white transition-colors active:scale-95"
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    stopVoiceRecording()
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    stopVoiceRecording()
+                  }}
+                  aria-label="Pause recording"
+                  style={{
+                    touchAction: 'manipulation',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  <i className="fa-solid fa-pause text-base pointer-events-none" />
+                </button>
+                <button
+                  className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    sendVoiceDirectly()
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    sendVoiceDirectly()
+                  }}
+                  aria-label="Send voice message"
+                  style={{
+                    touchAction: 'manipulation',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
+                </button>
+              </>
+            )}
+
+            {/* Preview controls - Send button */}
+            {MIC_ENABLED && !recording && recordingPreview && (
+              <button
+                className="w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center bg-[#4db6ac] text-white hover:bg-[#45a99c] transition-colors active:scale-95"
+                onPointerDown={(e) => {
+                  if (sending) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  sendRecordingPreview()
+                }}
+                onClick={(e) => {
+                  if (sending) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  sendRecordingPreview()
+                }}
+                disabled={sending}
+                aria-label="Send voice message"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                {sending ? (
+                  <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
+                ) : (
+                  <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
+                )}
+              </button>
+            )}
+
+            {/* Normal send button */}
+            {!(MIC_ENABLED && (recording || recordingPreview)) && (draft.trim() || !MIC_ENABLED) && (
+              <button
+                className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
+                  sending
+                    ? 'bg-gray-600 text-gray-300'
+                    : draft.trim()
+                      ? 'bg-[#4db6ac] text-black'
+                      : 'bg-white/12 text-white/70'
+                } active:scale-95`}
+                onPointerDown={(e) => {
+                  if (!draft.trim() || sending) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleSend()
+                }}
+                onClick={(e) => {
+                  if (!draft.trim() || sending) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleSend()
+                }}
+                disabled={sending || !draft.trim()}
+                aria-label="Send"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                {sending ? (
+                  <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
+                ) : (
+                  <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
+                )}
+              </button>
+            )}
           </div>
         </div>
         {/* Safe area spacer */}
@@ -769,6 +1167,16 @@ export default function GroupChatThread() {
           }}
         />
       </div>
+
+      {/* GIF Picker */}
+      <GifPicker
+        isOpen={gifPickerOpen}
+        onClose={() => setGifPickerOpen(false)}
+        onSelect={async (gif) => {
+          setGifPickerOpen(false)
+          await handleGifSelection(gif)
+        }}
+      />
 
       {/* Members Modal */}
       {showMembers && group && (
