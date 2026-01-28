@@ -31,13 +31,66 @@ def _login_required(view_func):
 
 def _ensure_group_chat_tables(cursor):
     """Ensure group chat tables exist."""
-    ph = get_sql_placeholder()
+    from backend.services.database import USE_MYSQL
     
     # Check if table exists
     try:
         cursor.execute("SELECT 1 FROM group_chats LIMIT 1")
+        return  # Table exists, no need to create
     except Exception:
-        # Create tables
+        pass  # Table doesn't exist, create it
+    
+    # Use appropriate syntax for MySQL vs SQLite
+    if USE_MYSQL:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS group_chats (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                name VARCHAR(100) NOT NULL,
+                creator_username VARCHAR(100) NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                is_active TINYINT DEFAULT 1
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS group_chat_members (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                group_id INT NOT NULL,
+                username VARCHAR(100) NOT NULL,
+                joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_admin TINYINT DEFAULT 0,
+                UNIQUE KEY unique_member (group_id, username),
+                INDEX idx_group (group_id),
+                INDEX idx_username (username)
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS group_chat_messages (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                group_id INT NOT NULL,
+                sender_username VARCHAR(100) NOT NULL,
+                message_text TEXT,
+                image_path VARCHAR(500),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_deleted TINYINT DEFAULT 0,
+                INDEX idx_group_created (group_id, created_at)
+            )
+        """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS group_chat_read_receipts (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                group_id INT NOT NULL,
+                username VARCHAR(100) NOT NULL,
+                last_read_message_id INT DEFAULT 0,
+                last_read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_receipt (group_id, username)
+            )
+        """)
+    else:
+        # SQLite syntax
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS group_chats (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,8 +135,8 @@ def _ensure_group_chat_tables(cursor):
                 UNIQUE(group_id, username)
             )
         """)
-        
-        logger.info("Created group chat tables")
+    
+    logger.info("Created group chat tables")
 
 
 @group_chat_bp.route("/api/group_chat/create", methods=["POST"])
