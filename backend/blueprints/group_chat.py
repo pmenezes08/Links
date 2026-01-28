@@ -334,9 +334,9 @@ def get_group_chat(group_id: int):
             
             # Get all members
             c.execute(f"""
-                SELECT gcm.username, gcm.is_admin, gcm.joined_at, u.profile_picture
+                SELECT gcm.username, gcm.is_admin, gcm.joined_at, up.profile_picture
                 FROM group_chat_members gcm
-                LEFT JOIN users u ON gcm.username = u.username
+                LEFT JOIN user_profiles up ON gcm.username = up.username
                 WHERE gcm.group_id = {ph}
                 ORDER BY gcm.is_admin DESC, gcm.joined_at ASC
             """, (group_id,))
@@ -395,9 +395,9 @@ def get_group_messages(group_id: int):
             if before_id:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.created_at,
-                           u.profile_picture
+                           up.profile_picture
                     FROM group_chat_messages m
-                    LEFT JOIN users u ON m.sender_username = u.username
+                    LEFT JOIN user_profiles up ON m.sender_username = up.username
                     WHERE m.group_id = {ph} AND m.id < {ph} AND m.is_deleted = 0
                     ORDER BY m.created_at DESC
                     LIMIT {ph}
@@ -405,9 +405,9 @@ def get_group_messages(group_id: int):
             else:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.created_at,
-                           u.profile_picture
+                           up.profile_picture
                     FROM group_chat_messages m
-                    LEFT JOIN users u ON m.sender_username = u.username
+                    LEFT JOIN user_profiles up ON m.sender_username = up.username
                     WHERE m.group_id = {ph} AND m.is_deleted = 0
                     ORDER BY m.created_at DESC
                     LIMIT {ph}
@@ -510,7 +510,7 @@ def send_group_message(group_id: int):
             conn.commit()
             
             # Get sender's profile picture
-            c.execute(f"SELECT profile_picture FROM users WHERE username = {ph}", (username,))
+            c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
             pp_row = c.fetchone()
             profile_picture = None
             if pp_row:
