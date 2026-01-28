@@ -228,6 +228,95 @@ export default function Messages(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadThreads, loadArchivedThreads, location.key])
 
+  // Function to fetch communities with optional cache-busting
+  const fetchCommunitiesData = useCallback(async (forceRefresh = false) => {
+    const cacheBuster = forceRefresh ? `_nocache=${Date.now()}` : ''
+    const appendParam = (url: string) => forceRefresh ? `${url}?${cacheBuster}` : url
+    
+    const [membersRes, hierarchyRes] = await Promise.all([
+      fetch(appendParam('/get_user_communities_with_members'), { 
+        credentials: 'include',
+        ...(forceRefresh ? { cache: 'no-store' as const } : {})
+      }).then(r => r.json()).catch(() => null),
+      fetch(appendParam('/api/user_communities_hierarchical'), { 
+        credentials: 'include',
+        ...(forceRefresh ? { cache: 'no-store' as const } : {})
+      }).then(r => r.json()).catch(() => null),
+    ])
+
+    if (membersRes?.success && Array.isArray(membersRes.communities)) {
+      const membership = new Map<number, { name: string; members: string[] }>()
+      membersRes.communities.forEach((c: any) => {
+        const id = Number(c.id)
+        const name = String(c.name || '')
+        const members = Array.isArray(c.members) ? c.members.map((m: any) => String(m.username || '')).filter(Boolean) : []
+        membership.set(id, { name, members })
+      })
+
+      const buildNodes = (nodes: any[]): CommunityNode[] =>
+        nodes.map((node: any) => {
+          const id = Number(node.id)
+          const info = membership.get(id) || { name: String(node.name || node.title || ''), members: [] }
+          const children = Array.isArray(node.children) ? buildNodes(node.children) : []
+          return { id, name: info.name, members: info.members, children }
+        })
+
+      let tree: CommunityNode[] = []
+      if (hierarchyRes?.success && Array.isArray(hierarchyRes.communities)) {
+        tree = buildNodes(hierarchyRes.communities)
+      } else {
+        tree = Array.from(membership.entries()).map(([id, info]) => ({
+          id,
+          name: info.name,
+          members: info.members,
+          children: [],
+        }))
+      }
+
+      const existingIds = new Set<number>()
+      const collectIds = (nodes: CommunityNode[]) => {
+        nodes.forEach(node => {
+          existingIds.add(node.id)
+          if (node.children.length) collectIds(node.children)
+        })
+      }
+      collectIds(tree)
+
+      membership.forEach((info, id) => {
+        if (!existingIds.has(id)) {
+          tree.push({ id, name: info.name, members: info.members, children: [] })
+        }
+      })
+
+      return { success: true, tree }
+    }
+    
+    return { success: false, error: membersRes?.error || 'Failed to load communities' }
+  }, [])
+
+  // Refresh communities on visibility change (when returning to app)
+  useEffect(() => {
+    const onVis = async () => {
+      if (!document.hidden) {
+        // Silently refresh communities when returning to the app
+        try {
+          const result = await fetchCommunitiesData(true) // Force refresh
+          if (result.success && result.tree) {
+            writeDeviceCache(COMMUNITIES_CACHE_KEY, result.tree, CACHE_TTL_MS, CACHE_VERSION)
+            setCommunityTree(result.tree)
+          }
+        } catch {
+          // Silent fail - keep showing cached data
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [fetchCommunitiesData])
+
   useEffect(() => {
     let cancelled = false
     // Only show loading if no cached data
@@ -238,66 +327,21 @@ export default function Messages(){
     setCommunityError(null)
 
     async function fetchCommunities() {
+      if (cancelled) return
       try {
-        const [membersRes, hierarchyRes] = await Promise.all([
-          fetch('/get_user_communities_with_members', { credentials: 'include' }).then(r => r.json()).catch(() => null),
-          fetch('/api/user_communities_hierarchical', { credentials: 'include' }).then(r => r.json()).catch(() => null),
-        ])
+        const result = await fetchCommunitiesData(false)
         if (cancelled) return
 
-        if (membersRes?.success && Array.isArray(membersRes.communities)) {
-          const membership = new Map<number, { name: string; members: string[] }>()
-          membersRes.communities.forEach((c: any) => {
-            const id = Number(c.id)
-            const name = String(c.name || '')
-            const members = Array.isArray(c.members) ? c.members.map((m: any) => String(m.username || '')).filter(Boolean) : []
-            membership.set(id, { name, members })
-          })
-
-          const buildNodes = (nodes: any[]): CommunityNode[] =>
-            nodes.map((node: any) => {
-              const id = Number(node.id)
-              const info = membership.get(id) || { name: String(node.name || node.title || ''), members: [] }
-              const children = Array.isArray(node.children) ? buildNodes(node.children) : []
-              return { id, name: info.name, members: info.members, children }
-            })
-
-          let tree: CommunityNode[] = []
-          if (hierarchyRes?.success && Array.isArray(hierarchyRes.communities)) {
-            tree = buildNodes(hierarchyRes.communities)
-          } else {
-            tree = Array.from(membership.entries()).map(([id, info]) => ({
-              id,
-              name: info.name,
-              members: info.members,
-              children: [],
-            }))
-          }
-
-          const existingIds = new Set<number>()
-          const collectIds = (nodes: CommunityNode[]) => {
-            nodes.forEach(node => {
-              existingIds.add(node.id)
-              if (node.children.length) collectIds(node.children)
-            })
-          }
-          collectIds(tree)
-
-          membership.forEach((info, id) => {
-            if (!existingIds.has(id)) {
-              tree.push({ id, name: info.name, members: info.members, children: [] })
-            }
-          })
-
+        if (result.success && result.tree) {
           // Cache the community tree
-          writeDeviceCache(COMMUNITIES_CACHE_KEY, tree, CACHE_TTL_MS, CACHE_VERSION)
-          setCommunityTree(tree)
+          writeDeviceCache(COMMUNITIES_CACHE_KEY, result.tree, CACHE_TTL_MS, CACHE_VERSION)
+          setCommunityTree(result.tree)
         } else {
           // Only clear if we don't have cached data
           if (!hasCachedCommunities) {
             setCommunityTree([])
           }
-          setCommunityError(membersRes?.error || 'Failed to load communities')
+          setCommunityError(result.error || 'Failed to load communities')
         }
       } catch {
         if (cancelled) {
@@ -317,7 +361,7 @@ export default function Messages(){
 
     fetchCommunities()
     return () => { cancelled = true }
-  }, [])
+  }, [fetchCommunitiesData])
 
   const nodeById = useMemo(() => {
     const map = new Map<number, CommunityNode>()

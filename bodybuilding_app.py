@@ -1417,8 +1417,12 @@ def ensure_free_parent_member_capacity(cursor, community_id: Optional[int], extr
         raise CommunityMembershipLimitError('Free plan communities can have up to 100 members. Upgrade to add more members.')
 
 
-def add_user_to_community(cursor, user_id: int, community_id: int, role: Optional[str] = 'member') -> None:
-    """Insert a user into user_communities respecting free plan limits."""
+def add_user_to_community(cursor, user_id: int, community_id: int, role: Optional[str] = 'member', username: Optional[str] = None) -> None:
+    """Insert a user into user_communities respecting free plan limits.
+    
+    Also invalidates the user's dashboard and community tree caches so they see
+    the new community immediately without manual refresh.
+    """
     ensure_free_parent_member_capacity(cursor, community_id)
     joined_at_value = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     if role is None:
@@ -1455,6 +1459,28 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
                 """,
                 (user_id, community_id, role, joined_at_value),
             )
+    
+    # Invalidate user's caches so they see the new community immediately
+    _invalidate_user_community_caches(cursor, user_id, username)
+
+
+def _invalidate_user_community_caches(cursor, user_id: int, username: Optional[str] = None) -> None:
+    """Invalidate a user's community-related caches after membership changes."""
+    try:
+        # If no username provided, look it up
+        if not username:
+            ph = get_sql_placeholder()
+            cursor.execute(f"SELECT username FROM users WHERE id = {ph}", (user_id,))
+            row = cursor.fetchone()
+            if row:
+                username = row['username'] if hasattr(row, 'keys') else row[0]
+        
+        if username:
+            # Invalidate all user community caches
+            invalidate_user_cache(username)
+            logger.info(f"Invalidated community caches for user {username} after membership change")
+    except Exception as cache_err:
+        logger.warning(f"Failed to invalidate user community caches: {cache_err}")
 
 def get_scalar_result(row, column_index=0, column_name=None):
     """Helper to get a scalar value from a database row that could be dict or tuple"""
