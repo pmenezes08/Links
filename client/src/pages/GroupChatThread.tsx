@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
+import { Keyboard } from '@capacitor/keyboard'
+import type { KeyboardInfo } from '@capacitor/keyboard'
 import Avatar from '../components/Avatar'
 
 type Message = {
@@ -38,19 +42,36 @@ export default function GroupChatThread() {
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const lastMessageIdRef = useRef<number>(0)
 
-  // Layout helpers - matching ChatThread
+  // Check if mobile
+  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+
+  // Layout helpers - matching ChatThread exactly
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
   const defaultComposerPadding = 64
+  const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
+  const NATIVE_KEYBOARD_MIN_HEIGHT = 60
+  const KEYBOARD_OFFSET_EPSILON = 6
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
+  const [safeBottomPx, setSafeBottomPx] = useState(0)
+  const [viewportLift, setViewportLift] = useState(0)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
+  const keyboardOffsetRef = useRef(0)
+  const viewportBaseRef = useRef<number | null>(null)
 
+  // Composer height observer
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
     const node = composerCardRef.current
@@ -71,9 +92,44 @@ export default function GroupChatThread() {
     }
   }, [])
 
+  // Safe bottom probe
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    const probe = document.createElement('div')
+    probe.style.position = 'fixed'
+    probe.style.bottom = '0'
+    probe.style.left = '0'
+    probe.style.width = '0'
+    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
+    probe.style.pointerEvents = 'none'
+    probe.style.opacity = '0'
+    probe.style.zIndex = '-1'
+    document.body.appendChild(probe)
+
+    const updateSafeBottom = () => {
+      const rect = probe.getBoundingClientRect()
+      const next = rect.height || 0
+      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
+    }
+
+    updateSafeBottom()
+    window.addEventListener('resize', updateSafeBottom)
+
+    return () => {
+      window.removeEventListener('resize', updateSafeBottom)
+      probe.remove()
+    }
+  }, [])
+
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
+  const liftSource = Math.max(keyboardOffset, viewportLift)
+  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
+  const showKeyboard = liftSource > 50
   const composerGapPx = 4
-  const listPaddingBottom = `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
+
+  const listPaddingBottom = showKeyboard
+    ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
+    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -83,10 +139,123 @@ export default function GroupChatThread() {
     const el = textareaRef.current
     if (!el) return
     el.focus()
-    // For iOS: position cursor at the end
     const len = el.value.length
     el.setSelectionRange(len, len)
   }, [])
+
+  // Visual viewport keyboard handling (web)
+  useEffect(() => {
+    if (!isMobile) return
+    if (Capacitor.getPlatform() !== 'web') return
+    if (typeof window === 'undefined') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    let rafId: number | null = null
+
+    const updateOffset = () => {
+      const currentHeight = viewport.height
+      if (
+        viewportBaseRef.current === null ||
+        currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
+      ) {
+        viewportBaseRef.current = currentHeight
+      }
+      const baseHeight = viewportBaseRef.current ?? currentHeight
+      const nextOffset = Math.max(0, baseHeight - currentHeight)
+      const normalizedOffset = nextOffset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : nextOffset
+      if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 5) return
+      setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 5 ? prev : normalizedOffset))
+      keyboardOffsetRef.current = normalizedOffset
+      setKeyboardOffset(normalizedOffset)
+      if (normalizedOffset > 0) {
+        requestAnimationFrame(scrollToBottom)
+      }
+    }
+
+    const handleChange = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updateOffset)
+    }
+
+    viewport.addEventListener('resize', handleChange)
+    handleChange()
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', handleChange)
+    }
+  }, [isMobile, scrollToBottom])
+
+  // Native keyboard handling (Capacitor)
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+    let showSub: PluginListenerHandle | undefined
+    let hideSub: PluginListenerHandle | undefined
+
+    const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
+
+    const handleShow = (info: KeyboardInfo) => {
+      const height = normalizeHeight(info?.keyboardHeight ?? 0)
+      if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
+      keyboardOffsetRef.current = height
+      setKeyboardOffset(height)
+      requestAnimationFrame(scrollToBottom)
+    }
+
+    const handleHide = () => {
+      if (Math.abs(keyboardOffsetRef.current) < KEYBOARD_OFFSET_EPSILON) return
+      keyboardOffsetRef.current = 0
+      setKeyboardOffset(0)
+      requestAnimationFrame(scrollToBottom)
+    }
+
+    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
+      showSub = handle
+    })
+    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
+      hideSub = handle
+    })
+
+    return () => {
+      showSub?.remove()
+      hideSub?.remove()
+    }
+  }, [scrollToBottom])
+
+  // Scroll on keyboard change
+  useEffect(() => {
+    if (liftSource < 0) return
+    scrollToBottom()
+    const t1 = setTimeout(scrollToBottom, 120)
+    const t2 = setTimeout(scrollToBottom, 260)
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+    }
+  }, [liftSource, scrollToBottom])
+
+  useEffect(() => {
+    const timer = setTimeout(scrollToBottom, 80)
+    return () => clearTimeout(timer)
+  }, [composerHeight, scrollToBottom])
+
+  // Window resize handling
+  useEffect(() => {
+    let lastHeight = window.innerHeight
+
+    const handleResize = () => {
+      const newHeight = window.innerHeight
+      if (newHeight !== lastHeight) {
+        lastHeight = newHeight
+        setTimeout(scrollToBottom, 50)
+        setTimeout(scrollToBottom, 150)
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [scrollToBottom])
 
   const loadGroup = useCallback(async () => {
     try {
@@ -110,15 +279,12 @@ export default function GroupChatThread() {
       const data = await response.json()
       if (data.success) {
         const newMessages = data.messages as Message[]
-
-        // Check if there are new messages
         const newMaxId = newMessages.length > 0 ? Math.max(...newMessages.map(m => m.id)) : 0
         const hasNewMessages = newMaxId > lastMessageIdRef.current
 
         setMessages(newMessages)
         lastMessageIdRef.current = newMaxId
 
-        // Scroll to bottom on new messages
         if (hasNewMessages && !silent) {
           setTimeout(scrollToBottom, 100)
         }
@@ -135,7 +301,6 @@ export default function GroupChatThread() {
     loadGroup()
     loadMessages()
 
-    // Poll for new messages
     pollingRef.current = setInterval(() => {
       loadMessages(true)
     }, 3000)
@@ -168,7 +333,7 @@ export default function GroupChatThread() {
         lastMessageIdRef.current = data.message.id
         setTimeout(scrollToBottom, 100)
       } else {
-        setDraft(text) // Restore message on error
+        setDraft(text)
         console.error('Failed to send:', data.error)
       }
     } catch (err) {
@@ -177,6 +342,58 @@ export default function GroupChatThread() {
     } finally {
       setSending(false)
       textareaRef.current?.focus()
+    }
+  }
+
+  const handlePhotoSelect = () => {
+    setShowAttachMenu(false)
+    fileInputRef.current?.click()
+  }
+
+  const handleCameraOpen = () => {
+    setShowAttachMenu(false)
+    cameraInputRef.current?.click()
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+
+      const uploadResponse = await fetch('/api/upload_chat_image', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+      const uploadData = await uploadResponse.json()
+
+      if (uploadData.success && uploadData.image_path) {
+        // Send the image as a message
+        const response = await fetch(`/api/group_chat/${group_id}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ image: uploadData.image_path }),
+        })
+        const data = await response.json()
+
+        if (data.success) {
+          setMessages(prev => [...prev, data.message])
+          lastMessageIdRef.current = data.message.id
+          setTimeout(scrollToBottom, 100)
+        }
+      }
+    } catch (err) {
+      console.error('Error uploading image:', err)
+    } finally {
+      setUploadingImage(false)
+      // Reset file input
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
     }
   }
 
@@ -249,7 +466,7 @@ export default function GroupChatThread() {
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
-      {/* Header - matching ChatThread structure */}
+      {/* Header */}
       <div
         className="fixed left-0 right-0 h-14 bg-black/95 backdrop-blur border-b border-white/10 z-40 flex items-center px-3 gap-3"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
@@ -286,7 +503,7 @@ export default function GroupChatThread() {
         </button>
       </div>
 
-      {/* Messages Container - matching ChatThread structure */}
+      {/* Messages Container */}
       <div
         ref={listRef}
         className="flex-1 overflow-y-auto px-3"
@@ -346,19 +563,19 @@ export default function GroupChatThread() {
         )}
       </div>
 
-      {/* ====== COMPOSER - FIXED AT BOTTOM - Matching ChatThread ====== */}
+      {/* ====== COMPOSER - FIXED AT BOTTOM - Matching ChatThread exactly ====== */}
       <div
         ref={composerRef}
         className="fixed left-0 right-0"
         style={{
-          bottom: 0,
+          bottom: showKeyboard ? `${keyboardLift}px` : 0,
           zIndex: 1000,
           width: '100%',
           display: 'flex',
           flexDirection: 'column',
         }}
       >
-        {/* Composer card - sits above the safe area */}
+        {/* Composer card */}
         <div
           ref={composerCardRef}
           className="relative max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3"
@@ -367,8 +584,105 @@ export default function GroupChatThread() {
             marginBottom: 0,
           }}
         >
+          {/* Attachment menu */}
+          {showAttachMenu && (
+            <>
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowAttachMenu(false)}
+                style={{
+                  pointerEvents: 'auto',
+                  touchAction: 'manipulation'
+                }}
+              />
+              <div
+                className="absolute z-50 bg-[#1a1a1a] border border-white/10 rounded-2xl shadow-xl overflow-hidden min-w-[190px]"
+                style={{
+                  touchAction: 'manipulation',
+                  bottom: 'calc(100% + 8px)',
+                  left: 0,
+                }}
+              >
+                <button
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+                  onClick={handlePhotoSelect}
+                >
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-image text-[#4db6ac] text-sm sm:text-base" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-white font-medium text-sm sm:text-base">Photos</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">Send from gallery</div>
+                  </div>
+                </button>
+                <button
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+                  onClick={handleCameraOpen}
+                >
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-camera text-[#4db6ac] text-sm sm:text-base" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-white font-medium text-sm sm:text-base">Camera</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">Take a photo</div>
+                  </div>
+                </button>
+              </div>
+            </>
+          )}
+
           {/* Message input row */}
           <div className="flex items-end gap-2">
+            {/* Plus/Attachment button */}
+            <button
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 transition-all cursor-pointer select-none"
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setShowAttachMenu(!showAttachMenu)
+              }}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setShowAttachMenu(!showAttachMenu)
+              }}
+              style={{
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent',
+                WebkitUserSelect: 'none',
+                userSelect: 'none',
+              } as CSSProperties}
+            >
+              <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 pointer-events-none ${
+                showAttachMenu ? 'fa-xmark rotate-90' : 'fa-plus'
+              }`} />
+            </button>
+
+            {/* Hidden file inputs */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+
+            {/* Uploading indicator */}
+            {uploadingImage && (
+              <div className="flex items-center gap-1.5 flex-shrink-0 pr-2">
+                <i className="fa-solid fa-spinner fa-spin text-[#4db6ac]" />
+                <span className="text-[#4db6ac] text-xs">Uploading...</span>
+              </div>
+            )}
+
             {/* Message input container */}
             <div
               className="flex-1 flex items-center rounded-lg bg-white/8 overflow-hidden relative"
@@ -401,7 +715,6 @@ export default function GroupChatThread() {
                   focusTextarea()
                 }}
                 onTouchEnd={(e) => {
-                  // iOS: ensure the first tap always focuses and opens keyboard
                   e.preventDefault()
                   focusTextarea()
                 }}
@@ -413,23 +726,44 @@ export default function GroupChatThread() {
 
             {/* Send button */}
             <button
-              onClick={handleSend}
-              disabled={!draft.trim() || sending}
-              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-[#4db6ac] text-black disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110 active:scale-95 transition-all"
-              style={{ touchAction: 'manipulation' }}
+              className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
+                sending
+                  ? 'bg-gray-600 text-gray-300'
+                  : draft.trim()
+                    ? 'bg-[#4db6ac] text-black'
+                    : 'bg-white/12 text-white/70'
+              } active:scale-95`}
+              onPointerDown={(e) => {
+                if (!draft.trim() || sending) return
+                e.preventDefault()
+                e.stopPropagation()
+                handleSend()
+              }}
+              onClick={(e) => {
+                if (!draft.trim() || sending) return
+                e.preventDefault()
+                e.stopPropagation()
+                handleSend()
+              }}
+              disabled={sending || !draft.trim()}
+              aria-label="Send"
+              style={{
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent',
+              }}
             >
               {sending ? (
-                <i className="fa-solid fa-spinner fa-spin text-sm" />
+                <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
               ) : (
-                <i className="fa-solid fa-paper-plane text-sm" />
+                <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
               )}
             </button>
           </div>
         </div>
-        {/* Safe area spacer - black area below composer */}
+        {/* Safe area spacer */}
         <div
           style={{
-            height: 'env(safe-area-inset-bottom, 0px)',
+            height: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
             background: '#000',
             flexShrink: 0,
           }}
