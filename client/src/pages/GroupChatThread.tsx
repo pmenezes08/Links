@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 
@@ -34,16 +35,57 @@ export default function GroupChatThread() {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [newMessage, setNewMessage] = useState('')
+  const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const lastMessageIdRef = useRef<number>(0)
 
+  // Layout helpers - matching ChatThread
+  const safeBottom = 'env(safe-area-inset-bottom, 0px)'
+  const defaultComposerPadding = 64
+  const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
+  const composerRef = useRef<HTMLDivElement | null>(null)
+  const composerCardRef = useRef<HTMLDivElement | null>(null)
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
+    const node = composerCardRef.current
+    if (!node) return
+
+    const updateHeight = () => {
+      const height = node.getBoundingClientRect().height
+      if (!height) return
+      setComposerHeight(prev => (Math.abs(prev - height) < 1 ? prev : height))
+    }
+
+    updateHeight()
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(node)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
+  const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
+  const composerGapPx = 4
+  const listPaddingBottom = `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
+
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [])
+
+  const focusTextarea = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.focus()
+    // For iOS: position cursor at the end
+    const len = el.value.length
+    el.setSelectionRange(len, len)
   }, [])
 
   const loadGroup = useCallback(async () => {
@@ -68,14 +110,14 @@ export default function GroupChatThread() {
       const data = await response.json()
       if (data.success) {
         const newMessages = data.messages as Message[]
-        
+
         // Check if there are new messages
         const newMaxId = newMessages.length > 0 ? Math.max(...newMessages.map(m => m.id)) : 0
         const hasNewMessages = newMaxId > lastMessageIdRef.current
-        
+
         setMessages(newMessages)
         lastMessageIdRef.current = newMaxId
-        
+
         // Scroll to bottom on new messages
         if (hasNewMessages && !silent) {
           setTimeout(scrollToBottom, 100)
@@ -106,11 +148,11 @@ export default function GroupChatThread() {
   }, [loadGroup, loadMessages])
 
   const handleSend = async () => {
-    const text = newMessage.trim()
+    const text = draft.trim()
     if (!text || sending) return
 
     setSending(true)
-    setNewMessage('')
+    setDraft('')
 
     try {
       const response = await fetch(`/api/group_chat/${group_id}/send`, {
@@ -120,28 +162,21 @@ export default function GroupChatThread() {
         body: JSON.stringify({ message: text }),
       })
       const data = await response.json()
-      
+
       if (data.success) {
         setMessages(prev => [...prev, data.message])
         lastMessageIdRef.current = data.message.id
         setTimeout(scrollToBottom, 100)
       } else {
-        setNewMessage(text) // Restore message on error
+        setDraft(text) // Restore message on error
         console.error('Failed to send:', data.error)
       }
     } catch (err) {
-      setNewMessage(text)
+      setDraft(text)
       console.error('Error sending message:', err)
     } finally {
       setSending(false)
-      inputRef.current?.focus()
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
+      textareaRef.current?.focus()
     }
   }
 
@@ -154,7 +189,7 @@ export default function GroupChatThread() {
         credentials: 'include',
       })
       const data = await response.json()
-      
+
       if (data.success) {
         navigate('/user_chat')
       } else {
@@ -171,7 +206,7 @@ export default function GroupChatThread() {
       const date = new Date(dateStr)
       const now = new Date()
       const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
-      
+
       if (diffDays === 0) {
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       } else if (diffDays === 1) {
@@ -214,7 +249,7 @@ export default function GroupChatThread() {
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
-      {/* Header */}
+      {/* Header - matching ChatThread structure */}
       <div
         className="fixed left-0 right-0 h-14 bg-black/95 backdrop-blur border-b border-white/10 z-40 flex items-center px-3 gap-3"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
@@ -226,7 +261,7 @@ export default function GroupChatThread() {
         >
           <i className="fa-solid fa-arrow-left" />
         </button>
-        
+
         <button
           onClick={() => setShowMembers(true)}
           className="flex-1 min-w-0 flex items-center gap-3"
@@ -241,7 +276,7 @@ export default function GroupChatThread() {
             </div>
           </div>
         </button>
-        
+
         <button
           onClick={() => setShowMembers(true)}
           className="p-2 rounded-full hover:bg-white/5"
@@ -251,11 +286,13 @@ export default function GroupChatThread() {
         </button>
       </div>
 
-      {/* Messages */}
+      {/* Messages Container - matching ChatThread structure */}
       <div
-        className="flex-1 overflow-y-auto px-3 pb-20"
+        ref={listRef}
+        className="flex-1 overflow-y-auto px-3"
         style={{
           paddingTop: 'calc(var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px))) + 56px + 16px)',
+          paddingBottom: listPaddingBottom,
         }}
       >
         {messages.length === 0 ? (
@@ -267,9 +304,8 @@ export default function GroupChatThread() {
         ) : (
           <div className="space-y-3">
             {messages.map((msg, idx) => {
-              // Message display (could be extended to show different styles for current user)
               const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender
-              
+
               return (
                 <div key={msg.id} className={`flex gap-2 ${showAvatar ? 'mt-4' : 'mt-1'}`}>
                   <div className="w-8 flex-shrink-0">
@@ -310,31 +346,94 @@ export default function GroupChatThread() {
         )}
       </div>
 
-      {/* Message Input */}
-      <div className="fixed bottom-0 left-0 right-0 bg-black border-t border-white/10 p-3 pb-safe">
-        <div className="max-w-3xl mx-auto flex items-end gap-2">
-          <textarea
-            ref={inputRef}
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
-            rows={1}
-            className="flex-1 px-4 py-3 rounded-2xl bg-white/5 border border-white/10 text-white resize-none focus:outline-none focus:border-[#4db6ac]/50"
-            style={{ maxHeight: '120px' }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!newMessage.trim() || sending}
-            className="p-3 rounded-full bg-[#4db6ac] text-black disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110 transition"
-          >
-            {sending ? (
-              <i className="fa-solid fa-spinner fa-spin" />
-            ) : (
-              <i className="fa-solid fa-paper-plane" />
-            )}
-          </button>
+      {/* ====== COMPOSER - FIXED AT BOTTOM - Matching ChatThread ====== */}
+      <div
+        ref={composerRef}
+        className="fixed left-0 right-0"
+        style={{
+          bottom: 0,
+          zIndex: 1000,
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {/* Composer card - sits above the safe area */}
+        <div
+          ref={composerCardRef}
+          className="relative max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3"
+          style={{
+            background: '#0a0a0c',
+            marginBottom: 0,
+          }}
+        >
+          {/* Message input row */}
+          <div className="flex items-end gap-2">
+            {/* Message input container */}
+            <div
+              className="flex-1 flex items-center rounded-lg bg-white/8 overflow-hidden relative"
+              style={{
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent'
+              }}
+              onPointerDown={focusTextarea}
+            >
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
+                placeholder="Message"
+                value={draft}
+                autoComplete="off"
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                spellCheck="true"
+                tabIndex={0}
+                inputMode="text"
+                enterKeyHint="send"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitUserSelect: 'text',
+                  userSelect: 'text',
+                  pointerEvents: 'auto'
+                } as CSSProperties}
+                onPointerDown={() => {
+                  focusTextarea()
+                }}
+                onTouchEnd={(e) => {
+                  // iOS: ensure the first tap always focuses and opens keyboard
+                  e.preventDefault()
+                  focusTextarea()
+                }}
+                onChange={(e) => {
+                  setDraft(e.target.value)
+                }}
+              />
+            </div>
+
+            {/* Send button */}
+            <button
+              onClick={handleSend}
+              disabled={!draft.trim() || sending}
+              className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-[#4db6ac] text-black disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110 active:scale-95 transition-all"
+              style={{ touchAction: 'manipulation' }}
+            >
+              {sending ? (
+                <i className="fa-solid fa-spinner fa-spin text-sm" />
+              ) : (
+                <i className="fa-solid fa-paper-plane text-sm" />
+              )}
+            </button>
+          </div>
         </div>
+        {/* Safe area spacer - black area below composer */}
+        <div
+          style={{
+            height: 'env(safe-area-inset-bottom, 0px)',
+            background: '#000',
+            flexShrink: 0,
+          }}
+        />
       </div>
 
       {/* Members Modal */}
@@ -359,7 +458,7 @@ export default function GroupChatThread() {
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
-            
+
             <div className="p-4 max-h-[50vh] overflow-y-auto">
               <div className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-3">Members</div>
               <div className="space-y-2">
@@ -384,7 +483,7 @@ export default function GroupChatThread() {
                 ))}
               </div>
             </div>
-            
+
             <div className="p-4 border-t border-white/10">
               <button
                 onClick={handleLeave}
