@@ -595,6 +595,18 @@ def leave_group_chat(group_id: int):
             
             creator = row["creator_username"] if hasattr(row, "keys") else row[0]
             
+            # If user is creator, find new admin BEFORE removing them
+            new_admin = None
+            if username == creator:
+                c.execute(f"""
+                    SELECT username FROM group_chat_members 
+                    WHERE group_id = {ph} AND username != {ph}
+                    ORDER BY joined_at ASC LIMIT 1
+                """, (group_id, username))
+                new_admin_row = c.fetchone()
+                if new_admin_row:
+                    new_admin = new_admin_row["username"] if hasattr(new_admin_row, "keys") else new_admin_row[0]
+            
             # Remove member
             c.execute(f"DELETE FROM group_chat_members WHERE group_id = {ph} AND username = {ph}", (group_id, username))
             
@@ -606,14 +618,9 @@ def leave_group_chat(group_id: int):
             if remaining == 0:
                 # Deactivate group if no members left
                 c.execute(f"UPDATE group_chats SET is_active = 0 WHERE id = {ph}", (group_id,))
-            elif username == creator:
+            elif new_admin:
                 # Transfer admin to another member
-                c.execute(f"""
-                    UPDATE group_chat_members SET is_admin = 1
-                    WHERE group_id = {ph} AND username = (
-                        SELECT username FROM group_chat_members WHERE group_id = {ph} ORDER BY joined_at ASC LIMIT 1
-                    )
-                """, (group_id, group_id))
+                c.execute(f"UPDATE group_chat_members SET is_admin = 1 WHERE group_id = {ph} AND username = {ph}", (group_id, new_admin))
             
             conn.commit()
             
