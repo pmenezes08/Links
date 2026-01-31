@@ -58,11 +58,6 @@ export default function GroupChatThread() {
   const messages = [...serverMessages, ...pendingMessages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   )
-  
-  // Debug log
-  if (pendingMessages.length > 0) {
-    console.log('[GroupChat] Rendering with', pendingMessages.length, 'pending messages, total:', messages.length)
-  }
   // Use ref-based draft to avoid React state update issues
   const draftRef = useRef('')
   const [draftDisplay, setDraftDisplay] = useState('') // Only for UI updates (button visibility)
@@ -449,12 +444,7 @@ export default function GroupChatThread() {
     }
     
     // Add to pending messages - this is a SEPARATE state, always visible
-    console.log('[GroupChat] Adding pending message:', pendingMessage)
-    setPendingMessages(prev => {
-      const newPending = [...prev, pendingMessage]
-      console.log('[GroupChat] Pending messages now:', newPending.length)
-      return newPending
-    })
+    setPendingMessages(prev => [...prev, pendingMessage])
     
     // Scroll to bottom - multiple attempts to catch the render
     scrollToBottom()
@@ -479,22 +469,15 @@ export default function GroupChatThread() {
           loadMessages(true)
           setTimeout(scrollToBottom, 50)
         } else {
-          // FAILURE: Keep message visible but log error
-          // Don't remove so user can see it failed
+          // FAILURE: Remove from pending
+          setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
           console.error('Failed to send:', data.error)
-          // Remove after 5 seconds so user can see the message
-          setTimeout(() => {
-            setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
-          }, 5000)
         }
       })
       .catch(err => {
-        // ERROR: Keep message visible but log error
+        // ERROR: Remove from pending
+        setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
         console.error('Error sending message:', err)
-        // Remove after 5 seconds so user can see the message
-        setTimeout(() => {
-          setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
-        }, 5000)
       })
       .finally(() => {
         sendingLockRef.current = false
