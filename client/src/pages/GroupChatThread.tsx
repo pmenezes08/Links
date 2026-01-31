@@ -198,30 +198,38 @@ export default function GroupChatThread() {
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
     : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
 
-  const scrollToBottom = useCallback(() => {
-    // Instant scroll to bottom - no animation
+  // Smooth scroll for user-initiated actions (sending messages)
+  const scrollToBottomSmooth = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [])
+  
+  // Instant scroll for initial load (no visible animation)
+  const scrollToBottomInstant = useCallback(() => {
     const el = listRef.current
     if (el) {
       el.scrollTop = el.scrollHeight
     }
-    messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
   }, [])
 
-  // Scroll to bottom when pending messages change (user sent a message)
+  // For compatibility with existing code
+  const scrollToBottom = scrollToBottomSmooth
+
+  // Smooth scroll when pending messages change (user sent a message)
   useEffect(() => {
     if (pendingMessages.length > 0) {
-      scrollToBottom()
+      scrollToBottomSmooth()
     }
-  }, [pendingMessages, scrollToBottom])
+  }, [pendingMessages, scrollToBottomSmooth])
   
-  // Scroll to bottom on initial load only
+  // Instant scroll on initial load only (no visible animation)
   const didInitialScrollRef = useRef(false)
   useEffect(() => {
     if (serverMessages.length > 0 && !didInitialScrollRef.current) {
       didInitialScrollRef.current = true
-      scrollToBottom()
+      // Use instant scroll for initial load so page starts at bottom
+      scrollToBottomInstant()
     }
-  }, [serverMessages, scrollToBottom])
+  }, [serverMessages, scrollToBottomInstant])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
