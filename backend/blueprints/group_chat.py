@@ -1326,17 +1326,8 @@ Don't be overly formal - this is a casual group chat."""
             
             logger.info(f"Steve replied to group {group_id} with message ID {steve_message_id}")
             
-            # Send notifications to group members (except Steve)
-            c.execute(f"SELECT username FROM group_chat_members WHERE group_id = {ph} AND username != {ph}", (group_id, AI_USERNAME))
-            members = [r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
-            
-            preview = ai_response[:50] + "..." if len(ai_response) > 50 else ai_response
-            
-            for member in members:
-                try:
-                    _send_group_message_notification(c, ph, member, AI_USERNAME, group_id, group_name, preview)
-                except Exception:
-                    pass
+            # Note: No notifications for Steve's messages - users see them in the chat
+            # without push notifications or bell icon updates
             
             conn.commit()
             
