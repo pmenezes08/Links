@@ -62,6 +62,8 @@ export default function GroupChatThread() {
   }, [])
   const [showMembers, setShowMembers] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [isScrollReady, setIsScrollReady] = useState(false)
+  const userHasScrolledRef = useRef(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [previewPlaying, setPreviewPlaying] = useState(false)
@@ -203,6 +205,59 @@ export default function GroupChatThread() {
     // Backup: use scroll anchor
     messagesEndRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' })
   }, [])
+
+  // Reset scroll state when entering chat
+  useEffect(() => {
+    setIsScrollReady(false)
+    userHasScrolledRef.current = false
+  }, [group_id])
+
+  // Initial scroll positioning - multiple delayed scrolls to catch images loading
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    
+    // Aggressive delayed scrolls for initial load
+    const initialScrollTimers = [50, 100, 250, 500, 800, 1200].map(delay =>
+      setTimeout(() => {
+        if (!userHasScrolledRef.current) {
+          scrollToBottom()
+          if (delay >= 500 && !isScrollReady) {
+            setIsScrollReady(true)
+          }
+        }
+      }, delay)
+    )
+    
+    return () => {
+      initialScrollTimers.forEach(clearTimeout)
+    }
+  }, [group_id, scrollToBottom, isScrollReady])
+
+  // Track user scroll to detect manual scrolling
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    
+    const handleScroll = () => {
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100
+      if (!isNearBottom) {
+        userHasScrolledRef.current = true
+      } else {
+        userHasScrolledRef.current = false
+      }
+    }
+    
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Scroll to bottom when messages change (if user hasn't scrolled away)
+  useEffect(() => {
+    if (!userHasScrolledRef.current && isScrollReady) {
+      requestAnimationFrame(scrollToBottom)
+    }
+  }, [messages, scrollToBottom, isScrollReady])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -357,61 +412,26 @@ export default function GroupChatThread() {
         const newMaxId = newMessages.length > 0 ? Math.max(...newMessages.map(m => m.id)) : 0
         const hasNewMessages = newMaxId > lastMessageIdRef.current
 
-        // Preserve optimistic messages and merge with server messages
-        setMessages(prev => {
-          // Build map of existing messages by their stable key (clientKey or id)
-          const messagesByKey = new Map<string, Message & { clientKey?: string }>()
-          prev.forEach(m => {
-            const key = (m as Message & { clientKey?: string }).clientKey || String(m.id)
-            messagesByKey.set(key, m as Message & { clientKey?: string })
+        // Simple merge: server messages + any optimistic messages still pending
+        setMessages(() => {
+          // Get all optimistic messages that are still being tracked
+          const optimisticMessages: (Message & { clientKey?: string })[] = []
+          recentOptimisticRef.current.forEach((entry) => {
+            optimisticMessages.push(entry.message)
           })
           
-          // Add recent optimistic messages that might not be in prev yet (handles React state batching)
-          recentOptimisticRef.current.forEach((entry, key) => {
-            if (!messagesByKey.has(key)) {
-              messagesByKey.set(key, entry.message)
-            }
+          // Server messages (no duplicates with optimistic by checking text match)
+          const serverMsgs = newMessages.filter(serverMsg => {
+            // Don't include server message if we have a matching optimistic
+            const hasMatchingOptimistic = optimisticMessages.some(opt => 
+              opt.text === serverMsg.text && 
+              Math.abs(new Date(opt.created_at).getTime() - new Date(serverMsg.created_at).getTime()) < 10000
+            )
+            return !hasMatchingOptimistic
           })
           
-          // Process server messages
-          const serverMessageIds = new Set<number>()
-          newMessages.forEach(serverMsg => {
-            serverMessageIds.add(serverMsg.id)
-            
-            // Check if we have a matching optimistic message
-            let foundOptimistic = false
-            for (const [key, existing] of messagesByKey.entries()) {
-              if (key.startsWith('temp_') && existing.text === serverMsg.text) {
-                // Match found - update with server data but keep clientKey
-                messagesByKey.set(key, { ...serverMsg, clientKey: key })
-                foundOptimistic = true
-                // Clean up from recent optimistic tracking
-                recentOptimisticRef.current.delete(key)
-                break
-              }
-            }
-            
-            // If no optimistic match, add as new message
-            if (!foundOptimistic) {
-              messagesByKey.set(String(serverMsg.id), serverMsg as Message & { clientKey?: string })
-            }
-          })
-          
-          // Clean up old optimistic messages (30s timeout)
-          const now = Date.now()
-          for (const [key] of messagesByKey.entries()) {
-            if (key.startsWith('temp_')) {
-              const entry = recentOptimisticRef.current.get(key)
-              if (entry && now - entry.timestamp > 30000) {
-                // Timeout - remove optimistic message
-                messagesByKey.delete(key)
-                recentOptimisticRef.current.delete(key)
-              }
-            }
-          }
-          
-          // Convert back to array and sort by created_at
-          const result = Array.from(messagesByKey.values())
+          // Combine and sort
+          const result = [...serverMsgs, ...optimisticMessages]
           result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
           return result
         })
@@ -454,21 +474,21 @@ export default function GroupChatThread() {
     // Lock immediately (synchronous) to prevent double-clicks
     sendingLockRef.current = true
     
-    // Pause polling to avoid race condition with server confirmation
-    skipNextPollsUntilRef.current = Date.now() + 2000
+    // Pause polling for 5 seconds to avoid race condition
+    skipNextPollsUntilRef.current = Date.now() + 5000
     
-    // CLEAR COMPOSER IMMEDIATELY - direct DOM manipulation (uncontrolled)
+    // CLEAR COMPOSER IMMEDIATELY
     if (textareaRef.current) {
       textareaRef.current.value = ''
     }
     draftRef.current = ''
-    setDraftDisplay('') // Update UI state for button visibility
+    setDraftDisplay('')
     
-    // Create optimistic message with clientKey for stable tracking
+    // Create optimistic message
     const now = new Date().toISOString()
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
     const optimisticMessage: Message & { clientKey: string } = {
-      id: -Date.now(), // Negative ID for optimistic messages
+      id: -Date.now(),
       sender: currentUsername || 'You',
       text: text,
       image: null,
@@ -478,19 +498,19 @@ export default function GroupChatThread() {
       clientKey: tempId,
     }
     
-    // Register in recent optimistic to prevent poll from removing it
+    // Track optimistic message - this keeps it visible during polls
     recentOptimisticRef.current.set(tempId, {
       message: optimisticMessage,
       timestamp: Date.now()
     })
     
-    // Add optimistic message immediately
+    // Add to UI immediately
     setMessages(prev => [...prev, optimisticMessage])
     
-    // Scroll to bottom immediately using requestAnimationFrame
+    // Scroll to bottom
     requestAnimationFrame(scrollToBottom)
 
-    // Send to server in the background
+    // Send to server
     fetch(`/api/group_chat/${group_id}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -500,42 +520,36 @@ export default function GroupChatThread() {
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          const realMessage = data.message as Message
+          // SUCCESS: Remove from optimistic tracking so polls show real message
+          recentOptimisticRef.current.delete(tempId)
           
-          // Update optimistic message with server data but keep clientKey
+          // Replace optimistic with real server message
+          const realMessage = data.message as Message
           setMessages(prev => {
-            const updated = prev.map(m => {
-              const msgWithKey = m as Message & { clientKey?: string }
-              if (msgWithKey.clientKey === tempId) {
-                return { ...realMessage, clientKey: tempId }
-              }
-              return m
-            })
-            // Filter out any duplicates that poll might have added
-            const seen = new Set<number>()
-            return updated.filter(m => {
-              if (m.id > 0) {
-                if (seen.has(m.id)) return false
-                seen.add(m.id)
-              }
-              return true
-            })
+            // Remove the optimistic message and add the real one
+            const withoutOptimistic = prev.filter(m => 
+              (m as Message & { clientKey?: string }).clientKey !== tempId
+            )
+            return [...withoutOptimistic, realMessage].sort((a, b) => 
+              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            )
           })
           lastMessageIdRef.current = realMessage.id
-          
-          // Clean up from recent optimistic after a delay
-          setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
         } else {
-          // Remove optimistic message on failure
-          setMessages(prev => prev.filter(m => (m as Message & { clientKey?: string }).clientKey !== tempId))
+          // FAILURE: Remove optimistic message
           recentOptimisticRef.current.delete(tempId)
+          setMessages(prev => prev.filter(m => 
+            (m as Message & { clientKey?: string }).clientKey !== tempId
+          ))
           console.error('Failed to send:', data.error)
         }
       })
       .catch(err => {
-        // Remove optimistic message on error
-        setMessages(prev => prev.filter(m => (m as Message & { clientKey?: string }).clientKey !== tempId))
+        // ERROR: Remove optimistic message
         recentOptimisticRef.current.delete(tempId)
+        setMessages(prev => prev.filter(m => 
+          (m as Message & { clientKey?: string }).clientKey !== tempId
+        ))
         console.error('Error sending message:', err)
       })
       .finally(() => {
@@ -972,6 +986,9 @@ export default function GroupChatThread() {
               overscrollBehaviorY: 'auto',
               paddingBottom: listPaddingBottom,
               minHeight: 0,
+              // Hide content until scroll is positioned, then fade in
+              opacity: isScrollReady ? 1 : 0,
+              transition: 'opacity 150ms ease-out',
             } as CSSProperties}
           >
             {messages.length === 0 ? (
