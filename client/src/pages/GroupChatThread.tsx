@@ -199,29 +199,29 @@ export default function GroupChatThread() {
     : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
 
   const scrollToBottom = useCallback(() => {
-    // Simple smooth scroll to bottom
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Instant scroll to bottom - no animation
+    const el = listRef.current
+    if (el) {
+      el.scrollTop = el.scrollHeight
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
   }, [])
 
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    if (messages.length > 0) {
-      const timer = setTimeout(scrollToBottom, 100)
-      return () => clearTimeout(timer)
-    }
-  }, [messages, scrollToBottom])
-
-  // CRITICAL: Scroll immediately when pending messages are added
+  // Scroll to bottom when pending messages change (user sent a message)
   useEffect(() => {
     if (pendingMessages.length > 0) {
-      // Use instant scroll for pending messages so user sees their message immediately
-      const el = listRef.current
-      if (el) {
-        el.scrollTop = el.scrollHeight
-      }
-      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+      scrollToBottom()
     }
-  }, [pendingMessages])
+  }, [pendingMessages, scrollToBottom])
+  
+  // Scroll to bottom on initial load only
+  const didInitialScrollRef = useRef(false)
+  useEffect(() => {
+    if (serverMessages.length > 0 && !didInitialScrollRef.current) {
+      didInitialScrollRef.current = true
+      scrollToBottom()
+    }
+  }, [serverMessages, scrollToBottom])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -445,12 +445,6 @@ export default function GroupChatThread() {
     
     // Add to pending messages - this is a SEPARATE state, always visible
     setPendingMessages(prev => [...prev, pendingMessage])
-    
-    // Scroll to bottom - multiple attempts to catch the render
-    scrollToBottom()
-    setTimeout(scrollToBottom, 50)
-    setTimeout(scrollToBottom, 150)
-    setTimeout(scrollToBottom, 300)
 
     // Send to server
     fetch(`/api/group_chat/${group_id}/send`, {
