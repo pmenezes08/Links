@@ -479,15 +479,22 @@ export default function GroupChatThread() {
           loadMessages(true)
           setTimeout(scrollToBottom, 50)
         } else {
-          // FAILURE: Remove from pending
-          setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+          // FAILURE: Keep message visible but log error
+          // Don't remove so user can see it failed
           console.error('Failed to send:', data.error)
+          // Remove after 5 seconds so user can see the message
+          setTimeout(() => {
+            setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+          }, 5000)
         }
       })
       .catch(err => {
-        // ERROR: Remove from pending
-        setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+        // ERROR: Keep message visible but log error
         console.error('Error sending message:', err)
+        // Remove after 5 seconds so user can see the message
+        setTimeout(() => {
+          setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+        }, 5000)
       })
       .finally(() => {
         sendingLockRef.current = false
