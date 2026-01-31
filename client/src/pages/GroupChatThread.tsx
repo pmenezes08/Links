@@ -81,6 +81,8 @@ export default function GroupChatThread() {
   const headerMenuRef = useRef<HTMLDivElement>(null)
   // Pause polling after sending to avoid race condition with server confirmation
   const skipNextPollsUntilRef = useRef<number>(0)
+  // Track optimistic messages to ensure they're always shown
+  const recentOptimisticRef = useRef<Map<string, Message & { clientKey: string }>>(new Map())
 
   // Voice recording
   const { 
@@ -361,17 +363,27 @@ export default function GroupChatThread() {
         const hasNewMessages = newMaxId > lastMessageIdRef.current
 
         setMessages(prev => {
-          // Get optimistic messages from previous state (those with clientKey starting with temp_)
-          const optimisticMessages = prev.filter(m => {
+          // Build map from previous messages
+          const messagesByKey = new Map<string, Message & { clientKey?: string }>()
+          prev.forEach(m => {
             const msgWithKey = m as Message & { clientKey?: string }
-            return msgWithKey.clientKey?.startsWith('temp_')
+            const key = msgWithKey.clientKey || String(m.id)
+            messagesByKey.set(key, msgWithKey)
           })
           
-          // Combine server messages with optimistic ones
-          // Server messages are source of truth, optimistic are pending
-          const result = [...serverMessages, ...optimisticMessages]
+          // CRITICAL: Always include messages from recentOptimisticRef
+          // This ensures optimistic messages are never lost
+          recentOptimisticRef.current.forEach((msg, key) => {
+            messagesByKey.set(key, msg)
+          })
           
-          // Sort by created_at
+          // Add server messages
+          serverMessages.forEach(msg => {
+            messagesByKey.set(String(msg.id), msg)
+          })
+          
+          // Convert to array and sort
+          const result = Array.from(messagesByKey.values())
           result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
           return result
         })
@@ -439,6 +451,9 @@ export default function GroupChatThread() {
       clientKey: tempId,
     }
     
+    // CRITICAL: Add to recentOptimisticRef FIRST to ensure it's never lost
+    recentOptimisticRef.current.set(tempId, optimisticMessage)
+    
     // Add to UI immediately
     setMessages(prev => [...prev, optimisticMessage])
     
@@ -456,14 +471,15 @@ export default function GroupChatThread() {
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          // SUCCESS: Replace optimistic with real server message
+          // SUCCESS: Remove from optimistic tracking
+          recentOptimisticRef.current.delete(tempId)
+          
+          // Replace optimistic with real server message
           const realMessage = data.message as Message
           setMessages(prev => {
-            // Find and replace the optimistic message
             const updated = prev.map(m => {
               const msgWithKey = m as Message & { clientKey?: string }
               if (msgWithKey.clientKey === tempId) {
-                // Replace with real message, remove clientKey so it's treated as server message
                 return realMessage
               }
               return m
@@ -471,11 +487,10 @@ export default function GroupChatThread() {
             return updated
           })
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, realMessage.id)
-          
-          // Scroll to show the confirmed message
           setTimeout(scrollToBottom, 50)
         } else {
-          // FAILURE: Remove optimistic message
+          // FAILURE: Remove from tracking and state
+          recentOptimisticRef.current.delete(tempId)
           setMessages(prev => prev.filter(m => 
             (m as Message & { clientKey?: string }).clientKey !== tempId
           ))
@@ -483,7 +498,8 @@ export default function GroupChatThread() {
         }
       })
       .catch(err => {
-        // ERROR: Remove optimistic message
+        // ERROR: Remove from tracking and state
+        recentOptimisticRef.current.delete(tempId)
         setMessages(prev => prev.filter(m => 
           (m as Message & { clientKey?: string }).clientKey !== tempId
         ))
