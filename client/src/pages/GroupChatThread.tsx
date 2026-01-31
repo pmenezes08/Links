@@ -198,38 +198,24 @@ export default function GroupChatThread() {
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
     : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
 
-  // Smooth scroll for user-initiated actions (sending messages)
-  const scrollToBottomSmooth = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [])
-  
-  // Instant scroll for initial load (no visible animation)
-  const scrollToBottomInstant = useCallback(() => {
+  // Instant scroll - only used for initial load
+  const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (el) {
       el.scrollTop = el.scrollHeight
     }
   }, [])
-
-  // For compatibility with existing code
-  const scrollToBottom = scrollToBottomSmooth
-
-  // Smooth scroll when pending messages change (user sent a message)
-  useEffect(() => {
-    if (pendingMessages.length > 0) {
-      scrollToBottomSmooth()
-    }
-  }, [pendingMessages, scrollToBottomSmooth])
   
-  // Instant scroll on initial load only (no visible animation)
+  // Only scroll on initial load - after that, no scrolling
   const didInitialScrollRef = useRef(false)
   useEffect(() => {
     if (serverMessages.length > 0 && !didInitialScrollRef.current) {
       didInitialScrollRef.current = true
-      // Use instant scroll for initial load so page starts at bottom
-      scrollToBottomInstant()
+      scrollToBottom()
     }
-  }, [serverMessages, scrollToBottomInstant])
+  }, [serverMessages, scrollToBottom])
+  
+  // No scroll when sending messages - message just appears, older ones shift up
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -377,7 +363,6 @@ export default function GroupChatThread() {
       if (data.success) {
         const newServerMessages = data.messages as Message[]
         const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
-        const hasNewMessages = newMaxId > lastMessageIdRef.current
 
         // Simply set server messages - pending messages are separate
         setServerMessages(newServerMessages)
@@ -393,9 +378,7 @@ export default function GroupChatThread() {
         
         lastMessageIdRef.current = newMaxId
 
-        if (hasNewMessages && !silent) {
-          setTimeout(scrollToBottom, 100)
-        }
+        // No scroll on new messages - they just appear
       }
     } catch (err) {
       console.error('Error loading messages:', err)
@@ -469,7 +452,6 @@ export default function GroupChatThread() {
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, data.message.id)
           // Trigger immediate poll to get the server message
           loadMessages(true)
-          setTimeout(scrollToBottom, 50)
         } else {
           // FAILURE: Remove from pending
           setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
@@ -525,7 +507,6 @@ export default function GroupChatThread() {
         if (data.success) {
           setServerMessages(prev => [...prev, data.message])
           lastMessageIdRef.current = data.message.id
-          setTimeout(scrollToBottom, 100)
         }
       }
     } catch (err) {
@@ -565,7 +546,6 @@ export default function GroupChatThread() {
         if (data.success) {
           setServerMessages(prev => [...prev, data.message])
           lastMessageIdRef.current = data.message.id
-          setTimeout(scrollToBottom, 100)
         }
       }
     } catch (err) {
@@ -633,7 +613,6 @@ export default function GroupChatThread() {
         if (data.success) {
           setServerMessages(prev => [...prev, data.message])
           lastMessageIdRef.current = data.message.id
-          setTimeout(scrollToBottom, 100)
         }
       }
 
@@ -675,7 +654,6 @@ export default function GroupChatThread() {
         if (data.success) {
           setServerMessages(prev => [...prev, data.message])
           lastMessageIdRef.current = data.message.id
-          setTimeout(scrollToBottom, 100)
         }
       }
 
