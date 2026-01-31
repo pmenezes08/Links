@@ -12,6 +12,7 @@ import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import LongPressActionable from '../chat/LongPressActionable'
 import { formatDateLabel, getDateKey } from '../chat'
+import { useUserProfile } from '../contexts/UserProfileContext'
 
 type Message = {
   id: number
@@ -42,11 +43,14 @@ type GroupInfo = {
 export default function GroupChatThread() {
   const { group_id } = useParams()
   const navigate = useNavigate()
+  const { profile: currentUserProfile } = useUserProfile()
+  const currentUsername = (currentUserProfile as { username?: string })?.username || ''
   const [group, setGroup] = useState<GroupInfo | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [textareaKey, setTextareaKey] = useState(0) // Key to force textarea re-render
   const [sending, setSendingState] = useState(false)
   const sendingLockRef = useRef(false)
   
@@ -378,8 +382,12 @@ export default function GroupChatThread() {
     sendingLockRef.current = true
     setSendingState(true)
     
-    // Clear draft immediately - both state and textarea
+    // CLEAR COMPOSER IMMEDIATELY - multiple approaches for reliability
+    // 1. Clear React state
     setDraft('')
+    // 2. Force textarea re-render by changing key
+    setTextareaKey(k => k + 1)
+    // 3. Also clear directly as backup
     if (textareaRef.current) {
       textareaRef.current.value = ''
     }
@@ -389,7 +397,7 @@ export default function GroupChatThread() {
     const tempId = -Date.now()
     const optimisticMessage: Message = {
       id: tempId,
-      sender: '',
+      sender: currentUsername, // Use current username for sent message
       text: text,
       image: null,
       voice: null,
@@ -422,25 +430,20 @@ export default function GroupChatThread() {
         // Remove optimistic message and restore draft on failure
         setMessages(prev => prev.filter(m => m.id !== tempId))
         setDraft(text)
-        if (textareaRef.current) {
-          textareaRef.current.value = text
-        }
         console.error('Failed to send:', data.error)
       }
     } catch (err) {
       // Remove optimistic message and restore draft on error
       setMessages(prev => prev.filter(m => m.id !== tempId))
       setDraft(text)
-      if (textareaRef.current) {
-        textareaRef.current.value = text
-      }
       console.error('Error sending message:', err)
     } finally {
       sendingLockRef.current = false
       setSendingState(false)
-      textareaRef.current?.focus()
+      // Focus after a brief delay to let React re-render
+      setTimeout(() => textareaRef.current?.focus(), 50)
     }
-  }, [draft, group_id, scrollToBottom])
+  }, [draft, group_id, scrollToBottom, currentUsername])
 
   const handlePhotoSelect = () => {
     setShowAttachMenu(false)
@@ -886,6 +889,8 @@ export default function GroupChatThread() {
                     new Date(msg.created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 60000)
                   const messageReaction = reactions[msg.id]
                   const isOptimistic = msg.id < 0
+                  // Determine if message is sent by current user
+                  const isSentByMe = isOptimistic || (msg.sender && msg.sender.toLowerCase() === currentUsername.toLowerCase())
                   
                   // Date separator logic - matching ChatThread
                   const messageDate = getDateKey(msg.created_at)
@@ -901,9 +906,9 @@ export default function GroupChatThread() {
                           </div>
                         </div>
                       )}
-                      <div className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'}`}>
+                      <div className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'} ${isSentByMe ? 'flex-row-reverse' : ''}`}>
                       <div className="w-8 flex-shrink-0">
-                        {showAvatar && msg.sender && (
+                        {showAvatar && msg.sender && !isSentByMe && (
                           <Avatar
                             username={msg.sender}
                             url={msg.profile_picture || undefined}
@@ -912,14 +917,14 @@ export default function GroupChatThread() {
                           />
                         )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        {showAvatar && msg.sender && (
+                      <div className={`flex-1 min-w-0 ${isSentByMe ? 'flex flex-col items-end' : ''}`}>
+                        {showAvatar && msg.sender && !isSentByMe && (
                           <div className="flex items-baseline gap-2 mb-0.5">
                             <span className="text-sm font-medium text-white/90">{msg.sender}</span>
                             <span className="text-[11px] text-[#9fb0b5]">{formatTime(msg.created_at)}</span>
                           </div>
                         )}
-                        <div className="flex items-end gap-2">
+                        <div className={`flex items-end gap-2 ${isSentByMe ? 'flex-row-reverse' : ''}`}>
                           <LongPressActionable
                             onReact={(emoji) => handleReaction(msg.id, emoji)}
                             onReply={() => {/* TODO: Implement reply */}}
@@ -929,7 +934,7 @@ export default function GroupChatThread() {
                           >
                             <div className={`relative ${isOptimistic ? 'opacity-60' : ''} ${messageReaction ? 'mb-5' : ''}`}>
                               {msg.text && (
-                                <div className="text-[14px] text-white/90 whitespace-pre-wrap break-words bg-white/5 border border-white/10 rounded-xl px-3 py-2">
+                                <div className={`liquid-glass-bubble ${isSentByMe ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'} text-[14px] text-white whitespace-pre-wrap break-words rounded-2xl px-3 py-2 max-w-[280px] ${isSentByMe ? 'rounded-br-lg' : 'rounded-bl-lg'}`}>
                                   {msg.text}
                                 </div>
                               )}
@@ -1195,6 +1200,7 @@ export default function GroupChatThread() {
               {/* Regular text input */}
               {!(MIC_ENABLED && (recording || recordingPreview)) && (
                 <textarea
+                  key={textareaKey}
                   ref={textareaRef}
                   rows={1}
                   className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
