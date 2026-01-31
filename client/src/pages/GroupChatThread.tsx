@@ -58,6 +58,11 @@ export default function GroupChatThread() {
   const messages = [...serverMessages, ...pendingMessages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   )
+  
+  // Debug log
+  if (pendingMessages.length > 0) {
+    console.log('[GroupChat] Rendering with', pendingMessages.length, 'pending messages, total:', messages.length)
+  }
   // Use ref-based draft to avoid React state update issues
   const draftRef = useRef('')
   const [draftDisplay, setDraftDisplay] = useState('') // Only for UI updates (button visibility)
@@ -444,7 +449,12 @@ export default function GroupChatThread() {
     }
     
     // Add to pending messages - this is a SEPARATE state, always visible
-    setPendingMessages(prev => [...prev, pendingMessage])
+    console.log('[GroupChat] Adding pending message:', pendingMessage)
+    setPendingMessages(prev => {
+      const newPending = [...prev, pendingMessage]
+      console.log('[GroupChat] Pending messages now:', newPending.length)
+      return newPending
+    })
     
     // Scroll to bottom - multiple attempts to catch the render
     scrollToBottom()
