@@ -627,9 +627,24 @@ def send_group_message(group_id: int):
                 else:
                     preview = message_text[:50] + "..." if len(message_text) > 50 else message_text
                 
+                # Detect @mentions in the message (case-insensitive)
+                mentioned_users = set()
+                if message_text:
+                    # Find all @username patterns
+                    mention_pattern = r'@(\w+)'
+                    mentions = re.findall(mention_pattern, message_text, re.IGNORECASE)
+                    # Check which mentions are actual group members
+                    for mention in mentions:
+                        mention_lower = mention.lower()
+                        for member in other_members:
+                            if member.lower() == mention_lower:
+                                mentioned_users.add(member)
+                                break
+                
                 for member in other_members:
                     try:
-                        _send_group_message_notification(c, ph, member, username, group_id, group_name, preview)
+                        is_mention = member in mentioned_users
+                        _send_group_message_notification(c, ph, member, username, group_id, group_name, preview, is_mention=is_mention)
                     except Exception as notif_err:
                         logger.warning(f"Failed to send message notification to {member}: {notif_err}")
                 
@@ -669,9 +684,21 @@ def send_group_message(group_id: int):
         return jsonify({"success": False, "error": "Failed to send message"})
 
 
-def _send_group_message_notification(cursor, ph, recipient_username: str, sender_username: str, group_id: int, group_name: str, message_preview: str):
+def _send_group_message_notification(cursor, ph, recipient_username: str, sender_username: str, group_id: int, group_name: str, message_preview: str, is_mention: bool = False):
     """Send notification for a new group message."""
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Determine notification type and message based on whether it's a mention
+    if is_mention:
+        notif_type = "group_chat_mention"
+        notif_message = f"{sender_username} mentioned you in {group_name}: {message_preview}"
+        push_title = f"{group_name} - Mention"
+        push_body = f"{sender_username} mentioned you: {message_preview}"
+    else:
+        notif_type = "group_chat_message"
+        notif_message = f"{sender_username} in {group_name}: {message_preview}"
+        push_title = group_name
+        push_body = f"{sender_username}: {message_preview}"
     
     # Insert notification into database  
     cursor.execute(f"""
@@ -679,20 +706,23 @@ def _send_group_message_notification(cursor, ph, recipient_username: str, sender
         VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, 0)
     """, (
         recipient_username,
-        "group_chat_message",
-        f"{sender_username} in {group_name}: {message_preview}",
+        notif_type,
+        notif_message,
         f"/group_chat/{group_id}",
         now
     ))
     
     # Try to send push notification
     try:
-        from backend.services.notifications import send_push_notification
-        send_push_notification(
+        from backend.services.notifications import send_push_to_user
+        send_push_to_user(
             recipient_username,
-            title=group_name,
-            body=f"{sender_username}: {message_preview}",
-            data={"type": "group_chat_message", "group_id": str(group_id)}
+            {
+                "title": push_title,
+                "body": push_body,
+                "url": f"/group_chat/{group_id}",
+                "tag": f"group-{group_id}-msg"
+            }
         )
     except Exception as push_err:
         logger.warning(f"Push notification failed for group message: {push_err}")
@@ -1072,8 +1102,6 @@ def add_members_to_group(group_id: int):
 
 def _send_group_add_notification(cursor, ph, recipient_username: str, added_by: str, group_id: int, group_name: str):
     """Send notification when user is added to a group."""
-    from backend.services.database import USE_MYSQL
-    
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     
     # Insert notification into database
@@ -1090,12 +1118,15 @@ def _send_group_add_notification(cursor, ph, recipient_username: str, added_by: 
     
     # Try to send push notification
     try:
-        from backend.services.notifications import send_push_notification
-        send_push_notification(
+        from backend.services.notifications import send_push_to_user
+        send_push_to_user(
             recipient_username,
-            title="Added to Group",
-            body=f"{added_by} added you to '{group_name}'",
-            data={"type": "group_chat_add", "group_id": str(group_id)}
+            {
+                "title": "Added to Group Chat",
+                "body": f"{added_by} added you to '{group_name}'",
+                "url": f"/group_chat/{group_id}",
+                "tag": f"group-add-{group_id}"
+            }
         )
     except Exception as push_err:
         logger.warning(f"Push notification failed for group add: {push_err}")
