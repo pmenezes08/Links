@@ -523,13 +523,23 @@ def send_group_message(group_id: int):
             c.execute(f"UPDATE group_chats SET updated_at = {ph} WHERE id = {ph}", (now, group_id))
             
             # Update sender's read receipt
-            c.execute(f"""
-                INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at)
-                VALUES ({ph}, {ph}, {ph}, {ph})
-                ON CONFLICT(group_id, username) DO UPDATE SET
-                    last_read_message_id = {ph},
-                    last_read_at = {ph}
-            """, (group_id, username, message_id, now, message_id, now))
+            from backend.services.database import USE_MYSQL
+            if USE_MYSQL:
+                c.execute(f"""
+                    INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph})
+                    ON DUPLICATE KEY UPDATE
+                        last_read_message_id = VALUES(last_read_message_id),
+                        last_read_at = VALUES(last_read_at)
+                """, (group_id, username, message_id, now))
+            else:
+                c.execute(f"""
+                    INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph})
+                    ON CONFLICT(group_id, username) DO UPDATE SET
+                        last_read_message_id = {ph},
+                        last_read_at = {ph}
+                """, (group_id, username, message_id, now, message_id, now))
             
             conn.commit()
             
