@@ -87,6 +87,24 @@ export default function GroupChatThread() {
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
   const pendingDeletions = useRef<Set<number>>(new Set())
+  
+  // @mention autocomplete state
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const [mentionStartPos, setMentionStartPos] = useState<number>(0)
+  const mentionDropdownRef = useRef<HTMLDivElement>(null)
+  
+  // Filter group members for @mention autocomplete (excluding Steve and current user)
+  const mentionableMembers = group?.members.filter(
+    m => m.username.toLowerCase() !== 'steve' && m.username.toLowerCase() !== currentUsername.toLowerCase()
+  ) || []
+  
+  // Filtered mentions based on query
+  const filteredMentions = mentionQuery !== null
+    ? mentionableMembers.filter(m => 
+        m.username.toLowerCase().startsWith(mentionQuery.toLowerCase())
+      )
+    : []
+    
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -401,12 +419,23 @@ export default function GroupChatThread() {
     }
   }, [group_id, scrollToBottom])
 
+  // Update active presence (so push notifications are suppressed while viewing)
+  const updatePresence = useCallback(() => {
+    fetch(`/api/group_chat/${group_id}/presence`, {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {})  // Ignore errors - this is optional
+  }, [group_id])
+
   useEffect(() => {
     loadGroup()
     loadMessages()
+    updatePresence()  // Initial presence ping
 
+    // Poll messages and update presence
     pollingRef.current = setInterval(() => {
       loadMessages(true)
+      updatePresence()
     }, 3000)
 
     return () => {
@@ -414,7 +443,7 @@ export default function GroupChatThread() {
         clearInterval(pollingRef.current)
       }
     }
-  }, [loadGroup, loadMessages])
+  }, [loadGroup, loadMessages, updatePresence])
 
   const handleSend = useCallback(() => {
     // Get text directly from textarea (uncontrolled)
@@ -480,6 +509,34 @@ export default function GroupChatThread() {
         sendingLockRef.current = false
       })
   }, [group_id, scrollToBottom, currentUsername, loadMessages])
+
+  // Handle @mention selection
+  const handleMentionSelect = useCallback((username: string) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    
+    const currentValue = textarea.value
+    const cursorPos = textarea.selectionStart || 0
+    
+    // Replace the @query with @username (include space after)
+    const before = currentValue.slice(0, mentionStartPos)
+    const after = currentValue.slice(cursorPos)
+    const newValue = `${before}@${username} ${after}`
+    
+    textarea.value = newValue
+    draftRef.current = newValue
+    setDraftDisplay(newValue)
+    
+    // Move cursor after the inserted mention
+    const newCursorPos = mentionStartPos + username.length + 2 // @ + username + space
+    textarea.setSelectionRange(newCursorPos, newCursorPos)
+    
+    // Clear mention state
+    setMentionQuery(null)
+    
+    // Keep focus on textarea
+    textarea.focus()
+  }, [mentionStartPos])
 
   const handlePhotoSelect = () => {
     setShowAttachMenu(false)
@@ -1406,6 +1463,32 @@ export default function GroupChatThread() {
               }}
               onPointerDown={focusTextarea}
             >
+              {/* @mention autocomplete dropdown */}
+              {mentionQuery !== null && filteredMentions.length > 0 && (
+                <div 
+                  ref={mentionDropdownRef}
+                  className="absolute bottom-full left-0 right-0 mb-2 bg-[#1a1a2e] border border-white/10 rounded-lg shadow-xl max-h-48 overflow-y-auto z-50"
+                >
+                  {filteredMentions.map((member) => (
+                    <button
+                      key={member.username}
+                      className="w-full px-3 py-2 flex items-center gap-3 hover:bg-white/10 text-left transition-colors"
+                      onPointerDown={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        handleMentionSelect(member.username)
+                      }}
+                    >
+                      <Avatar 
+                        url={member.profile_picture} 
+                        username={member.username} 
+                        size={28} 
+                      />
+                      <span className="text-white text-sm">@{member.username}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {/* Recording sound bar */}
               {MIC_ENABLED && recording && (
                 <div className="flex-1 flex items-center px-3 py-2 gap-2">
@@ -1487,11 +1570,39 @@ export default function GroupChatThread() {
                   }}
                   onInput={(e) => {
                     // Track draft for button visibility only
-                    const val = (e.target as HTMLTextAreaElement).value
+                    const textarea = e.target as HTMLTextAreaElement
+                    const val = textarea.value
                     draftRef.current = val
                     setDraftDisplay(val)
+                    
+                    // Detect @mention typing
+                    const cursorPos = textarea.selectionStart || 0
+                    const textBeforeCursor = val.slice(0, cursorPos)
+                    
+                    // Find the last @ that starts a mention (preceded by space or start of text)
+                    const mentionMatch = textBeforeCursor.match(/(?:^|\s)@(\w*)$/)
+                    if (mentionMatch) {
+                      setMentionQuery(mentionMatch[1])
+                      setMentionStartPos(cursorPos - mentionMatch[1].length - 1)
+                    } else {
+                      setMentionQuery(null)
+                    }
                   }}
                   onKeyDown={(e) => {
+                    // Handle mention dropdown navigation
+                    if (mentionQuery !== null && filteredMentions.length > 0) {
+                      if (e.key === 'Escape') {
+                        e.preventDefault()
+                        setMentionQuery(null)
+                        return
+                      }
+                      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                        e.preventDefault()
+                        // Select first match
+                        handleMentionSelect(filteredMentions[0].username)
+                        return
+                      }
+                    }
                     // Send on Enter (without Shift for new line)
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()

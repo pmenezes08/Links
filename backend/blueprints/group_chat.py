@@ -446,6 +446,77 @@ def get_group_chat(group_id: int):
         return jsonify({"success": False, "error": "Failed to load group chat"}), 500
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/presence", methods=["POST"])
+@_login_required
+def update_group_presence(group_id: int):
+    """Update user's active presence in a group chat (suppresses notifications while viewing)."""
+    username = session["username"]
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            from backend.services.database import USE_MYSQL
+            
+            # Ensure the table exists
+            _ensure_group_presence_table(c)
+            
+            # Upsert active presence
+            now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            if USE_MYSQL:
+                c.execute(f"""
+                    INSERT INTO group_chat_presence (username, group_id, updated_at)
+                    VALUES ({ph}, {ph}, {ph})
+                    ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)
+                """, (username, group_id, now))
+            else:
+                c.execute(f"""
+                    INSERT INTO group_chat_presence (username, group_id, updated_at)
+                    VALUES ({ph}, {ph}, {ph})
+                    ON CONFLICT(username, group_id) DO UPDATE SET updated_at = {ph}
+                """, (username, group_id, now, now))
+            
+            conn.commit()
+            return jsonify({"success": True})
+            
+    except Exception as e:
+        logger.warning(f"Error updating group presence: {e}")
+        return jsonify({"success": True})  # Don't fail - this is optional
+
+
+def _ensure_group_presence_table(cursor):
+    """Ensure group_chat_presence table exists for active chat tracking."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT 1 FROM group_chat_presence LIMIT 1")
+        return  # Table exists
+    except Exception:
+        pass  # Table doesn't exist, create it
+    
+    try:
+        if USE_MYSQL:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS group_chat_presence (
+                    username VARCHAR(191) NOT NULL,
+                    group_id INT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (username, group_id)
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS group_chat_presence (
+                    username TEXT NOT NULL,
+                    group_id INTEGER NOT NULL,
+                    updated_at TEXT DEFAULT (datetime('now')),
+                    PRIMARY KEY (username, group_id)
+                )
+            """)
+        logger.info("Created group_chat_presence table")
+    except Exception as e:
+        logger.warning(f"Could not create group_chat_presence table: {e}")
+
+
 @group_chat_bp.route("/api/group_chat/<int:group_id>/messages", methods=["GET"])
 @_login_required
 def get_group_messages(group_id: int):
@@ -686,6 +757,7 @@ def send_group_message(group_id: int):
 
 def _send_group_message_notification(cursor, ph, recipient_username: str, sender_username: str, group_id: int, group_name: str, message_preview: str, is_mention: bool = False):
     """Send notification for a new group message."""
+    from backend.services.database import USE_MYSQL
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     
     # Determine notification type and message based on whether it's a mention
@@ -712,20 +784,46 @@ def _send_group_message_notification(cursor, ph, recipient_username: str, sender
         now
     ))
     
-    # Try to send push notification
+    # Check if recipient is actively viewing this group chat (suppress push if so)
+    should_push = True
     try:
-        from backend.services.notifications import send_push_to_user
-        send_push_to_user(
-            recipient_username,
-            {
-                "title": push_title,
-                "body": push_body,
-                "url": f"/group_chat/{group_id}",
-                "tag": f"group-{group_id}-msg"
-            }
-        )
-    except Exception as push_err:
-        logger.warning(f"Push notification failed for group message: {push_err}")
+        _ensure_group_presence_table(cursor)
+        if USE_MYSQL:
+            cursor.execute(f"""
+                SELECT 1 FROM group_chat_presence 
+                WHERE username = {ph} AND group_id = {ph} 
+                AND updated_at > DATE_SUB(NOW(), INTERVAL 20 SECOND)
+                LIMIT 1
+            """, (recipient_username, group_id))
+        else:
+            cursor.execute(f"""
+                SELECT 1 FROM group_chat_presence 
+                WHERE username = {ph} AND group_id = {ph} 
+                AND datetime(updated_at) > datetime('now', '-20 seconds')
+                LIMIT 1
+            """, (recipient_username, group_id))
+        
+        if cursor.fetchone():
+            should_push = False
+            logger.debug(f"Suppressing push for {recipient_username} - actively viewing group {group_id}")
+    except Exception as presence_err:
+        logger.warning(f"Could not check group presence: {presence_err}")
+    
+    # Try to send push notification (unless recipient is actively viewing)
+    if should_push:
+        try:
+            from backend.services.notifications import send_push_to_user
+            send_push_to_user(
+                recipient_username,
+                {
+                    "title": push_title,
+                    "body": push_body,
+                    "url": f"/group_chat/{group_id}",
+                    "tag": f"group-{group_id}-msg"
+                }
+            )
+        except Exception as push_err:
+            logger.warning(f"Push notification failed for group message: {push_err}")
 
 
 @group_chat_bp.route("/api/group_chat/<int:group_id>/leave", methods=["POST"])
