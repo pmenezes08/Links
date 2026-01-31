@@ -70,6 +70,11 @@ export default function GroupChatThread() {
     setSendingState(value)
   }, [])
   const [showMembers, setShowMembers] = useState(false)
+  const [showAddMembers, setShowAddMembers] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<Array<{ username: string; display_name?: string; profile_picture?: string }>>([])
+  const [selectedNewMembers, setSelectedNewMembers] = useState<string[]>([])
+  const [addingMembers, setAddingMembers] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
@@ -708,6 +713,75 @@ export default function GroupChatThread() {
     }
   }
 
+  // Search users for adding to group
+  const searchUsers = async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([])
+      return
+    }
+    
+    try {
+      const response = await fetch(`/api/search_users?q=${encodeURIComponent(query)}`, {
+        credentials: 'include',
+      })
+      const data = await response.json()
+      
+      if (data.success && data.users) {
+        // Filter out existing members
+        const existingUsernames = group?.members.map(m => m.username.toLowerCase()) || []
+        const filtered = data.users.filter((u: { username: string }) => 
+          !existingUsernames.includes(u.username.toLowerCase())
+        )
+        setSearchResults(filtered)
+      }
+    } catch (err) {
+      console.error('Error searching users:', err)
+    }
+  }
+
+  // Add selected members to group
+  const handleAddMembers = async () => {
+    if (selectedNewMembers.length === 0) return
+    
+    // Check member limit
+    const currentCount = group?.members.length || 0
+    if (currentCount + selectedNewMembers.length > 5) {
+      alert('Group chats are limited to 5 members. For larger groups, consider creating a community or sub-community.')
+      return
+    }
+    
+    setAddingMembers(true)
+    try {
+      const response = await fetch(`/api/group_chat/${group_id}/add_members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ members: selectedNewMembers }),
+      })
+      const data = await response.json()
+      
+      if (data.success) {
+        // Refresh group data
+        loadGroup()
+        setShowAddMembers(false)
+        setSelectedNewMembers([])
+        setSearchQuery('')
+        setSearchResults([])
+      } else {
+        if (data.limit_exceeded) {
+          alert(`Group chats are limited to ${data.max_members} members. For larger groups, consider creating a community or sub-community.`)
+        } else {
+          alert(data.error || 'Failed to add members')
+        }
+      }
+    } catch (err) {
+      console.error('Error adding members:', err)
+      alert('Failed to add members')
+    } finally {
+      setAddingMembers(false)
+    }
+  }
+
   const formatTime = (dateStr: string) => {
     try {
       const date = new Date(dateStr)
@@ -858,6 +932,16 @@ export default function GroupChatThread() {
                 >
                   <i className="fa-solid fa-users text-xs text-[#4db6ac]" />
                   <span>View Members</span>
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  onClick={() => {
+                    setHeaderMenuOpen(false)
+                    setShowAddMembers(true)
+                  }}
+                >
+                  <i className="fa-solid fa-user-plus text-xs text-[#4db6ac]" />
+                  <span>Add Members</span>
                 </button>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10 transition-colors"
@@ -1493,6 +1577,174 @@ export default function GroupChatThread() {
                 Leave Group
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Members Modal */}
+      {showAddMembers && group && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          onClick={() => {
+            setShowAddMembers(false)
+            setSearchQuery('')
+            setSearchResults([])
+            setSelectedNewMembers([])
+          }}
+        >
+          <div
+            className="w-full max-w-sm bg-[#1a1a1a] rounded-2xl border border-white/10 max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-white/10 flex items-center justify-between">
+              <div>
+                <div className="font-semibold">Add Members</div>
+                <div className="text-xs text-[#9fb0b5]">
+                  {group.members.length}/5 members
+                  {group.members.length >= 5 && ' (limit reached)'}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAddMembers(false)
+                  setSearchQuery('')
+                  setSearchResults([])
+                  setSelectedNewMembers([])
+                }}
+                className="p-2 rounded-full hover:bg-white/5"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            {group.members.length >= 5 ? (
+              <div className="p-6 text-center">
+                <div className="w-16 h-16 bg-[#4db6ac]/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i className="fa-solid fa-users text-[#4db6ac] text-2xl" />
+                </div>
+                <h3 className="text-white font-medium mb-2">Group is Full</h3>
+                <p className="text-white/60 text-sm mb-4">
+                  Group chats are limited to 5 members. For larger groups, consider creating a community or sub-community.
+                </p>
+                <button
+                  onClick={() => {
+                    setShowAddMembers(false)
+                    navigate('/create-community')
+                  }}
+                  className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg font-medium"
+                >
+                  Create Community
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="p-4">
+                  <div className="relative">
+                    <i className="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+                    <input
+                      type="text"
+                      placeholder="Search users..."
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value)
+                        searchUsers(e.target.value)
+                      }}
+                      className="w-full bg-white/10 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+                    />
+                  </div>
+                </div>
+
+                {/* Selected members */}
+                {selectedNewMembers.length > 0 && (
+                  <div className="px-4 pb-2">
+                    <div className="flex flex-wrap gap-2">
+                      {selectedNewMembers.map((username) => (
+                        <span
+                          key={username}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-[#4db6ac]/20 text-[#4db6ac] rounded-full text-sm"
+                        >
+                          {username}
+                          <button
+                            onClick={() => setSelectedNewMembers(prev => prev.filter(u => u !== username))}
+                            className="hover:text-white"
+                          >
+                            <i className="fa-solid fa-xmark text-xs" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Search results */}
+                <div className="max-h-[40vh] overflow-y-auto">
+                  {searchResults.length > 0 ? (
+                    <div className="p-4 pt-0 space-y-2">
+                      {searchResults.map((user) => (
+                        <button
+                          key={user.username}
+                          className={`w-full flex items-center gap-3 p-2 rounded-lg transition ${
+                            selectedNewMembers.includes(user.username)
+                              ? 'bg-[#4db6ac]/20'
+                              : 'hover:bg-white/5'
+                          }`}
+                          onClick={() => {
+                            if (selectedNewMembers.includes(user.username)) {
+                              setSelectedNewMembers(prev => prev.filter(u => u !== user.username))
+                            } else {
+                              // Check if adding would exceed limit
+                              if (group.members.length + selectedNewMembers.length + 1 > 5) {
+                                alert('Group chats are limited to 5 members. For larger groups, consider creating a community.')
+                                return
+                              }
+                              setSelectedNewMembers(prev => [...prev, user.username])
+                            }
+                          }}
+                        >
+                          <Avatar
+                            username={user.username}
+                            url={user.profile_picture || undefined}
+                            size={40}
+                          />
+                          <div className="flex-1 min-w-0 text-left">
+                            <div className="font-medium truncate">{user.display_name || user.username}</div>
+                            <div className="text-xs text-white/50">@{user.username}</div>
+                          </div>
+                          {selectedNewMembers.includes(user.username) && (
+                            <i className="fa-solid fa-check text-[#4db6ac]" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  ) : searchQuery.trim() ? (
+                    <div className="p-4 text-center text-white/50 text-sm">
+                      No users found
+                    </div>
+                  ) : (
+                    <div className="p-4 text-center text-white/50 text-sm">
+                      Search for users to add
+                    </div>
+                  )}
+                </div>
+
+                {/* Add button */}
+                {selectedNewMembers.length > 0 && (
+                  <div className="p-4 border-t border-white/10">
+                    <button
+                      onClick={handleAddMembers}
+                      disabled={addingMembers}
+                      className="w-full px-4 py-3 bg-[#4db6ac] text-black rounded-lg font-medium hover:bg-[#3da89e] transition disabled:opacity-50"
+                    >
+                      {addingMembers ? (
+                        <><i className="fa-solid fa-spinner fa-spin mr-2" />Adding...</>
+                      ) : (
+                        <>Add {selectedNewMembers.length} Member{selectedNewMembers.length > 1 ? 's' : ''}</>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

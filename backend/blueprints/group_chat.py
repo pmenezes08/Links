@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import logging
 import json
+import re
+import os
+import threading
 from datetime import datetime
 from functools import wraps
 
@@ -15,6 +18,8 @@ group_chat_bp = Blueprint("group_chat", __name__)
 logger = logging.getLogger(__name__)
 
 MAX_GROUP_MEMBERS = 5
+AI_USERNAME = 'steve'
+XAI_API_KEY = os.getenv('XAI_API_KEY', '')
 
 
 def _login_required(view_func):
@@ -550,6 +555,48 @@ def send_group_message(group_id: int):
             if pp_row:
                 profile_picture = pp_row["profile_picture"] if hasattr(pp_row, "keys") else pp_row[0]
             
+            # Send notifications to other group members
+            try:
+                # Get group name and other members
+                c.execute(f"SELECT name FROM group_chats WHERE id = {ph}", (group_id,))
+                group_row = c.fetchone()
+                group_name = group_row["name"] if hasattr(group_row, "keys") else group_row[0] if group_row else "Group"
+                
+                c.execute(f"SELECT username FROM group_chat_members WHERE group_id = {ph} AND username != {ph}", (group_id, username))
+                other_members = [r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
+                
+                # Determine message preview
+                if voice_path:
+                    preview = "🎤 Voice message"
+                elif image_path:
+                    preview = "📷 Photo"
+                else:
+                    preview = message_text[:50] + "..." if len(message_text) > 50 else message_text
+                
+                for member in other_members:
+                    try:
+                        _send_group_message_notification(c, ph, member, username, group_id, group_name, preview)
+                    except Exception as notif_err:
+                        logger.warning(f"Failed to send message notification to {member}: {notif_err}")
+                
+                conn.commit()
+            except Exception as notif_batch_err:
+                logger.warning(f"Failed to send group message notifications: {notif_batch_err}")
+            
+            # Check if @Steve is mentioned - trigger AI response in background
+            if message_text and re.search(r'@steve\b', message_text, re.IGNORECASE) and username != AI_USERNAME:
+                try:
+                    # Run Steve's response in a background thread to not block the request
+                    thread = threading.Thread(
+                        target=_trigger_steve_group_reply,
+                        args=(group_id, group_name, message_text, username, message_id)
+                    )
+                    thread.daemon = True
+                    thread.start()
+                    logger.info(f"Triggered Steve reply for group {group_id}")
+                except Exception as steve_err:
+                    logger.warning(f"Failed to trigger Steve reply: {steve_err}")
+            
             return jsonify({
                 "success": True,
                 "message": {
@@ -565,7 +612,36 @@ def send_group_message(group_id: int):
             
     except Exception as e:
         logger.error(f"Error sending message to group {group_id}: {e}")
-        return jsonify({"success": False, "error": "Failed to send message"}), 500
+        return jsonify({"success": False, "error": "Failed to send message"})
+
+
+def _send_group_message_notification(cursor, ph, recipient_username: str, sender_username: str, group_id: int, group_name: str, message_preview: str):
+    """Send notification for a new group message."""
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Insert notification into database  
+    cursor.execute(f"""
+        INSERT INTO notifications (username, type, message, link, created_at, is_read)
+        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, 0)
+    """, (
+        recipient_username,
+        "group_chat_message",
+        f"{sender_username} in {group_name}: {message_preview}",
+        f"/group_chat/{group_id}",
+        now
+    ))
+    
+    # Try to send push notification
+    try:
+        from backend.services.notifications import send_push_notification
+        send_push_notification(
+            recipient_username,
+            title=group_name,
+            body=f"{sender_username}: {message_preview}",
+            data={"type": "group_chat_message", "group_id": str(group_id)}
+        )
+    except Exception as push_err:
+        logger.warning(f"Push notification failed for group message: {push_err}")
 
 
 @group_chat_bp.route("/api/group_chat/<int:group_id>/leave", methods=["POST"])
@@ -674,3 +750,228 @@ def delete_group_chat(group_id: int):
     except Exception as e:
         logger.error(f"Error deleting group {group_id}: {e}")
         return jsonify({"success": False, "error": "Failed to delete group"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/add_members", methods=["POST"])
+@_login_required
+def add_members_to_group(group_id: int):
+    """Add members to an existing group chat."""
+    username = session["username"]
+    
+    try:
+        data = request.get_json() or {}
+        new_members = data.get("members", [])
+        
+        if not new_members:
+            return jsonify({"success": False, "error": "No members specified"}), 400
+        
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            _ensure_group_chat_tables(c)
+            
+            # Check if user is a member of the group
+            c.execute(f"""
+                SELECT g.name, g.creator_username, gcm.is_admin
+                FROM group_chats g
+                JOIN group_chat_members gcm ON g.id = gcm.group_id
+                WHERE g.id = {ph} AND gcm.username = {ph} AND g.is_active = 1
+            """, (group_id, username))
+            
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Not a member of this group"}), 404
+            
+            group_name = row["name"] if hasattr(row, "keys") else row[0]
+            
+            # Get current member count
+            c.execute(f"SELECT COUNT(*) as cnt FROM group_chat_members WHERE group_id = {ph}", (group_id,))
+            count_row = c.fetchone()
+            current_count = count_row["cnt"] if hasattr(count_row, "keys") else count_row[0]
+            
+            # Check if adding would exceed limit
+            if current_count + len(new_members) > MAX_GROUP_MEMBERS:
+                return jsonify({
+                    "success": False, 
+                    "error": f"Group chats are limited to {MAX_GROUP_MEMBERS} members. Consider creating a community for larger groups.",
+                    "limit_exceeded": True,
+                    "current_count": current_count,
+                    "max_members": MAX_GROUP_MEMBERS
+                }), 400
+            
+            # Get existing members to avoid duplicates
+            c.execute(f"SELECT username FROM group_chat_members WHERE group_id = {ph}", (group_id,))
+            existing_members = {r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()}
+            
+            now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            added_members = []
+            
+            for member in new_members:
+                member = str(member).strip()
+                if member and member not in existing_members:
+                    # Insert new member
+                    c.execute(f"""
+                        INSERT INTO group_chat_members (group_id, username, joined_at, is_admin)
+                        VALUES ({ph}, {ph}, {ph}, 0)
+                    """, (group_id, member, now))
+                    added_members.append(member)
+                    
+                    # Send notification to the added user
+                    try:
+                        _send_group_add_notification(c, ph, member, username, group_id, group_name)
+                    except Exception as notif_err:
+                        logger.warning(f"Failed to send add notification to {member}: {notif_err}")
+            
+            conn.commit()
+            
+            return jsonify({
+                "success": True,
+                "added_members": added_members,
+                "message": f"Added {len(added_members)} member(s) to the group"
+            })
+            
+    except Exception as e:
+        logger.error(f"Error adding members to group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to add members"}), 500
+
+
+def _send_group_add_notification(cursor, ph, recipient_username: str, added_by: str, group_id: int, group_name: str):
+    """Send notification when user is added to a group."""
+    from backend.services.database import USE_MYSQL
+    
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Insert notification into database
+    cursor.execute(f"""
+        INSERT INTO notifications (username, type, message, link, created_at, is_read)
+        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, 0)
+    """, (
+        recipient_username,
+        "group_chat_add",
+        f"{added_by} added you to the group '{group_name}'",
+        f"/group_chat/{group_id}",
+        now
+    ))
+    
+    # Try to send push notification
+    try:
+        from backend.services.notifications import send_push_notification
+        send_push_notification(
+            recipient_username,
+            title="Added to Group",
+            body=f"{added_by} added you to '{group_name}'",
+            data={"type": "group_chat_add", "group_id": str(group_id)}
+        )
+    except Exception as push_err:
+        logger.warning(f"Push notification failed for group add: {push_err}")
+
+
+def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str, sender_username: str, reply_to_message_id: int):
+    """
+    Generate and post Steve's AI reply to a group chat message.
+    Runs in a background thread.
+    """
+    import time
+    
+    # Small delay to make it feel more natural
+    time.sleep(1.5)
+    
+    if not XAI_API_KEY:
+        logger.warning("XAI_API_KEY not configured, Steve cannot reply")
+        return
+    
+    try:
+        # Get recent messages for context
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Get last 10 messages for context
+            c.execute(f"""
+                SELECT sender_username, message_text, created_at
+                FROM group_chat_messages
+                WHERE group_id = {ph} AND message_text IS NOT NULL
+                ORDER BY created_at DESC
+                LIMIT 10
+            """, (group_id,))
+            
+            recent_messages = []
+            for row in c.fetchall():
+                sender = row["sender_username"] if hasattr(row, "keys") else row[0]
+                text = row["message_text"] if hasattr(row, "keys") else row[1]
+                if text:
+                    recent_messages.append(f"{sender}: {text}")
+            
+            recent_messages.reverse()  # Chronological order
+            
+            # Build context
+            context = f"Group chat: {group_name}\n\nRecent messages:\n" + "\n".join(recent_messages[-5:])
+            context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully and concisely."
+        
+        # Call xAI/Grok API
+        from openai import OpenAI
+        
+        client = OpenAI(
+            api_key=XAI_API_KEY,
+            base_url="https://api.x.ai/v1"
+        )
+        
+        system_prompt = """You are Steve, a helpful and friendly AI assistant in a group chat.
+Keep your responses concise (1-3 sentences max) and conversational.
+Be helpful, witty, and engaging. You can use emojis occasionally.
+Don't be overly formal - this is a casual group chat."""
+        
+        response = client.chat.completions.create(
+            model="grok-3-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": context}
+            ],
+            max_tokens=200,
+            temperature=0.7
+        )
+        
+        ai_response = response.choices[0].message.content.strip()
+        
+        if not ai_response:
+            logger.warning("Steve got empty response from API")
+            return
+        
+        # Post Steve's message to the group
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            now = datetime.now().isoformat()
+            
+            c.execute(f"""
+                INSERT INTO group_chat_messages (group_id, sender_username, message_text, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph})
+            """, (group_id, AI_USERNAME, ai_response, now))
+            
+            steve_message_id = c.lastrowid
+            
+            # Update group's updated_at
+            c.execute(f"UPDATE group_chats SET updated_at = {ph} WHERE id = {ph}", (now, group_id))
+            
+            conn.commit()
+            
+            logger.info(f"Steve replied to group {group_id} with message ID {steve_message_id}")
+            
+            # Send notifications to group members (except Steve)
+            c.execute(f"SELECT username FROM group_chat_members WHERE group_id = {ph} AND username != {ph}", (group_id, AI_USERNAME))
+            members = [r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
+            
+            preview = ai_response[:50] + "..." if len(ai_response) > 50 else ai_response
+            
+            for member in members:
+                try:
+                    _send_group_message_notification(c, ph, member, AI_USERNAME, group_id, group_name, preview)
+                except Exception:
+                    pass
+            
+            conn.commit()
+            
+    except Exception as e:
+        logger.error(f"Error in Steve group reply: {e}", exc_info=True)
