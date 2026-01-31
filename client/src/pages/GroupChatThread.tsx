@@ -801,6 +801,27 @@ export default function GroupChatThread() {
     }
   }
 
+  // Render text with @mentions highlighted in turquoise
+  const renderTextWithMentions = (text: string) => {
+    if (!text) return null
+    
+    // Pattern to match @username (letters, numbers, underscores)
+    const mentionPattern = /(@\w+)/g
+    const parts = text.split(mentionPattern)
+    
+    return parts.map((part, index) => {
+      if (part.match(/^@\w+$/)) {
+        // This is a mention - style it in turquoise
+        return (
+          <span key={index} className="text-[#4db6ac] font-medium">
+            {part}
+          </span>
+        )
+      }
+      return part
+    })
+  }
+
   // Message action handlers
   const handleReaction = (messageId: number, emoji: string) => {
     setReactions(prev => {
@@ -1169,7 +1190,7 @@ export default function GroupChatThread() {
                                     ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30' 
                                     : `liquid-glass-bubble ${isSentByMe ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
                                 }`}>
-                                  {msg.text}
+                                  {renderTextWithMentions(msg.text)}
                                   {isOptimistic && (
                                     <span className="ml-2 text-[10px] text-white/60">
                                       <i className="fa-solid fa-clock text-[8px] mr-1" />
