@@ -206,33 +206,28 @@ export default function GroupChatThread() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' })
   }, [])
 
-  // Reset scroll state when entering chat
+  // Reset scroll state when entering chat and do initial positioning
   useEffect(() => {
     setIsScrollReady(false)
     userHasScrolledRef.current = false
-  }, [group_id])
-
-  // Initial scroll positioning - multiple delayed scrolls to catch images loading
-  useEffect(() => {
-    const el = listRef.current
-    if (!el) return
     
-    // Aggressive delayed scrolls for initial load
-    const initialScrollTimers = [50, 100, 250, 500, 800, 1200].map(delay =>
+    // Scroll to bottom multiple times to catch async content loading
+    const timers = [50, 100, 200, 400].map(delay =>
       setTimeout(() => {
-        if (!userHasScrolledRef.current) {
-          scrollToBottom()
-          if (delay >= 500 && !isScrollReady) {
-            setIsScrollReady(true)
-          }
-        }
+        scrollToBottom()
       }, delay)
     )
     
+    // Show content after brief delay for scroll to position
+    const showTimer = setTimeout(() => {
+      setIsScrollReady(true)
+    }, 150)
+    
     return () => {
-      initialScrollTimers.forEach(clearTimeout)
+      timers.forEach(clearTimeout)
+      clearTimeout(showTimer)
     }
-  }, [group_id, scrollToBottom, isScrollReady])
+  }, [group_id, scrollToBottom])
 
   // Track user scroll to detect manual scrolling
   useEffect(() => {
