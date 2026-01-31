@@ -51,6 +51,23 @@ def _ensure_voice_column(cursor):
             logger.warning(f"Could not add voice_path column: {e}")
 
 
+def _ensure_community_id_column(cursor):
+    """Ensure community_id column exists in group_chats table."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT community_id FROM group_chats LIMIT 1")
+    except Exception:
+        # Column doesn't exist, add it
+        try:
+            if USE_MYSQL:
+                cursor.execute("ALTER TABLE group_chats ADD COLUMN community_id INT DEFAULT NULL")
+            else:
+                cursor.execute("ALTER TABLE group_chats ADD COLUMN community_id INTEGER DEFAULT NULL")
+            logger.info("Added community_id column to group_chats")
+        except Exception as e:
+            logger.warning(f"Could not add community_id column: {e}")
+
+
 def _ensure_group_chat_tables(cursor):
     """Ensure group chat tables exist."""
     from backend.services.database import USE_MYSQL
@@ -59,6 +76,7 @@ def _ensure_group_chat_tables(cursor):
     try:
         cursor.execute("SELECT 1 FROM group_chats LIMIT 1")
         _ensure_voice_column(cursor)  # Ensure voice column exists
+        _ensure_community_id_column(cursor)  # Ensure community_id column exists
         return  # Table exists, no need to create
     except Exception:
         pass  # Table doesn't exist, create it
@@ -173,6 +191,7 @@ def create_group_chat():
     
     name = data.get("name", "").strip()
     members = data.get("members", [])
+    community_id = data.get("community_id")
     
     if not name:
         return jsonify({"success": False, "error": "Group name is required"}), 400
@@ -196,20 +215,43 @@ def create_group_chat():
             
             _ensure_group_chat_tables(c)
             
-            # Verify all members exist
-            for member in all_members:
-                if member == username:
-                    continue
-                c.execute(f"SELECT 1 FROM users WHERE username = {ph}", (member,))
+            # If community_id provided, verify all members belong to that community
+            if community_id:
+                # Verify creator is a member of the community
+                c.execute(f"""
+                    SELECT 1 FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE uc.community_id = {ph} AND u.username = {ph}
+                """, (community_id, username))
                 if not c.fetchone():
-                    return jsonify({"success": False, "error": f"User '{member}' not found"}), 404
+                    return jsonify({"success": False, "error": "You are not a member of this community"}), 403
+                
+                # Verify all other members belong to the community
+                for member in all_members:
+                    if member == username:
+                        continue
+                    c.execute(f"""
+                        SELECT 1 FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE uc.community_id = {ph} AND u.username = {ph}
+                    """, (community_id, member))
+                    if not c.fetchone():
+                        return jsonify({"success": False, "error": f"User '{member}' is not a member of this community"}), 400
+            else:
+                # Verify all members exist
+                for member in all_members:
+                    if member == username:
+                        continue
+                    c.execute(f"SELECT 1 FROM users WHERE username = {ph}", (member,))
+                    if not c.fetchone():
+                        return jsonify({"success": False, "error": f"User '{member}' not found"}), 404
             
             # Create the group chat
             now = datetime.now().isoformat()
             c.execute(f"""
-                INSERT INTO group_chats (name, creator_username, created_at, updated_at)
-                VALUES ({ph}, {ph}, {ph}, {ph})
-            """, (name, username, now, now))
+                INSERT INTO group_chats (name, creator_username, community_id, created_at, updated_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
+            """, (name, username, community_id, now, now))
             
             group_id = c.lastrowid
             
@@ -223,13 +265,14 @@ def create_group_chat():
             
             conn.commit()
             
-            logger.info(f"Created group chat '{name}' (ID: {group_id}) by {username} with {len(all_members)} members")
+            logger.info(f"Created group chat '{name}' (ID: {group_id}) by {username} with {len(all_members)} members, community_id={community_id}")
             
             return jsonify({
                 "success": True,
                 "group_id": group_id,
                 "name": name,
                 "members": all_members,
+                "community_id": community_id,
             })
             
     except Exception as e:
@@ -342,7 +385,7 @@ def get_group_chat(group_id: int):
             
             # Check if user is a member
             c.execute(f"""
-                SELECT g.id, g.name, g.creator_username, g.created_at, gcm.is_admin
+                SELECT g.id, g.name, g.creator_username, g.created_at, g.community_id, gcm.is_admin
                 FROM group_chats g
                 JOIN group_chat_members gcm ON g.id = gcm.group_id
                 WHERE g.id = {ph} AND gcm.username = {ph} AND g.is_active = 1
@@ -355,7 +398,16 @@ def get_group_chat(group_id: int):
             group_name = row["name"] if hasattr(row, "keys") else row[1]
             creator = row["creator_username"] if hasattr(row, "keys") else row[2]
             created_at = row["created_at"] if hasattr(row, "keys") else row[3]
-            is_admin = row["is_admin"] if hasattr(row, "keys") else row[4]
+            community_id = row["community_id"] if hasattr(row, "keys") else row[4]
+            is_admin = row["is_admin"] if hasattr(row, "keys") else row[5]
+            
+            # Get community name if community_id exists
+            community_name = None
+            if community_id:
+                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
+                comm_row = c.fetchone()
+                if comm_row:
+                    community_name = comm_row["name"] if hasattr(comm_row, "keys") else comm_row[0]
             
             # Get all members
             c.execute(f"""
@@ -382,6 +434,8 @@ def get_group_chat(group_id: int):
                     "name": group_name,
                     "creator": creator,
                     "created_at": created_at,
+                    "community_id": community_id,
+                    "community_name": community_name,
                     "is_admin": bool(is_admin),
                     "members": members,
                 }
@@ -752,6 +806,67 @@ def delete_group_chat(group_id: int):
         return jsonify({"success": False, "error": "Failed to delete group"}), 500
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/available_members", methods=["GET"])
+@_login_required
+def get_available_members(group_id: int):
+    """Get community members who can be added to the group."""
+    username = session["username"]
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            _ensure_group_chat_tables(c)
+            
+            # Get group info including community_id
+            c.execute(f"""
+                SELECT g.community_id, gcm.is_admin
+                FROM group_chats g
+                JOIN group_chat_members gcm ON g.id = gcm.group_id
+                WHERE g.id = {ph} AND gcm.username = {ph} AND g.is_active = 1
+            """, (group_id, username))
+            
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Not a member of this group"}), 404
+            
+            community_id = row["community_id"] if hasattr(row, "keys") else row[0]
+            
+            if not community_id:
+                return jsonify({"success": True, "members": [], "message": "This group is not linked to a community"})
+            
+            # Get existing group members
+            c.execute(f"SELECT username FROM group_chat_members WHERE group_id = {ph}", (group_id,))
+            existing_members = {r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()}
+            
+            # Get all community members who are NOT already in the group
+            c.execute(f"""
+                SELECT u.username, up.display_name, up.profile_picture
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                LEFT JOIN user_profiles up ON u.username = up.username
+                WHERE uc.community_id = {ph}
+                ORDER BY u.username
+            """, (community_id,))
+            
+            available = []
+            for m_row in c.fetchall():
+                member_username = m_row["username"] if hasattr(m_row, "keys") else m_row[0]
+                if member_username not in existing_members:
+                    available.append({
+                        "username": member_username,
+                        "display_name": m_row["display_name"] if hasattr(m_row, "keys") else m_row[1],
+                        "profile_picture": m_row["profile_picture"] if hasattr(m_row, "keys") else m_row[2],
+                    })
+            
+            return jsonify({"success": True, "members": available})
+            
+    except Exception as e:
+        logger.error(f"Error getting available members for group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to load available members"}), 500
+
+
 @group_chat_bp.route("/api/group_chat/<int:group_id>/add_members", methods=["POST"])
 @_login_required
 def add_members_to_group(group_id: int):
@@ -771,9 +886,9 @@ def add_members_to_group(group_id: int):
             
             _ensure_group_chat_tables(c)
             
-            # Check if user is a member of the group
+            # Check if user is a member of the group and get group info
             c.execute(f"""
-                SELECT g.name, g.creator_username, gcm.is_admin
+                SELECT g.name, g.creator_username, g.community_id, gcm.is_admin
                 FROM group_chats g
                 JOIN group_chat_members gcm ON g.id = gcm.group_id
                 WHERE g.id = {ph} AND gcm.username = {ph} AND g.is_active = 1
@@ -784,6 +899,7 @@ def add_members_to_group(group_id: int):
                 return jsonify({"success": False, "error": "Not a member of this group"}), 404
             
             group_name = row["name"] if hasattr(row, "keys") else row[0]
+            community_id = row["community_id"] if hasattr(row, "keys") else row[2]
             
             # Get current member count
             c.execute(f"SELECT COUNT(*) as cnt FROM group_chat_members WHERE group_id = {ph}", (group_id,))
@@ -803,6 +919,22 @@ def add_members_to_group(group_id: int):
             # Get existing members to avoid duplicates
             c.execute(f"SELECT username FROM group_chat_members WHERE group_id = {ph}", (group_id,))
             existing_members = {r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()}
+            
+            # If group has a community, verify all new members belong to it
+            if community_id:
+                for member in new_members:
+                    member = str(member).strip()
+                    if member and member not in existing_members:
+                        c.execute(f"""
+                            SELECT 1 FROM user_communities uc
+                            JOIN users u ON uc.user_id = u.id
+                            WHERE uc.community_id = {ph} AND u.username = {ph}
+                        """, (community_id, member))
+                        if not c.fetchone():
+                            return jsonify({
+                                "success": False, 
+                                "error": f"User '{member}' is not a member of this community"
+                            }), 400
             
             now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
             added_members = []

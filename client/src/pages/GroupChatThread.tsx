@@ -38,6 +38,8 @@ type GroupInfo = {
   created_at: string
   is_admin: boolean
   members: Member[]
+  community_id?: number
+  community_name?: string
 }
 
 export default function GroupChatThread() {
@@ -71,8 +73,8 @@ export default function GroupChatThread() {
   }, [])
   const [showMembers, setShowMembers] = useState(false)
   const [showAddMembers, setShowAddMembers] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Array<{ username: string; display_name?: string; profile_picture?: string }>>([])
+  const [availableMembers, setAvailableMembers] = useState<Array<{ username: string; display_name?: string; profile_picture?: string }>>([])
+  const [loadingAvailable, setLoadingAvailable] = useState(false)
   const [selectedNewMembers, setSelectedNewMembers] = useState<string[]>([])
   const [addingMembers, setAddingMembers] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
@@ -713,29 +715,22 @@ export default function GroupChatThread() {
     }
   }
 
-  // Search users for adding to group
-  const searchUsers = async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([])
-      return
-    }
-    
+  // Load available community members for adding to group
+  const loadAvailableMembers = async () => {
+    setLoadingAvailable(true)
     try {
-      const response = await fetch(`/api/search_users?q=${encodeURIComponent(query)}`, {
+      const response = await fetch(`/api/group_chat/${group_id}/available_members`, {
         credentials: 'include',
       })
       const data = await response.json()
       
-      if (data.success && data.users) {
-        // Filter out existing members
-        const existingUsernames = group?.members.map(m => m.username.toLowerCase()) || []
-        const filtered = data.users.filter((u: { username: string }) => 
-          !existingUsernames.includes(u.username.toLowerCase())
-        )
-        setSearchResults(filtered)
+      if (data.success) {
+        setAvailableMembers(data.members || [])
       }
     } catch (err) {
-      console.error('Error searching users:', err)
+      console.error('Error loading available members:', err)
+    } finally {
+      setLoadingAvailable(false)
     }
   }
 
@@ -765,8 +760,7 @@ export default function GroupChatThread() {
         loadGroup()
         setShowAddMembers(false)
         setSelectedNewMembers([])
-        setSearchQuery('')
-        setSearchResults([])
+        setAvailableMembers([])
       } else {
         if (data.limit_exceeded) {
           alert(`Group chats are limited to ${data.max_members} members. For larger groups, consider creating a community or sub-community.`)
@@ -938,6 +932,7 @@ export default function GroupChatThread() {
                   onClick={() => {
                     setHeaderMenuOpen(false)
                     setShowAddMembers(true)
+                    loadAvailableMembers()
                   }}
                 >
                   <i className="fa-solid fa-user-plus text-xs text-[#4db6ac]" />
@@ -1587,9 +1582,8 @@ export default function GroupChatThread() {
           className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
           onClick={() => {
             setShowAddMembers(false)
-            setSearchQuery('')
-            setSearchResults([])
             setSelectedNewMembers([])
+            setAvailableMembers([])
           }}
         >
           <div
@@ -1602,14 +1596,16 @@ export default function GroupChatThread() {
                 <div className="text-xs text-[#9fb0b5]">
                   {group.members.length}/5 members
                   {group.members.length >= 5 && ' (limit reached)'}
+                  {group.community_name && (
+                    <span className="ml-1">• {group.community_name}</span>
+                  )}
                 </div>
               </div>
               <button
                 onClick={() => {
                   setShowAddMembers(false)
-                  setSearchQuery('')
-                  setSearchResults([])
                   setSelectedNewMembers([])
+                  setAvailableMembers([])
                 }}
                 className="p-2 rounded-full hover:bg-white/5"
               >
@@ -1636,27 +1632,22 @@ export default function GroupChatThread() {
                   Create Community
                 </button>
               </div>
+            ) : !group.community_id ? (
+              <div className="p-6 text-center">
+                <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <i className="fa-solid fa-exclamation-triangle text-yellow-500 text-2xl" />
+                </div>
+                <h3 className="text-white font-medium mb-2">No Community Linked</h3>
+                <p className="text-white/60 text-sm mb-4">
+                  This group is not linked to a community. Members can only be added from the same community.
+                </p>
+              </div>
             ) : (
               <>
-                <div className="p-4">
-                  <div className="relative">
-                    <i className="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
-                    <input
-                      type="text"
-                      placeholder="Search users..."
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value)
-                        searchUsers(e.target.value)
-                      }}
-                      className="w-full bg-white/10 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
-                    />
-                  </div>
-                </div>
-
                 {/* Selected members */}
                 {selectedNewMembers.length > 0 && (
-                  <div className="px-4 pb-2">
+                  <div className="p-4 pb-2 border-b border-white/10">
+                    <div className="text-xs text-[#9fb0b5] mb-2">Selected ({selectedNewMembers.length})</div>
                     <div className="flex flex-wrap gap-2">
                       {selectedNewMembers.map((username) => (
                         <span
@@ -1676,11 +1667,17 @@ export default function GroupChatThread() {
                   </div>
                 )}
 
-                {/* Search results */}
+                {/* Available community members */}
                 <div className="max-h-[40vh] overflow-y-auto">
-                  {searchResults.length > 0 ? (
-                    <div className="p-4 pt-0 space-y-2">
-                      {searchResults.map((user) => (
+                  {loadingAvailable ? (
+                    <div className="p-8 text-center">
+                      <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-2xl" />
+                      <p className="text-white/50 text-sm mt-2">Loading members...</p>
+                    </div>
+                  ) : availableMembers.length > 0 ? (
+                    <div className="p-4 space-y-2">
+                      <div className="text-xs text-[#9fb0b5] mb-2">Community Members</div>
+                      {availableMembers.map((user) => (
                         <button
                           key={user.username}
                           className={`w-full flex items-center gap-3 p-2 rounded-lg transition ${
@@ -1716,13 +1713,14 @@ export default function GroupChatThread() {
                         </button>
                       ))}
                     </div>
-                  ) : searchQuery.trim() ? (
-                    <div className="p-4 text-center text-white/50 text-sm">
-                      No users found
-                    </div>
                   ) : (
-                    <div className="p-4 text-center text-white/50 text-sm">
-                      Search for users to add
+                    <div className="p-6 text-center">
+                      <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <i className="fa-solid fa-user-check text-white/40" />
+                      </div>
+                      <p className="text-white/50 text-sm">
+                        All community members are already in this group
+                      </p>
                     </div>
                   )}
                 </div>
