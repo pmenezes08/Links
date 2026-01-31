@@ -47,7 +47,14 @@ export default function GroupChatThread() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
-  const [sending, setSending] = useState(false)
+  const [sending, setSendingState] = useState(false)
+  const sendingLockRef = useRef(false)
+  
+  // Sync ref and state for reliable double-click prevention
+  const setSending = useCallback((value: boolean) => {
+    sendingLockRef.current = value
+    setSendingState(value)
+  }, [])
   const [showMembers, setShowMembers] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
@@ -361,11 +368,18 @@ export default function GroupChatThread() {
 
   const handleSend = async () => {
     const text = draft.trim()
-    if (!text || sending) return
+    // Use ref for synchronous check to prevent double-sends
+    if (!text || sendingLockRef.current) return
 
+    // Lock immediately (synchronous) to prevent double-clicks
+    setSending(true)
+    
     // Clear draft immediately for instant feedback
     setDraft('')
-    setSending(true)
+    // Also clear textarea directly for immediate visual feedback
+    if (textareaRef.current) {
+      textareaRef.current.value = ''
+    }
     
     // Create optimistic message
     const now = new Date().toISOString()
@@ -1308,22 +1322,22 @@ export default function GroupChatThread() {
               <button
                 className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
                   sending
-                    ? 'bg-gray-600 text-gray-300'
+                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
                     : draft.trim()
                       ? 'bg-[#4db6ac] text-black'
                       : 'bg-white/12 text-white/70'
-                } active:scale-95`}
+                } ${!sending ? 'active:scale-95' : ''}`}
                 onPointerDown={(e) => {
-                  if (!draft.trim() || sending) return
+                  // Use ref for synchronous check
+                  if (!draft.trim() || sendingLockRef.current) return
                   e.preventDefault()
                   e.stopPropagation()
                   handleSend()
                 }}
                 onClick={(e) => {
-                  if (!draft.trim() || sending) return
+                  // Prevent default click behavior - pointerDown handles the action
                   e.preventDefault()
                   e.stopPropagation()
-                  handleSend()
                 }}
                 disabled={sending || !draft.trim()}
                 aria-label="Send"
