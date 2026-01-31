@@ -77,6 +77,8 @@ export default function GroupChatThread() {
   const lastMessageIdRef = useRef<number>(0)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
   const headerMenuRef = useRef<HTMLDivElement>(null)
+  // Track recently sent message IDs to prevent them from disappearing due to race conditions
+  const recentlySentMessagesRef = useRef<Map<number, Message>>(new Map())
 
   // Voice recording
   const { 
@@ -342,11 +344,24 @@ export default function GroupChatThread() {
         const newMaxId = newMessages.length > 0 ? Math.max(...newMessages.map(m => m.id)) : 0
         const hasNewMessages = newMaxId > lastMessageIdRef.current
 
-        // Preserve optimistic messages (negative IDs) that haven't been confirmed yet
+        // Preserve optimistic messages (negative IDs) and recently sent messages
         setMessages(prev => {
           const optimisticMessages = prev.filter(m => m.id < 0)
-          // Merge server messages with optimistic ones
-          return [...newMessages, ...optimisticMessages]
+          const newMessageIds = new Set(newMessages.map(m => m.id))
+          
+          // Get recently sent messages that aren't in the server response yet
+          const recentlySent: Message[] = []
+          recentlySentMessagesRef.current.forEach((msg, id) => {
+            if (!newMessageIds.has(id)) {
+              recentlySent.push(msg)
+            } else {
+              // Message is now in server response, remove from tracking
+              recentlySentMessagesRef.current.delete(id)
+            }
+          })
+          
+          // Merge: server messages + recently sent (not yet in server) + optimistic
+          return [...newMessages, ...recentlySent, ...optimisticMessages]
         })
         lastMessageIdRef.current = newMaxId
 
@@ -427,11 +442,19 @@ export default function GroupChatThread() {
       .then(response => response.json())
       .then(data => {
         if (data.success) {
+          const realMessage = data.message as Message
+          // Track this message to prevent it from disappearing due to race conditions
+          recentlySentMessagesRef.current.set(realMessage.id, realMessage)
+          // Auto-cleanup after 15 seconds (by then loadMessages should have it)
+          setTimeout(() => {
+            recentlySentMessagesRef.current.delete(realMessage.id)
+          }, 15000)
+          
           // Replace optimistic message with real one from server
           setMessages(prev => prev.map(m => 
-            m.id === tempId ? data.message : m
+            m.id === tempId ? realMessage : m
           ))
-          lastMessageIdRef.current = data.message.id
+          lastMessageIdRef.current = realMessage.id
         } else {
           // Remove optimistic message on failure
           setMessages(prev => prev.filter(m => m.id !== tempId))

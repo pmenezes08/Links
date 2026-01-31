@@ -1,4 +1,4 @@
-const SW_VERSION = '2.22.0'
+const SW_VERSION = '2.23.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
