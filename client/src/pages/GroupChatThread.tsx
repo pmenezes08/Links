@@ -929,8 +929,9 @@ export default function GroupChatThread() {
                   const showTime = showAvatar || (idx > 0 && 
                     new Date(msg.created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 60000)
                   const messageReaction = reactions[msg.id]
-                  // Check if optimistic using clientKey (starts with temp_) or negative ID
-                  const isOptimistic = msgWithKey.clientKey?.startsWith('temp_') || msg.id < 0
+                  // Check if this is a pending message (not yet confirmed by server)
+                  const isPending = pendingMessages.some(p => p.clientKey === msgWithKey.clientKey)
+                  const isOptimistic = isPending || msgWithKey.clientKey?.startsWith('temp_') || msg.id < 0
                   // Determine if message is sent by current user
                   // Compare case-insensitively and trim whitespace
                   const senderNormalized = (msg.sender || '').toLowerCase().trim()
@@ -951,7 +952,7 @@ export default function GroupChatThread() {
                           </div>
                         </div>
                       )}
-                      <div className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'} ${isSentByMe ? 'flex-row-reverse' : ''}`}>
+                      <div className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'} ${isSentByMe ? 'flex-row-reverse' : ''} ${isOptimistic ? 'opacity-70' : ''}`}>
                       <div className="w-8 flex-shrink-0">
                         {showAvatar && msg.sender && !isSentByMe && (
                           <Avatar
