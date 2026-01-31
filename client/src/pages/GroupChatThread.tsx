@@ -366,22 +366,30 @@ export default function GroupChatThread() {
     }
   }, [loadGroup, loadMessages])
 
-  const handleSend = async () => {
-    const text = draft.trim()
+  const handleSend = useCallback(async () => {
+    // Get current draft value from textarea directly to avoid stale closures
+    const currentDraft = textareaRef.current?.value || draft
+    const text = currentDraft.trim()
+    
     // Use ref for synchronous check to prevent double-sends
     if (!text || sendingLockRef.current) return
 
     // Lock immediately (synchronous) to prevent double-clicks
-    setSending(true)
+    sendingLockRef.current = true
+    setSendingState(true)
     
-    // Clear draft immediately for instant feedback
+    // Clear draft immediately - both state and textarea
     setDraft('')
+    if (textareaRef.current) {
+      textareaRef.current.value = ''
+    }
     
     // Create optimistic message
     const now = new Date().toISOString()
+    const tempId = -Date.now()
     const optimisticMessage: Message = {
-      id: -Date.now(), // Negative temp ID
-      sender: '', // Will be filled by server
+      id: tempId,
+      sender: '',
       text: text,
       image: null,
       voice: null,
@@ -407,25 +415,32 @@ export default function GroupChatThread() {
       if (data.success) {
         // Replace optimistic message with real one
         setMessages(prev => prev.map(m => 
-          m.id === optimisticMessage.id ? data.message : m
+          m.id === tempId ? data.message : m
         ))
         lastMessageIdRef.current = data.message.id
       } else {
         // Remove optimistic message and restore draft on failure
-        setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
+        setMessages(prev => prev.filter(m => m.id !== tempId))
         setDraft(text)
+        if (textareaRef.current) {
+          textareaRef.current.value = text
+        }
         console.error('Failed to send:', data.error)
       }
     } catch (err) {
       // Remove optimistic message and restore draft on error
-      setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id))
+      setMessages(prev => prev.filter(m => m.id !== tempId))
       setDraft(text)
+      if (textareaRef.current) {
+        textareaRef.current.value = text
+      }
       console.error('Error sending message:', err)
     } finally {
-      setSending(false)
+      sendingLockRef.current = false
+      setSendingState(false)
       textareaRef.current?.focus()
     }
-  }
+  }, [draft, group_id, scrollToBottom])
 
   const handlePhotoSelect = () => {
     setShowAttachMenu(false)
@@ -864,7 +879,7 @@ export default function GroupChatThread() {
                 <div className="text-xs mt-1">Send a message to start the conversation</div>
               </div>
             ) : (
-              <div className="space-y-1 py-3">
+              <div className="space-y-3 py-3">
                 {messages.map((msg, idx) => {
                   const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender
                   const showTime = showAvatar || (idx > 0 && 
@@ -914,7 +929,7 @@ export default function GroupChatThread() {
                           >
                             <div className={`relative ${isOptimistic ? 'opacity-60' : ''} ${messageReaction ? 'mb-5' : ''}`}>
                               {msg.text && (
-                                <div className="text-[14px] text-white/90 whitespace-pre-wrap break-words">
+                                <div className="text-[14px] text-white/90 whitespace-pre-wrap break-words bg-white/5 border border-white/10 rounded-xl px-3 py-2">
                                   {msg.text}
                                 </div>
                               )}
@@ -1212,9 +1227,7 @@ export default function GroupChatThread() {
                     // Send on Enter (without Shift for new line)
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
-                      if (draft.trim() && !sendingLockRef.current) {
-                        handleSend()
-                      }
+                      handleSend()
                     }
                   }}
                 />
@@ -1332,11 +1345,7 @@ export default function GroupChatThread() {
                       ? 'bg-[#4db6ac] text-black'
                       : 'bg-white/12 text-white/70'
                 } ${!sending ? 'active:scale-95' : ''}`}
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  // Use ref for synchronous check to prevent double-sends
-                  if (!draft.trim() || sendingLockRef.current) return
+                onClick={() => {
                   handleSend()
                 }}
                 disabled={sending || !draft.trim()}

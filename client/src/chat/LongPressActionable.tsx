@@ -45,40 +45,52 @@ export default function LongPressActionable({
   
   // Calculate menu position when showing - uses fixed positioning for reliability
   const calculateMenuStyle = useCallback((): React.CSSProperties => {
-    if (!containerRef.current) return { bottom: '100%', right: 8 }
+    if (!containerRef.current) return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
     
     const rect = containerRef.current.getBoundingClientRect()
     const viewportHeight = window.innerHeight
     const viewportWidth = window.innerWidth
     const menuHeight = 220 // Approximate menu height
     const menuWidth = 200 // Approximate menu width
-    const composerHeight = 80 // Approximate composer bar height
+    const safeAreaTop = 60 // Safe area for header
+    const safeAreaBottom = 100 // Safe area for composer
     
-    // Calculate available space below (above composer)
-    const spaceBelow = viewportHeight - rect.bottom - composerHeight
+    // Calculate vertical position
+    let top: number
+    const spaceAbove = rect.top - safeAreaTop
+    const spaceBelow = viewportHeight - rect.bottom - safeAreaBottom
     
-    // Prefer above if message is near bottom or not enough space below
-    const showAbove = spaceBelow < menuHeight || rect.bottom > viewportHeight - 200
-    
-    // Calculate horizontal position (keep menu within viewport)
-    let rightPos = viewportWidth - rect.right + 8
-    if (rightPos < 8) rightPos = 8
-    if (rightPos + menuWidth > viewportWidth - 8) rightPos = viewportWidth - menuWidth - 8
-    
-    if (showAbove) {
-      // Position above the message
-      return {
-        position: 'fixed',
-        bottom: viewportHeight - rect.top + 8,
-        right: rightPos,
-      }
+    if (spaceBelow >= menuHeight) {
+      // Enough space below - show below
+      top = rect.bottom + 8
+    } else if (spaceAbove >= menuHeight) {
+      // Enough space above - show above
+      top = rect.top - menuHeight - 8
     } else {
-      // Position below the message
-      return {
-        position: 'fixed',
-        top: rect.bottom + 8,
-        right: rightPos,
-      }
+      // Not enough space either way - center in available space
+      top = Math.max(safeAreaTop + 8, Math.min(viewportHeight - safeAreaBottom - menuHeight - 8, rect.top - menuHeight / 2))
+    }
+    
+    // Calculate horizontal position - prefer left-aligned with message, keep within viewport
+    let left = rect.left
+    if (left + menuWidth > viewportWidth - 16) {
+      left = viewportWidth - menuWidth - 16
+    }
+    if (left < 16) {
+      left = 16
+    }
+    
+    // Ensure top is within bounds
+    if (top < safeAreaTop) top = safeAreaTop
+    if (top + menuHeight > viewportHeight - safeAreaBottom) {
+      top = viewportHeight - safeAreaBottom - menuHeight
+    }
+    
+    return {
+      position: 'fixed',
+      top,
+      left,
+      zIndex: 9999,
     }
   }, [])
   
@@ -140,7 +152,7 @@ export default function LongPressActionable({
         <>
           <div className="fixed inset-0 z-40" onClick={() => { setShowMenu(false); setShowEmojiPicker(false) }} />
           <div 
-            className="z-50 bg-[#111] border border-white/15 rounded-lg shadow-xl px-2 py-2 min-w-[160px]"
+            className="bg-[#111] border border-white/15 rounded-lg shadow-xl px-2 py-2 min-w-[160px]"
             style={menuStyle}
           >
             <div className="flex items-center gap-2 px-2 pb-2 border-b border-white/10">
