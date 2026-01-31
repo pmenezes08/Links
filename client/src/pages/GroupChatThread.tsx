@@ -376,10 +376,6 @@ export default function GroupChatThread() {
     
     // Clear draft immediately for instant feedback
     setDraft('')
-    // Also clear textarea directly for immediate visual feedback
-    if (textareaRef.current) {
-      textareaRef.current.value = ''
-    }
     
     // Create optimistic message
     const now = new Date().toISOString()
@@ -844,16 +840,16 @@ export default function GroupChatThread() {
 
       {/* Content area - with top padding for fixed header */}
       <div 
-        className="flex-1 flex flex-col min-h-0"
+        className="flex-1 flex flex-col min-h-0 px-0"
         style={{
           paddingTop: 'calc(env(safe-area-inset-top, 0px) + 48px)',
         }}
       >
-        <div className="flex-1 flex flex-col min-h-0 max-w-3xl w-full mx-auto">
+        <div className="mx-auto flex max-w-3xl w-full flex-1 flex-col min-h-0">
           {/* Messages List */}
           <div
             ref={listRef}
-            className="flex-1 overflow-y-auto overflow-x-hidden px-3"
+            className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-1 sm:px-2"
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'auto',
@@ -1212,6 +1208,15 @@ export default function GroupChatThread() {
                   onChange={(e) => {
                     setDraft(e.target.value)
                   }}
+                  onKeyDown={(e) => {
+                    // Send on Enter (without Shift for new line)
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      if (draft.trim() && !sendingLockRef.current) {
+                        handleSend()
+                      }
+                    }
+                  }}
                 />
               )}
             </div>
@@ -1327,17 +1332,12 @@ export default function GroupChatThread() {
                       ? 'bg-[#4db6ac] text-black'
                       : 'bg-white/12 text-white/70'
                 } ${!sending ? 'active:scale-95' : ''}`}
-                onPointerDown={(e) => {
-                  // Use ref for synchronous check
-                  if (!draft.trim() || sendingLockRef.current) return
-                  e.preventDefault()
-                  e.stopPropagation()
-                  handleSend()
-                }}
                 onClick={(e) => {
-                  // Prevent default click behavior - pointerDown handles the action
                   e.preventDefault()
                   e.stopPropagation()
+                  // Use ref for synchronous check to prevent double-sends
+                  if (!draft.trim() || sendingLockRef.current) return
+                  handleSend()
                 }}
                 disabled={sending || !draft.trim()}
                 aria-label="Send"
