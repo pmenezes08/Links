@@ -720,7 +720,7 @@ export default function GroupChatThread() {
 
   if (loading && !group) {
     return (
-      <div className="min-h-screen glass-page chat-thread-bg text-white flex items-center justify-center">
+      <div className="min-h-screen chat-thread-bg text-white flex items-center justify-center">
         <div className="text-[#9fb0b5]">
           <i className="fa-solid fa-spinner fa-spin mr-2" />
           Loading...
@@ -731,7 +731,7 @@ export default function GroupChatThread() {
 
   if (error) {
     return (
-      <div className="min-h-screen glass-page chat-thread-bg text-white flex items-center justify-center">
+      <div className="min-h-screen chat-thread-bg text-white flex items-center justify-center">
         <div className="text-center">
           <div className="text-red-400 mb-4">{error}</div>
           <button
@@ -747,7 +747,7 @@ export default function GroupChatThread() {
 
   return (
     <div 
-      className="glass-page text-white chat-thread-bg"
+      className="text-white chat-thread-bg"
       style={{
         position: 'fixed',
         left: 0,
