@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { CSSProperties } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
@@ -401,11 +402,13 @@ export default function GroupChatThread() {
       profile_picture: null,
     }
     
-    // Add optimistic message immediately - this triggers a re-render
-    setMessages(prev => [...prev, optimisticMessage])
+    // Add optimistic message immediately with flushSync to force synchronous render
+    flushSync(() => {
+      setMessages(prev => [...prev, optimisticMessage])
+    })
     
-    // Scroll to bottom after a brief delay to let render complete
-    setTimeout(() => scrollToBottom(), 10)
+    // Scroll to bottom immediately after the synchronous render
+    scrollToBottom()
 
     // Send to server in the background (non-blocking)
     // Using .then() instead of async/await ensures the function returns immediately
@@ -928,10 +931,20 @@ export default function GroupChatThread() {
                             onDelete={() => handleDeleteMessage(msg.id)}
                             disabled={isOptimistic}
                           >
-                            <div className={`relative ${isOptimistic ? 'opacity-60' : ''} ${messageReaction ? 'mb-5' : ''}`}>
+                            <div className={`relative ${messageReaction ? 'mb-5' : ''}`}>
                               {msg.text && (
-                                <div className={`liquid-glass-bubble ${isSentByMe ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'} text-[14px] text-white whitespace-pre-wrap break-words rounded-2xl px-3 py-2 max-w-[280px] ${isSentByMe ? 'rounded-br-lg' : 'rounded-bl-lg'}`}>
+                                <div className={`text-[14px] text-white whitespace-pre-wrap break-words rounded-2xl px-3 py-2 max-w-[280px] ${isSentByMe ? 'rounded-br-lg' : 'rounded-bl-lg'} ${
+                                  isOptimistic 
+                                    ? 'bg-gray-500/50 border border-gray-400/30' 
+                                    : `liquid-glass-bubble ${isSentByMe ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
+                                }`}>
                                   {msg.text}
+                                  {isOptimistic && (
+                                    <span className="ml-2 text-[10px] text-white/50">
+                                      <i className="fa-solid fa-clock text-[8px] mr-1" />
+                                      sending...
+                                    </span>
+                                  )}
                                 </div>
                               )}
                               {msg.image && (
