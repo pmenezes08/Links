@@ -806,6 +806,97 @@ def delete_group_chat(group_id: int):
         return jsonify({"success": False, "error": "Failed to delete group"}), 500
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/message/<int:message_id>/delete", methods=["POST"])
+@_login_required
+def delete_group_message(group_id: int, message_id: int):
+    """Delete a specific message in a group chat. Only the sender can delete their own messages."""
+    username = session["username"]
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            _ensure_group_chat_tables(c)
+            
+            # Check if user is a member of the group and owns the message
+            c.execute(f"""
+                SELECT m.sender_username, gcm.username
+                FROM group_chat_messages m
+                JOIN group_chat_members gcm ON m.group_id = gcm.group_id
+                WHERE m.id = {ph} AND m.group_id = {ph} AND gcm.username = {ph}
+            """, (message_id, group_id, username))
+            
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Message not found or access denied"}), 404
+            
+            sender = row["sender_username"] if hasattr(row, "keys") else row[0]
+            
+            # Only allow sender to delete their own messages
+            if sender != username:
+                return jsonify({"success": False, "error": "You can only delete your own messages"}), 403
+            
+            # Soft delete the message (mark as deleted)
+            c.execute(f"UPDATE group_chat_messages SET is_deleted = 1 WHERE id = {ph}", (message_id,))
+            
+            conn.commit()
+            
+            return jsonify({"success": True})
+            
+    except Exception as e:
+        logger.error(f"Error deleting message {message_id} in group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to delete message"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/message/<int:message_id>/edit", methods=["POST"])
+@_login_required
+def edit_group_message(group_id: int, message_id: int):
+    """Edit a specific message in a group chat. Only the sender can edit their own messages."""
+    username = session["username"]
+    data = request.get_json() or {}
+    new_text = data.get("text", "").strip()
+    
+    if not new_text:
+        return jsonify({"success": False, "error": "Message text is required"}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            _ensure_group_chat_tables(c)
+            
+            # Check if user is a member of the group and owns the message
+            c.execute(f"""
+                SELECT m.sender_username, m.message_text
+                FROM group_chat_messages m
+                JOIN group_chat_members gcm ON m.group_id = gcm.group_id
+                WHERE m.id = {ph} AND m.group_id = {ph} AND gcm.username = {ph} AND m.is_deleted = 0
+            """, (message_id, group_id, username))
+            
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Message not found or access denied"}), 404
+            
+            sender = row["sender_username"] if hasattr(row, "keys") else row[0]
+            
+            # Only allow sender to edit their own messages
+            if sender != username:
+                return jsonify({"success": False, "error": "You can only edit your own messages"}), 403
+            
+            # Update the message
+            c.execute(f"UPDATE group_chat_messages SET message_text = {ph} WHERE id = {ph}", (new_text, message_id))
+            
+            conn.commit()
+            
+            return jsonify({"success": True, "text": new_text})
+            
+    except Exception as e:
+        logger.error(f"Error editing message {message_id} in group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to edit message"}), 500
+
+
 @group_chat_bp.route("/api/group_chat/<int:group_id>/available_members", methods=["GET"])
 @_login_required
 def get_available_members(group_id: int):

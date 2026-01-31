@@ -83,6 +83,10 @@ export default function GroupChatThread() {
   const [previewPlaying, setPreviewPlaying] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const [reactions, setReactions] = useState<Record<number, string>>({})
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editText, setEditText] = useState('')
+  const [editingSaving, setEditingSaving] = useState(false)
+  const pendingDeletions = useRef<Set<number>>(new Set())
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -368,10 +372,12 @@ export default function GroupChatThread() {
       const response = await fetch(`/api/group_chat/${group_id}/messages`, { credentials: 'include' })
       const data = await response.json()
       if (data.success) {
-        const newServerMessages = data.messages as Message[]
+        const newServerMessages = (data.messages as Message[]).filter(
+          m => !pendingDeletions.current.has(m.id)
+        )
         const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
 
-        // Simply set server messages - pending messages are separate
+        // Simply set server messages - pending messages are separate, filter out pending deletions
         setServerMessages(newServerMessages)
         
         // Remove any pending messages that now exist on server (by matching text and time)
@@ -813,10 +819,103 @@ export default function GroupChatThread() {
     }
   }
 
-  const handleDeleteMessage = (messageId: number) => {
-    // For now, just remove from local state
-    // TODO: Add backend API for message deletion
+  const handleDeleteMessage = async (messageId: number, messageData: Message) => {
+    if (!confirm('Are you sure you want to delete this message?')) return
+    
+    // Add to pending deletions to prevent re-appearing from poll
+    pendingDeletions.current.add(messageId)
+    
+    // Optimistically remove the message
     setServerMessages(prev => prev.filter(m => m.id !== messageId))
+    
+    try {
+      const response = await fetch(`/api/group_chat/${group_id}/message/${messageId}/delete`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const data = await response.json()
+      
+      if (data.success) {
+        // Keep in pending deletions for a while to prevent re-appearing
+        setTimeout(() => {
+          pendingDeletions.current.delete(messageId)
+        }, 5000)
+      } else {
+        // Restore the message if deletion failed
+        pendingDeletions.current.delete(messageId)
+        setServerMessages(prev => {
+          if (prev.some(m => m.id === messageId)) return prev
+          return [...prev, messageData].sort((a, b) => 
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          )
+        })
+        alert(data.error || 'Failed to delete message')
+      }
+    } catch (err) {
+      console.error('Error deleting message:', err)
+      pendingDeletions.current.delete(messageId)
+      setServerMessages(prev => {
+        if (prev.some(m => m.id === messageId)) return prev
+        return [...prev, messageData].sort((a, b) => 
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        )
+      })
+      alert('Network error. Could not delete message.')
+    }
+  }
+
+  const handleStartEdit = (messageId: number, currentText: string) => {
+    setEditingId(messageId)
+    setEditText(currentText)
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingId || !editText.trim()) return
+    
+    const newText = editText.trim()
+    const oldMessage = serverMessages.find(m => m.id === editingId)
+    if (!oldMessage) return
+    
+    setEditingSaving(true)
+    
+    // Optimistically update the message
+    setServerMessages(prev => prev.map(m => 
+      m.id === editingId ? { ...m, text: newText } : m
+    ))
+    
+    try {
+      const response = await fetch(`/api/group_chat/${group_id}/message/${editingId}/edit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ text: newText }),
+      })
+      const data = await response.json()
+      
+      if (data.success) {
+        setEditingId(null)
+        setEditText('')
+      } else {
+        // Restore the old text
+        setServerMessages(prev => prev.map(m => 
+          m.id === editingId ? { ...m, text: oldMessage.text } : m
+        ))
+        alert(data.error || 'Failed to edit message')
+      }
+    } catch (err) {
+      console.error('Error editing message:', err)
+      setServerMessages(prev => prev.map(m => 
+        m.id === editingId ? { ...m, text: oldMessage.text } : m
+      ))
+      alert('Network error. Could not edit message.')
+    } finally {
+      setEditingSaving(false)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setEditText('')
   }
 
   if (loading && !group) {
@@ -1033,11 +1132,38 @@ export default function GroupChatThread() {
                             onReact={(emoji) => handleReaction(msg.id, emoji)}
                             onReply={() => {/* TODO: Implement reply */}}
                             onCopy={() => handleCopyMessage(msg.text)}
-                            onDelete={() => handleDeleteMessage(msg.id)}
-                            disabled={isOptimistic}
+                            onDelete={() => handleDeleteMessage(msg.id, msg)}
+                            onEdit={isSentByMe && msg.text && !msg.image && !msg.voice ? () => handleStartEdit(msg.id, msg.text || '') : undefined}
+                            disabled={isOptimistic || editingId === msg.id}
                           >
                             <div className={`relative ${messageReaction ? 'mb-5' : ''}`}>
-                              {msg.text && (
+                              {editingId === msg.id ? (
+                                <div className="flex flex-col gap-2 max-w-[280px]">
+                                  <textarea
+                                    value={editText}
+                                    onChange={(e) => setEditText(e.target.value)}
+                                    className="w-full bg-white/10 border border-[#4db6ac] rounded-lg px-3 py-2 text-[14px] text-white resize-none focus:outline-none"
+                                    rows={3}
+                                    autoFocus
+                                  />
+                                  <div className="flex gap-2 justify-end">
+                                    <button
+                                      onClick={handleCancelEdit}
+                                      className="px-3 py-1 text-xs text-white/60 hover:text-white"
+                                      disabled={editingSaving}
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      onClick={handleSaveEdit}
+                                      disabled={editingSaving || !editText.trim()}
+                                      className="px-3 py-1 text-xs bg-[#4db6ac] text-black rounded-lg disabled:opacity-50"
+                                    >
+                                      {editingSaving ? <i className="fa-solid fa-spinner fa-spin" /> : 'Save'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : msg.text && (
                                 <div className={`text-[14px] text-white whitespace-pre-wrap break-words rounded-2xl px-3 py-2 max-w-[280px] ${isSentByMe ? 'rounded-br-lg' : 'rounded-bl-lg'} ${
                                   isOptimistic 
                                     ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30' 
