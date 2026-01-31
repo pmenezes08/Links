@@ -756,34 +756,20 @@ def send_group_message(group_id: int):
 
 
 def _send_group_message_notification(cursor, ph, recipient_username: str, sender_username: str, group_id: int, group_name: str, message_preview: str, is_mention: bool = False):
-    """Send notification for a new group message."""
-    from backend.services.database import USE_MYSQL
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    """Send push notification for a new group message.
     
-    # Determine notification type and message based on whether it's a mention
+    Note: Group chat notifications do NOT go to the notifications table/bell icon.
+    They only appear as push notifications and affect the chat icon unread count.
+    """
+    from backend.services.database import USE_MYSQL
+    
+    # Determine push content based on whether it's a mention
     if is_mention:
-        notif_type = "group_chat_mention"
-        notif_message = f"{sender_username} mentioned you in {group_name}: {message_preview}"
         push_title = f"{group_name} - Mention"
         push_body = f"{sender_username} mentioned you: {message_preview}"
     else:
-        notif_type = "group_chat_message"
-        notif_message = f"{sender_username} in {group_name}: {message_preview}"
         push_title = group_name
         push_body = f"{sender_username}: {message_preview}"
-    
-    # Insert notification into database  
-    cursor.execute(f"""
-        INSERT INTO notifications (user_id, from_user, type, message, link, created_at, is_read)
-        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 0)
-    """, (
-        recipient_username,
-        sender_username,
-        notif_type,
-        notif_message,
-        f"/group_chat/{group_id}",
-        now
-    ))
     
     # Check if recipient is actively viewing this group chat (suppress push if so)
     should_push = True
@@ -810,7 +796,7 @@ def _send_group_message_notification(cursor, ph, recipient_username: str, sender
     except Exception as presence_err:
         logger.warning(f"Could not check group presence: {presence_err}")
     
-    # Try to send push notification (unless recipient is actively viewing)
+    # Send push notification only (no bell icon notification)
     if should_push:
         try:
             from backend.services.notifications import send_push_to_user
@@ -1200,23 +1186,12 @@ def add_members_to_group(group_id: int):
 
 
 def _send_group_add_notification(cursor, ph, recipient_username: str, added_by: str, group_id: int, group_name: str):
-    """Send notification when user is added to a group."""
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    """Send push notification when user is added to a group.
     
-    # Insert notification into database
-    cursor.execute(f"""
-        INSERT INTO notifications (user_id, from_user, type, message, link, created_at, is_read)
-        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 0)
-    """, (
-        recipient_username,
-        added_by,
-        "group_chat_add",
-        f"{added_by} added you to the group '{group_name}'",
-        f"/group_chat/{group_id}",
-        now
-    ))
-    
-    # Try to send push notification
+    Note: Group chat notifications do NOT go to the notifications table/bell icon.
+    They only appear as push notifications and affect the chat icon.
+    """
+    # Send push notification only (no bell icon notification)
     try:
         from backend.services.notifications import send_push_to_user
         send_push_to_user(
