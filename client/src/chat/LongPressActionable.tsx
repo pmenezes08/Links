@@ -45,45 +45,49 @@ export default function LongPressActionable({
   
   // Calculate menu position when showing - uses fixed positioning for reliability
   const calculateMenuStyle = useCallback((): React.CSSProperties => {
-    if (!containerRef.current) return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
+    if (!containerRef.current) return { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 9999 }
     
     const rect = containerRef.current.getBoundingClientRect()
     const viewportHeight = window.innerHeight
     const viewportWidth = window.innerWidth
-    const menuHeight = 220 // Approximate menu height
-    const menuWidth = 200 // Approximate menu width
-    const safeAreaTop = 60 // Safe area for header
-    const safeAreaBottom = 100 // Safe area for composer
+    const menuHeight = 260 // Menu height (reactions + buttons)
+    const menuWidth = 200 // Menu width
+    const padding = 16 // Padding from edges
+    const safeAreaTop = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sat') || '0') || 50
+    const safeAreaBottom = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sab') || '0') || 80
     
-    // Calculate vertical position
-    let top: number
-    const spaceAbove = rect.top - safeAreaTop
-    const spaceBelow = viewportHeight - rect.bottom - safeAreaBottom
+    // Available space
+    const minTop = safeAreaTop + padding
+    const maxBottom = viewportHeight - safeAreaBottom - padding
+    const availableHeight = maxBottom - minTop
     
-    if (spaceBelow >= menuHeight) {
-      // Enough space below - show below
-      top = rect.bottom + 8
-    } else if (spaceAbove >= menuHeight) {
-      // Enough space above - show above
-      top = rect.top - menuHeight - 8
-    } else {
-      // Not enough space either way - center in available space
-      top = Math.max(safeAreaTop + 8, Math.min(viewportHeight - safeAreaBottom - menuHeight - 8, rect.top - menuHeight / 2))
+    // If menu is taller than available space, we'll need to constrain it
+    const effectiveMenuHeight = Math.min(menuHeight, availableHeight)
+    
+    // Calculate vertical position - try to center on the message
+    const messageCenterY = rect.top + rect.height / 2
+    let top = messageCenterY - effectiveMenuHeight / 2
+    
+    // Clamp to stay within safe area
+    if (top < minTop) {
+      top = minTop
+    }
+    if (top + effectiveMenuHeight > maxBottom) {
+      top = maxBottom - effectiveMenuHeight
     }
     
-    // Calculate horizontal position - prefer left-aligned with message, keep within viewport
-    let left = rect.left
-    if (left + menuWidth > viewportWidth - 16) {
-      left = viewportWidth - menuWidth - 16
-    }
-    if (left < 16) {
-      left = 16
-    }
+    // Final safety check
+    top = Math.max(minTop, Math.min(top, maxBottom - effectiveMenuHeight))
     
-    // Ensure top is within bounds
-    if (top < safeAreaTop) top = safeAreaTop
-    if (top + menuHeight > viewportHeight - safeAreaBottom) {
-      top = viewportHeight - safeAreaBottom - menuHeight
+    // Calculate horizontal position - center on message but keep within viewport
+    let left = rect.left + rect.width / 2 - menuWidth / 2
+    
+    // Clamp horizontally
+    if (left < padding) {
+      left = padding
+    }
+    if (left + menuWidth > viewportWidth - padding) {
+      left = viewportWidth - menuWidth - padding
     }
     
     return {
@@ -91,6 +95,8 @@ export default function LongPressActionable({
       top,
       left,
       zIndex: 9999,
+      maxHeight: effectiveMenuHeight,
+      overflowY: 'auto' as const,
     }
   }, [])
   
