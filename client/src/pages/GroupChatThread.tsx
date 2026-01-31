@@ -342,7 +342,12 @@ export default function GroupChatThread() {
         const newMaxId = newMessages.length > 0 ? Math.max(...newMessages.map(m => m.id)) : 0
         const hasNewMessages = newMaxId > lastMessageIdRef.current
 
-        setMessages(newMessages)
+        // Preserve optimistic messages (negative IDs) that haven't been confirmed yet
+        setMessages(prev => {
+          const optimisticMessages = prev.filter(m => m.id < 0)
+          // Merge server messages with optimistic ones
+          return [...newMessages, ...optimisticMessages]
+        })
         lastMessageIdRef.current = newMaxId
 
         if (hasNewMessages && !silent) {
@@ -935,14 +940,13 @@ export default function GroupChatThread() {
                               {msg.text && (
                                 <div className={`text-[14px] text-white whitespace-pre-wrap break-words rounded-2xl px-3 py-2 max-w-[280px] ${isSentByMe ? 'rounded-br-lg' : 'rounded-bl-lg'} ${
                                   isOptimistic 
-                                    ? 'bg-gray-500/50 border border-gray-400/30' 
+                                    ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30' 
                                     : `liquid-glass-bubble ${isSentByMe ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
                                 }`}>
                                   {msg.text}
                                   {isOptimistic && (
-                                    <span className="ml-2 text-[10px] text-white/50">
+                                    <span className="ml-2 text-[10px] text-white/60">
                                       <i className="fa-solid fa-clock text-[8px] mr-1" />
-                                      sending...
                                     </span>
                                   )}
                                 </div>
