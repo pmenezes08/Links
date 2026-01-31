@@ -371,7 +371,7 @@ export default function GroupChatThread() {
     }
   }, [loadGroup, loadMessages])
 
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(() => {
     // Get text directly from textarea (uncontrolled)
     const text = (textareaRef.current?.value || '').trim()
     
@@ -380,7 +380,6 @@ export default function GroupChatThread() {
 
     // Lock immediately (synchronous) to prevent double-clicks
     sendingLockRef.current = true
-    setSendingState(true)
     
     // CLEAR COMPOSER IMMEDIATELY - direct DOM manipulation (uncontrolled)
     if (textareaRef.current) {
@@ -394,7 +393,7 @@ export default function GroupChatThread() {
     const tempId = -Date.now()
     const optimisticMessage: Message = {
       id: tempId,
-      sender: currentUsername,
+      sender: currentUsername || 'You',
       text: text,
       image: null,
       voice: null,
@@ -402,41 +401,44 @@ export default function GroupChatThread() {
       profile_picture: null,
     }
     
-    // Add optimistic message immediately
+    // Add optimistic message immediately - this triggers a re-render
     setMessages(prev => [...prev, optimisticMessage])
     
-    // Scroll to bottom immediately
-    requestAnimationFrame(scrollToBottom)
+    // Scroll to bottom after a brief delay to let render complete
+    setTimeout(() => scrollToBottom(), 10)
 
-    try {
-      const response = await fetch(`/api/group_chat/${group_id}/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ message: text }),
+    // Send to server in the background (non-blocking)
+    // Using .then() instead of async/await ensures the function returns immediately
+    // allowing React to render the optimistic message before the network request
+    fetch(`/api/group_chat/${group_id}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ message: text }),
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // Replace optimistic message with real one from server
+          setMessages(prev => prev.map(m => 
+            m.id === tempId ? data.message : m
+          ))
+          lastMessageIdRef.current = data.message.id
+        } else {
+          // Remove optimistic message on failure
+          setMessages(prev => prev.filter(m => m.id !== tempId))
+          console.error('Failed to send:', data.error)
+        }
       })
-      const data = await response.json()
-
-      if (data.success) {
-        // Replace optimistic message with real one
-        setMessages(prev => prev.map(m => 
-          m.id === tempId ? data.message : m
-        ))
-        lastMessageIdRef.current = data.message.id
-      } else {
-        // Remove optimistic message on failure (don't restore - user can retype)
+      .catch(err => {
+        // Remove optimistic message on error
         setMessages(prev => prev.filter(m => m.id !== tempId))
-        console.error('Failed to send:', data.error)
-      }
-    } catch (err) {
-      // Remove optimistic message on error
-      setMessages(prev => prev.filter(m => m.id !== tempId))
-      console.error('Error sending message:', err)
-    } finally {
-      sendingLockRef.current = false
-      setSendingState(false)
-      setTimeout(() => textareaRef.current?.focus(), 50)
-    }
+        console.error('Error sending message:', err)
+      })
+      .finally(() => {
+        sendingLockRef.current = false
+        setTimeout(() => textareaRef.current?.focus(), 50)
+      })
   }, [group_id, scrollToBottom, currentUsername])
 
   const handlePhotoSelect = () => {
