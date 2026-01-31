@@ -21,6 +21,10 @@ MAX_GROUP_MEMBERS = 5
 AI_USERNAME = 'steve'
 XAI_API_KEY = os.getenv('XAI_API_KEY', '')
 
+# Track when Steve is typing (in-memory, per group_id)
+# Format: {group_id: timestamp_when_started}
+_steve_typing_status: dict[int, float] = {}
+
 
 def _login_required(view_func):
     """Simple login_required decorator that avoids circular imports."""
@@ -601,7 +605,22 @@ def get_group_messages(group_id: int):
             # Reverse to show oldest first
             messages.reverse()
             
-            return jsonify({"success": True, "messages": messages})
+            # Check if Steve is typing (with 30 second timeout)
+            import time
+            steve_is_typing = False
+            if group_id in _steve_typing_status:
+                elapsed = time.time() - _steve_typing_status[group_id]
+                if elapsed < 30:  # Typing indicator expires after 30 seconds
+                    steve_is_typing = True
+                else:
+                    # Clean up stale typing status
+                    del _steve_typing_status[group_id]
+            
+            return jsonify({
+                "success": True, 
+                "messages": messages,
+                "steve_is_typing": steve_is_typing
+            })
             
     except Exception as e:
         logger.error(f"Error getting messages for group {group_id}: {e}")
@@ -726,6 +745,10 @@ def send_group_message(group_id: int):
             # Check if @Steve is mentioned - trigger AI response in background
             if message_text and re.search(r'@steve\b', message_text, re.IGNORECASE) and username != AI_USERNAME:
                 try:
+                    # Set Steve typing indicator
+                    import time
+                    _steve_typing_status[group_id] = time.time()
+                    
                     # Run Steve's response in a background thread to not block the request
                     thread = threading.Thread(
                         target=_trigger_steve_group_reply,
@@ -1297,6 +1320,10 @@ Don't be overly formal - this is a casual group chat."""
             
             conn.commit()
             
+            # Clear typing indicator now that Steve has posted
+            if group_id in _steve_typing_status:
+                del _steve_typing_status[group_id]
+            
             logger.info(f"Steve replied to group {group_id} with message ID {steve_message_id}")
             
             # Send notifications to group members (except Steve)
@@ -1314,4 +1341,7 @@ Don't be overly formal - this is a casual group chat."""
             conn.commit()
             
     except Exception as e:
+        # Clear typing indicator on error too
+        if group_id in _steve_typing_status:
+            del _steve_typing_status[group_id]
         logger.error(f"Error in Steve group reply: {e}", exc_info=True)

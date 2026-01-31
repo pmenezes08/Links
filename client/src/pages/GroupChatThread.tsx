@@ -87,6 +87,7 @@ export default function GroupChatThread() {
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
   const pendingDeletions = useRef<Set<number>>(new Set())
+  const [steveIsTyping, setSteveIsTyping] = useState(false)
   
   // @mention autocomplete state
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
@@ -408,6 +409,9 @@ export default function GroupChatThread() {
         }))
         
         lastMessageIdRef.current = newMaxId
+        
+        // Update Steve typing indicator
+        setSteveIsTyping(data.steve_is_typing === true)
 
         // No scroll on new messages - they just appear
       }
@@ -1304,6 +1308,24 @@ export default function GroupChatThread() {
                     </div>
                   )
                 })}
+                {/* Steve is typing indicator */}
+                {steveIsTyping && (
+                  <div className="flex items-center gap-3 px-3 py-2 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#26a69a] flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-xs font-bold">S</span>
+                    </div>
+                    <div className="bg-white/10 rounded-2xl rounded-bl-lg px-4 py-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-white/70 text-sm">Steve is typing</span>
+                        <span className="flex gap-0.5">
+                          <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div ref={messagesEndRef} className="h-1" />
               </div>
             )}
