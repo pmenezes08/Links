@@ -465,7 +465,6 @@ export default function GroupChatThread() {
       })
       .finally(() => {
         sendingLockRef.current = false
-        setTimeout(() => textareaRef.current?.focus(), 50)
       })
   }, [group_id, scrollToBottom, currentUsername, loadMessages])
 
@@ -1388,7 +1387,17 @@ export default function GroupChatThread() {
                       ? 'bg-[#4db6ac] text-black'
                       : 'bg-white/12 text-white/70'
                 } ${!sending ? 'active:scale-95' : ''}`}
-                onClick={() => {
+                onPointerDown={(e) => {
+                  if (!draftDisplay.trim() || sending) return
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleSend()
+                }}
+                onClick={(e) => {
+                  // Fallback for devices where onPointerDown doesn't fire reliably
+                  if (!draftDisplay.trim() || sending) return
+                  e.preventDefault()
+                  e.stopPropagation()
                   handleSend()
                 }}
                 disabled={sending || !draftDisplay.trim()}
