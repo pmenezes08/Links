@@ -211,6 +211,18 @@ export default function GroupChatThread() {
     }
   }, [messages, scrollToBottom])
 
+  // CRITICAL: Scroll immediately when pending messages are added
+  useEffect(() => {
+    if (pendingMessages.length > 0) {
+      // Use instant scroll for pending messages so user sees their message immediately
+      const el = listRef.current
+      if (el) {
+        el.scrollTop = el.scrollHeight
+      }
+      messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+    }
+  }, [pendingMessages])
+
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
     const el = textareaRef.current
@@ -434,9 +446,11 @@ export default function GroupChatThread() {
     // Add to pending messages - this is a SEPARATE state, always visible
     setPendingMessages(prev => [...prev, pendingMessage])
     
-    // Scroll to bottom immediately
-    setTimeout(scrollToBottom, 10)
-    setTimeout(scrollToBottom, 100)
+    // Scroll to bottom - multiple attempts to catch the render
+    scrollToBottom()
+    setTimeout(scrollToBottom, 50)
+    setTimeout(scrollToBottom, 150)
+    setTimeout(scrollToBottom, 300)
 
     // Send to server
     fetch(`/api/group_chat/${group_id}/send`, {
