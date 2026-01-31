@@ -12689,10 +12689,46 @@ def check_unread_messages():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT COUNT(*) as count FROM messages WHERE receiver=? AND is_read=0", (username,))
+            ph = get_sql_placeholder()
+            
+            # Count unread DMs
+            c.execute(f"SELECT COUNT(*) as count FROM messages WHERE receiver={ph} AND is_read=0", (username,))
             result = c.fetchone()
-            unread_count = result['count'] if hasattr(result, 'keys') else result[0]
-        return jsonify({'unread_count': unread_count})
+            dm_unread = result['count'] if hasattr(result, 'keys') else result[0]
+            
+            # Count unread group chat messages
+            group_unread = 0
+            try:
+                # Get all groups user is member of
+                c.execute(f"""
+                    SELECT gcm.group_id, COALESCE(gcr.last_read_message_id, 0) as last_read
+                    FROM group_chat_members gcm
+                    LEFT JOIN group_chat_read_receipts gcr 
+                        ON gcm.group_id = gcr.group_id AND gcm.username = gcr.username
+                    WHERE gcm.username = {ph}
+                """, (username,))
+                
+                for row in c.fetchall():
+                    group_id = row['group_id'] if hasattr(row, 'keys') else row[0]
+                    last_read_id = row['last_read'] if hasattr(row, 'keys') else row[1]
+                    
+                    # Count messages after last read (excluding own messages)
+                    c.execute(f"""
+                        SELECT COUNT(*) as cnt FROM group_chat_messages 
+                        WHERE group_id = {ph} AND id > {ph} AND is_deleted = 0 AND sender_username != {ph}
+                    """, (group_id, last_read_id, username))
+                    cnt_row = c.fetchone()
+                    group_unread += cnt_row['cnt'] if hasattr(cnt_row, 'keys') else cnt_row[0]
+            except Exception as ge:
+                logger.warning(f"Could not count group unread: {ge}")
+            
+            total_unread = dm_unread + group_unread
+            
+        return jsonify({
+            'unread_count': total_unread,
+            'dm_unread': dm_unread,
+            'group_unread': group_unread
+        })
     except Exception as e:
         logger.error(f"Error checking unread messages for {username}: {str(e)}")
         abort(500)

@@ -1391,6 +1391,33 @@ export default function GroupChatThread() {
             </>
           )}
 
+          {/* @mention autocomplete dropdown - positioned above composer */}
+          {mentionQuery !== null && filteredMentions.length > 0 && (
+            <div 
+              ref={mentionDropdownRef}
+              className="mb-2 bg-[#1a1a2e] border border-white/20 rounded-lg shadow-xl max-h-48 overflow-y-auto"
+            >
+              {filteredMentions.map((member) => (
+                <button
+                  key={member.username}
+                  className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-white/10 active:bg-white/20 text-left transition-colors"
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleMentionSelect(member.username)
+                  }}
+                >
+                  <Avatar 
+                    url={member.profile_picture} 
+                    username={member.username} 
+                    size={32} 
+                  />
+                  <span className="text-white text-sm font-medium">@{member.username}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Message input row */}
           <div className="flex items-end gap-2">
             {/* Plus/Attachment button */}
@@ -1463,32 +1490,6 @@ export default function GroupChatThread() {
               }}
               onPointerDown={focusTextarea}
             >
-              {/* @mention autocomplete dropdown */}
-              {mentionQuery !== null && filteredMentions.length > 0 && (
-                <div 
-                  ref={mentionDropdownRef}
-                  className="absolute bottom-full left-0 right-0 mb-2 bg-[#1a1a2e] border border-white/10 rounded-lg shadow-xl max-h-48 overflow-y-auto z-50"
-                >
-                  {filteredMentions.map((member) => (
-                    <button
-                      key={member.username}
-                      className="w-full px-3 py-2 flex items-center gap-3 hover:bg-white/10 text-left transition-colors"
-                      onPointerDown={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        handleMentionSelect(member.username)
-                      }}
-                    >
-                      <Avatar 
-                        url={member.profile_picture} 
-                        username={member.username} 
-                        size={28} 
-                      />
-                      <span className="text-white text-sm">@{member.username}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
               {/* Recording sound bar */}
               {MIC_ENABLED && recording && (
                 <div className="flex-1 flex items-center px-3 py-2 gap-2">

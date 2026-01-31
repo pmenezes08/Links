@@ -774,10 +774,11 @@ def _send_group_message_notification(cursor, ph, recipient_username: str, sender
     
     # Insert notification into database  
     cursor.execute(f"""
-        INSERT INTO notifications (username, type, message, link, created_at, is_read)
-        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, 0)
+        INSERT INTO notifications (user_id, from_user, type, message, link, created_at, is_read)
+        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 0)
     """, (
         recipient_username,
+        sender_username,
         notif_type,
         notif_message,
         f"/group_chat/{group_id}",
@@ -1204,10 +1205,11 @@ def _send_group_add_notification(cursor, ph, recipient_username: str, added_by: 
     
     # Insert notification into database
     cursor.execute(f"""
-        INSERT INTO notifications (username, type, message, link, created_at, is_read)
-        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, 0)
+        INSERT INTO notifications (user_id, from_user, type, message, link, created_at, is_read)
+        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, 0)
     """, (
         recipient_username,
+        added_by,
         "group_chat_add",
         f"{added_by} added you to the group '{group_name}'",
         f"/group_chat/{group_id}",
