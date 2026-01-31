@@ -49,8 +49,9 @@ export default function GroupChatThread() {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [draft, setDraft] = useState('')
-  const [textareaKey, setTextareaKey] = useState(0) // Key to force textarea re-render
+  // Use ref-based draft to avoid React state update issues
+  const draftRef = useRef('')
+  const [draftDisplay, setDraftDisplay] = useState('') // Only for UI updates (button visibility)
   const [sending, setSendingState] = useState(false)
   const sendingLockRef = useRef(false)
   
@@ -371,9 +372,8 @@ export default function GroupChatThread() {
   }, [loadGroup, loadMessages])
 
   const handleSend = useCallback(async () => {
-    // Get current draft value from textarea directly to avoid stale closures
-    const currentDraft = textareaRef.current?.value || draft
-    const text = currentDraft.trim()
+    // Get text directly from textarea (uncontrolled)
+    const text = (textareaRef.current?.value || '').trim()
     
     // Use ref for synchronous check to prevent double-sends
     if (!text || sendingLockRef.current) return
@@ -382,22 +382,19 @@ export default function GroupChatThread() {
     sendingLockRef.current = true
     setSendingState(true)
     
-    // CLEAR COMPOSER IMMEDIATELY - multiple approaches for reliability
-    // 1. Clear React state
-    setDraft('')
-    // 2. Force textarea re-render by changing key
-    setTextareaKey(k => k + 1)
-    // 3. Also clear directly as backup
+    // CLEAR COMPOSER IMMEDIATELY - direct DOM manipulation (uncontrolled)
     if (textareaRef.current) {
       textareaRef.current.value = ''
     }
+    draftRef.current = ''
+    setDraftDisplay('') // Update UI state for button visibility
     
     // Create optimistic message
     const now = new Date().toISOString()
     const tempId = -Date.now()
     const optimisticMessage: Message = {
       id: tempId,
-      sender: currentUsername, // Use current username for sent message
+      sender: currentUsername,
       text: text,
       image: null,
       voice: null,
@@ -427,23 +424,20 @@ export default function GroupChatThread() {
         ))
         lastMessageIdRef.current = data.message.id
       } else {
-        // Remove optimistic message and restore draft on failure
+        // Remove optimistic message on failure (don't restore - user can retype)
         setMessages(prev => prev.filter(m => m.id !== tempId))
-        setDraft(text)
         console.error('Failed to send:', data.error)
       }
     } catch (err) {
-      // Remove optimistic message and restore draft on error
+      // Remove optimistic message on error
       setMessages(prev => prev.filter(m => m.id !== tempId))
-      setDraft(text)
       console.error('Error sending message:', err)
     } finally {
       sendingLockRef.current = false
       setSendingState(false)
-      // Focus after a brief delay to let React re-render
       setTimeout(() => textareaRef.current?.focus(), 50)
     }
-  }, [draft, group_id, scrollToBottom, currentUsername])
+  }, [group_id, scrollToBottom, currentUsername])
 
   const handlePhotoSelect = () => {
     setShowAttachMenu(false)
@@ -1197,15 +1191,14 @@ export default function GroupChatThread() {
                 </div>
               )}
 
-              {/* Regular text input */}
+              {/* Regular text input - UNCONTROLLED for reliable clearing */}
               {!(MIC_ENABLED && (recording || recordingPreview)) && (
                 <textarea
-                  key={textareaKey}
                   ref={textareaRef}
                   rows={1}
                   className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
                   placeholder="Message"
-                  value={draft}
+                  defaultValue=""
                   autoComplete="off"
                   autoCorrect="on"
                   autoCapitalize="sentences"
@@ -1226,8 +1219,11 @@ export default function GroupChatThread() {
                     e.preventDefault()
                     focusTextarea()
                   }}
-                  onChange={(e) => {
-                    setDraft(e.target.value)
+                  onInput={(e) => {
+                    // Track draft for button visibility only
+                    const val = (e.target as HTMLTextAreaElement).value
+                    draftRef.current = val
+                    setDraftDisplay(val)
                   }}
                   onKeyDown={(e) => {
                     // Send on Enter (without Shift for new line)
@@ -1241,7 +1237,7 @@ export default function GroupChatThread() {
             </div>
 
             {/* Mic button - shown when not recording, no preview, no text, and not sending */}
-            {MIC_ENABLED && !recording && !recordingPreview && !draft.trim() && !sending && (
+            {MIC_ENABLED && !recording && !recordingPreview && !draftDisplay.trim() && !sending && (
               <button
                 className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
                 onPointerDown={(e) => {
@@ -1342,19 +1338,19 @@ export default function GroupChatThread() {
             )}
 
             {/* Normal send button - show when there's text OR when sending */}
-            {!(MIC_ENABLED && (recording || recordingPreview)) && (draft.trim() || sending || !MIC_ENABLED) && (
+            {!(MIC_ENABLED && (recording || recordingPreview)) && (draftDisplay.trim() || sending || !MIC_ENABLED) && (
               <button
                 className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
                   sending
                     ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
-                    : draft.trim()
+                    : draftDisplay.trim()
                       ? 'bg-[#4db6ac] text-black'
                       : 'bg-white/12 text-white/70'
                 } ${!sending ? 'active:scale-95' : ''}`}
                 onClick={() => {
                   handleSend()
                 }}
-                disabled={sending || !draft.trim()}
+                disabled={sending || !draftDisplay.trim()}
                 aria-label="Send"
                 style={{
                   touchAction: 'manipulation',
