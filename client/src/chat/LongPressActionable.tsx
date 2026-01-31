@@ -154,7 +154,7 @@ export default function LongPressActionable({
       >
         {children}
       </div>
-      {!disabled && showMenu && (
+      {!disabled && showMenu && !showEmojiPicker && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => { setShowMenu(false); setShowEmojiPicker(false) }} />
           <div 
