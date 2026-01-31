@@ -44,7 +44,10 @@ export default function GroupChatThread() {
   const { group_id } = useParams()
   const navigate = useNavigate()
   const { profile: currentUserProfile } = useUserProfile()
-  const currentUsername = (currentUserProfile as { username?: string })?.username || ''
+  // Get username from profile context, with localStorage fallback
+  const currentUsername = (currentUserProfile as { username?: string })?.username 
+    || localStorage.getItem('current_username') 
+    || ''
   const [group, setGroup] = useState<GroupInfo | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
@@ -939,7 +942,10 @@ export default function GroupChatThread() {
                   // Check if optimistic using clientKey (starts with temp_) or negative ID
                   const isOptimistic = msgWithKey.clientKey?.startsWith('temp_') || msg.id < 0
                   // Determine if message is sent by current user
-                  const isSentByMe = isOptimistic || (msg.sender && msg.sender.toLowerCase() === currentUsername.toLowerCase())
+                  // Compare case-insensitively and trim whitespace
+                  const senderNormalized = (msg.sender || '').toLowerCase().trim()
+                  const currentUserNormalized = (currentUsername || '').toLowerCase().trim()
+                  const isSentByMe = isOptimistic || (senderNormalized !== '' && currentUserNormalized !== '' && senderNormalized === currentUserNormalized)
                   
                   // Date separator logic - matching ChatThread
                   const messageDate = getDateKey(msg.created_at)
