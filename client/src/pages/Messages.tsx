@@ -113,6 +113,10 @@ export default function Messages(){
   const [groupDragX, setGroupDragX] = useState(0)
   const groupStartXRef = useRef(0)
   const groupDraggingIdRef = useRef<number | null>(null)
+  
+  // Collapse/expand state for sections
+  const [groupChatsCollapsed, setGroupChatsCollapsed] = useState(false)
+  const [directMessagesCollapsed, setDirectMessagesCollapsed] = useState(false)
 
   // Fetch threads with caching
   const loadThreads = useCallback((silent: boolean = false) => {
@@ -687,11 +691,24 @@ export default function Messages(){
             {/* Group Chats Section */}
             {groupChats.length > 0 && communityFilter === 'all' && (
               <div className="rounded-xl border border-white/10 bg-black mb-3">
-                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-                  <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
-                  <span className="text-sm font-semibold text-white/80">Group Chats</span>
-                  <span className="text-xs text-white/40">({groupChats.length})</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setGroupChatsCollapsed(!groupChatsCollapsed)}
+                  className="w-full px-3 py-2 border-b border-white/10 flex items-center justify-between hover:bg-white/5 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
+                    <span className="text-sm font-semibold text-white/80">Group Chats</span>
+                    <span className="text-xs text-white/40">({groupChats.length})</span>
+                    {groupChats.reduce((sum, gc) => sum + gc.unread_count, 0) > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-[#4db6ac] text-black text-[10px] font-medium">
+                        {groupChats.reduce((sum, gc) => sum + gc.unread_count, 0)}
+                      </span>
+                    )}
+                  </div>
+                  <i className={`fa-solid fa-chevron-${groupChatsCollapsed ? 'down' : 'up'} text-xs text-white/40`} />
+                </button>
+                {!groupChatsCollapsed && (
                 <div className="divide-y divide-white/10">
                   {groupChats.map((gc) => {
                     const isGDragging = groupDraggingIdRef.current === gc.id
@@ -755,6 +772,10 @@ export default function Messages(){
                               if (groupSwipeId === gc.id) {
                                 setGroupSwipeId(null)
                               } else {
+                                // Clear unread count locally when opening group chat
+                                setGroupChats(prev => prev.map(g => 
+                                  g.id === gc.id ? { ...g, unread_count: 0 } : g
+                                ))
                                 navigate(`/group_chat/${gc.id}`)
                               }
                             }}
@@ -791,18 +812,31 @@ export default function Messages(){
                     )
                   })}
                 </div>
+                )}
               </div>
             )}
             
             {/* Direct Messages Section */}
             <div className="rounded-xl border border-white/10 bg-black divide-y divide-white/10">
               {groupChats.length > 0 && communityFilter === 'all' && (
-                <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2">
-                  <i className="fa-solid fa-user text-[#4db6ac] text-sm" />
-                  <span className="text-sm font-semibold text-white/80">Direct Messages</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setDirectMessagesCollapsed(!directMessagesCollapsed)}
+                  className="w-full px-3 py-2 border-b border-white/10 flex items-center justify-between hover:bg-white/5 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <i className="fa-solid fa-user text-[#4db6ac] text-sm" />
+                    <span className="text-sm font-semibold text-white/80">Direct Messages</span>
+                    {visibleThreads.reduce((sum, t) => sum + (t.unread_count || 0), 0) > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-[#4db6ac] text-black text-[10px] font-medium">
+                        {visibleThreads.reduce((sum, t) => sum + (t.unread_count || 0), 0)}
+                      </span>
+                    )}
+                  </div>
+                  <i className={`fa-solid fa-chevron-${directMessagesCollapsed ? 'down' : 'up'} text-xs text-white/40`} />
+                </button>
               )}
-              {loading ? (
+              {!directMessagesCollapsed && (loading ? (
                 <div className="px-4 py-4 text-sm text-[#9fb0b5]">Loading chats...</div>
               ) : visibleThreads.length === 0 ? (
                 <div className="px-4 py-4 text-sm text-[#9fb0b5]">
@@ -921,7 +955,7 @@ export default function Messages(){
                 </div>
                 )
               })
-            )}
+            ))}
             </div>
             </>
               )
