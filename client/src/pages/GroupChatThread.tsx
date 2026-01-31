@@ -49,9 +49,15 @@ export default function GroupChatThread() {
     || localStorage.getItem('current_username') 
     || ''
   const [group, setGroup] = useState<GroupInfo | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
+  const [serverMessages, setServerMessages] = useState<Message[]>([])
+  const [pendingMessages, setPendingMessages] = useState<(Message & { clientKey: string })[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Combine server and pending messages for display
+  const messages = [...serverMessages, ...pendingMessages].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  )
   // Use ref-based draft to avoid React state update issues
   const draftRef = useRef('')
   const [draftDisplay, setDraftDisplay] = useState('') // Only for UI updates (button visibility)
@@ -79,10 +85,6 @@ export default function GroupChatThread() {
   const lastMessageIdRef = useRef<number>(0)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
   const headerMenuRef = useRef<HTMLDivElement>(null)
-  // Pause polling after sending to avoid race condition with server confirmation
-  const skipNextPollsUntilRef = useRef<number>(0)
-  // Track optimistic messages to ensure they're always shown
-  const recentOptimisticRef = useRef<Map<string, Message & { clientKey: string }>>(new Map())
 
   // Voice recording
   const { 
@@ -348,45 +350,26 @@ export default function GroupChatThread() {
   }, [group_id])
 
   const loadMessages = useCallback(async (silent = false) => {
-    // Skip polling if we're waiting for server confirmation after sending
-    if (silent && Date.now() < skipNextPollsUntilRef.current) {
-      return
-    }
-    
     if (!silent) setLoading(true)
     try {
       const response = await fetch(`/api/group_chat/${group_id}/messages`, { credentials: 'include' })
       const data = await response.json()
       if (data.success) {
-        const serverMessages = data.messages as Message[]
-        const newMaxId = serverMessages.length > 0 ? Math.max(...serverMessages.map(m => m.id)) : 0
+        const newServerMessages = data.messages as Message[]
+        const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
         const hasNewMessages = newMaxId > lastMessageIdRef.current
 
-        setMessages(prev => {
-          // Build map from previous messages
-          const messagesByKey = new Map<string, Message & { clientKey?: string }>()
-          prev.forEach(m => {
-            const msgWithKey = m as Message & { clientKey?: string }
-            const key = msgWithKey.clientKey || String(m.id)
-            messagesByKey.set(key, msgWithKey)
-          })
-          
-          // CRITICAL: Always include messages from recentOptimisticRef
-          // This ensures optimistic messages are never lost
-          recentOptimisticRef.current.forEach((msg, key) => {
-            messagesByKey.set(key, msg)
-          })
-          
-          // Add server messages
-          serverMessages.forEach(msg => {
-            messagesByKey.set(String(msg.id), msg)
-          })
-          
-          // Convert to array and sort
-          const result = Array.from(messagesByKey.values())
-          result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-          return result
-        })
+        // Simply set server messages - pending messages are separate
+        setServerMessages(newServerMessages)
+        
+        // Remove any pending messages that now exist on server (by matching text and time)
+        setPendingMessages(prev => prev.filter(pending => {
+          const matchesServer = newServerMessages.some(server => 
+            server.text === pending.text &&
+            Math.abs(new Date(server.created_at).getTime() - new Date(pending.created_at).getTime()) < 30000
+          )
+          return !matchesServer
+        }))
         
         lastMessageIdRef.current = newMaxId
 
@@ -427,9 +410,6 @@ export default function GroupChatThread() {
     // Lock immediately (synchronous) to prevent double-clicks
     sendingLockRef.current = true
     
-    // Pause polling for 10 seconds to avoid race condition with server
-    skipNextPollsUntilRef.current = Date.now() + 10000
-    
     // CLEAR COMPOSER IMMEDIATELY
     if (textareaRef.current) {
       textareaRef.current.value = ''
@@ -437,10 +417,10 @@ export default function GroupChatThread() {
     draftRef.current = ''
     setDraftDisplay('')
     
-    // Create optimistic message with clientKey for tracking
+    // Create pending message
     const now = new Date().toISOString()
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const optimisticMessage: Message & { clientKey: string } = {
+    const pendingMessage: Message & { clientKey: string } = {
       id: -Date.now(),
       sender: currentUsername || 'You',
       text: text,
@@ -451,11 +431,8 @@ export default function GroupChatThread() {
       clientKey: tempId,
     }
     
-    // CRITICAL: Add to recentOptimisticRef FIRST to ensure it's never lost
-    recentOptimisticRef.current.set(tempId, optimisticMessage)
-    
-    // Add to UI immediately
-    setMessages(prev => [...prev, optimisticMessage])
+    // Add to pending messages - this is a SEPARATE state, always visible
+    setPendingMessages(prev => [...prev, pendingMessage])
     
     // Scroll to bottom immediately
     setTimeout(scrollToBottom, 10)
@@ -471,45 +448,28 @@ export default function GroupChatThread() {
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          // SUCCESS: Remove from optimistic tracking
-          recentOptimisticRef.current.delete(tempId)
-          
-          // Replace optimistic with real server message
-          const realMessage = data.message as Message
-          setMessages(prev => {
-            const updated = prev.map(m => {
-              const msgWithKey = m as Message & { clientKey?: string }
-              if (msgWithKey.clientKey === tempId) {
-                return realMessage
-              }
-              return m
-            })
-            return updated
-          })
-          lastMessageIdRef.current = Math.max(lastMessageIdRef.current, realMessage.id)
+          // SUCCESS: Remove from pending (server will have it on next poll)
+          setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+          lastMessageIdRef.current = Math.max(lastMessageIdRef.current, data.message.id)
+          // Trigger immediate poll to get the server message
+          loadMessages(true)
           setTimeout(scrollToBottom, 50)
         } else {
-          // FAILURE: Remove from tracking and state
-          recentOptimisticRef.current.delete(tempId)
-          setMessages(prev => prev.filter(m => 
-            (m as Message & { clientKey?: string }).clientKey !== tempId
-          ))
+          // FAILURE: Remove from pending
+          setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
           console.error('Failed to send:', data.error)
         }
       })
       .catch(err => {
-        // ERROR: Remove from tracking and state
-        recentOptimisticRef.current.delete(tempId)
-        setMessages(prev => prev.filter(m => 
-          (m as Message & { clientKey?: string }).clientKey !== tempId
-        ))
+        // ERROR: Remove from pending
+        setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
         console.error('Error sending message:', err)
       })
       .finally(() => {
         sendingLockRef.current = false
         setTimeout(() => textareaRef.current?.focus(), 50)
       })
-  }, [group_id, scrollToBottom, currentUsername])
+  }, [group_id, scrollToBottom, currentUsername, loadMessages])
 
   const handlePhotoSelect = () => {
     setShowAttachMenu(false)
@@ -547,7 +507,7 @@ export default function GroupChatThread() {
         const data = await response.json()
 
         if (data.success) {
-          setMessages(prev => [...prev, data.message])
+          setServerMessages(prev => [...prev, data.message])
           lastMessageIdRef.current = data.message.id
           setTimeout(scrollToBottom, 100)
         }
@@ -587,7 +547,7 @@ export default function GroupChatThread() {
         const data = await response.json()
 
         if (data.success) {
-          setMessages(prev => [...prev, data.message])
+          setServerMessages(prev => [...prev, data.message])
           lastMessageIdRef.current = data.message.id
           setTimeout(scrollToBottom, 100)
         }
@@ -655,7 +615,7 @@ export default function GroupChatThread() {
         const data = await response.json()
 
         if (data.success) {
-          setMessages(prev => [...prev, data.message])
+          setServerMessages(prev => [...prev, data.message])
           lastMessageIdRef.current = data.message.id
           setTimeout(scrollToBottom, 100)
         }
@@ -697,7 +657,7 @@ export default function GroupChatThread() {
         const data = await response.json()
 
         if (data.success) {
-          setMessages(prev => [...prev, data.message])
+          setServerMessages(prev => [...prev, data.message])
           lastMessageIdRef.current = data.message.id
           setTimeout(scrollToBottom, 100)
         }
@@ -795,7 +755,7 @@ export default function GroupChatThread() {
   const handleDeleteMessage = (messageId: number) => {
     // For now, just remove from local state
     // TODO: Add backend API for message deletion
-    setMessages(prev => prev.filter(m => m.id !== messageId))
+    setServerMessages(prev => prev.filter(m => m.id !== messageId))
   }
 
   if (loading && !group) {
