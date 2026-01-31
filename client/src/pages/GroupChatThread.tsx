@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { flushSync } from 'react-dom'
 import type { CSSProperties } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
@@ -77,8 +76,10 @@ export default function GroupChatThread() {
   const lastMessageIdRef = useRef<number>(0)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
   const headerMenuRef = useRef<HTMLDivElement>(null)
-  // Track recently sent message IDs to prevent them from disappearing due to race conditions
-  const recentlySentMessagesRef = useRef<Map<number, Message>>(new Map())
+  // Track recently sent optimistic messages to prevent poll from removing them
+  const recentOptimisticRef = useRef<Map<string, { message: Message & { clientKey?: string }; timestamp: number }>>(new Map())
+  // Pause polling briefly after sending to avoid race condition with server confirmation
+  const skipNextPollsUntilRef = useRef<number>(0)
 
   // Voice recording
   const { 
@@ -193,7 +194,14 @@ export default function GroupChatThread() {
     : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = listRef.current
+    if (!el) return
+    
+    // Direct scroll - no animation (instant)
+    el.scrollTop = el.scrollHeight
+    
+    // Backup: use scroll anchor
+    messagesEndRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' })
   }, [])
 
   const focusTextarea = useCallback(() => {
@@ -335,6 +343,11 @@ export default function GroupChatThread() {
   }, [group_id])
 
   const loadMessages = useCallback(async (silent = false) => {
+    // Skip polling if we're waiting for server confirmation after sending
+    if (silent && Date.now() < skipNextPollsUntilRef.current) {
+      return
+    }
+    
     if (!silent) setLoading(true)
     try {
       const response = await fetch(`/api/group_chat/${group_id}/messages`, { credentials: 'include' })
@@ -344,29 +357,68 @@ export default function GroupChatThread() {
         const newMaxId = newMessages.length > 0 ? Math.max(...newMessages.map(m => m.id)) : 0
         const hasNewMessages = newMaxId > lastMessageIdRef.current
 
-        // Preserve optimistic messages (negative IDs) and recently sent messages
+        // Preserve optimistic messages and merge with server messages
         setMessages(prev => {
-          const optimisticMessages = prev.filter(m => m.id < 0)
-          const newMessageIds = new Set(newMessages.map(m => m.id))
+          // Build map of existing messages by their stable key (clientKey or id)
+          const messagesByKey = new Map<string, Message & { clientKey?: string }>()
+          prev.forEach(m => {
+            const key = (m as Message & { clientKey?: string }).clientKey || String(m.id)
+            messagesByKey.set(key, m as Message & { clientKey?: string })
+          })
           
-          // Get recently sent messages that aren't in the server response yet
-          const recentlySent: Message[] = []
-          recentlySentMessagesRef.current.forEach((msg, id) => {
-            if (!newMessageIds.has(id)) {
-              recentlySent.push(msg)
-            } else {
-              // Message is now in server response, remove from tracking
-              recentlySentMessagesRef.current.delete(id)
+          // Add recent optimistic messages that might not be in prev yet (handles React state batching)
+          recentOptimisticRef.current.forEach((entry, key) => {
+            if (!messagesByKey.has(key)) {
+              messagesByKey.set(key, entry.message)
             }
           })
           
-          // Merge: server messages + recently sent (not yet in server) + optimistic
-          return [...newMessages, ...recentlySent, ...optimisticMessages]
+          // Process server messages
+          const serverMessageIds = new Set<number>()
+          newMessages.forEach(serverMsg => {
+            serverMessageIds.add(serverMsg.id)
+            
+            // Check if we have a matching optimistic message
+            let foundOptimistic = false
+            for (const [key, existing] of messagesByKey.entries()) {
+              if (key.startsWith('temp_') && existing.text === serverMsg.text) {
+                // Match found - update with server data but keep clientKey
+                messagesByKey.set(key, { ...serverMsg, clientKey: key })
+                foundOptimistic = true
+                // Clean up from recent optimistic tracking
+                recentOptimisticRef.current.delete(key)
+                break
+              }
+            }
+            
+            // If no optimistic match, add as new message
+            if (!foundOptimistic) {
+              messagesByKey.set(String(serverMsg.id), serverMsg as Message & { clientKey?: string })
+            }
+          })
+          
+          // Clean up old optimistic messages (30s timeout)
+          const now = Date.now()
+          for (const [key] of messagesByKey.entries()) {
+            if (key.startsWith('temp_')) {
+              const entry = recentOptimisticRef.current.get(key)
+              if (entry && now - entry.timestamp > 30000) {
+                // Timeout - remove optimistic message
+                messagesByKey.delete(key)
+                recentOptimisticRef.current.delete(key)
+              }
+            }
+          }
+          
+          // Convert back to array and sort by created_at
+          const result = Array.from(messagesByKey.values())
+          result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          return result
         })
         lastMessageIdRef.current = newMaxId
 
         if (hasNewMessages && !silent) {
-          setTimeout(scrollToBottom, 100)
+          requestAnimationFrame(scrollToBottom)
         }
       }
     } catch (err) {
@@ -402,6 +454,9 @@ export default function GroupChatThread() {
     // Lock immediately (synchronous) to prevent double-clicks
     sendingLockRef.current = true
     
+    // Pause polling to avoid race condition with server confirmation
+    skipNextPollsUntilRef.current = Date.now() + 2000
+    
     // CLEAR COMPOSER IMMEDIATELY - direct DOM manipulation (uncontrolled)
     if (textareaRef.current) {
       textareaRef.current.value = ''
@@ -409,30 +464,33 @@ export default function GroupChatThread() {
     draftRef.current = ''
     setDraftDisplay('') // Update UI state for button visibility
     
-    // Create optimistic message
+    // Create optimistic message with clientKey for stable tracking
     const now = new Date().toISOString()
-    const tempId = -Date.now()
-    const optimisticMessage: Message = {
-      id: tempId,
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
+    const optimisticMessage: Message & { clientKey: string } = {
+      id: -Date.now(), // Negative ID for optimistic messages
       sender: currentUsername || 'You',
       text: text,
       image: null,
       voice: null,
       created_at: now,
       profile_picture: null,
+      clientKey: tempId,
     }
     
-    // Add optimistic message immediately with flushSync to force synchronous render
-    flushSync(() => {
-      setMessages(prev => [...prev, optimisticMessage])
+    // Register in recent optimistic to prevent poll from removing it
+    recentOptimisticRef.current.set(tempId, {
+      message: optimisticMessage,
+      timestamp: Date.now()
     })
     
-    // Scroll to bottom immediately after the synchronous render
-    scrollToBottom()
+    // Add optimistic message immediately
+    setMessages(prev => [...prev, optimisticMessage])
+    
+    // Scroll to bottom immediately using requestAnimationFrame
+    requestAnimationFrame(scrollToBottom)
 
-    // Send to server in the background (non-blocking)
-    // Using .then() instead of async/await ensures the function returns immediately
-    // allowing React to render the optimistic message before the network request
+    // Send to server in the background
     fetch(`/api/group_chat/${group_id}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -443,27 +501,41 @@ export default function GroupChatThread() {
       .then(data => {
         if (data.success) {
           const realMessage = data.message as Message
-          // Track this message to prevent it from disappearing due to race conditions
-          recentlySentMessagesRef.current.set(realMessage.id, realMessage)
-          // Auto-cleanup after 15 seconds (by then loadMessages should have it)
-          setTimeout(() => {
-            recentlySentMessagesRef.current.delete(realMessage.id)
-          }, 15000)
           
-          // Replace optimistic message with real one from server
-          setMessages(prev => prev.map(m => 
-            m.id === tempId ? realMessage : m
-          ))
+          // Update optimistic message with server data but keep clientKey
+          setMessages(prev => {
+            const updated = prev.map(m => {
+              const msgWithKey = m as Message & { clientKey?: string }
+              if (msgWithKey.clientKey === tempId) {
+                return { ...realMessage, clientKey: tempId }
+              }
+              return m
+            })
+            // Filter out any duplicates that poll might have added
+            const seen = new Set<number>()
+            return updated.filter(m => {
+              if (m.id > 0) {
+                if (seen.has(m.id)) return false
+                seen.add(m.id)
+              }
+              return true
+            })
+          })
           lastMessageIdRef.current = realMessage.id
+          
+          // Clean up from recent optimistic after a delay
+          setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
         } else {
           // Remove optimistic message on failure
-          setMessages(prev => prev.filter(m => m.id !== tempId))
+          setMessages(prev => prev.filter(m => (m as Message & { clientKey?: string }).clientKey !== tempId))
+          recentOptimisticRef.current.delete(tempId)
           console.error('Failed to send:', data.error)
         }
       })
       .catch(err => {
         // Remove optimistic message on error
-        setMessages(prev => prev.filter(m => m.id !== tempId))
+        setMessages(prev => prev.filter(m => (m as Message & { clientKey?: string }).clientKey !== tempId))
+        recentOptimisticRef.current.delete(tempId)
         console.error('Error sending message:', err)
       })
       .finally(() => {
@@ -911,11 +983,13 @@ export default function GroupChatThread() {
             ) : (
               <div className="space-y-3 py-3">
                 {messages.map((msg, idx) => {
+                  const msgWithKey = msg as Message & { clientKey?: string }
                   const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender
                   const showTime = showAvatar || (idx > 0 && 
                     new Date(msg.created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 60000)
                   const messageReaction = reactions[msg.id]
-                  const isOptimistic = msg.id < 0
+                  // Check if optimistic using clientKey (starts with temp_) or negative ID
+                  const isOptimistic = msgWithKey.clientKey?.startsWith('temp_') || msg.id < 0
                   // Determine if message is sent by current user
                   const isSentByMe = isOptimistic || (msg.sender && msg.sender.toLowerCase() === currentUsername.toLowerCase())
                   
@@ -925,7 +999,7 @@ export default function GroupChatThread() {
                   const showDateSeparator = messageDate !== prevMessageDate
 
                   return (
-                    <div key={msg.id}>
+                    <div key={msgWithKey.clientKey || msg.id}>
                       {showDateSeparator && (
                         <div className="flex justify-center my-3">
                           <div className="liquid-glass-chip px-3 py-1 text-xs text-white/80 border">
