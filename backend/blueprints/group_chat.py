@@ -900,7 +900,7 @@ def edit_group_message(group_id: int, message_id: int):
 @group_chat_bp.route("/api/group_chat/<int:group_id>/available_members", methods=["GET"])
 @_login_required
 def get_available_members(group_id: int):
-    """Get community members who can be added to the group."""
+    """Get members from all communities the current user belongs to who can be added to the group."""
     username = session["username"]
     
     try:
@@ -910,45 +910,47 @@ def get_available_members(group_id: int):
             
             _ensure_group_chat_tables(c)
             
-            # Get group info including community_id
+            # Check if user is a member of the group
             c.execute(f"""
-                SELECT g.community_id, gcm.is_admin
-                FROM group_chats g
-                JOIN group_chat_members gcm ON g.id = gcm.group_id
-                WHERE g.id = {ph} AND gcm.username = {ph} AND g.is_active = 1
+                SELECT 1 FROM group_chat_members
+                WHERE group_id = {ph} AND username = {ph}
             """, (group_id, username))
             
-            row = c.fetchone()
-            if not row:
+            if not c.fetchone():
                 return jsonify({"success": False, "error": "Not a member of this group"}), 404
-            
-            community_id = row["community_id"] if hasattr(row, "keys") else row[0]
-            
-            if not community_id:
-                return jsonify({"success": True, "members": [], "message": "This group is not linked to a community"})
             
             # Get existing group members
             c.execute(f"SELECT username FROM group_chat_members WHERE group_id = {ph}", (group_id,))
             existing_members = {r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()}
             
-            # Get all community members who are NOT already in the group
+            # Get all members from all communities the current user belongs to
             c.execute(f"""
-                SELECT u.username, up.display_name, up.profile_picture
+                SELECT DISTINCT u.username, up.display_name, up.profile_picture, c.name as community_name
                 FROM user_communities uc
                 JOIN users u ON uc.user_id = u.id
                 LEFT JOIN user_profiles up ON u.username = up.username
-                WHERE uc.community_id = {ph}
-                ORDER BY u.username
-            """, (community_id,))
+                JOIN communities c ON uc.community_id = c.id
+                WHERE uc.community_id IN (
+                    SELECT uc2.community_id 
+                    FROM user_communities uc2 
+                    JOIN users u2 ON uc2.user_id = u2.id 
+                    WHERE u2.username = {ph}
+                )
+                ORDER BY c.name, u.username
+            """, (username,))
             
             available = []
+            seen_usernames = set()
             for m_row in c.fetchall():
                 member_username = m_row["username"] if hasattr(m_row, "keys") else m_row[0]
-                if member_username not in existing_members:
+                # Skip existing group members and duplicates
+                if member_username not in existing_members and member_username not in seen_usernames:
+                    seen_usernames.add(member_username)
                     available.append({
                         "username": member_username,
                         "display_name": m_row["display_name"] if hasattr(m_row, "keys") else m_row[1],
                         "profile_picture": m_row["profile_picture"] if hasattr(m_row, "keys") else m_row[2],
+                        "community_name": m_row["community_name"] if hasattr(m_row, "keys") else m_row[3],
                     })
             
             return jsonify({"success": True, "members": available})
@@ -961,7 +963,7 @@ def get_available_members(group_id: int):
 @group_chat_bp.route("/api/group_chat/<int:group_id>/add_members", methods=["POST"])
 @_login_required
 def add_members_to_group(group_id: int):
-    """Add members to an existing group chat."""
+    """Add members to an existing group chat. Members can be from any community the adder belongs to."""
     username = session["username"]
     
     try:
@@ -977,9 +979,9 @@ def add_members_to_group(group_id: int):
             
             _ensure_group_chat_tables(c)
             
-            # Check if user is a member of the group and get group info
+            # Check if user is a member of the group
             c.execute(f"""
-                SELECT g.name, g.creator_username, g.community_id, gcm.is_admin
+                SELECT g.name, g.creator_username
                 FROM group_chats g
                 JOIN group_chat_members gcm ON g.id = gcm.group_id
                 WHERE g.id = {ph} AND gcm.username = {ph} AND g.is_active = 1
@@ -990,7 +992,6 @@ def add_members_to_group(group_id: int):
                 return jsonify({"success": False, "error": "Not a member of this group"}), 404
             
             group_name = row["name"] if hasattr(row, "keys") else row[0]
-            community_id = row["community_id"] if hasattr(row, "keys") else row[2]
             
             # Get current member count
             c.execute(f"SELECT COUNT(*) as cnt FROM group_chat_members WHERE group_id = {ph}", (group_id,))
@@ -1011,21 +1012,31 @@ def add_members_to_group(group_id: int):
             c.execute(f"SELECT username FROM group_chat_members WHERE group_id = {ph}", (group_id,))
             existing_members = {r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()}
             
-            # If group has a community, verify all new members belong to it
-            if community_id:
-                for member in new_members:
-                    member = str(member).strip()
-                    if member and member not in existing_members:
-                        c.execute(f"""
-                            SELECT 1 FROM user_communities uc
-                            JOIN users u ON uc.user_id = u.id
-                            WHERE uc.community_id = {ph} AND u.username = {ph}
-                        """, (community_id, member))
-                        if not c.fetchone():
-                            return jsonify({
-                                "success": False, 
-                                "error": f"User '{member}' is not a member of this community"
-                            }), 400
+            # Get all communities the current user belongs to
+            c.execute(f"""
+                SELECT uc.community_id FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {ph}
+            """, (username,))
+            user_communities = {r["community_id"] if hasattr(r, "keys") else r[0] for r in c.fetchall()}
+            
+            # Verify new members belong to at least one of the user's communities
+            for member in new_members:
+                member = str(member).strip()
+                if member and member not in existing_members:
+                    c.execute(f"""
+                        SELECT uc.community_id FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE u.username = {ph}
+                    """, (member,))
+                    member_communities = {r["community_id"] if hasattr(r, "keys") else r[0] for r in c.fetchall()}
+                    
+                    # Check if there's any overlap between user's communities and member's communities
+                    if not user_communities.intersection(member_communities):
+                        return jsonify({
+                            "success": False, 
+                            "error": f"User '{member}' is not in any of your communities"
+                        }), 400
             
             now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
             added_members = []

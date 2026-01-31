@@ -1722,9 +1722,6 @@ export default function GroupChatThread() {
                 <div className="text-xs text-[#9fb0b5]">
                   {group.members.length}/5 members
                   {group.members.length >= 5 && ' (limit reached)'}
-                  {group.community_name && (
-                    <span className="ml-1">• {group.community_name}</span>
-                  )}
                 </div>
               </div>
               <button
@@ -1758,16 +1755,6 @@ export default function GroupChatThread() {
                   Create Community
                 </button>
               </div>
-            ) : !group.community_id ? (
-              <div className="p-6 text-center">
-                <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <i className="fa-solid fa-exclamation-triangle text-yellow-500 text-2xl" />
-                </div>
-                <h3 className="text-white font-medium mb-2">No Community Linked</h3>
-                <p className="text-white/60 text-sm mb-4">
-                  This group is not linked to a community. Members can only be added from the same community.
-                </p>
-              </div>
             ) : (
               <>
                 {/* Selected members */}
@@ -1793,7 +1780,7 @@ export default function GroupChatThread() {
                   </div>
                 )}
 
-                {/* Available community members */}
+                {/* Available members from your communities */}
                 <div className="max-h-[40vh] overflow-y-auto">
                   {loadingAvailable ? (
                     <div className="p-8 text-center">
@@ -1802,7 +1789,7 @@ export default function GroupChatThread() {
                     </div>
                   ) : availableMembers.length > 0 ? (
                     <div className="p-4 space-y-2">
-                      <div className="text-xs text-[#9fb0b5] mb-2">Community Members</div>
+                      <div className="text-xs text-[#9fb0b5] mb-2">Members from your communities</div>
                       {availableMembers.map((user) => (
                         <button
                           key={user.username}
@@ -1831,7 +1818,12 @@ export default function GroupChatThread() {
                           />
                           <div className="flex-1 min-w-0 text-left">
                             <div className="font-medium truncate">{user.display_name || user.username}</div>
-                            <div className="text-xs text-white/50">@{user.username}</div>
+                            <div className="text-xs text-white/50">
+                              @{user.username}
+                              {(user as any).community_name && (
+                                <span className="ml-1 text-[#4db6ac]/70">• {(user as any).community_name}</span>
+                              )}
+                            </div>
                           </div>
                           {selectedNewMembers.includes(user.username) && (
                             <i className="fa-solid fa-check text-[#4db6ac]" />
@@ -1845,7 +1837,7 @@ export default function GroupChatThread() {
                         <i className="fa-solid fa-user-check text-white/40" />
                       </div>
                       <p className="text-white/50 text-sm">
-                        All community members are already in this group
+                        No available members to add
                       </p>
                     </div>
                   )}
