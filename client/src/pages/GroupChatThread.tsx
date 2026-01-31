@@ -11,6 +11,7 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import LongPressActionable from '../chat/LongPressActionable'
+import { formatDateLabel, getDateKey } from '../chat'
 
 type Message = {
   id: number
@@ -705,7 +706,7 @@ export default function GroupChatThread() {
 
   if (loading && !group) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className="min-h-screen glass-page chat-thread-bg text-white flex items-center justify-center">
         <div className="text-[#9fb0b5]">
           <i className="fa-solid fa-spinner fa-spin mr-2" />
           Loading...
@@ -716,7 +717,7 @@ export default function GroupChatThread() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className="min-h-screen glass-page chat-thread-bg text-white flex items-center justify-center">
         <div className="text-center">
           <div className="text-red-400 mb-4">{error}</div>
           <button
@@ -732,7 +733,7 @@ export default function GroupChatThread() {
 
   return (
     <div 
-      className="bg-black text-white"
+      className="glass-page text-white chat-thread-bg"
       style={{
         position: 'fixed',
         left: 0,
@@ -860,9 +861,22 @@ export default function GroupChatThread() {
                     new Date(msg.created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 60000)
                   const messageReaction = reactions[msg.id]
                   const isOptimistic = msg.id < 0
+                  
+                  // Date separator logic - matching ChatThread
+                  const messageDate = getDateKey(msg.created_at)
+                  const prevMessageDate = idx > 0 ? getDateKey(messages[idx - 1].created_at) : null
+                  const showDateSeparator = messageDate !== prevMessageDate
 
                   return (
-                    <div key={msg.id} className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'}`}>
+                    <div key={msg.id}>
+                      {showDateSeparator && (
+                        <div className="flex justify-center my-3">
+                          <div className="liquid-glass-chip px-3 py-1 text-xs text-white/80 border">
+                            {formatDateLabel(msg.created_at)}
+                          </div>
+                        </div>
+                      )}
+                      <div className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'}`}>
                       <div className="w-8 flex-shrink-0">
                         {showAvatar && msg.sender && (
                           <Avatar
@@ -939,6 +953,7 @@ export default function GroupChatThread() {
                           )}
                         </div>
                       </div>
+                    </div>
                     </div>
                   )
                 })}
