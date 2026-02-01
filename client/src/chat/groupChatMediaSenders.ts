@@ -80,16 +80,20 @@ async function uploadMedia(
       }
       
       xhr.onload = () => {
+        console.log('[GroupMedia] Upload XHR status:', xhr.status, 'response:', xhr.responseText.substring(0, 200))
         try {
           const response = JSON.parse(xhr.responseText)
           if (response.success && response.path) {
+            console.log('[GroupMedia] Upload success, path:', response.path)
             onProgress?.({ stage: 'done', progress: 100, message: 'Uploaded!' })
             resolve({ success: true, path: response.path })
           } else {
+            console.error('[GroupMedia] Upload response missing path:', response)
             onProgress?.({ stage: 'error', progress: 0, message: 'Upload failed' })
             resolve({ success: false, error: response.error || 'Upload failed' })
           }
-        } catch {
+        } catch (parseErr) {
+          console.error('[GroupMedia] Failed to parse upload response:', parseErr)
           onProgress?.({ stage: 'error', progress: 0, message: 'Invalid response' })
           resolve({ success: false, error: 'Invalid response' })
         }
@@ -156,13 +160,17 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
 
   try {
     // Upload to R2 CDN
+    console.log('[GroupMedia] Starting upload for', kind)
     const uploadResult = await uploadMedia(file, 'image', onProgress)
+    console.log('[GroupMedia] Upload result:', uploadResult)
     
     if (!uploadResult.success || !uploadResult.path) {
+      console.error('[GroupMedia] Upload failed:', uploadResult.error)
       throw new Error(uploadResult.error || 'Upload failed')
     }
 
     // Send message to group
+    console.log('[GroupMedia] Sending to group:', groupId, 'path:', uploadResult.path)
     const response = await fetch(`/api/group_chat/${groupId}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -171,8 +179,10 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
     })
     
     const data = await response.json()
+    console.log('[GroupMedia] Send response:', data)
     
     if (!data.success) {
+      console.error('[GroupMedia] Send failed:', data.error)
       throw new Error(data.error || 'Failed to send image')
     }
 
@@ -184,12 +194,13 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
     
     return true
   } catch (error) {
-    console.error('Group image upload failed:', error)
+    console.error('[GroupMedia] Image upload/send failed:', error)
     
     // Remove optimistic message on failure
     setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
     
-    onError(kind === 'gif' ? 'Failed to send GIF. Please try again.' : 'Failed to send photo. Please try again.')
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    onError(kind === 'gif' ? `Failed to send GIF: ${errorMsg}` : `Failed to send photo: ${errorMsg}`)
     return false
   } finally {
     try {
