@@ -75,10 +75,12 @@ export default function GroupChatThread() {
   }, [])
   const [showMembers, setShowMembers] = useState(false)
   const [showAddMembers, setShowAddMembers] = useState(false)
-  const [availableMembers, setAvailableMembers] = useState<Array<{ username: string; display_name?: string; profile_picture?: string }>>([])
+  const [availableMembers, setAvailableMembers] = useState<Array<{ username: string; display_name?: string; profile_picture?: string; community_name?: string }>>([])
   const [loadingAvailable, setLoadingAvailable] = useState(false)
   const [selectedNewMembers, setSelectedNewMembers] = useState<string[]>([])
   const [addingMembers, setAddingMembers] = useState(false)
+  const [memberSearchQuery, setMemberSearchQuery] = useState('')
+  const [expandedCommunities, setExpandedCommunities] = useState<Set<string>>(new Set())
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
@@ -885,6 +887,8 @@ export default function GroupChatThread() {
         setShowAddMembers(false)
         setSelectedNewMembers([])
         setAvailableMembers([])
+        setMemberSearchQuery('')
+        setExpandedCommunities(new Set())
       } else {
         if (data.limit_exceeded) {
           alert(`Group chats are limited to ${data.max_members} members. For larger groups, consider creating a community or sub-community.`)
@@ -2026,13 +2030,15 @@ export default function GroupChatThread() {
             setShowAddMembers(false)
             setSelectedNewMembers([])
             setAvailableMembers([])
+            setMemberSearchQuery('')
+            setExpandedCommunities(new Set())
           }}
         >
           <div
-            className="w-full max-w-sm bg-[#1a1a1a] rounded-2xl border border-white/10 max-h-[80vh] overflow-hidden"
+            className="w-full max-w-md bg-[#1a1a1a] rounded-2xl border border-white/10 max-h-[85vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-4 border-b border-white/10 flex items-center justify-between">
+            <div className="p-4 border-b border-white/10 flex items-center justify-between flex-shrink-0">
               <div>
                 <div className="font-semibold">Add Members</div>
                 <div className="text-xs text-[#9fb0b5]">
@@ -2045,6 +2051,8 @@ export default function GroupChatThread() {
                   setShowAddMembers(false)
                   setSelectedNewMembers([])
                   setAvailableMembers([])
+                  setMemberSearchQuery('')
+                  setExpandedCommunities(new Set())
                 }}
                 className="p-2 rounded-full hover:bg-white/5"
               >
@@ -2073,9 +2081,31 @@ export default function GroupChatThread() {
               </div>
             ) : (
               <>
+                {/* Search input */}
+                <div className="p-3 border-b border-white/10 flex-shrink-0">
+                  <div className="relative">
+                    <i className="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm" />
+                    <input
+                      type="text"
+                      placeholder="Search members..."
+                      value={memberSearchQuery}
+                      onChange={(e) => setMemberSearchQuery(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]/50"
+                    />
+                    {memberSearchQuery && (
+                      <button
+                        onClick={() => setMemberSearchQuery('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                      >
+                        <i className="fa-solid fa-xmark text-sm" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 {/* Selected members */}
                 {selectedNewMembers.length > 0 && (
-                  <div className="p-4 pb-2 border-b border-white/10">
+                  <div className="p-3 border-b border-white/10 flex-shrink-0">
                     <div className="text-xs text-[#9fb0b5] mb-2">Selected ({selectedNewMembers.length})</div>
                     <div className="flex flex-wrap gap-2">
                       {selectedNewMembers.map((username) => (
@@ -2096,56 +2126,118 @@ export default function GroupChatThread() {
                   </div>
                 )}
 
-                {/* Available members from your communities */}
-                <div className="max-h-[40vh] overflow-y-auto">
+                {/* Available members grouped by community */}
+                <div className="flex-1 overflow-y-auto min-h-0">
                   {loadingAvailable ? (
                     <div className="p-8 text-center">
                       <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-2xl" />
                       <p className="text-white/50 text-sm mt-2">Loading members...</p>
                     </div>
                   ) : availableMembers.length > 0 ? (
-                    <div className="p-4 space-y-2">
-                      <div className="text-xs text-[#9fb0b5] mb-2">Members from your communities</div>
-                      {availableMembers.map((user) => (
-                        <button
-                          key={user.username}
-                          className={`w-full flex items-center gap-3 p-2 rounded-lg transition ${
-                            selectedNewMembers.includes(user.username)
-                              ? 'bg-[#4db6ac]/20'
-                              : 'hover:bg-white/5'
-                          }`}
-                          onClick={() => {
-                            if (selectedNewMembers.includes(user.username)) {
-                              setSelectedNewMembers(prev => prev.filter(u => u !== user.username))
-                            } else {
-                              // Check if adding would exceed limit
-                              if (group.members.length + selectedNewMembers.length + 1 > 5) {
-                                alert('Group chats are limited to 5 members. For larger groups, consider creating a community.')
-                                return
-                              }
-                              setSelectedNewMembers(prev => [...prev, user.username])
-                            }
-                          }}
-                        >
-                          <Avatar
-                            username={user.username}
-                            url={user.profile_picture || undefined}
-                            size={40}
-                          />
-                          <div className="flex-1 min-w-0 text-left">
-                            <div className="font-medium truncate">{user.display_name || user.username}</div>
-                            <div className="text-xs text-white/50">
-                              @{user.username}
-                              {(user as any).community_name && (
-                                <span className="ml-1 text-[#4db6ac]/70">• {(user as any).community_name}</span>
+                    <div className="p-2">
+                      {(() => {
+                        // Group members by community
+                        const membersByCommunity = new Map<string, typeof availableMembers>()
+                        const searchLower = memberSearchQuery.toLowerCase()
+                        
+                        availableMembers.forEach((user) => {
+                          // Filter by search query
+                          if (searchLower && 
+                              !user.username.toLowerCase().includes(searchLower) &&
+                              !(user.display_name || '').toLowerCase().includes(searchLower)) {
+                            return
+                          }
+                          
+                          const community = user.community_name || 'Other'
+                          if (!membersByCommunity.has(community)) {
+                            membersByCommunity.set(community, [])
+                          }
+                          membersByCommunity.get(community)!.push(user)
+                        })
+                        
+                        // Sort communities alphabetically
+                        const sortedCommunities = Array.from(membersByCommunity.entries())
+                          .sort((a, b) => a[0].localeCompare(b[0]))
+                        
+                        if (sortedCommunities.length === 0) {
+                          return (
+                            <div className="p-6 text-center">
+                              <p className="text-white/50 text-sm">No members match your search</p>
+                            </div>
+                          )
+                        }
+                        
+                        return sortedCommunities.map(([communityName, members]) => {
+                          const isExpanded = expandedCommunities.has(communityName) || memberSearchQuery.length > 0
+                          
+                          return (
+                            <div key={communityName} className="mb-2">
+                              {/* Community header - collapsible */}
+                              <button
+                                onClick={() => {
+                                  setExpandedCommunities(prev => {
+                                    const next = new Set(prev)
+                                    if (next.has(communityName)) {
+                                      next.delete(communityName)
+                                    } else {
+                                      next.add(communityName)
+                                    }
+                                    return next
+                                  })
+                                }}
+                                className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-white/5 transition"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
+                                  <span className="font-medium text-sm">{communityName}</span>
+                                  <span className="text-xs text-white/40">({members.length})</span>
+                                </div>
+                                <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'} text-xs text-white/40`} />
+                              </button>
+                              
+                              {/* Members list */}
+                              {isExpanded && (
+                                <div className="ml-2 mt-1 space-y-1">
+                                  {members.map((user) => (
+                                    <button
+                                      key={user.username}
+                                      className={`w-full flex items-center gap-3 p-2 rounded-lg transition ${
+                                        selectedNewMembers.includes(user.username)
+                                          ? 'bg-[#4db6ac]/20'
+                                          : 'hover:bg-white/5'
+                                      }`}
+                                      onClick={() => {
+                                        if (selectedNewMembers.includes(user.username)) {
+                                          setSelectedNewMembers(prev => prev.filter(u => u !== user.username))
+                                        } else {
+                                          if (group.members.length + selectedNewMembers.length + 1 > 5) {
+                                            alert('Group chats are limited to 5 members. For larger groups, consider creating a community.')
+                                            return
+                                          }
+                                          setSelectedNewMembers(prev => [...prev, user.username])
+                                        }
+                                      }}
+                                    >
+                                      <Avatar
+                                        username={user.username}
+                                        url={user.profile_picture || undefined}
+                                        size={36}
+                                      />
+                                      <div className="flex-1 min-w-0 text-left">
+                                        <div className="font-medium text-sm truncate">{user.display_name || user.username}</div>
+                                        <div className="text-xs text-white/50">@{user.username}</div>
+                                      </div>
+                                      {selectedNewMembers.includes(user.username) && (
+                                        <i className="fa-solid fa-check text-[#4db6ac]" />
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
                               )}
                             </div>
-                          </div>
-                          {selectedNewMembers.includes(user.username) && (
-                            <i className="fa-solid fa-check text-[#4db6ac]" />
-                          )}
-                        </button>
-                      ))}
+                          )
+                        })
+                      })()}
                     </div>
                   ) : (
                     <div className="p-6 text-center">
@@ -2161,7 +2253,7 @@ export default function GroupChatThread() {
 
                 {/* Add button */}
                 {selectedNewMembers.length > 0 && (
-                  <div className="p-4 border-t border-white/10">
+                  <div className="p-4 border-t border-white/10 flex-shrink-0">
                     <button
                       onClick={handleAddMembers}
                       disabled={addingMembers}
