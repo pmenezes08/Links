@@ -242,9 +242,10 @@ export default function GroupChatThread() {
   }, [])
   
   // Always keep latest message visible - scroll instantly whenever messages change
+  // Using useLayoutEffect to scroll BEFORE browser paints (prevents flicker)
   const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
   
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (messages.length === 0) return
     
     // Get the last message ID to detect changes
@@ -254,7 +255,7 @@ export default function GroupChatThread() {
     // Only scroll if the last message changed (new message arrived)
     if (lastMsgKey !== lastVisibleMsgKeyRef.current) {
       lastVisibleMsgKeyRef.current = lastMsgKey
-      // Instant scroll - no animation
+      // Instant scroll - no animation, happens before paint
       const el = listRef.current
       if (el) {
         el.scrollTop = el.scrollHeight
