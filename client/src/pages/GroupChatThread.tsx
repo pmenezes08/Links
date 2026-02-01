@@ -22,6 +22,8 @@ type Message = {
   voice: string | null
   created_at: string
   profile_picture: string | null
+  replySnippet?: string
+  replySender?: string
 }
 
 type Member = {
@@ -88,6 +90,9 @@ export default function GroupChatThread() {
   const [editingSaving, setEditingSaving] = useState(false)
   const pendingDeletions = useRef<Set<number>>(new Set())
   const [steveIsTyping, setSteveIsTyping] = useState(false)
+  
+  // Reply state
+  const [replyTo, setReplyTo] = useState<{ text: string; sender: string; image?: string; voice?: string } | null>(null)
   
   // @mention autocomplete state
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
@@ -224,9 +229,11 @@ export default function GroupChatThread() {
   const showKeyboard = liftSource > 50
   const composerGapPx = 4
 
+  // Add extra padding (20px) to ensure last message is fully visible
+  const extraBottomPadding = 20
   const listPaddingBottom = showKeyboard
-    ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
-    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
+    ? `${effectiveComposerHeight + composerGapPx + keyboardLift + extraBottomPadding}px`
+    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx + extraBottomPadding}px)`
 
   // Instant scroll - only used for initial load
   const scrollToBottom = useCallback(() => {
@@ -241,7 +248,12 @@ export default function GroupChatThread() {
   useEffect(() => {
     if (serverMessages.length > 0 && !didInitialScrollRef.current) {
       didInitialScrollRef.current = true
-      scrollToBottom()
+      // Use requestAnimationFrame to ensure DOM is rendered before scrolling
+      requestAnimationFrame(() => {
+        scrollToBottom()
+        // Double-check after a short delay to ensure content is fully laid out
+        setTimeout(scrollToBottom, 100)
+      })
     }
   }, [serverMessages, scrollToBottom])
   
@@ -459,17 +471,35 @@ export default function GroupChatThread() {
     // Lock immediately (synchronous) to prevent double-clicks
     sendingLockRef.current = true
     
+    // Capture reply state before clearing
+    const replySnapshot = replyTo
+    
     // CLEAR COMPOSER IMMEDIATELY
     if (textareaRef.current) {
       textareaRef.current.value = ''
     }
     draftRef.current = ''
     setDraftDisplay('')
+    setReplyTo(null)
     
-    // Create pending message
+    // Format message with reply if needed
+    let formattedMessage = text
+    let replySnippet: string | undefined
+    if (replySnapshot) {
+      if (replySnapshot.image) {
+        replySnippet = `📷|${replySnapshot.image}|${(replySnapshot.text || 'Photo').slice(0, 60)}`
+      } else if (replySnapshot.voice) {
+        replySnippet = '🎤|Voice message'
+      } else {
+        replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0, 90) + '…' : replySnapshot.text
+      }
+      formattedMessage = `[REPLY:${replySnapshot.sender}:${replySnippet}]\n${text}`
+    }
+    
+    // Create pending message (show clean text, not formatted)
     const now = new Date().toISOString()
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const pendingMessage: Message & { clientKey: string } = {
+    const pendingMessage: Message & { clientKey: string; replySnippet?: string; replySender?: string } = {
       id: -Date.now(),
       sender: currentUsername || 'You',
       text: text,
@@ -478,17 +508,19 @@ export default function GroupChatThread() {
       created_at: now,
       profile_picture: null,
       clientKey: tempId,
+      replySnippet: replySnippet,
+      replySender: replySnapshot?.sender,
     }
     
     // Add to pending messages - this is a SEPARATE state, always visible
-    setPendingMessages(prev => [...prev, pendingMessage])
+    setPendingMessages(prev => [...prev, pendingMessage as any])
 
-    // Send to server
+    // Send to server (with formatted message including reply)
     fetch(`/api/group_chat/${group_id}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: formattedMessage }),
     })
       .then(response => response.json())
       .then(data => {
@@ -512,7 +544,7 @@ export default function GroupChatThread() {
       .finally(() => {
         sendingLockRef.current = false
       })
-  }, [group_id, scrollToBottom, currentUsername, loadMessages])
+  }, [group_id, scrollToBottom, currentUsername, loadMessages, replyTo])
 
   // Handle @mention selection
   const handleMentionSelect = useCallback((username: string) => {
@@ -1163,7 +1195,7 @@ export default function GroupChatThread() {
             ) : (
               <div className="space-y-3 py-3">
                 {messages.map((msg, idx) => {
-                  const msgWithKey = msg as Message & { clientKey?: string }
+                  const msgWithKey = msg as Message & { clientKey?: string; replySnippet?: string; replySender?: string }
                   const showAvatar = idx === 0 || messages[idx - 1].sender !== msg.sender
                   const showTime = showAvatar || (idx > 0 && 
                     new Date(msg.created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 60000)
@@ -1176,6 +1208,20 @@ export default function GroupChatThread() {
                   const senderNormalized = (msg.sender || '').toLowerCase().trim()
                   const currentUserNormalized = (currentUsername || '').toLowerCase().trim()
                   const isSentByMe = isOptimistic || (senderNormalized !== '' && currentUserNormalized !== '' && senderNormalized === currentUserNormalized)
+                  
+                  // Parse reply information from message text
+                  let displayText = msg.text
+                  let replySnippet = msgWithKey.replySnippet
+                  let replySender = msgWithKey.replySender
+                  
+                  if (displayText && !replySnippet) {
+                    const replyMatch = displayText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+                    if (replyMatch) {
+                      replySender = replyMatch[1]
+                      replySnippet = replyMatch[2]
+                      displayText = replyMatch[3]
+                    }
+                  }
                   
                   // Date separator logic - matching ChatThread
                   const messageDate = getDateKey(msg.created_at)
@@ -1212,7 +1258,15 @@ export default function GroupChatThread() {
                         <div className={`flex items-end gap-2 ${isSentByMe ? 'flex-row-reverse' : ''}`}>
                           <LongPressActionable
                             onReact={(emoji) => handleReaction(msg.id, emoji)}
-                            onReply={() => {/* TODO: Implement reply */}}
+                            onReply={() => {
+                              setReplyTo({
+                                text: msg.text || '',
+                                sender: isSentByMe ? 'You' : msg.sender,
+                                image: msg.image || undefined,
+                                voice: msg.voice || undefined,
+                              })
+                              focusTextarea()
+                            }}
                             onCopy={() => handleCopyMessage(msg.text)}
                             onDelete={() => handleDeleteMessage(msg.id, msg)}
                             onEdit={isSentByMe && msg.text && !msg.image && !msg.voice ? () => handleStartEdit(msg.id, msg.text || '') : undefined}
@@ -1245,17 +1299,47 @@ export default function GroupChatThread() {
                                     </button>
                                   </div>
                                 </div>
-                              ) : msg.text && (
-                                <div className={`text-[14px] text-white whitespace-pre-wrap break-words rounded-2xl px-3 py-2 max-w-[280px] ${isSentByMe ? 'rounded-br-lg' : 'rounded-bl-lg'} ${
+                              ) : (displayText || replySnippet) && (
+                                <div className={`rounded-2xl max-w-[280px] ${isSentByMe ? 'rounded-br-lg' : 'rounded-bl-lg'} ${
                                   isOptimistic 
                                     ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30' 
                                     : `liquid-glass-bubble ${isSentByMe ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
                                 }`}>
-                                  {renderTextWithMentions(msg.text)}
-                                  {isOptimistic && (
-                                    <span className="ml-2 text-[10px] text-white/60">
-                                      <i className="fa-solid fa-clock text-[8px] mr-1" />
-                                    </span>
+                                  {/* Reply snippet */}
+                                  {replySnippet && (
+                                    <div className="px-3 pt-2 pb-1 border-b border-white/10">
+                                      <div className="flex items-stretch gap-0 bg-black/20 rounded overflow-hidden">
+                                        <div className="w-0.5 bg-[#4db6ac] flex-shrink-0" />
+                                        <div className="px-2 py-1 min-w-0">
+                                          <div className="text-[10px] text-[#4db6ac] font-medium truncate">
+                                            {replySender}
+                                          </div>
+                                          <div className="text-[11px] text-white/60 truncate">
+                                            {replySnippet.startsWith('📷|') ? (
+                                              <span className="flex items-center gap-1">
+                                                <i className="fa-solid fa-image text-[9px]" /> Photo
+                                              </span>
+                                            ) : replySnippet.startsWith('🎤|') ? (
+                                              <span className="flex items-center gap-1">
+                                                <i className="fa-solid fa-microphone text-[9px]" /> Voice message
+                                              </span>
+                                            ) : (
+                                              replySnippet
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {displayText && (
+                                    <div className="text-[14px] text-white whitespace-pre-wrap break-words px-3 py-2">
+                                      {renderTextWithMentions(displayText)}
+                                      {isOptimistic && (
+                                        <span className="ml-2 text-[10px] text-white/60">
+                                          <i className="fa-solid fa-clock text-[8px] mr-1" />
+                                        </span>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               )}
@@ -1326,7 +1410,7 @@ export default function GroupChatThread() {
                     </div>
                   </div>
                 )}
-                <div ref={messagesEndRef} className="h-1" />
+                <div ref={messagesEndRef} className="h-4" />
               </div>
             )}
           </div>
@@ -1411,6 +1495,58 @@ export default function GroupChatThread() {
                 </button>
               </div>
             </>
+          )}
+
+          {/* Reply preview */}
+          {replyTo && (
+            <div className="mb-2 flex items-stretch gap-0 bg-white/5 rounded-lg overflow-hidden">
+              {/* Left accent bar */}
+              <div className="w-1 bg-[#4db6ac] flex-shrink-0" />
+              <div className="flex-1 px-3 py-2 min-w-0 flex items-center gap-2">
+                {/* Media thumbnail preview */}
+                {replyTo.image && (
+                  <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
+                    <img 
+                      src={replyTo.image.startsWith('http') ? replyTo.image : replyTo.image} 
+                      alt="Photo" 
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                {replyTo.voice && !replyTo.image && (
+                  <div className="w-10 h-10 rounded bg-black/30 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-microphone text-white/60 text-sm" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] text-[#4db6ac] font-medium truncate">
+                    {replyTo.sender}
+                  </div>
+                  <div className="text-[13px] text-white/70 line-clamp-1 mt-0.5">
+                    {replyTo.voice ? (
+                      <span className="flex items-center gap-1">
+                        <i className="fa-solid fa-microphone text-xs" />
+                        Voice message
+                      </span>
+                    ) : replyTo.image && !replyTo.text ? (
+                      <span className="flex items-center gap-1">
+                        <i className="fa-solid fa-image text-xs" />
+                        Photo
+                      </span>
+                    ) : (
+                      replyTo.text
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyTo(null)}
+                className="px-3 flex items-center justify-center hover:bg-white/5"
+              >
+                <i className="fa-solid fa-xmark text-white/40" />
+              </button>
+            </div>
           )}
 
           {/* @mention autocomplete dropdown - positioned above composer */}
