@@ -599,29 +599,42 @@ export default function GroupChatThread() {
       const formData = new FormData()
       formData.append('image', file)
 
+      console.log('[GroupChat] Uploading image...')
       const uploadResponse = await fetch('/api/upload_chat_image', {
         method: 'POST',
         credentials: 'include',
         body: formData,
       })
       const uploadData = await uploadResponse.json()
+      console.log('[GroupChat] Upload response:', uploadData)
 
       if (uploadData.success && uploadData.image_path) {
+        console.log('[GroupChat] Sending image to group...')
         const response = await fetch(`/api/group_chat/${group_id}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ image: uploadData.image_path }),
+          body: JSON.stringify({ image_path: uploadData.image_path }),
         })
         const data = await response.json()
+        console.log('[GroupChat] Send response:', data)
 
         if (data.success) {
           setServerMessages(prev => [...prev, data.message])
           lastMessageIdRef.current = data.message.id
+          // Trigger refresh to ensure consistency
+          loadMessages(true)
+        } else {
+          console.error('[GroupChat] Failed to send image:', data.error)
+          alert(data.error || 'Failed to send image')
         }
+      } else {
+        console.error('[GroupChat] Upload failed:', uploadData.error)
+        alert(uploadData.error || 'Failed to upload image')
       }
     } catch (err) {
       console.error('Error uploading image:', err)
+      alert('Failed to upload image. Please try again.')
     } finally {
       setUploadingImage(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -650,17 +663,23 @@ export default function GroupChatThread() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ image: uploadData.image_path }),
+          body: JSON.stringify({ image_path: uploadData.image_path }),
         })
         const data = await response.json()
 
         if (data.success) {
           setServerMessages(prev => [...prev, data.message])
           lastMessageIdRef.current = data.message.id
+          loadMessages(true)
+        } else {
+          alert(data.error || 'Failed to send GIF')
         }
+      } else {
+        alert(uploadData.error || 'Failed to upload GIF')
       }
     } catch (err) {
       console.error('Error sending GIF:', err)
+      alert('Failed to send GIF. Please try again.')
     } finally {
       setUploadingImage(false)
     }

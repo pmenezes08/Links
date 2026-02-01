@@ -11,8 +11,16 @@ from datetime import datetime
 from functools import wraps
 
 from flask import Blueprint, jsonify, request, session
+from werkzeug.utils import secure_filename
 
 from backend.services.database import get_db_connection, get_sql_placeholder
+
+# Upload configuration
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads', 'chat_images')
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+
+def _allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 group_chat_bp = Blueprint("group_chat", __name__)
 logger = logging.getLogger(__name__)
@@ -184,6 +192,52 @@ def _ensure_group_chat_tables(cursor):
         """)
     
     logger.info("Created group chat tables")
+
+
+@group_chat_bp.route("/api/upload_chat_image", methods=["POST"])
+@_login_required
+def upload_chat_image():
+    """Upload an image for chat (group or DM)."""
+    username = session["username"]
+    
+    if 'image' not in request.files:
+        return jsonify({"success": False, "error": "No image provided"}), 400
+    
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "No file selected"}), 400
+    
+    if not _allowed_file(file.filename):
+        return jsonify({"success": False, "error": "File type not allowed"}), 400
+    
+    try:
+        # Ensure upload directory exists
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        
+        # Generate unique filename
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        filename = f"{username}_{timestamp}.{ext}"
+        filename = secure_filename(filename)
+        
+        # Save file
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+        
+        # Return the path that can be used to access the image
+        image_path = f"/uploads/chat_images/{filename}"
+        
+        logger.info(f"Uploaded chat image: {image_path} by {username}")
+        
+        return jsonify({
+            "success": True,
+            "image_path": image_path,
+            "filename": filename
+        })
+        
+    except Exception as e:
+        logger.error(f"Error uploading chat image: {e}")
+        return jsonify({"success": False, "error": "Failed to upload image"}), 500
 
 
 @group_chat_bp.route("/api/group_chat/create", methods=["POST"])
