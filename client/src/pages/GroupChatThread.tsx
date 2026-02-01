@@ -13,6 +13,9 @@ import { useAudioRecorder } from '../components/useAudioRecorder'
 import LongPressActionable from '../chat/LongPressActionable'
 import { formatDateLabel, getDateKey } from '../chat'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import ZoomableImage from '../components/ZoomableImage'
+import { sendGroupImageMessage, sendGroupVideoMessage } from '../chat/groupChatMediaSenders'
+import type { UploadProgress } from '../chat/groupChatMediaSenders'
 
 type Message = {
   id: number
@@ -20,6 +23,7 @@ type Message = {
   text: string | null
   image: string | null
   voice: string | null
+  video?: string | null
   created_at: string
   profile_picture: string | null
   replySnippet?: string
@@ -82,8 +86,12 @@ export default function GroupChatThread() {
   const [memberSearchQuery, setMemberSearchQuery] = useState('')
   const [expandedCommunities, setExpandedCommunities] = useState<Set<string>>(new Set())
   const [showAttachMenu, setShowAttachMenu] = useState(false)
-  const [uploadingImage, setUploadingImage] = useState(false)
+  const [uploadingMedia, setUploadingMedia] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
+  const videoInputRef = useRef<HTMLInputElement>(null)
   const [previewPlaying, setPreviewPlaying] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const [reactions, setReactions] = useState<Record<number, string>>({})
@@ -591,99 +599,123 @@ export default function GroupChatThread() {
     setShowAttachMenu(false)
     cameraInputRef.current?.click()
   }
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setUploadingImage(true)
-    try {
-      const formData = new FormData()
-      formData.append('image', file)
-
-      console.log('[GroupChat] Uploading image...')
-      const uploadResponse = await fetch('/api/upload_chat_image', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
-      })
-      const uploadData = await uploadResponse.json()
-      console.log('[GroupChat] Upload response:', uploadData)
-
-      if (uploadData.success && uploadData.image_path) {
-        console.log('[GroupChat] Sending image to group...')
-        const response = await fetch(`/api/group_chat/${group_id}/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ image_path: uploadData.image_path }),
-        })
-        const data = await response.json()
-        console.log('[GroupChat] Send response:', data)
-
-        if (data.success) {
-          setServerMessages(prev => [...prev, data.message])
-          lastMessageIdRef.current = data.message.id
-          // Trigger refresh to ensure consistency
-          loadMessages(true)
-        } else {
-          console.error('[GroupChat] Failed to send image:', data.error)
-          alert(data.error || 'Failed to send image')
-        }
-      } else {
-        console.error('[GroupChat] Upload failed:', uploadData.error)
-        alert(uploadData.error || 'Failed to upload image')
-      }
-    } catch (err) {
-      console.error('Error uploading image:', err)
-      alert('Failed to upload image. Please try again.')
-    } finally {
-      setUploadingImage(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      if (cameraInputRef.current) cameraInputRef.current.value = ''
-    }
+  
+  const handleVideoSelect = () => {
+    setShowAttachMenu(false)
+    videoInputRef.current?.click()
   }
 
-  // GIF selection handler
+  // Show image preview before sending
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    // Check if it's an image
+    if (file.type.startsWith('image/')) {
+      // Show preview modal
+      const previewUrl = URL.createObjectURL(file)
+      setPreviewImage(previewUrl)
+      setPendingImageFile(file)
+    }
+    
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (cameraInputRef.current) cameraInputRef.current.value = ''
+  }
+  
+  // Handle video file selection
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !group_id) return
+    
+    // Send video directly (no preview for videos)
+    sendGroupVideoMessage({
+      file,
+      groupId: group_id,
+      currentUsername,
+      setServerMessages,
+      setPendingMessages,
+      loadMessages,
+      onProgress: setUploadProgress,
+      onError: (msg) => alert(msg),
+      onComplete: () => {
+        setUploadProgress(null)
+        if (videoInputRef.current) videoInputRef.current.value = ''
+      },
+    })
+    
+    if (videoInputRef.current) videoInputRef.current.value = ''
+  }
+  
+  // Confirm and send the previewed image
+  const confirmSendImage = async () => {
+    if (!pendingImageFile || !group_id) return
+    
+    const file = pendingImageFile
+    
+    // Clear preview immediately
+    if (previewImage?.startsWith('blob:')) {
+      try { URL.revokeObjectURL(previewImage) } catch {}
+    }
+    setPreviewImage(null)
+    setPendingImageFile(null)
+    
+    // Send using modular sender
+    setUploadingMedia(true)
+    await sendGroupImageMessage({
+      file,
+      kind: 'photo',
+      groupId: group_id,
+      currentUsername,
+      setServerMessages,
+      setPendingMessages,
+      loadMessages,
+      onProgress: setUploadProgress,
+      onError: (msg) => alert(msg),
+      onComplete: () => {
+        setUploadingMedia(false)
+        setUploadProgress(null)
+      },
+    })
+  }
+  
+  // Cancel image preview
+  const cancelImagePreview = () => {
+    if (previewImage?.startsWith('blob:')) {
+      try { URL.revokeObjectURL(previewImage) } catch {}
+    }
+    setPreviewImage(null)
+    setPendingImageFile(null)
+  }
+
+  // GIF selection handler - uses modular sender
   const handleGifSelection = async (gif: GifSelection) => {
+    if (!group_id) return
+    
     try {
       const file = await gifSelectionToFile(gif, 'group-gif')
       
-      setUploadingImage(true)
-      const formData = new FormData()
-      formData.append('image', file)
-
-      const uploadResponse = await fetch('/api/upload_chat_image', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
+      setUploadingMedia(true)
+      await sendGroupImageMessage({
+        file,
+        kind: 'gif',
+        groupId: group_id,
+        currentUsername,
+        setServerMessages,
+        setPendingMessages,
+        loadMessages,
+        onProgress: setUploadProgress,
+        onError: (msg) => alert(msg),
+        onComplete: () => {
+          setUploadingMedia(false)
+          setUploadProgress(null)
+        },
       })
-      const uploadData = await uploadResponse.json()
-
-      if (uploadData.success && uploadData.image_path) {
-        const response = await fetch(`/api/group_chat/${group_id}/send`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ image_path: uploadData.image_path }),
-        })
-        const data = await response.json()
-
-        if (data.success) {
-          setServerMessages(prev => [...prev, data.message])
-          lastMessageIdRef.current = data.message.id
-          loadMessages(true)
-        } else {
-          alert(data.error || 'Failed to send GIF')
-        }
-      } else {
-        alert(uploadData.error || 'Failed to upload GIF')
-      }
     } catch (err) {
       console.error('Error sending GIF:', err)
       alert('Failed to send GIF. Please try again.')
-    } finally {
-      setUploadingImage(false)
+      setUploadingMedia(false)
+      setUploadProgress(null)
     }
   }
 
@@ -1374,8 +1406,16 @@ export default function GroupChatThread() {
                               )}
                               {msg.image && (
                                 <img
-                                  src={msg.image.startsWith('http') ? msg.image : `/uploads/${msg.image}`}
+                                  src={msg.image.startsWith('http') ? msg.image : msg.image}
                                   alt="Shared image"
+                                  className="mt-1 max-w-[280px] rounded-lg border border-white/10"
+                                />
+                              )}
+                              {msg.video && (
+                                <video
+                                  src={msg.video.startsWith('http') ? msg.video : msg.video}
+                                  controls
+                                  playsInline
                                   className="mt-1 max-w-[280px] rounded-lg border border-white/10"
                                 />
                               )}
@@ -1390,7 +1430,7 @@ export default function GroupChatThread() {
                                     }}
                                   >
                                     <source 
-                                      src={msg.voice.startsWith('http') ? msg.voice : `/uploads/${msg.voice}`} 
+                                      src={msg.voice.startsWith('http') ? msg.voice : msg.voice} 
                                       type={msg.voice.includes('.mp4') ? 'audio/mp4' : 'audio/webm'} 
                                     />
                                   </audio>
@@ -1508,6 +1548,18 @@ export default function GroupChatThread() {
                   <div className="min-w-0">
                     <div className="text-white font-medium text-sm sm:text-base">Camera</div>
                     <div className="text-white/60 text-[10px] sm:text-xs">Take a photo</div>
+                  </div>
+                </button>
+                <button
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2.5 sm:gap-3 hover:bg-white/5 active:bg-white/10 transition-colors text-left"
+                  onClick={handleVideoSelect}
+                >
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-video text-[#4db6ac] text-sm sm:text-base" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-white font-medium text-sm sm:text-base">Video</div>
+                    <div className="text-white/60 text-[10px] sm:text-xs">Send from gallery</div>
                   </div>
                 </button>
                 <button
@@ -1648,6 +1700,13 @@ export default function GroupChatThread() {
               onChange={handleFileChange}
               className="hidden"
             />
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/*"
+              onChange={handleVideoChange}
+              className="hidden"
+            />
 
             {/* Recording indicator */}
             {MIC_ENABLED && recording && (
@@ -1660,11 +1719,13 @@ export default function GroupChatThread() {
               </div>
             )}
 
-            {/* Uploading indicator */}
-            {uploadingImage && (
+            {/* Uploading indicator with progress */}
+            {uploadingMedia && (
               <div className="flex items-center gap-1.5 flex-shrink-0 pr-2">
                 <i className="fa-solid fa-spinner fa-spin text-[#4db6ac]" />
-                <span className="text-[#4db6ac] text-xs">Uploading...</span>
+                <span className="text-[#4db6ac] text-xs">
+                  {uploadProgress?.message || 'Uploading...'}
+                </span>
               </div>
             )}
 
@@ -2269,6 +2330,70 @@ export default function GroupChatThread() {
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Photo preview modal - shown before sending */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 bg-black z-[9999] flex flex-col"
+          onClick={cancelImagePreview}
+        >
+          {/* Header */}
+          <div 
+            className="flex items-center justify-between px-4 py-3 bg-black/80"
+            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+          >
+            <button
+              onClick={cancelImagePreview}
+              className="text-white p-2 -ml-2"
+            >
+              <i className="fa-solid fa-xmark text-xl" />
+            </button>
+            <span className="text-white font-medium">Preview</span>
+            <div className="w-8" /> {/* Spacer for centering */}
+          </div>
+
+          {/* Image preview */}
+          <div 
+            className="flex-1 flex items-center justify-center overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full h-full" style={{ maxHeight: 'calc(100vh - 8rem)', touchAction: 'none' }}>
+              <ZoomableImage
+                src={previewImage}
+                alt="Photo preview"
+                className="w-full h-full"
+                onRequestClose={cancelImagePreview}
+              />
+            </div>
+          </div>
+
+          {/* Send button */}
+          <div 
+            className="flex items-center justify-center gap-4 px-4 py-4 bg-black/80"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                cancelImagePreview()
+              }}
+              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                confirmSendImage()
+              }}
+              className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2"
+            >
+              <i className="fa-solid fa-paper-plane" />
+              Send
+            </button>
           </div>
         </div>
       )}

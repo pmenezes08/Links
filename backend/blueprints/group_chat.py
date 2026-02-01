@@ -14,13 +14,11 @@ from flask import Blueprint, jsonify, request, session
 from werkzeug.utils import secure_filename
 
 from backend.services.database import get_db_connection, get_sql_placeholder
+from backend.services.media import save_uploaded_file
 
-# Upload configuration
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads', 'chat_images')
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-
-def _allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+# Allowed extensions for chat uploads
+IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+VIDEO_EXTENSIONS = {'mp4', 'webm', 'mov', 'm4v'}
 
 group_chat_bp = Blueprint("group_chat", __name__)
 logger = logging.getLogger(__name__)
@@ -63,6 +61,23 @@ def _ensure_voice_column(cursor):
             logger.warning(f"Could not add voice_path column: {e}")
 
 
+def _ensure_video_column(cursor):
+    """Ensure video_path column exists in group_chat_messages."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT video_path FROM group_chat_messages LIMIT 1")
+    except Exception:
+        # Column doesn't exist, add it
+        try:
+            if USE_MYSQL:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN video_path VARCHAR(500)")
+            else:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN video_path TEXT")
+            logger.info("Added video_path column to group_chat_messages")
+        except Exception as e:
+            logger.warning(f"Could not add video_path column: {e}")
+
+
 def _ensure_community_id_column(cursor):
     """Ensure community_id column exists in group_chats table."""
     from backend.services.database import USE_MYSQL
@@ -88,6 +103,7 @@ def _ensure_group_chat_tables(cursor):
     try:
         cursor.execute("SELECT 1 FROM group_chats LIMIT 1")
         _ensure_voice_column(cursor)  # Ensure voice column exists
+        _ensure_video_column(cursor)  # Ensure video column exists
         _ensure_community_id_column(cursor)  # Ensure community_id column exists
         return  # Table exists, no need to create
     except Exception:
@@ -194,50 +210,62 @@ def _ensure_group_chat_tables(cursor):
     logger.info("Created group chat tables")
 
 
-@group_chat_bp.route("/api/upload_chat_image", methods=["POST"])
+@group_chat_bp.route("/api/upload_chat_media", methods=["POST"])
 @_login_required
-def upload_chat_image():
-    """Upload an image for chat (group or DM)."""
+def upload_chat_media():
+    """Upload an image or video for chat (group or DM). Uses R2 CDN."""
     username = session["username"]
     
-    if 'image' not in request.files:
-        return jsonify({"success": False, "error": "No image provided"}), 400
+    # Check for image or video file
+    file = None
+    media_type = None
     
-    file = request.files['image']
-    if file.filename == '':
+    if 'image' in request.files:
+        file = request.files['image']
+        media_type = 'image'
+        allowed_ext = IMAGE_EXTENSIONS
+        subfolder = 'message_photos'
+    elif 'video' in request.files:
+        file = request.files['video']
+        media_type = 'video'
+        allowed_ext = VIDEO_EXTENSIONS
+        subfolder = 'message_videos'
+    else:
+        return jsonify({"success": False, "error": "No image or video provided"}), 400
+    
+    if not file or file.filename == '':
         return jsonify({"success": False, "error": "No file selected"}), 400
     
-    if not _allowed_file(file.filename):
-        return jsonify({"success": False, "error": "File type not allowed"}), 400
-    
     try:
-        # Ensure upload directory exists
-        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        # Use save_uploaded_file which handles R2 upload and optimization
+        stored_path = save_uploaded_file(
+            file,
+            subfolder=subfolder,
+            allowed_extensions=allowed_ext
+        )
         
-        # Generate unique filename
-        ext = file.filename.rsplit('.', 1)[1].lower()
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-        filename = f"{username}_{timestamp}.{ext}"
-        filename = secure_filename(filename)
+        if not stored_path:
+            return jsonify({"success": False, "error": "File type not allowed or upload failed"}), 400
         
-        # Save file
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(filepath)
-        
-        # Return the path that can be used to access the image
-        image_path = f"/uploads/chat_images/{filename}"
-        
-        logger.info(f"Uploaded chat image: {image_path} by {username}")
+        logger.info(f"Uploaded chat {media_type}: {stored_path} by {username}")
         
         return jsonify({
             "success": True,
-            "image_path": image_path,
-            "filename": filename
+            "path": stored_path,
+            "media_type": media_type
         })
         
     except Exception as e:
-        logger.error(f"Error uploading chat image: {e}")
-        return jsonify({"success": False, "error": "Failed to upload image"}), 500
+        logger.error(f"Error uploading chat {media_type}: {e}")
+        return jsonify({"success": False, "error": f"Failed to upload {media_type}"}), 500
+
+
+# Keep old endpoint for backward compatibility
+@group_chat_bp.route("/api/upload_chat_image", methods=["POST"])
+@_login_required
+def upload_chat_image():
+    """Upload an image for chat - redirects to upload_chat_media."""
+    return upload_chat_media()
 
 
 @group_chat_bp.route("/api/group_chat/create", methods=["POST"])
@@ -602,7 +630,7 @@ def get_group_messages(group_id: int):
             # Get messages
             if before_id:
                 c.execute(f"""
-                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.created_at,
+                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.created_at,
                            up.profile_picture
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
@@ -612,7 +640,7 @@ def get_group_messages(group_id: int):
                 """, (group_id, before_id, limit))
             else:
                 c.execute(f"""
-                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.created_at,
+                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.created_at,
                            up.profile_picture
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
@@ -629,8 +657,9 @@ def get_group_messages(group_id: int):
                     "text": row["message_text"] if hasattr(row, "keys") else row[2],
                     "image": row["image_path"] if hasattr(row, "keys") else row[3],
                     "voice": row["voice_path"] if hasattr(row, "keys") else row[4],
-                    "created_at": row["created_at"] if hasattr(row, "keys") else row[5],
-                    "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[6],
+                    "video": row["video_path"] if hasattr(row, "keys") else row[5],
+                    "created_at": row["created_at"] if hasattr(row, "keys") else row[6],
+                    "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[7],
                 })
             
             # Update read receipt
@@ -693,9 +722,11 @@ def send_group_message(group_id: int):
     image_path = data.get("image_path", "").strip() or data.get("image", "").strip() or None
     # Support voice messages
     voice_path = data.get("voice", "").strip() or None
+    # Support video messages
+    video_path = data.get("video_path", "").strip() or data.get("video", "").strip() or None
     
-    if not message_text and not image_path and not voice_path:
-        return jsonify({"success": False, "error": "Message, image, or voice required"}), 400
+    if not message_text and not image_path and not voice_path and not video_path:
+        return jsonify({"success": False, "error": "Message, image, voice, or video required"}), 400
     
     try:
         with get_db_connection() as conn:
@@ -716,9 +747,9 @@ def send_group_message(group_id: int):
             # Insert message
             now = datetime.now().isoformat()
             c.execute(f"""
-                INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, voice_path, created_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-            """, (group_id, username, message_text or None, image_path, voice_path, now))
+                INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, voice_path, video_path, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (group_id, username, message_text or None, image_path, voice_path, video_path, now))
             
             message_id = c.lastrowid
             
@@ -766,6 +797,8 @@ def send_group_message(group_id: int):
                 # Determine message preview
                 if voice_path:
                     preview = "🎤 Voice message"
+                elif video_path:
+                    preview = "🎬 Video"
                 elif image_path:
                     preview = "📷 Photo"
                 else:
@@ -822,6 +855,7 @@ def send_group_message(group_id: int):
                     "text": message_text,
                     "image": image_path,
                     "voice": voice_path,
+                    "video": video_path,
                     "created_at": now,
                     "profile_picture": profile_picture,
                 }
