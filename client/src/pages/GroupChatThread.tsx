@@ -91,6 +91,7 @@ export default function GroupChatThread() {
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
+  const [viewingImage, setViewingImage] = useState<string | null>(null) // For viewing sent images
   const videoInputRef = useRef<HTMLInputElement>(null)
   const [previewPlaying, setPreviewPlaying] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
@@ -1408,7 +1409,12 @@ export default function GroupChatThread() {
                                 <img
                                   src={msg.image.startsWith('http') ? msg.image : msg.image}
                                   alt="Shared image"
-                                  className="mt-1 max-w-[280px] rounded-lg"
+                                  className="mt-1 max-w-[280px] rounded-lg cursor-pointer"
+                                  style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setViewingImage(msg.image)
+                                  }}
                                 />
                               )}
                               {msg.video && (
@@ -1417,6 +1423,8 @@ export default function GroupChatThread() {
                                   controls
                                   playsInline
                                   className="mt-1 max-w-[280px] rounded-lg"
+                                  style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
+                                  onClick={(e) => e.stopPropagation()}
                                 />
                               )}
                               {msg.voice && (
@@ -2393,6 +2401,57 @@ export default function GroupChatThread() {
             >
               <i className="fa-solid fa-paper-plane" />
               Send
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Image viewing modal - for viewing sent/received images */}
+      {viewingImage && (
+        <div 
+          className="fixed inset-0 bg-black z-[9999] flex flex-col"
+          onClick={() => setViewingImage(null)}
+        >
+          {/* Header */}
+          <div 
+            className="flex items-center justify-between px-4 py-3 bg-black/80"
+            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+          >
+            <button
+              onClick={() => setViewingImage(null)}
+              className="text-white p-2 -ml-2"
+            >
+              <i className="fa-solid fa-xmark text-xl" />
+            </button>
+            <span className="text-white font-medium">Photo</span>
+            <div className="w-8" />
+          </div>
+
+          {/* Image view */}
+          <div 
+            className="flex-1 flex items-center justify-center overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full h-full" style={{ maxHeight: 'calc(100vh - 8rem)', touchAction: 'none' }}>
+              <ZoomableImage
+                src={viewingImage}
+                alt="Photo"
+                className="w-full h-full"
+                onRequestClose={() => setViewingImage(null)}
+              />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div 
+            className="flex items-center justify-center px-4 py-4 bg-black/80"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+          >
+            <button
+              onClick={() => setViewingImage(null)}
+              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
+            >
+              Close
             </button>
           </div>
         </div>
