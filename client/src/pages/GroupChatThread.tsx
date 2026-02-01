@@ -229,11 +229,9 @@ export default function GroupChatThread() {
   const showKeyboard = liftSource > 50
   const composerGapPx = 4
 
-  // Add extra padding (20px) to ensure last message is fully visible
-  const extraBottomPadding = 20
   const listPaddingBottom = showKeyboard
-    ? `${effectiveComposerHeight + composerGapPx + keyboardLift + extraBottomPadding}px`
-    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx + extraBottomPadding}px)`
+    ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
+    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
 
   // Instant scroll - only used for initial load
   const scrollToBottom = useCallback(() => {
@@ -243,19 +241,26 @@ export default function GroupChatThread() {
     }
   }, [])
   
-  // Only scroll on initial load - after that, no scrolling
-  const didInitialScrollRef = useRef(false)
+  // Always keep latest message visible - scroll instantly whenever messages change
+  const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
+  
   useEffect(() => {
-    if (serverMessages.length > 0 && !didInitialScrollRef.current) {
-      didInitialScrollRef.current = true
-      // Use requestAnimationFrame to ensure DOM is rendered before scrolling
-      requestAnimationFrame(() => {
-        scrollToBottom()
-        // Double-check after a short delay to ensure content is fully laid out
-        setTimeout(scrollToBottom, 100)
-      })
+    if (messages.length === 0) return
+    
+    // Get the last message ID to detect changes
+    const lastMsg = messages[messages.length - 1]
+    const lastMsgKey = (lastMsg as any).clientKey || lastMsg.id
+    
+    // Only scroll if the last message changed (new message arrived)
+    if (lastMsgKey !== lastVisibleMsgKeyRef.current) {
+      lastVisibleMsgKeyRef.current = lastMsgKey
+      // Instant scroll - no animation
+      const el = listRef.current
+      if (el) {
+        el.scrollTop = el.scrollHeight
+      }
     }
-  }, [serverMessages, scrollToBottom])
+  }, [messages])
   
   // No scroll when sending messages - message just appears, older ones shift up
 
@@ -1410,7 +1415,7 @@ export default function GroupChatThread() {
                     </div>
                   </div>
                 )}
-                <div ref={messagesEndRef} className="h-4" />
+                <div ref={messagesEndRef} className="h-1" />
               </div>
             )}
           </div>
