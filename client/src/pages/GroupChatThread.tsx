@@ -1408,7 +1408,7 @@ export default function GroupChatThread() {
                                 <img
                                   src={msg.image.startsWith('http') ? msg.image : msg.image}
                                   alt="Shared image"
-                                  className="mt-1 max-w-[280px] rounded-lg border border-white/10"
+                                  className="mt-1 max-w-[280px] rounded-lg"
                                 />
                               )}
                               {msg.video && (
@@ -1416,7 +1416,7 @@ export default function GroupChatThread() {
                                   src={msg.video.startsWith('http') ? msg.video : msg.video}
                                   controls
                                   playsInline
-                                  className="mt-1 max-w-[280px] rounded-lg border border-white/10"
+                                  className="mt-1 max-w-[280px] rounded-lg"
                                 />
                               )}
                               {msg.voice && (
