@@ -51,72 +51,46 @@ const defaultErrorHandler = (msg: string) => {
 }
 
 /**
- * Upload media file (image or video) to R2 CDN via backend
+ * Send image/video message to group chat - single request like ChatThread
+ * Uses the same pattern as /send_photo_message for DMs
  */
-async function uploadMedia(
-  file: File, 
-  type: 'image' | 'video',
+async function sendGroupMedia(
+  file: File,
+  groupId: number | string,
+  mediaType: 'photo' | 'video',
   onProgress?: (progress: UploadProgress) => void
-): Promise<{ success: boolean; path?: string; error?: string }> {
+): Promise<{ success: boolean; message?: GroupMessage; error?: string }> {
   const formData = new FormData()
-  formData.append(type, file)
+  formData.append(mediaType, file)
+  formData.append('group_id', String(groupId))
 
-  onProgress?.({ stage: 'uploading', progress: 0, message: 'Uploading...' })
+  onProgress?.({ stage: 'uploading', progress: 10, message: 'Uploading...' })
 
   try {
-    // Use XMLHttpRequest for upload progress
-    return await new Promise((resolve) => {
-      const xhr = new XMLHttpRequest()
-      
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const uploadProgress = Math.round((e.loaded / e.total) * 95)
-          onProgress?.({ 
-            stage: 'uploading', 
-            progress: uploadProgress,
-            message: `Uploading... ${Math.round((e.loaded / e.total) * 100)}%`
-          })
-        }
-      }
-      
-      xhr.onload = () => {
-        console.log('[GroupMedia] Upload XHR status:', xhr.status, 'response:', xhr.responseText.substring(0, 200))
-        try {
-          const response = JSON.parse(xhr.responseText)
-          if (response.success && response.path) {
-            console.log('[GroupMedia] Upload success, path:', response.path)
-            onProgress?.({ stage: 'done', progress: 100, message: 'Uploaded!' })
-            resolve({ success: true, path: response.path })
-          } else {
-            console.error('[GroupMedia] Upload response missing path:', response)
-            onProgress?.({ stage: 'error', progress: 0, message: 'Upload failed' })
-            resolve({ success: false, error: response.error || 'Upload failed' })
-          }
-        } catch (parseErr) {
-          console.error('[GroupMedia] Failed to parse upload response:', parseErr)
-          onProgress?.({ stage: 'error', progress: 0, message: 'Invalid response' })
-          resolve({ success: false, error: 'Invalid response' })
-        }
-      }
-      
-      xhr.onerror = () => {
-        onProgress?.({ stage: 'error', progress: 0, message: 'Network error' })
-        resolve({ success: false, error: 'Network error' })
-      }
-      
-      xhr.ontimeout = () => {
-        onProgress?.({ stage: 'error', progress: 0, message: 'Upload timeout' })
-        resolve({ success: false, error: 'Upload timeout' })
-      }
-      
-      xhr.open('POST', '/api/upload_chat_media')
-      xhr.withCredentials = true
-      xhr.timeout = 300000 // 5 minute timeout for large files
-      xhr.send(formData)
+    console.log('[GroupMedia] Sending', mediaType, 'to group', groupId)
+    
+    // Use simple fetch like ChatThread does - more reliable on iOS
+    const response = await fetch(`/api/group_chat/${groupId}/send_media`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
     })
+    
+    const payload = await response.json().catch(() => null)
+    console.log('[GroupMedia] Response:', payload)
+    
+    if (!payload?.success) {
+      onProgress?.({ stage: 'error', progress: 0, message: payload?.error || 'Upload failed' })
+      return { success: false, error: payload?.error || 'Failed to send' }
+    }
+    
+    onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
+    return { success: true, message: payload.message }
+    
   } catch (error) {
-    onProgress?.({ stage: 'error', progress: 0, message: 'Upload failed' })
-    return { success: false, error: 'Upload failed' }
+    console.error('[GroupMedia] Error:', error)
+    onProgress?.({ stage: 'error', progress: 0, message: 'Network error' })
+    return { success: false, error: 'Network error' }
   }
 }
 
@@ -159,31 +133,11 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
   setPendingMessages(prev => [...prev, optimisticMessage])
 
   try {
-    // Upload to R2 CDN
-    console.log('[GroupMedia] Starting upload for', kind)
-    const uploadResult = await uploadMedia(file, 'image', onProgress)
-    console.log('[GroupMedia] Upload result:', uploadResult)
+    // Single request - upload and send in one call (like ChatThread)
+    const result = await sendGroupMedia(file, groupId, 'photo', onProgress)
     
-    if (!uploadResult.success || !uploadResult.path) {
-      console.error('[GroupMedia] Upload failed:', uploadResult.error)
-      throw new Error(uploadResult.error || 'Upload failed')
-    }
-
-    // Send message to group
-    console.log('[GroupMedia] Sending to group:', groupId, 'path:', uploadResult.path)
-    const response = await fetch(`/api/group_chat/${groupId}/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ image_path: uploadResult.path }),
-    })
-    
-    const data = await response.json()
-    console.log('[GroupMedia] Send response:', data)
-    
-    if (!data.success) {
-      console.error('[GroupMedia] Send failed:', data.error)
-      throw new Error(data.error || 'Failed to send image')
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to send image')
     }
 
     // Remove from pending, server message will come via loadMessages
@@ -194,7 +148,7 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
     
     return true
   } catch (error) {
-    console.error('[GroupMedia] Image upload/send failed:', error)
+    console.error('[GroupMedia] Image send failed:', error)
     
     // Remove optimistic message on failure
     setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
@@ -251,25 +205,11 @@ export async function sendGroupVideoMessage(options: VideoMediaOptions): Promise
   setPendingMessages(prev => [...prev, optimisticMessage])
 
   try {
-    // Upload to R2 CDN
-    const uploadResult = await uploadMedia(file, 'video', onProgress)
+    // Single request - upload and send in one call (like ChatThread)
+    const result = await sendGroupMedia(file, groupId, 'video', onProgress)
     
-    if (!uploadResult.success || !uploadResult.path) {
-      throw new Error(uploadResult.error || 'Upload failed')
-    }
-
-    // Send message to group
-    const response = await fetch(`/api/group_chat/${groupId}/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ video_path: uploadResult.path }),
-    })
-    
-    const data = await response.json()
-    
-    if (!data.success) {
-      throw new Error(data.error || 'Failed to send video')
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to send video')
     }
 
     // Remove from pending, server message will come via loadMessages
@@ -280,12 +220,13 @@ export async function sendGroupVideoMessage(options: VideoMediaOptions): Promise
     
     return true
   } catch (error) {
-    console.error('Group video upload failed:', error)
+    console.error('[GroupMedia] Video send failed:', error)
     
     // Remove optimistic message on failure
     setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
     
-    onError('Failed to send video. Please try again.')
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    onError(`Failed to send video: ${errorMsg}`)
     return false
   } finally {
     try {

@@ -17,7 +17,8 @@ from backend.services.database import get_db_connection, get_sql_placeholder
 from backend.services.media import save_uploaded_file
 
 # Allowed extensions for chat uploads
-IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+# Include HEIC/HEIF for iOS devices
+IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif'}
 VIDEO_EXTENSIONS = {'mp4', 'webm', 'mov', 'm4v'}
 
 group_chat_bp = Blueprint("group_chat", __name__)
@@ -708,6 +709,145 @@ def get_group_messages(group_id: int):
     except Exception as e:
         logger.error(f"Error getting messages for group {group_id}: {e}")
         return jsonify({"success": False, "error": "Failed to load messages"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/send_media", methods=["POST"])
+@_login_required
+def send_group_media(group_id: int):
+    """Upload and send a photo or video to a group chat in one request.
+    This mirrors /send_photo_message pattern for better iOS compatibility.
+    """
+    username = session["username"]
+    
+    # Determine media type
+    file = None
+    media_type = None
+    
+    if 'photo' in request.files:
+        file = request.files['photo']
+        media_type = 'photo'
+        allowed_ext = IMAGE_EXTENSIONS
+        subfolder = 'message_photos'
+    elif 'video' in request.files:
+        file = request.files['video']
+        media_type = 'video'
+        allowed_ext = VIDEO_EXTENSIONS
+        subfolder = 'message_videos'
+    else:
+        return jsonify({"success": False, "error": "No photo or video provided"}), 400
+    
+    if not file or file.filename == '':
+        return jsonify({"success": False, "error": "No file selected"}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            _ensure_group_chat_tables(c)
+            
+            # Check if user is a member
+            c.execute(f"""
+                SELECT 1 FROM group_chat_members
+                WHERE group_id = {ph} AND username = {ph}
+            """, (group_id, username))
+            
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Access denied"}), 403
+            
+            # Upload file using R2-enabled media service
+            stored_path = save_uploaded_file(
+                file,
+                subfolder=subfolder,
+                allowed_extensions=allowed_ext
+            )
+            
+            if not stored_path:
+                return jsonify({"success": False, "error": "File type not allowed or upload failed"}), 400
+            
+            logger.info(f"Uploaded group {media_type}: {stored_path} by {username}")
+            
+            # Insert message
+            now = datetime.now().isoformat()
+            image_path = stored_path if media_type == 'photo' else None
+            video_path = stored_path if media_type == 'video' else None
+            
+            c.execute(f"""
+                INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, voice_path, video_path, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (group_id, username, None, image_path, None, video_path, now))
+            
+            message_id = c.lastrowid
+            
+            # Update group's updated_at
+            c.execute(f"UPDATE group_chats SET updated_at = {ph} WHERE id = {ph}", (now, group_id))
+            
+            # Update sender's read receipt
+            from backend.services.database import USE_MYSQL
+            if USE_MYSQL:
+                c.execute(f"""
+                    INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph})
+                    ON DUPLICATE KEY UPDATE
+                        last_read_message_id = VALUES(last_read_message_id),
+                        last_read_at = VALUES(last_read_at)
+                """, (group_id, username, message_id, now))
+            else:
+                c.execute(f"""
+                    INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at)
+                    VALUES ({ph}, {ph}, {ph}, {ph})
+                    ON CONFLICT(group_id, username) DO UPDATE SET
+                        last_read_message_id = MAX(last_read_message_id, {ph}),
+                        last_read_at = {ph}
+                """, (group_id, username, message_id, now, message_id, now))
+            
+            conn.commit()
+            
+            # Get sender's profile picture
+            c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
+            pp_row = c.fetchone()
+            profile_picture = None
+            if pp_row:
+                profile_picture = pp_row["profile_picture"] if hasattr(pp_row, "keys") else pp_row[0]
+            
+            # Send notifications to other members
+            try:
+                c.execute(f"SELECT name FROM group_chats WHERE id = {ph}", (group_id,))
+                group_row = c.fetchone()
+                group_name = group_row["name"] if hasattr(group_row, "keys") else group_row[0] if group_row else "Group"
+                
+                c.execute(f"SELECT username FROM group_chat_members WHERE group_id = {ph} AND username != {ph}", (group_id, username))
+                other_members = [r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
+                
+                preview = "🎬 Video" if media_type == 'video' else "📷 Photo"
+                
+                for member in other_members:
+                    try:
+                        _send_group_message_notification(c, ph, member, username, group_id, group_name, preview, is_mention=False)
+                    except Exception as notif_err:
+                        logger.warning(f"Failed to send media notification to {member}: {notif_err}")
+                
+                conn.commit()
+            except Exception as notif_batch_err:
+                logger.warning(f"Failed to send group media notifications: {notif_batch_err}")
+            
+            return jsonify({
+                "success": True,
+                "message": {
+                    "id": message_id,
+                    "sender": username,
+                    "text": None,
+                    "image": image_path,
+                    "voice": None,
+                    "video": video_path,
+                    "created_at": now,
+                    "profile_picture": profile_picture,
+                }
+            })
+            
+    except Exception as e:
+        logger.error(f"Error sending media to group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to send media"}), 500
 
 
 @group_chat_bp.route("/api/group_chat/<int:group_id>/send", methods=["POST"])
