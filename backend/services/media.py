@@ -67,8 +67,15 @@ def get_allowed_extensions(overrides: Optional[Iterable[str]] = None) -> set[str
     return set(DEFAULT_ALLOWED_EXTENSIONS)
 
 
-def optimize_image(file_path: str, max_width: int = 1920, quality: int = 85) -> bool:
-    """Optimize image for web - compress, resize, and fix EXIF orientation."""
+def optimize_image(file_path: str, max_width: int = 1920, quality: int = 85, fix_orientation_only: bool = False) -> bool:
+    """Optimize image for web - fix EXIF orientation and optionally compress.
+    
+    Args:
+        file_path: Path to the image file
+        max_width: Maximum width (only applied if fix_orientation_only is False)
+        quality: JPEG/WebP quality (only applied if fix_orientation_only is False)
+        fix_orientation_only: If True, only fix EXIF orientation without resizing/compressing
+    """
     if not PIL_AVAILABLE:
         return False
 
@@ -76,33 +83,57 @@ def optimize_image(file_path: str, max_width: int = 1920, quality: int = 85) -> 
         from PIL import ImageOps
         ext = os.path.splitext(file_path)[1].lower()
         with Image.open(file_path) as img:  # type: ignore[arg-type]
+            original_mode = img.mode
+            
             # Fix EXIF orientation (rotate image based on EXIF data)
             # This is critical for iOS photos which often have rotation in EXIF
+            needs_save = False
             try:
-                img = ImageOps.exif_transpose(img)
+                transposed = ImageOps.exif_transpose(img)
+                if transposed is not img:
+                    img = transposed
+                    needs_save = True
             except Exception:
                 pass  # If EXIF transpose fails, continue with original
             
+            # If only fixing orientation, save and return
+            if fix_orientation_only:
+                if needs_save:
+                    if ext in (".jpg", ".jpeg"):
+                        if img.mode not in ("RGB", "L"):
+                            img = img.convert("RGB")
+                        img.save(file_path, format="JPEG", quality=95, optimize=True)
+                    elif ext == ".png":
+                        img.save(file_path, format="PNG")
+                    elif ext == ".webp":
+                        img.save(file_path, format="WEBP", quality=95)
+                    else:
+                        img.save(file_path)
+                return needs_save
+            
+            # Full optimization with resize
             if img.width > max_width:
                 ratio = max_width / img.width
                 new_height = int(img.height * ratio)
                 img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                needs_save = True
 
-            if ext in (".jpg", ".jpeg"):
-                if img.mode not in ("RGB", "L"):
-                    img = img.convert("RGB")
-                img.save(file_path, format="JPEG", quality=quality, optimize=True, progressive=True)
-            elif ext == ".png":
-                save_params = {"optimize": True}
-                try:
-                    save_params["compress_level"] = 9
-                except Exception:
-                    pass
-                img.save(file_path, format="PNG", **save_params)
-            elif ext == ".webp":
-                img.save(file_path, format="WEBP", quality=quality, method=6)
-            else:
-                return False
+            if needs_save or True:  # Always save to apply quality settings
+                if ext in (".jpg", ".jpeg"):
+                    if img.mode not in ("RGB", "L"):
+                        img = img.convert("RGB")
+                    img.save(file_path, format="JPEG", quality=quality, optimize=True, progressive=True)
+                elif ext == ".png":
+                    save_params = {"optimize": True}
+                    try:
+                        save_params["compress_level"] = 6  # Less aggressive compression
+                    except Exception:
+                        pass
+                    img.save(file_path, format="PNG", **save_params)
+                elif ext == ".webp":
+                    img.save(file_path, format="WEBP", quality=quality, method=4)  # Faster method
+                else:
+                    return False
             return True
     except Exception as exc:  # pragma: no cover - logging only
         logger.warning("Could not optimize image %s: %s", file_path, exc)
@@ -186,11 +217,12 @@ def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions
 
     file.save(filepath)
     
-    # Step 2: Optimize images (includes EXIF rotation fix for iOS)
+    # Step 2: Fix EXIF orientation for iOS photos (minimal processing to preserve quality)
     try:
         file_ext = (os.path.splitext(filename)[1] or "").lower().lstrip(".")
-        if file_ext in {"png", "jpg", "jpeg", "gif", "webp"}:
-            optimize_image(filepath, max_width=1280, quality=80)
+        if file_ext in {"png", "jpg", "jpeg", "webp"}:
+            # Only fix orientation, don't resize or compress - preserves original quality
+            optimize_image(filepath, fix_orientation_only=True)
     except Exception:
         pass
 
