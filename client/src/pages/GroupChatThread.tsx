@@ -14,7 +14,7 @@ import LongPressActionable from '../chat/LongPressActionable'
 import { formatDateLabel, getDateKey } from '../chat'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import ZoomableImage from '../components/ZoomableImage'
-import { sendGroupImageMessage, sendGroupVideoMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
+import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 
 type Message = {
@@ -671,6 +671,7 @@ export default function GroupChatThread() {
     if (pendingMedia.length === 0 || !group_id) return
     
     const mediaToSend = [...pendingMedia]
+    console.log('[GroupChat] Sending media, count:', mediaToSend.length)
     
     // Clear previews immediately (without revoking - will be done in sender)
     setPendingMedia([])
@@ -679,59 +680,22 @@ export default function GroupChatThread() {
     // Send all media
     setUploadingMedia(true)
     
-    if (mediaToSend.length > 1) {
-      // Send as grouped message
-      await sendGroupMultiMedia({
-        files: mediaToSend.map(item => ({ file: item.file, type: item.type })),
-        groupId: group_id,
-        currentUsername,
-        setServerMessages,
-        setPendingMessages,
-        loadMessages,
-        onProgress: setUploadProgress,
-        onError: (msg) => alert(msg),
-        onComplete: () => {
-          setUploadingMedia(false)
-          setUploadProgress(null)
-        }
-      })
-    } else {
-      // Single file - use existing method
-      const item = mediaToSend[0]
-      setUploadProgress({ 
-        stage: 'uploading', 
-        progress: 10,
-        message: 'Sending...'
-      })
-      
-      if (item.type === 'image') {
-        await sendGroupImageMessage({
-          file: item.file,
-          kind: 'photo',
-          groupId: group_id,
-          currentUsername,
-          setServerMessages,
-          setPendingMessages,
-          loadMessages,
-          onProgress: setUploadProgress,
-          onError: (msg) => alert(msg),
-        })
-      } else {
-        await sendGroupVideoMessage({
-          file: item.file,
-          groupId: group_id,
-          currentUsername,
-          setServerMessages,
-          setPendingMessages,
-          loadMessages,
-          onProgress: setUploadProgress,
-          onError: (msg) => alert(msg),
-        })
+    // Always use sendGroupMultiMedia for consistent grouped handling
+    console.log('[GroupChat] Using sendGroupMultiMedia for', mediaToSend.length, 'files')
+    await sendGroupMultiMedia({
+      files: mediaToSend.map(item => ({ file: item.file, type: item.type })),
+      groupId: group_id,
+      currentUsername,
+      setServerMessages,
+      setPendingMessages,
+      loadMessages,
+      onProgress: setUploadProgress,
+      onError: (msg) => alert(msg),
+      onComplete: () => {
+        setUploadingMedia(false)
+        setUploadProgress(null)
       }
-      
-      setUploadingMedia(false)
-      setUploadProgress(null)
-    }
+    })
     
     // Cleanup preview URLs
     mediaToSend.forEach(item => {

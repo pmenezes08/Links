@@ -817,20 +817,13 @@ def send_group_media(group_id: int):
             # Insert message with grouped media
             now = datetime.now().isoformat()
             
-            # For single file, use legacy columns for backwards compatibility
-            # For multiple files, use media_paths JSON column
-            if len(uploaded_paths) == 1:
-                single_path = uploaded_paths[0]
-                # Determine if image or video by extension
-                is_video = any(single_path.lower().endswith(ext) for ext in ['.mp4', '.mov', '.webm', '.m4v'])
-                image_path = None if is_video else single_path
-                video_path = single_path if is_video else None
-                media_paths_json = None
-            else:
-                # Multiple files - store as JSON array
-                image_path = None
-                video_path = None
-                media_paths_json = json.dumps(uploaded_paths)
+            # Always use media_paths for consistency (stores as JSON array)
+            # Legacy image_path/video_path are kept null for new grouped messages
+            image_path = None
+            video_path = None
+            media_paths_json = json.dumps(uploaded_paths)
+            
+            logger.info(f"Storing {len(uploaded_paths)} media files in media_paths: {media_paths_json}")
             
             c.execute(f"""
                 INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, voice_path, video_path, media_paths, created_at)
@@ -903,10 +896,10 @@ def send_group_media(group_id: int):
                     "id": message_id,
                     "sender": username,
                     "text": None,
-                    "image": image_path,
+                    "image": None,
                     "voice": None,
-                    "video": video_path,
-                    "media_paths": uploaded_paths if len(uploaded_paths) > 1 else None,
+                    "video": None,
+                    "media_paths": uploaded_paths,
                     "created_at": now,
                     "profile_picture": profile_picture,
                 }

@@ -291,11 +291,12 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
     
     // Create FormData with all files
     const formData = new FormData()
-    files.forEach((item) => {
+    files.forEach((item, index) => {
+      console.log(`[GroupMedia] Adding file ${index}: ${item.file.name}, type: ${item.type}, size: ${item.file.size}`)
       formData.append('media', item.file)
     })
     
-    console.log('[GroupMedia] Sending', files.length, 'files to group', groupId)
+    console.log('[GroupMedia] Sending', files.length, 'files to group', groupId, 'via /api/group_chat/${groupId}/send_media')
     
     const response = await fetch(`/api/group_chat/${groupId}/send_media`, {
       method: 'POST',
