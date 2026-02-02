@@ -14,6 +14,7 @@ import LongPressActionable from '../chat/LongPressActionable'
 import { formatDateLabel, getDateKey } from '../chat'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import ZoomableImage from '../components/ZoomableImage'
+import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 
@@ -25,6 +26,7 @@ type Message = {
   voice: string | null
   video?: string | null
   media_paths?: string[] | null  // For grouped media
+  audio_duration_seconds?: number
   created_at: string
   profile_picture: string | null
   replySnippet?: string
@@ -1739,21 +1741,10 @@ export default function GroupChatThread() {
                                 </>
                               )}
                               {msg.voice && (
-                                <div className="mt-1 max-w-[280px]">
-                                  <audio
-                                    controls
-                                    className="w-full h-10"
-                                    style={{ 
-                                      filter: 'invert(1) hue-rotate(180deg)',
-                                      borderRadius: '8px'
-                                    }}
-                                  >
-                                    <source 
-                                      src={msg.voice.startsWith('http') ? msg.voice : msg.voice} 
-                                      type={msg.voice.includes('.mp4') ? 'audio/mp4' : 'audio/webm'} 
-                                    />
-                                  </audio>
-                                </div>
+                                <VoiceNotePlayer 
+                                  audioPath={msg.voice}
+                                  durationSeconds={msg.audio_duration_seconds}
+                                />
                               )}
                               {/* Reaction display */}
                               {messageReaction && (
