@@ -637,6 +637,9 @@ def get_group_messages(group_id: int):
             
             _ensure_group_chat_tables(c)
             
+            # Ensure tables and columns exist
+            _ensure_group_chat_tables(c)
+            
             # Check if user is a member
             c.execute(f"""
                 SELECT 1 FROM group_chat_members
@@ -676,10 +679,11 @@ def get_group_messages(group_id: int):
                 if media_paths_raw:
                     try:
                         media_paths = json.loads(media_paths_raw)
-                    except:
-                        pass
+                        logger.debug(f"Parsed media_paths for message: {media_paths}")
+                    except Exception as e:
+                        logger.warning(f"Failed to parse media_paths: {media_paths_raw}, error: {e}")
                 
-                messages.append({
+                msg_data = {
                     "id": row["id"] if hasattr(row, "keys") else row[0],
                     "sender": row["sender_username"] if hasattr(row, "keys") else row[1],
                     "text": row["message_text"] if hasattr(row, "keys") else row[2],
@@ -689,7 +693,8 @@ def get_group_messages(group_id: int):
                     "media_paths": media_paths,
                     "created_at": row["created_at"] if hasattr(row, "keys") else row[7],
                     "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[8],
-                })
+                }
+                messages.append(msg_data)
             
             # Update read receipt
             if messages:
@@ -828,6 +833,39 @@ def get_group_media(group_id: int):
     except Exception as e:
         logger.error(f"Error getting media for group {group_id}: {e}")
         return jsonify({"success": False, "error": "Failed to load media"}), 500
+
+
+@group_chat_bp.route("/api/upload_voice_message", methods=["POST"])
+@_login_required
+def upload_voice_message():
+    """Upload a voice message file and return the path. Used by group chat."""
+    username = session["username"]
+    
+    if 'audio' not in request.files:
+        return jsonify({'success': False, 'error': 'No audio uploaded'}), 400
+    
+    audio = request.files['audio']
+    if audio.filename == '':
+        return jsonify({'success': False, 'error': 'No audio selected'}), 400
+    
+    try:
+        # Save audio file using media service
+        stored_path = save_uploaded_file(
+            audio,
+            subfolder='voice_messages',
+            allowed_extensions={'webm', 'ogg', 'mp3', 'm4a', 'wav', 'opus', 'aac', 'caf', '3gp', '3g2', 'mpeg', 'mp4'}
+        )
+        
+        if not stored_path:
+            logger.error(f"Failed to save voice message: filename={audio.filename}, mimetype={audio.mimetype}")
+            return jsonify({'success': False, 'error': 'Failed to save audio'}), 400
+        
+        logger.info(f"Voice message uploaded: {stored_path} by {username}")
+        return jsonify({'success': True, 'audio_path': stored_path})
+        
+    except Exception as e:
+        logger.error(f"Error uploading voice message: {e}")
+        return jsonify({'success': False, 'error': 'Failed to upload audio'}), 500
 
 
 @group_chat_bp.route("/api/group_chat/<int:group_id>/send_media", methods=["POST"])
