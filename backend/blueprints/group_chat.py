@@ -96,6 +96,56 @@ def _ensure_media_paths_column(cursor):
             logger.warning(f"Could not add media_paths column: {e}")
 
 
+def _ensure_is_edited_column(cursor):
+    """Ensure is_edited column exists in group_chat_messages."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT is_edited FROM group_chat_messages LIMIT 1")
+    except Exception:
+        try:
+            if USE_MYSQL:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN is_edited TINYINT DEFAULT 0")
+            else:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN is_edited INTEGER DEFAULT 0")
+            logger.info("Added is_edited column to group_chat_messages")
+        except Exception as e:
+            logger.warning(f"Could not add is_edited column: {e}")
+
+
+def _ensure_group_message_reactions_table(cursor):
+    """Ensure group_message_reactions table exists."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT 1 FROM group_message_reactions LIMIT 1")
+    except Exception:
+        try:
+            if USE_MYSQL:
+                cursor.execute("""
+                    CREATE TABLE group_message_reactions (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        message_id INT NOT NULL,
+                        username VARCHAR(100) NOT NULL,
+                        reaction VARCHAR(10) NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE KEY unique_reaction (message_id, username)
+                    )
+                """)
+            else:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS group_message_reactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        message_id INTEGER NOT NULL,
+                        username TEXT NOT NULL,
+                        reaction TEXT NOT NULL,
+                        created_at TEXT,
+                        UNIQUE(message_id, username)
+                    )
+                """)
+            logger.info("Created group_message_reactions table")
+        except Exception as e:
+            logger.warning(f"Could not create group_message_reactions table: {e}")
+
+
 def _ensure_community_id_column(cursor):
     """Ensure community_id column exists in group_chats table."""
     from backend.services.database import USE_MYSQL
@@ -124,6 +174,8 @@ def _ensure_group_chat_tables(cursor):
         _ensure_video_column(cursor)  # Ensure video column exists
         _ensure_media_paths_column(cursor)  # Ensure media_paths column exists for grouped media
         _ensure_community_id_column(cursor)  # Ensure community_id column exists
+        _ensure_is_edited_column(cursor)  # Ensure is_edited column exists
+        _ensure_group_message_reactions_table(cursor)  # Ensure reactions table exists
         return  # Table exists, no need to create
     except Exception:
         pass  # Table doesn't exist, create it
@@ -653,7 +705,7 @@ def get_group_messages(group_id: int):
             if before_id:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.created_at,
-                           up.profile_picture
+                           up.profile_picture, m.is_edited
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
                     WHERE m.group_id = {ph} AND m.id < {ph} AND m.is_deleted = 0
@@ -663,7 +715,7 @@ def get_group_messages(group_id: int):
             else:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.created_at,
-                           up.profile_picture
+                           up.profile_picture, m.is_edited
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
                     WHERE m.group_id = {ph} AND m.is_deleted = 0
@@ -672,6 +724,7 @@ def get_group_messages(group_id: int):
                 """, (group_id, limit))
             
             messages = []
+            message_ids = []
             for row in c.fetchall():
                 # Parse media_paths JSON if present
                 media_paths_raw = row["media_paths"] if hasattr(row, "keys") else row[6]
@@ -683,8 +736,12 @@ def get_group_messages(group_id: int):
                     except Exception as e:
                         logger.warning(f"Failed to parse media_paths: {media_paths_raw}, error: {e}")
                 
+                msg_id = row["id"] if hasattr(row, "keys") else row[0]
+                is_edited_raw = row["is_edited"] if hasattr(row, "keys") else row[9]
+                is_edited = bool(is_edited_raw) if is_edited_raw is not None else False
+                
                 msg_data = {
-                    "id": row["id"] if hasattr(row, "keys") else row[0],
+                    "id": msg_id,
                     "sender": row["sender_username"] if hasattr(row, "keys") else row[1],
                     "text": row["message_text"] if hasattr(row, "keys") else row[2],
                     "image": row["image_path"] if hasattr(row, "keys") else row[3],
@@ -693,8 +750,28 @@ def get_group_messages(group_id: int):
                     "media_paths": media_paths,
                     "created_at": row["created_at"] if hasattr(row, "keys") else row[7],
                     "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[8],
+                    "is_edited": is_edited,
+                    "reaction": None,  # Will be filled below
                 }
                 messages.append(msg_data)
+                message_ids.append(msg_id)
+            
+            # Fetch reactions for all messages in batch
+            if message_ids:
+                try:
+                    # Get current user's reactions
+                    placeholders = ','.join([ph] * len(message_ids))
+                    c.execute(f"""
+                        SELECT message_id, reaction FROM group_message_reactions
+                        WHERE message_id IN ({placeholders}) AND username = {ph}
+                    """, (*message_ids, username))
+                    user_reactions = {r[0]: r[1] for r in c.fetchall()}
+                    
+                    # Update messages with reactions
+                    for msg in messages:
+                        msg["reaction"] = user_reactions.get(msg["id"])
+                except Exception as e:
+                    logger.debug(f"Could not fetch reactions: {e}")
             
             # Update read receipt
             if messages:
@@ -1496,16 +1573,81 @@ def edit_group_message(group_id: int, message_id: int):
             if sender != username:
                 return jsonify({"success": False, "error": "You can only edit your own messages"}), 403
             
-            # Update the message
-            c.execute(f"UPDATE group_chat_messages SET message_text = {ph} WHERE id = {ph}", (new_text, message_id))
+            # Update the message and mark as edited
+            c.execute(f"UPDATE group_chat_messages SET message_text = {ph}, is_edited = 1 WHERE id = {ph}", (new_text, message_id))
             
             conn.commit()
             
-            return jsonify({"success": True, "text": new_text})
+            return jsonify({"success": True, "text": new_text, "is_edited": True})
             
     except Exception as e:
         logger.error(f"Error editing message {message_id} in group {group_id}: {e}")
         return jsonify({"success": False, "error": "Failed to edit message"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/message/<int:message_id>/react", methods=["POST"])
+@_login_required
+def react_to_group_message(group_id: int, message_id: int):
+    """Add or remove a reaction to a group message."""
+    username = session["username"]
+    data = request.get_json() or {}
+    reaction = data.get("reaction", "").strip()
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            _ensure_group_chat_tables(c)
+            
+            # Check if user is a member
+            c.execute(f"""
+                SELECT 1 FROM group_chat_members
+                WHERE group_id = {ph} AND username = {ph}
+            """, (group_id, username))
+            
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Access denied"}), 403
+            
+            # Check if message exists
+            c.execute(f"""
+                SELECT 1 FROM group_chat_messages
+                WHERE id = {ph} AND group_id = {ph} AND is_deleted = 0
+            """, (message_id, group_id))
+            
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Message not found"}), 404
+            
+            if not reaction:
+                # Remove reaction
+                c.execute(f"""
+                    DELETE FROM group_message_reactions
+                    WHERE message_id = {ph} AND username = {ph}
+                """, (message_id, username))
+            else:
+                # Add/update reaction
+                from backend.services.database import USE_MYSQL
+                now = datetime.now().isoformat()
+                if USE_MYSQL:
+                    c.execute(f"""
+                        INSERT INTO group_message_reactions (message_id, username, reaction, created_at)
+                        VALUES ({ph}, {ph}, {ph}, {ph})
+                        ON DUPLICATE KEY UPDATE reaction = VALUES(reaction), created_at = VALUES(created_at)
+                    """, (message_id, username, reaction, now))
+                else:
+                    c.execute(f"""
+                        INSERT INTO group_message_reactions (message_id, username, reaction, created_at)
+                        VALUES ({ph}, {ph}, {ph}, {ph})
+                        ON CONFLICT(message_id, username) DO UPDATE SET reaction = {ph}, created_at = {ph}
+                    """, (message_id, username, reaction, now, reaction, now))
+            
+            conn.commit()
+            
+            return jsonify({"success": True, "reaction": reaction if reaction else None})
+            
+    except Exception as e:
+        logger.error(f"Error reacting to message {message_id} in group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to save reaction"}), 500
 
 
 @group_chat_bp.route("/api/group_chat/<int:group_id>/available_members", methods=["GET"])

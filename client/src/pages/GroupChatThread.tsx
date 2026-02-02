@@ -29,6 +29,8 @@ type Message = {
   profile_picture: string | null
   replySnippet?: string
   replySender?: string
+  is_edited?: boolean
+  reaction?: string | null
 }
 
 type Member = {
@@ -436,6 +438,15 @@ export default function GroupChatThread() {
 
         // Simply set server messages - pending messages are separate, filter out pending deletions
         setServerMessages(newServerMessages)
+        
+        // Populate reactions from server data
+        const serverReactions: Record<number, string> = {}
+        newServerMessages.forEach(msg => {
+          if (msg.reaction) {
+            serverReactions[msg.id] = msg.reaction
+          }
+        })
+        setReactions(prev => ({ ...prev, ...serverReactions }))
         
         // Remove any pending messages that now exist on server (by matching text and time)
         setPendingMessages(prev => prev.filter(pending => {
@@ -1101,15 +1112,49 @@ export default function GroupChatThread() {
   }
 
   // Message action handlers
-  const handleReaction = (messageId: number, emoji: string) => {
+  const handleReaction = async (messageId: number, emoji: string) => {
+    const currentReaction = reactions[messageId]
+    const newReaction = currentReaction === emoji ? null : emoji
+    
+    // Optimistic update
     setReactions(prev => {
-      if (prev[messageId] === emoji) {
-        // Remove reaction if same emoji
+      if (newReaction === null) {
         const { [messageId]: _, ...rest } = prev
         return rest
       }
-      return { ...prev, [messageId]: emoji }
+      return { ...prev, [messageId]: newReaction }
     })
+    
+    // Save to backend
+    try {
+      const response = await fetch(`/api/group_chat/${group_id}/message/${messageId}/react`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ reaction: newReaction || '' })
+      })
+      const data = await response.json()
+      if (!data.success) {
+        // Revert on failure
+        setReactions(prev => {
+          if (currentReaction) {
+            return { ...prev, [messageId]: currentReaction }
+          }
+          const { [messageId]: _, ...rest } = prev
+          return rest
+        })
+      }
+    } catch (err) {
+      console.error('Failed to save reaction:', err)
+      // Revert on error
+      setReactions(prev => {
+        if (currentReaction) {
+          return { ...prev, [messageId]: currentReaction }
+        }
+        const { [messageId]: _, ...rest } = prev
+        return rest
+      })
+    }
   }
 
   const handleCopyMessage = (text: string | null) => {
@@ -1249,9 +1294,9 @@ export default function GroupChatThread() {
     
     setEditingSaving(true)
     
-    // Optimistically update the message
+    // Optimistically update the message with edited flag
     setServerMessages(prev => prev.map(m => 
-      m.id === editingId ? { ...m, text: newText } : m
+      m.id === editingId ? { ...m, text: newText, is_edited: true } : m
     ))
     
     try {
@@ -1267,9 +1312,9 @@ export default function GroupChatThread() {
         setEditingId(null)
         setEditText('')
       } else {
-        // Restore the old text
+        // Restore the old text and edited flag
         setServerMessages(prev => prev.map(m => 
-          m.id === editingId ? { ...m, text: oldMessage.text } : m
+          m.id === editingId ? { ...m, text: oldMessage.text, is_edited: oldMessage.is_edited } : m
         ))
         alert(data.error || 'Failed to edit message')
       }
@@ -1620,6 +1665,11 @@ export default function GroupChatThread() {
                                       {isOptimistic && (
                                         <span className="ml-2 text-[10px] text-white/60">
                                           <i className="fa-solid fa-clock text-[8px] mr-1" />
+                                        </span>
+                                      )}
+                                      {msg.is_edited && !isOptimistic && (
+                                        <span className="ml-2 text-[10px] text-white/40 italic">
+                                          (edited)
                                         </span>
                                       )}
                                     </div>
