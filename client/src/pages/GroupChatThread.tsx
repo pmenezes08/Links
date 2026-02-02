@@ -89,9 +89,10 @@ export default function GroupChatThread() {
   const [uploadingMedia, setUploadingMedia] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
-  const [previewImage, setPreviewImage] = useState<string | null>(null)
-  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
-  const [viewingImage, setViewingImage] = useState<string | null>(null) // For viewing sent images
+  // Multi-media preview state
+  const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' }>>([])
+  const [previewIndex, setPreviewIndex] = useState(0)
+  const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number } | null>(null) // For viewing sent media groups
   const videoInputRef = useRef<HTMLInputElement>(null)
   const [previewPlaying, setPreviewPlaying] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
@@ -606,17 +607,32 @@ export default function GroupChatThread() {
     videoInputRef.current?.click()
   }
 
-  // Show image preview before sending
+  // Handle multiple file selection (photos or videos)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = e.target.files
+    if (!files || files.length === 0) return
     
-    // Check if it's an image
-    if (file.type.startsWith('image/')) {
-      // Show preview modal
-      const previewUrl = URL.createObjectURL(file)
-      setPreviewImage(previewUrl)
-      setPendingImageFile(file)
+    const newMedia: Array<{ file: File; previewUrl: string; type: 'image' | 'video' }> = []
+    
+    Array.from(files).forEach(file => {
+      if (file.type.startsWith('image/')) {
+        newMedia.push({
+          file,
+          previewUrl: URL.createObjectURL(file),
+          type: 'image'
+        })
+      } else if (file.type.startsWith('video/')) {
+        newMedia.push({
+          file,
+          previewUrl: URL.createObjectURL(file),
+          type: 'video'
+        })
+      }
+    })
+    
+    if (newMedia.length > 0) {
+      setPendingMedia(prev => [...prev, ...newMedia])
+      setPreviewIndex(0)
     }
     
     // Reset input
@@ -624,69 +640,90 @@ export default function GroupChatThread() {
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
   
-  // Handle video file selection
+  // Handle video file selection (merged into handleFileChange for multi-select)
   const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !group_id) return
-    
-    // Send video directly (no preview for videos)
-    sendGroupVideoMessage({
-      file,
-      groupId: group_id,
-      currentUsername,
-      setServerMessages,
-      setPendingMessages,
-      loadMessages,
-      onProgress: setUploadProgress,
-      onError: (msg) => alert(msg),
-      onComplete: () => {
-        setUploadProgress(null)
-        if (videoInputRef.current) videoInputRef.current.value = ''
-      },
-    })
-    
-    if (videoInputRef.current) videoInputRef.current.value = ''
+    handleFileChange(e)
   }
   
-  // Confirm and send the previewed image
-  const confirmSendImage = async () => {
-    if (!pendingImageFile || !group_id) return
+  // Remove a single media from pending
+  const removeMediaFromPreview = (index: number) => {
+    setPendingMedia(prev => {
+      const item = prev[index]
+      if (item?.previewUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(item.previewUrl) } catch {}
+      }
+      const newMedia = prev.filter((_, i) => i !== index)
+      // Adjust preview index if needed
+      if (previewIndex >= newMedia.length && newMedia.length > 0) {
+        setPreviewIndex(newMedia.length - 1)
+      }
+      return newMedia
+    })
+  }
+  
+  // Confirm and send all pending media
+  const confirmSendMedia = async () => {
+    if (pendingMedia.length === 0 || !group_id) return
     
-    const file = pendingImageFile
+    const mediaToSend = [...pendingMedia]
     
-    // Clear preview immediately
-    if (previewImage?.startsWith('blob:')) {
-      try { URL.revokeObjectURL(previewImage) } catch {}
-    }
-    setPreviewImage(null)
-    setPendingImageFile(null)
+    // Clear previews immediately
+    pendingMedia.forEach(item => {
+      if (item.previewUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(item.previewUrl) } catch {}
+      }
+    })
+    setPendingMedia([])
+    setPreviewIndex(0)
     
-    // Send using modular sender
+    // Send all media
     setUploadingMedia(true)
-    await sendGroupImageMessage({
-      file,
-      kind: 'photo',
-      groupId: group_id,
-      currentUsername,
-      setServerMessages,
-      setPendingMessages,
-      loadMessages,
-      onProgress: setUploadProgress,
-      onError: (msg) => alert(msg),
-      onComplete: () => {
-        setUploadingMedia(false)
-        setUploadProgress(null)
-      },
-    })
+    
+    for (let i = 0; i < mediaToSend.length; i++) {
+      const item = mediaToSend[i]
+      setUploadProgress({ 
+        stage: 'uploading', 
+        progress: Math.round((i / mediaToSend.length) * 100),
+        message: `Sending ${i + 1} of ${mediaToSend.length}...`
+      })
+      
+      if (item.type === 'image') {
+        await sendGroupImageMessage({
+          file: item.file,
+          kind: 'photo',
+          groupId: group_id,
+          currentUsername,
+          setServerMessages,
+          setPendingMessages,
+          loadMessages,
+          onError: (msg) => alert(msg),
+        })
+      } else {
+        await sendGroupVideoMessage({
+          file: item.file,
+          groupId: group_id,
+          currentUsername,
+          setServerMessages,
+          setPendingMessages,
+          loadMessages,
+          onError: (msg) => alert(msg),
+        })
+      }
+    }
+    
+    setUploadingMedia(false)
+    setUploadProgress(null)
   }
   
-  // Cancel image preview
-  const cancelImagePreview = () => {
-    if (previewImage?.startsWith('blob:')) {
-      try { URL.revokeObjectURL(previewImage) } catch {}
-    }
-    setPreviewImage(null)
-    setPendingImageFile(null)
+  // Cancel all pending media
+  const cancelMediaPreview = () => {
+    pendingMedia.forEach(item => {
+      if (item.previewUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(item.previewUrl) } catch {}
+      }
+    })
+    setPendingMedia([])
+    setPreviewIndex(0)
   }
 
   // GIF selection handler - uses modular sender
@@ -1413,7 +1450,7 @@ export default function GroupChatThread() {
                                   style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    setViewingImage(msg.image)
+                                    setViewingMedia({ urls: [msg.image!], index: 0 })
                                   }}
                                 />
                               )}
@@ -1696,7 +1733,8 @@ export default function GroupChatThread() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
+              multiple
               onChange={handleFileChange}
               className="hidden"
             />
@@ -1712,6 +1750,7 @@ export default function GroupChatThread() {
               ref={videoInputRef}
               type="file"
               accept="video/*"
+              multiple
               onChange={handleVideoChange}
               className="hidden"
             />
@@ -2342,11 +2381,11 @@ export default function GroupChatThread() {
         </div>
       )}
 
-      {/* Photo preview modal - shown before sending */}
-      {previewImage && (
+      {/* Multi-media preview modal - shown before sending */}
+      {pendingMedia.length > 0 && (
         <div 
           className="fixed inset-0 bg-black z-[9999] flex flex-col"
-          onClick={cancelImagePreview}
+          onClick={cancelMediaPreview}
         >
           {/* Header */}
           <div 
@@ -2354,29 +2393,96 @@ export default function GroupChatThread() {
             style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
           >
             <button
-              onClick={cancelImagePreview}
+              onClick={cancelMediaPreview}
               className="text-white p-2 -ml-2"
             >
               <i className="fa-solid fa-xmark text-xl" />
             </button>
-            <span className="text-white font-medium">Preview</span>
-            <div className="w-8" /> {/* Spacer for centering */}
+            <span className="text-white font-medium">
+              {pendingMedia.length > 1 ? `${previewIndex + 1} of ${pendingMedia.length}` : 'Preview'}
+            </span>
+            {/* Remove current media button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                removeMediaFromPreview(previewIndex)
+              }}
+              className="text-white/60 p-2 -mr-2 hover:text-white"
+            >
+              <i className="fa-solid fa-trash text-sm" />
+            </button>
           </div>
 
-          {/* Image preview */}
+          {/* Media preview with swipe navigation */}
           <div 
-            className="flex-1 flex items-center justify-center overflow-hidden"
+            className="flex-1 flex items-center justify-center overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="w-full h-full" style={{ maxHeight: 'calc(100vh - 8rem)', touchAction: 'none' }}>
-              <ZoomableImage
-                src={previewImage}
-                alt="Photo preview"
-                className="w-full h-full"
-                onRequestClose={cancelImagePreview}
-              />
+            {/* Previous button */}
+            {pendingMedia.length > 1 && previewIndex > 0 && (
+              <button
+                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
+                onClick={() => setPreviewIndex(i => i - 1)}
+              >
+                <i className="fa-solid fa-chevron-left" />
+              </button>
+            )}
+            
+            {/* Current media */}
+            <div className="w-full h-full flex items-center justify-center" style={{ maxHeight: 'calc(100vh - 10rem)' }}>
+              {pendingMedia[previewIndex]?.type === 'video' ? (
+                <video
+                  src={pendingMedia[previewIndex]?.previewUrl}
+                  controls
+                  playsInline
+                  className="max-w-full max-h-full object-contain"
+                />
+              ) : (
+                <ZoomableImage
+                  src={pendingMedia[previewIndex]?.previewUrl || ''}
+                  alt="Preview"
+                  className="w-full h-full"
+                  onRequestClose={cancelMediaPreview}
+                />
+              )}
             </div>
+            
+            {/* Next button */}
+            {pendingMedia.length > 1 && previewIndex < pendingMedia.length - 1 && (
+              <button
+                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
+                onClick={() => setPreviewIndex(i => i + 1)}
+              >
+                <i className="fa-solid fa-chevron-right" />
+              </button>
+            )}
           </div>
+
+          {/* Thumbnail strip for multiple media */}
+          {pendingMedia.length > 1 && (
+            <div className="flex justify-center gap-2 px-4 py-2 bg-black/80 overflow-x-auto">
+              {pendingMedia.map((item, i) => (
+                <button
+                  key={i}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setPreviewIndex(i)
+                  }}
+                  className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${
+                    i === previewIndex ? 'border-[#4db6ac]' : 'border-transparent opacity-60'
+                  }`}
+                >
+                  {item.type === 'video' ? (
+                    <div className="w-full h-full bg-black/50 flex items-center justify-center">
+                      <i className="fa-solid fa-video text-white/60 text-xs" />
+                    </div>
+                  ) : (
+                    <img src={item.previewUrl} alt="" className="w-full h-full object-cover" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Send button */}
           <div 
@@ -2386,7 +2492,7 @@ export default function GroupChatThread() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                cancelImagePreview()
+                cancelMediaPreview()
               }}
               className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
             >
@@ -2395,22 +2501,22 @@ export default function GroupChatThread() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                confirmSendImage()
+                confirmSendMedia()
               }}
               className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2"
             >
               <i className="fa-solid fa-paper-plane" />
-              Send
+              Send {pendingMedia.length > 1 ? `(${pendingMedia.length})` : ''}
             </button>
           </div>
         </div>
       )}
 
-      {/* Image viewing modal - for viewing sent/received images */}
-      {viewingImage && (
+      {/* Media viewing modal - for viewing sent/received media with navigation */}
+      {viewingMedia && (
         <div 
           className="fixed inset-0 bg-black z-[9999] flex flex-col"
-          onClick={() => setViewingImage(null)}
+          onClick={() => setViewingMedia(null)}
         >
           {/* Header */}
           <div 
@@ -2418,29 +2524,82 @@ export default function GroupChatThread() {
             style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
           >
             <button
-              onClick={() => setViewingImage(null)}
+              onClick={() => setViewingMedia(null)}
               className="text-white p-2 -ml-2"
             >
               <i className="fa-solid fa-xmark text-xl" />
             </button>
-            <span className="text-white font-medium">Photo</span>
+            <span className="text-white font-medium">
+              {viewingMedia.urls.length > 1 
+                ? `${viewingMedia.index + 1} of ${viewingMedia.urls.length}` 
+                : 'Photo'}
+            </span>
             <div className="w-8" />
           </div>
 
-          {/* Image view */}
+          {/* Media view with navigation */}
           <div 
-            className="flex-1 flex items-center justify-center overflow-hidden"
+            className="flex-1 flex items-center justify-center overflow-hidden relative"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Previous button */}
+            {viewingMedia.urls.length > 1 && viewingMedia.index > 0 && (
+              <button
+                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
+                onClick={() => setViewingMedia(prev => prev ? { ...prev, index: prev.index - 1 } : null)}
+              >
+                <i className="fa-solid fa-chevron-left" />
+              </button>
+            )}
+            
             <div className="w-full h-full" style={{ maxHeight: 'calc(100vh - 8rem)', touchAction: 'none' }}>
-              <ZoomableImage
-                src={viewingImage}
-                alt="Photo"
-                className="w-full h-full"
-                onRequestClose={() => setViewingImage(null)}
-              />
+              {viewingMedia.urls[viewingMedia.index]?.includes('.mp4') || 
+               viewingMedia.urls[viewingMedia.index]?.includes('.mov') ||
+               viewingMedia.urls[viewingMedia.index]?.includes('.webm') ? (
+                <video
+                  src={viewingMedia.urls[viewingMedia.index]}
+                  controls
+                  playsInline
+                  className="max-w-full max-h-full mx-auto"
+                />
+              ) : (
+                <ZoomableImage
+                  src={viewingMedia.urls[viewingMedia.index]}
+                  alt="Photo"
+                  className="w-full h-full"
+                  onRequestClose={() => setViewingMedia(null)}
+                />
+              )}
             </div>
+            
+            {/* Next button */}
+            {viewingMedia.urls.length > 1 && viewingMedia.index < viewingMedia.urls.length - 1 && (
+              <button
+                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
+                onClick={() => setViewingMedia(prev => prev ? { ...prev, index: prev.index + 1 } : null)}
+              >
+                <i className="fa-solid fa-chevron-right" />
+              </button>
+            )}
           </div>
+
+          {/* Dots indicator for multiple media */}
+          {viewingMedia.urls.length > 1 && (
+            <div className="flex justify-center gap-1.5 py-3 bg-black/80">
+              {viewingMedia.urls.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setViewingMedia(prev => prev ? { ...prev, index: i } : null)
+                  }}
+                  className={`w-2 h-2 rounded-full transition ${
+                    i === viewingMedia.index ? 'bg-[#4db6ac]' : 'bg-white/30'
+                  }`}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Footer */}
           <div 
@@ -2448,7 +2607,7 @@ export default function GroupChatThread() {
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
           >
             <button
-              onClick={() => setViewingImage(null)}
+              onClick={() => setViewingMedia(null)}
               className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
             >
               Close
