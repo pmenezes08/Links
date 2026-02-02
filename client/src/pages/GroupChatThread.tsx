@@ -96,6 +96,9 @@ export default function GroupChatThread() {
   const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number } | null>(null) // For viewing sent media groups
   const videoInputRef = useRef<HTMLInputElement>(null)
   const [previewPlaying, setPreviewPlaying] = useState(false)
+  // Paste from clipboard state
+  const [pastedImage, setPastedImage] = useState<File | null>(null)
+  const [pastedImagePreview, setPastedImagePreview] = useState<string | null>(null)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const [reactions, setReactions] = useState<Record<number, string>>({})
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -648,6 +651,99 @@ export default function GroupChatThread() {
   // Handle video file selection (merged into handleFileChange for multi-select)
   const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     handleFileChange(e)
+  }
+  
+  // Handle paste from clipboard (images/screenshots)
+  async function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const showImagePreview = (file: File) => {
+      // Create blob URL immediately
+      const blobUrl = URL.createObjectURL(file)
+      
+      // Blur the textarea to dismiss the keyboard on mobile
+      if (textareaRef.current) {
+        textareaRef.current.blur()
+      }
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur()
+      }
+      
+      setPastedImage(file)
+      setPastedImagePreview(blobUrl)
+    }
+    
+    // Try the modern Clipboard API first (works on native apps and desktop)
+    if (navigator.clipboard && navigator.clipboard.read) {
+      try {
+        const clipboardItems = await navigator.clipboard.read()
+        for (const clipboardItem of clipboardItems) {
+          for (const type of clipboardItem.types) {
+            if (type.startsWith('image/')) {
+              event.preventDefault()
+              const blob = await clipboardItem.getType(type)
+              const file = new File([blob], `pasted-image.${type.split('/')[1]}`, { type })
+              showImagePreview(file)
+              return
+            }
+          }
+        }
+      } catch {
+        // Fall back to legacy method
+      }
+    }
+
+    // Fallback to legacy clipboardData method
+    const items = event.clipboardData?.items
+    if (!items) return
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.type.indexOf('image') !== -1) {
+        event.preventDefault()
+        const file = item.getAsFile()
+        if (file) {
+          showImagePreview(file)
+        }
+        break
+      }
+    }
+  }
+  
+  // Send pasted image
+  const sendPastedImage = async () => {
+    if (!pastedImage || !group_id) return
+    
+    // Add to pending media and send
+    setUploadingMedia(true)
+    await sendGroupMultiMedia({
+      files: [{ file: pastedImage, type: 'image' }],
+      groupId: group_id,
+      currentUsername,
+      setServerMessages,
+      setPendingMessages,
+      loadMessages,
+      onProgress: setUploadProgress,
+      onError: (msg) => alert(msg),
+      onComplete: () => {
+        setUploadingMedia(false)
+        setUploadProgress(null)
+      }
+    })
+    
+    // Clear pasted image
+    if (pastedImagePreview) {
+      try { URL.revokeObjectURL(pastedImagePreview) } catch {}
+    }
+    setPastedImage(null)
+    setPastedImagePreview(null)
+  }
+  
+  // Discard pasted image
+  const discardPastedImage = () => {
+    if (pastedImagePreview) {
+      try { URL.revokeObjectURL(pastedImagePreview) } catch {}
+    }
+    setPastedImage(null)
+    setPastedImagePreview(null)
   }
   
   // Remove a single media from pending
@@ -2059,6 +2155,7 @@ export default function GroupChatThread() {
                       handleSend()
                     }
                   }}
+                  onPaste={handlePaste}
                 />
               )}
             </div>
@@ -2662,6 +2759,68 @@ export default function GroupChatThread() {
             >
               <i className="fa-solid fa-paper-plane" />
               Send {pendingMedia.length > 1 ? `(${pendingMedia.length})` : ''}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Pasted image preview modal */}
+      {pastedImagePreview && (
+        <div 
+          className="fixed inset-0 bg-black z-[9999] flex flex-col"
+          onClick={discardPastedImage}
+        >
+          {/* Header */}
+          <div 
+            className="flex items-center justify-between px-4 py-3 bg-black/80"
+            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+          >
+            <button
+              onClick={discardPastedImage}
+              className="text-white p-2 -ml-2"
+            >
+              <i className="fa-solid fa-xmark text-xl" />
+            </button>
+            <span className="text-white font-medium">Send Image</span>
+            <div className="w-8" />
+          </div>
+
+          {/* Image preview */}
+          <div 
+            className="flex-1 flex items-center justify-center overflow-hidden p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={pastedImagePreview}
+              alt="Pasted image"
+              className="max-w-full max-h-full object-contain rounded-lg"
+            />
+          </div>
+
+          {/* Action buttons */}
+          <div 
+            className="flex items-center justify-center gap-4 px-4 py-4 bg-black/80"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                discardPastedImage()
+              }}
+              className="flex-1 max-w-[140px] px-4 py-3 rounded-xl border border-white/20 text-white hover:bg-white/10 text-sm font-medium flex items-center justify-center gap-2"
+            >
+              <i className="fa-regular fa-trash-can" />
+              Discard
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                sendPastedImage()
+              }}
+              className="flex-1 max-w-[140px] px-4 py-3 rounded-xl bg-[#4db6ac] text-black hover:brightness-110 text-sm font-medium flex items-center justify-center gap-2"
+            >
+              <i className="fa-solid fa-paper-plane" />
+              Send
             </button>
           </div>
         </div>
