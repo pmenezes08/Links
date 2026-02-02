@@ -1282,6 +1282,62 @@ def delete_group_message(group_id: int, message_id: int):
         return jsonify({"success": False, "error": "Failed to delete message"}), 500
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/messages/bulk_delete", methods=["POST"])
+@_login_required
+def bulk_delete_group_messages(group_id: int):
+    """Delete multiple messages at once. Only the sender can delete their own messages."""
+    username = session["username"]
+    data = request.get_json() or {}
+    message_ids = data.get("message_ids", [])
+    
+    if not message_ids or not isinstance(message_ids, list):
+        return jsonify({"success": False, "error": "message_ids array is required"}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            _ensure_group_chat_tables(c)
+            
+            # Check if user is a member
+            c.execute(f"""
+                SELECT 1 FROM group_chat_members
+                WHERE group_id = {ph} AND username = {ph}
+            """, (group_id, username))
+            
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Access denied"}), 403
+            
+            # Only delete messages owned by the user
+            deleted_ids = []
+            for msg_id in message_ids:
+                # Check ownership
+                c.execute(f"""
+                    SELECT sender_username FROM group_chat_messages
+                    WHERE id = {ph} AND group_id = {ph} AND is_deleted = 0
+                """, (msg_id, group_id))
+                
+                row = c.fetchone()
+                if row:
+                    sender = row["sender_username"] if hasattr(row, "keys") else row[0]
+                    if sender == username:
+                        c.execute(f"UPDATE group_chat_messages SET is_deleted = 1 WHERE id = {ph}", (msg_id,))
+                        deleted_ids.append(msg_id)
+            
+            conn.commit()
+            
+            return jsonify({
+                "success": True,
+                "deleted_count": len(deleted_ids),
+                "deleted_ids": deleted_ids
+            })
+            
+    except Exception as e:
+        logger.error(f"Error bulk deleting messages in group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to delete messages"}), 500
+
+
 @group_chat_bp.route("/api/group_chat/<int:group_id>/message/<int:message_id>/edit", methods=["POST"])
 @_login_required
 def edit_group_message(group_id: int, message_id: int):

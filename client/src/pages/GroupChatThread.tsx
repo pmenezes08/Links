@@ -104,6 +104,10 @@ export default function GroupChatThread() {
   const pendingDeletions = useRef<Set<number>>(new Set())
   const [steveIsTyping, setSteveIsTyping] = useState(false)
   
+  // Multi-select delete state
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedMessages, setSelectedMessages] = useState<Set<number>>(new Set())
+  
   // Reply state
   const [replyTo, setReplyTo] = useState<{ text: string; sender: string; image?: string; voice?: string } | null>(null)
   
@@ -1099,6 +1103,78 @@ export default function GroupChatThread() {
     }
   }
 
+  // Multi-select delete functions
+  const enterSelectionMode = (initialMessageId?: number) => {
+    setSelectionMode(true)
+    if (initialMessageId !== undefined) {
+      setSelectedMessages(new Set([initialMessageId]))
+    } else {
+      setSelectedMessages(new Set())
+    }
+  }
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false)
+    setSelectedMessages(new Set())
+  }
+
+  const toggleMessageSelection = (messageId: number) => {
+    setSelectedMessages(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId)
+      } else {
+        newSet.add(messageId)
+      }
+      return newSet
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedMessages.size === 0) return
+    
+    const count = selectedMessages.size
+    if (!confirm(`Are you sure you want to delete ${count} message${count > 1 ? 's' : ''}?`)) return
+    
+    const idsToDelete = Array.from(selectedMessages)
+    
+    // Add to pending deletions
+    idsToDelete.forEach(id => pendingDeletions.current.add(id))
+    
+    // Optimistically remove messages
+    setServerMessages(prev => prev.filter(m => !selectedMessages.has(m.id)))
+    
+    // Exit selection mode
+    exitSelectionMode()
+    
+    try {
+      const response = await fetch(`/api/group_chat/${group_id}/messages/bulk_delete`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_ids: idsToDelete })
+      })
+      const data = await response.json()
+      
+      if (data.success) {
+        // Keep in pending deletions for a while
+        setTimeout(() => {
+          idsToDelete.forEach(id => pendingDeletions.current.delete(id))
+        }, 5000)
+      } else {
+        // Restore messages if failed
+        idsToDelete.forEach(id => pendingDeletions.current.delete(id))
+        loadMessages(true)
+        alert(data.error || 'Failed to delete messages')
+      }
+    } catch (err) {
+      console.error('Error bulk deleting messages:', err)
+      idsToDelete.forEach(id => pendingDeletions.current.delete(id))
+      loadMessages(true)
+      alert('Network error. Could not delete messages.')
+    }
+  }
+
   const handleStartEdit = (messageId: number, currentText: string) => {
     setEditingId(messageId)
     setEditText(currentText)
@@ -1377,6 +1453,21 @@ export default function GroupChatThread() {
                           </div>
                         )}
                         <div className={`flex items-end gap-2 ${isSentByMe ? 'flex-row-reverse' : ''}`}>
+                          {/* Selection checkbox when in selection mode */}
+                          {selectionMode && isSentByMe && (
+                            <button
+                              onClick={() => toggleMessageSelection(msg.id)}
+                              className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                                selectedMessages.has(msg.id)
+                                  ? 'bg-[#4db6ac] border-[#4db6ac]'
+                                  : 'border-white/40 bg-transparent'
+                              }`}
+                            >
+                              {selectedMessages.has(msg.id) && (
+                                <i className="fa-solid fa-check text-black text-xs" />
+                              )}
+                            </button>
+                          )}
                           <LongPressActionable
                             onReact={(emoji) => handleReaction(msg.id, emoji)}
                             onReply={() => {
@@ -1391,7 +1482,8 @@ export default function GroupChatThread() {
                             onCopy={() => handleCopyMessage(msg.text)}
                             onDelete={() => handleDeleteMessage(msg.id, msg)}
                             onEdit={isSentByMe && msg.text && !msg.image && !msg.voice ? () => handleStartEdit(msg.id, msg.text || '') : undefined}
-                            disabled={isOptimistic || editingId === msg.id}
+                            onSelect={isSentByMe ? () => enterSelectionMode(msg.id) : undefined}
+                            disabled={isOptimistic || editingId === msg.id || selectionMode}
                           >
                             <div className={`relative ${messageReaction ? 'mb-5' : ''}`}>
                               {editingId === msg.id ? (
@@ -1605,7 +1697,33 @@ export default function GroupChatThread() {
           flexDirection: 'column',
         }}
       >
-        {/* Composer card */}
+        {/* Selection action bar - shown when in selection mode */}
+        {selectionMode ? (
+          <div
+            className="max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-4 py-3 flex items-center justify-between gap-3"
+            style={{ background: '#0a0a0c' }}
+          >
+            <button
+              onClick={exitSelectionMode}
+              className="text-white/60 hover:text-white flex items-center gap-2"
+            >
+              <i className="fa-solid fa-xmark" />
+              <span className="text-sm">Cancel</span>
+            </button>
+            <span className="text-white/80 text-sm">
+              {selectedMessages.size} selected
+            </span>
+            <button
+              onClick={handleBulkDelete}
+              disabled={selectedMessages.size === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-full disabled:opacity-40 disabled:cursor-not-allowed hover:bg-red-500/30 transition-colors"
+            >
+              <i className="fa-solid fa-trash text-sm" />
+              <span className="text-sm">Delete</span>
+            </button>
+          </div>
+        ) : (
+        /* Composer card */
         <div
           ref={composerCardRef}
           className="relative max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3"
@@ -2111,6 +2229,7 @@ export default function GroupChatThread() {
             )}
           </div>
         </div>
+        )}
         {/* Safe area spacer */}
         <div
           style={{
