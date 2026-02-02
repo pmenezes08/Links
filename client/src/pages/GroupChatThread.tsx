@@ -1305,6 +1305,16 @@ export default function GroupChatThread() {
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                   onClick={() => {
                     setHeaderMenuOpen(false)
+                    navigate(`/group_chat/${group_id}/media`)
+                  }}
+                >
+                  <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
+                  <span>View Media</span>
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  onClick={() => {
+                    setHeaderMenuOpen(false)
                     setShowAddMembers(true)
                     loadAvailableMembers()
                   }}

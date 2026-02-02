@@ -739,6 +739,97 @@ def get_group_messages(group_id: int):
         return jsonify({"success": False, "error": "Failed to load messages"}), 500
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/media", methods=["GET"])
+@_login_required
+def get_group_media(group_id: int):
+    """Get all media (images and videos) shared in a group chat."""
+    username = session["username"]
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            _ensure_group_chat_tables(c)
+            
+            # Check if user is a member
+            c.execute(f"""
+                SELECT 1 FROM group_chat_members
+                WHERE group_id = {ph} AND username = {ph}
+            """, (group_id, username))
+            
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Access denied"}), 403
+            
+            # Get all messages with media
+            c.execute(f"""
+                SELECT id, sender_username, image_path, video_path, media_paths, created_at
+                FROM group_chat_messages
+                WHERE group_id = {ph} AND is_deleted = 0 
+                  AND (image_path IS NOT NULL OR video_path IS NOT NULL OR media_paths IS NOT NULL)
+                ORDER BY created_at DESC
+            """, (group_id,))
+            
+            media_items = []
+            item_id = 0
+            
+            for row in c.fetchall():
+                msg_id = row["id"] if hasattr(row, "keys") else row[0]
+                sender = row["sender_username"] if hasattr(row, "keys") else row[1]
+                image_path = row["image_path"] if hasattr(row, "keys") else row[2]
+                video_path = row["video_path"] if hasattr(row, "keys") else row[3]
+                media_paths_raw = row["media_paths"] if hasattr(row, "keys") else row[4]
+                created_at = row["created_at"] if hasattr(row, "keys") else row[5]
+                
+                # Handle grouped media (media_paths JSON)
+                if media_paths_raw:
+                    try:
+                        paths = json.loads(media_paths_raw)
+                        for path in paths:
+                            item_id += 1
+                            is_video = any(path.lower().endswith(ext) for ext in ['.mp4', '.mov', '.webm', '.m4v'])
+                            media_items.append({
+                                "id": item_id,
+                                "message_id": msg_id,
+                                "sender": sender,
+                                "url": path,
+                                "type": "video" if is_video else "image",
+                                "created_at": created_at
+                            })
+                    except:
+                        pass
+                
+                # Handle legacy single image
+                if image_path:
+                    item_id += 1
+                    media_items.append({
+                        "id": item_id,
+                        "message_id": msg_id,
+                        "sender": sender,
+                        "url": image_path,
+                        "type": "image",
+                        "created_at": created_at
+                    })
+                
+                # Handle legacy single video
+                if video_path:
+                    item_id += 1
+                    media_items.append({
+                        "id": item_id,
+                        "message_id": msg_id,
+                        "sender": sender,
+                        "url": video_path,
+                        "type": "video",
+                        "created_at": created_at
+                    })
+            
+            return jsonify({"success": True, "media": media_items})
+            
+    except Exception as e:
+        logger.error(f"Error getting media for group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to load media"}), 500
+
+
 @group_chat_bp.route("/api/group_chat/<int:group_id>/send_media", methods=["POST"])
 @_login_required
 def send_group_media(group_id: int):

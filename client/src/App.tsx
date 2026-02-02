@@ -40,6 +40,7 @@ import Messages from './pages/Messages'
 import NewMessage from './pages/NewMessage'
 import ChatThread from './pages/ChatThread'
 import GroupChatThread from './pages/GroupChatThread'
+import GroupChatMedia from './pages/GroupChatMedia'
 import Profile from './pages/Profile'
 import PublicProfile from './pages/PublicProfile'
 import AccountSettings from './pages/AccountSettings'
@@ -677,6 +678,7 @@ function AppRoutes(){
                   <Route path="/user_chat/new" element={<NewMessage />} />
                   <Route path="/user_chat/chat/:username" element={<ChatThread />} />
                   <Route path="/group_chat/:group_id" element={<GroupChatThread />} />
+                  <Route path="/group_chat/:group_id/media" element={<GroupChatMedia />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/profile_react" element={<Profile />} />
                   <Route path="/profile/:username" element={<PublicProfile />} />
