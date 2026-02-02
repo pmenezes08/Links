@@ -79,6 +79,23 @@ def _ensure_video_column(cursor):
             logger.warning(f"Could not add video_path column: {e}")
 
 
+def _ensure_media_paths_column(cursor):
+    """Ensure media_paths column exists in group_chat_messages for grouped media."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT media_paths FROM group_chat_messages LIMIT 1")
+    except Exception:
+        # Column doesn't exist, add it
+        try:
+            if USE_MYSQL:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN media_paths TEXT")
+            else:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN media_paths TEXT")
+            logger.info("Added media_paths column to group_chat_messages")
+        except Exception as e:
+            logger.warning(f"Could not add media_paths column: {e}")
+
+
 def _ensure_community_id_column(cursor):
     """Ensure community_id column exists in group_chats table."""
     from backend.services.database import USE_MYSQL
@@ -105,6 +122,7 @@ def _ensure_group_chat_tables(cursor):
         cursor.execute("SELECT 1 FROM group_chats LIMIT 1")
         _ensure_voice_column(cursor)  # Ensure voice column exists
         _ensure_video_column(cursor)  # Ensure video column exists
+        _ensure_media_paths_column(cursor)  # Ensure media_paths column exists for grouped media
         _ensure_community_id_column(cursor)  # Ensure community_id column exists
         return  # Table exists, no need to create
     except Exception:
@@ -631,7 +649,7 @@ def get_group_messages(group_id: int):
             # Get messages
             if before_id:
                 c.execute(f"""
-                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.created_at,
+                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.created_at,
                            up.profile_picture
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
@@ -641,7 +659,7 @@ def get_group_messages(group_id: int):
                 """, (group_id, before_id, limit))
             else:
                 c.execute(f"""
-                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.created_at,
+                    SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.created_at,
                            up.profile_picture
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
@@ -652,6 +670,15 @@ def get_group_messages(group_id: int):
             
             messages = []
             for row in c.fetchall():
+                # Parse media_paths JSON if present
+                media_paths_raw = row["media_paths"] if hasattr(row, "keys") else row[6]
+                media_paths = None
+                if media_paths_raw:
+                    try:
+                        media_paths = json.loads(media_paths_raw)
+                    except:
+                        pass
+                
                 messages.append({
                     "id": row["id"] if hasattr(row, "keys") else row[0],
                     "sender": row["sender_username"] if hasattr(row, "keys") else row[1],
@@ -659,8 +686,9 @@ def get_group_messages(group_id: int):
                     "image": row["image_path"] if hasattr(row, "keys") else row[3],
                     "voice": row["voice_path"] if hasattr(row, "keys") else row[4],
                     "video": row["video_path"] if hasattr(row, "keys") else row[5],
-                    "created_at": row["created_at"] if hasattr(row, "keys") else row[6],
-                    "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[7],
+                    "media_paths": media_paths,
+                    "created_at": row["created_at"] if hasattr(row, "keys") else row[7],
+                    "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[8],
                 })
             
             # Update read receipt
@@ -714,30 +742,38 @@ def get_group_messages(group_id: int):
 @group_chat_bp.route("/api/group_chat/<int:group_id>/send_media", methods=["POST"])
 @_login_required
 def send_group_media(group_id: int):
-    """Upload and send a photo or video to a group chat in one request.
-    This mirrors /send_photo_message pattern for better iOS compatibility.
+    """Upload and send one or more photos/videos to a group chat.
+    Supports multiple files - they will be grouped in a single message.
     """
     username = session["username"]
     
-    # Determine media type
-    file = None
-    media_type = None
+    # Collect all files (supports multiple)
+    files_to_upload = []
     
-    if 'photo' in request.files:
-        file = request.files['photo']
-        media_type = 'photo'
-        allowed_ext = IMAGE_EXTENSIONS
-        subfolder = 'message_photos'
-    elif 'video' in request.files:
-        file = request.files['video']
-        media_type = 'video'
-        allowed_ext = VIDEO_EXTENSIONS
-        subfolder = 'message_videos'
-    else:
+    # Check for photos (can be multiple with same key or indexed keys)
+    photos = request.files.getlist('photo')
+    for photo in photos:
+        if photo and photo.filename:
+            files_to_upload.append(('photo', photo))
+    
+    # Check for videos
+    videos = request.files.getlist('video')
+    for video in videos:
+        if video and video.filename:
+            files_to_upload.append(('video', video))
+    
+    # Also check media[] for multi-file uploads
+    media_files = request.files.getlist('media')
+    for media in media_files:
+        if media and media.filename:
+            # Determine type from mimetype
+            if media.mimetype and media.mimetype.startswith('video/'):
+                files_to_upload.append(('video', media))
+            else:
+                files_to_upload.append(('photo', media))
+    
+    if not files_to_upload:
         return jsonify({"success": False, "error": "No photo or video provided"}), 400
-    
-    if not file or file.filename == '':
-        return jsonify({"success": False, "error": "No file selected"}), 400
     
     try:
         with get_db_connection() as conn:
@@ -755,27 +791,51 @@ def send_group_media(group_id: int):
             if not c.fetchone():
                 return jsonify({"success": False, "error": "Access denied"}), 403
             
-            # Upload file using R2-enabled media service
-            stored_path = save_uploaded_file(
-                file,
-                subfolder=subfolder,
-                allowed_extensions=allowed_ext
-            )
+            # Upload all files
+            uploaded_paths = []
+            for media_type, file in files_to_upload:
+                if media_type == 'photo':
+                    allowed_ext = IMAGE_EXTENSIONS
+                    subfolder = 'message_photos'
+                else:
+                    allowed_ext = VIDEO_EXTENSIONS
+                    subfolder = 'message_videos'
+                
+                stored_path = save_uploaded_file(
+                    file,
+                    subfolder=subfolder,
+                    allowed_extensions=allowed_ext
+                )
+                
+                if stored_path:
+                    uploaded_paths.append(stored_path)
+                    logger.info(f"Uploaded group {media_type}: {stored_path} by {username}")
             
-            if not stored_path:
-                return jsonify({"success": False, "error": "File type not allowed or upload failed"}), 400
+            if not uploaded_paths:
+                return jsonify({"success": False, "error": "Failed to upload files"}), 400
             
-            logger.info(f"Uploaded group {media_type}: {stored_path} by {username}")
-            
-            # Insert message
+            # Insert message with grouped media
             now = datetime.now().isoformat()
-            image_path = stored_path if media_type == 'photo' else None
-            video_path = stored_path if media_type == 'video' else None
+            
+            # For single file, use legacy columns for backwards compatibility
+            # For multiple files, use media_paths JSON column
+            if len(uploaded_paths) == 1:
+                single_path = uploaded_paths[0]
+                # Determine if image or video by extension
+                is_video = any(single_path.lower().endswith(ext) for ext in ['.mp4', '.mov', '.webm', '.m4v'])
+                image_path = None if is_video else single_path
+                video_path = single_path if is_video else None
+                media_paths_json = None
+            else:
+                # Multiple files - store as JSON array
+                image_path = None
+                video_path = None
+                media_paths_json = json.dumps(uploaded_paths)
             
             c.execute(f"""
-                INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, voice_path, video_path, created_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-            """, (group_id, username, None, image_path, None, video_path, now))
+                INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, voice_path, video_path, media_paths, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (group_id, username, None, image_path, None, video_path, media_paths_json, now))
             
             message_id = c.lastrowid
             
@@ -819,7 +879,13 @@ def send_group_media(group_id: int):
                 c.execute(f"SELECT username FROM group_chat_members WHERE group_id = {ph} AND username != {ph}", (group_id, username))
                 other_members = [r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
                 
-                preview = "🎬 Video" if media_type == 'video' else "📷 Photo"
+                # Determine preview text based on content
+                if len(uploaded_paths) > 1:
+                    preview = f"📷 {len(uploaded_paths)} media files"
+                elif video_path:
+                    preview = "🎬 Video"
+                else:
+                    preview = "📷 Photo"
                 
                 for member in other_members:
                     try:
@@ -840,6 +906,7 @@ def send_group_media(group_id: int):
                     "image": image_path,
                     "voice": None,
                     "video": video_path,
+                    "media_paths": uploaded_paths if len(uploaded_paths) > 1 else None,
                     "created_at": now,
                     "profile_picture": profile_picture,
                 }

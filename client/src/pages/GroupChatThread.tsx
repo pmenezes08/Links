@@ -14,7 +14,7 @@ import LongPressActionable from '../chat/LongPressActionable'
 import { formatDateLabel, getDateKey } from '../chat'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import ZoomableImage from '../components/ZoomableImage'
-import { sendGroupImageMessage, sendGroupVideoMessage } from '../chat/groupChatMediaSenders'
+import { sendGroupImageMessage, sendGroupVideoMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 
 type Message = {
@@ -24,6 +24,7 @@ type Message = {
   image: string | null
   voice: string | null
   video?: string | null
+  media_paths?: string[] | null  // For grouped media
   created_at: string
   profile_picture: string | null
   replySnippet?: string
@@ -667,24 +668,36 @@ export default function GroupChatThread() {
     
     const mediaToSend = [...pendingMedia]
     
-    // Clear previews immediately
-    pendingMedia.forEach(item => {
-      if (item.previewUrl.startsWith('blob:')) {
-        try { URL.revokeObjectURL(item.previewUrl) } catch {}
-      }
-    })
+    // Clear previews immediately (without revoking - will be done in sender)
     setPendingMedia([])
     setPreviewIndex(0)
     
     // Send all media
     setUploadingMedia(true)
     
-    for (let i = 0; i < mediaToSend.length; i++) {
-      const item = mediaToSend[i]
+    if (mediaToSend.length > 1) {
+      // Send as grouped message
+      await sendGroupMultiMedia({
+        files: mediaToSend.map(item => ({ file: item.file, type: item.type })),
+        groupId: group_id,
+        currentUsername,
+        setServerMessages,
+        setPendingMessages,
+        loadMessages,
+        onProgress: setUploadProgress,
+        onError: (msg) => alert(msg),
+        onComplete: () => {
+          setUploadingMedia(false)
+          setUploadProgress(null)
+        }
+      })
+    } else {
+      // Single file - use existing method
+      const item = mediaToSend[0]
       setUploadProgress({ 
         stage: 'uploading', 
-        progress: Math.round((i / mediaToSend.length) * 100),
-        message: `Sending ${i + 1} of ${mediaToSend.length}...`
+        progress: 10,
+        message: 'Sending...'
       })
       
       if (item.type === 'image') {
@@ -696,6 +709,7 @@ export default function GroupChatThread() {
           setServerMessages,
           setPendingMessages,
           loadMessages,
+          onProgress: setUploadProgress,
           onError: (msg) => alert(msg),
         })
       } else {
@@ -706,13 +720,21 @@ export default function GroupChatThread() {
           setServerMessages,
           setPendingMessages,
           loadMessages,
+          onProgress: setUploadProgress,
           onError: (msg) => alert(msg),
         })
       }
+      
+      setUploadingMedia(false)
+      setUploadProgress(null)
     }
     
-    setUploadingMedia(false)
-    setUploadProgress(null)
+    // Cleanup preview URLs
+    mediaToSend.forEach(item => {
+      if (item.previewUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(item.previewUrl) } catch {}
+      }
+    })
   }
   
   // Cancel all pending media
@@ -1442,27 +1464,67 @@ export default function GroupChatThread() {
                                   )}
                                 </div>
                               )}
-                              {msg.image && (
-                                <img
-                                  src={msg.image.startsWith('http') ? msg.image : msg.image}
-                                  alt="Shared image"
-                                  className="mt-1 max-w-[280px] rounded-lg cursor-pointer"
-                                  style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setViewingMedia({ urls: [msg.image!], index: 0 })
-                                  }}
-                                />
-                              )}
-                              {msg.video && (
-                                <video
-                                  src={msg.video.startsWith('http') ? msg.video : msg.video}
-                                  controls
-                                  playsInline
-                                  className="mt-1 max-w-[280px] rounded-lg"
-                                  style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
-                                  onClick={(e) => e.stopPropagation()}
-                                />
+                              {/* Grouped media display */}
+                              {msg.media_paths && msg.media_paths.length > 0 ? (
+                                <div className="mt-1 max-w-[280px]">
+                                  <div 
+                                    className="relative cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setViewingMedia({ urls: msg.media_paths!, index: 0 })
+                                    }}
+                                  >
+                                    {/* Show first item as preview */}
+                                    {msg.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
+                                      <video
+                                        src={msg.media_paths[0]}
+                                        className="w-full rounded-lg"
+                                        style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
+                                        muted
+                                      />
+                                    ) : (
+                                      <img
+                                        src={msg.media_paths[0]}
+                                        alt="Media"
+                                        className="w-full rounded-lg"
+                                        style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
+                                      />
+                                    )}
+                                    {/* Overlay with count */}
+                                    {msg.media_paths.length > 1 && (
+                                      <div className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center">
+                                        <span className="text-white text-2xl font-semibold">
+                                          +{msg.media_paths.length - 1}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {msg.image && (
+                                    <img
+                                      src={msg.image.startsWith('http') ? msg.image : msg.image}
+                                      alt="Shared image"
+                                      className="mt-1 max-w-[280px] rounded-lg cursor-pointer"
+                                      style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setViewingMedia({ urls: [msg.image!], index: 0 })
+                                      }}
+                                    />
+                                  )}
+                                  {msg.video && (
+                                    <video
+                                      src={msg.video.startsWith('http') ? msg.video : msg.video}
+                                      controls
+                                      playsInline
+                                      className="mt-1 max-w-[280px] rounded-lg"
+                                      style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  )}
+                                </>
                               )}
                               {msg.voice && (
                                 <div className="mt-1 max-w-[280px]">

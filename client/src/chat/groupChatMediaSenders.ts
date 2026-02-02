@@ -12,6 +12,7 @@ export interface GroupMessage {
   image: string | null
   voice: string | null
   video?: string | null
+  media_paths?: string[] | null  // For grouped media
   created_at: string
   profile_picture: string | null
   clientKey?: string
@@ -42,6 +43,10 @@ interface ImageMediaOptions extends BaseMediaOptions {
 
 interface VideoMediaOptions extends BaseMediaOptions {
   file: File
+}
+
+interface MultiMediaOptions extends BaseMediaOptions {
+  files: Array<{ file: File; type: 'image' | 'video' }>
 }
 
 const defaultErrorHandler = (msg: string) => {
@@ -234,6 +239,100 @@ export async function sendGroupVideoMessage(options: VideoMediaOptions): Promise
     } catch {
       // ignore
     }
+    onComplete?.()
+  }
+}
+
+/**
+ * Send multiple media files as a grouped message
+ */
+export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<boolean> {
+  const {
+    files,
+    groupId,
+    currentUsername,
+    setServerMessages: _setServerMessages,
+    setPendingMessages,
+    loadMessages,
+    onProgress,
+    onError = defaultErrorHandler,
+    onComplete,
+  } = options
+  void _setServerMessages
+
+  if (files.length === 0) return false
+
+  const tempId = `temp_multi_${Date.now()}_${Math.random()}`
+  const now = new Date().toISOString()
+  
+  // Create preview URLs for optimistic display
+  const previewUrls = files.map(f => URL.createObjectURL(f.file))
+
+  // Create optimistic message with grouped media
+  const optimisticMessage: GroupMessage & { clientKey: string } = {
+    id: -Date.now(),
+    sender: currentUsername,
+    text: files.length > 1 ? `📷 ${files.length} items` : (files[0].type === 'video' ? '🎬 Video' : '📷 Photo'),
+    image: files[0].type === 'image' ? previewUrls[0] : null,
+    video: files[0].type === 'video' ? previewUrls[0] : null,
+    voice: null,
+    media_paths: previewUrls,
+    created_at: now,
+    profile_picture: null,
+    clientKey: tempId,
+    isOptimistic: true,
+  }
+
+  // Add to pending messages immediately
+  setPendingMessages(prev => [...prev, optimisticMessage])
+
+  try {
+    onProgress?.({ stage: 'uploading', progress: 10, message: `Uploading ${files.length} items...` })
+    
+    // Create FormData with all files
+    const formData = new FormData()
+    files.forEach((item) => {
+      formData.append('media', item.file)
+    })
+    
+    console.log('[GroupMedia] Sending', files.length, 'files to group', groupId)
+    
+    const response = await fetch(`/api/group_chat/${groupId}/send_media`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    })
+    
+    const payload = await response.json().catch(() => null)
+    console.log('[GroupMedia] Multi-media response:', payload)
+    
+    if (!payload?.success) {
+      throw new Error(payload?.error || 'Failed to send media')
+    }
+    
+    onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
+
+    // Remove from pending, server message will come via loadMessages
+    setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+    
+    // Refresh messages to get the confirmed message
+    loadMessages(true)
+    
+    return true
+  } catch (error) {
+    console.error('[GroupMedia] Multi-media send failed:', error)
+    
+    // Remove optimistic message on failure
+    setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+    
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    onError(`Failed to send media: ${errorMsg}`)
+    return false
+  } finally {
+    // Cleanup preview URLs
+    previewUrls.forEach(url => {
+      try { URL.revokeObjectURL(url) } catch {}
+    })
     onComplete?.()
   }
 }
