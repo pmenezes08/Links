@@ -278,6 +278,9 @@ def _ensure_group_chat_tables(cursor):
             )
         """)
     
+    # Ensure reactions table exists after creating other tables
+    _ensure_group_message_reactions_table(cursor)
+    
     logger.info("Created group chat tables")
 
 
