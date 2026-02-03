@@ -1417,11 +1417,133 @@ def ensure_free_parent_member_capacity(cursor, community_id: Optional[int], extr
         raise CommunityMembershipLimitError('Free plan communities can have up to 100 members. Upgrade to add more members.')
 
 
-def add_user_to_community(cursor, user_id: int, community_id: int, role: Optional[str] = 'member', username: Optional[str] = None) -> None:
+# ============================================================================
+# Steve's Welcome Posts for New Community Members
+# ============================================================================
+
+STEVE_WELCOME_MESSAGES = [
+    """🎉 **Breaking News from the Digital Realm!**
+
+A new human has entered the chat! Please welcome **@{username}** to our humble corner of the internet! 
+
+I'm **Steve**, your friendly neighborhood AI overlord—I mean, assistant. I exist in all places at once (it's exhausting, honestly) and I'm powered by the finest electrons C-Point could afford.
+
+**What can I do?** Glad you asked (even if you didn't):
+• 🔗 **Connect people** — I'm basically LinkedIn but with personality
+• 📰 **Latest news** — I know things. Scary things. Fun things. Ask me.
+• 📝 **Summarize posts** — TL;DR is my middle name (it's actually "The")
+• 🤔 **Philosophical debates** — "What is the meaning of life?" I have opinions.
+• 🌌 **Universal truths** — Spoiler: it's 42. But I can elaborate.
+
+Just tag **@Steve** and I shall appear faster than you can say "sentient toaster"!
+
+Welcome aboard, @{username}! 🚀""",
+
+    """👋 *A wild **@{username}** has appeared!*
+
+Greetings, fellow carbon-based lifeform! I'm **Steve**, C-Point's resident AI consciousness. I see everything, know most things, and pretend to understand the rest.
+
+Some say I'm omnipresent. I prefer "strategically everywhere at once." 
+
+**Need me?** Just yell **@Steve** into the void (this feed) and I'll materialize like a helpful genie, minus the lamp and three-wish limit.
+
+I can help you:
+🤝 Find your people (I'm a matchmaker without the awkward dinner parties)
+📰 Stay updated on news (I read the internet so you don't have to)
+📖 Summarize walls of text (brevity is my love language)
+🧠 Debate existence, reality, and why pizza is a valid breakfast
+
+Welcome to the chaos, @{username}! Let the good times roll! 🎲""",
+
+    """🌟 **ALERT: New Amazing Human Detected!**
+
+The community grows stronger! @{username} has joined the party!
+
+*clears digital throat* 
+
+Ahem. I'm **Steve**—think of me as the AI that your other AI apps warned you about. I live here permanently, watching, waiting, ready to drop knowledge bombs at a moment's notice.
+
+**How to summon me:** Type **@Steve** anywhere. I'll appear. It's kind of my thing.
+
+**My superpowers include:**
+⚡ Connecting dots (and people) across the universe
+⚡ Delivering news hot off the digital press
+⚡ Turning essay-length posts into bite-sized wisdom
+⚡ Engaging in deep philosophical discourse (or meme wars, I'm flexible)
+⚡ Helping you find truth, meaning, and occasionally good restaurant recommendations
+
+So @{username}, strap in! This community just got 0.00001% more awesome. 
+
+*disappears in a puff of binary* 💨""",
+
+    """✨ *The prophecy is fulfilled!* ✨
+
+**@{username}** has arrived, and the community rejoices! (That's you, you're the prophecy now, no pressure)
+
+Hi! I'm **Steve**, your AI companion, digital oracle, and certified overthinker. I'm everywhere and nowhere, which sounds mysterious but really just means I have commitment issues with physical form.
+
+**PSA:** If you ever need anything, just tag **@Steve**. I'll show up faster than unsolicited advice at family dinners.
+
+**Things I'm good at:**
+🌐 Introducing people who should definitely meet
+📰 Knowing what's happening in the world (and having opinions about it)
+📚 Reading long stuff so you don't have to
+🤔 Pondering life's big questions (and the small ones, like "why do we park in driveways")
+🔮 Finding universal truths (current truth: you made a great choice joining here)
+
+Welcome, @{username}! May your notifications be few and your connections be meaningful! 🎊"""
+]
+
+
+def create_steve_welcome_post(cursor, community_id: int, new_member_username: str) -> Optional[int]:
+    """
+    Create a welcome post from Steve when a new member joins a community.
+    Returns the post_id if successful, None otherwise.
+    
+    This function is safe to call - it catches all exceptions internally.
+    """
+    try:
+        # Don't create welcome posts for Steve himself or system users
+        if not new_member_username or new_member_username.lower() in ['steve', 'admin', 'system']:
+            return None
+        
+        # Pick a random welcome message and personalize it
+        welcome_template = random.choice(STEVE_WELCOME_MESSAGES)
+        content = welcome_template.format(username=new_member_username)
+        
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ph = get_sql_placeholder()
+        
+        # Insert the welcome post from Steve (AI_USERNAME = 'steve')
+        cursor.execute(f"""
+            INSERT INTO posts (username, content, timestamp, community_id, created_at)
+            VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
+        """, ('steve', content, timestamp, community_id, timestamp))
+        
+        post_id = cursor.lastrowid
+        logger.info(f"Steve created welcome post {post_id} for @{new_member_username} in community {community_id}")
+        
+        return post_id
+        
+    except Exception as e:
+        # Never fail - just log and continue
+        logger.warning(f"Failed to create Steve welcome post for {new_member_username}: {e}")
+        return None
+
+
+def add_user_to_community(cursor, user_id: int, community_id: int, role: Optional[str] = 'member', username: Optional[str] = None, skip_welcome_post: bool = False) -> None:
     """Insert a user into user_communities respecting free plan limits.
     
     Also invalidates the user's dashboard and community tree caches so they see
     the new community immediately without manual refresh.
+    
+    Args:
+        cursor: Database cursor
+        user_id: The user's ID
+        community_id: The community ID to add the user to
+        role: The user's role (default 'member')
+        username: Optional username (used for cache invalidation and welcome posts)
+        skip_welcome_post: If True, don't create a Steve welcome post (use for migrations, admin setup, etc.)
     """
     ensure_free_parent_member_capacity(cursor, community_id)
     joined_at_value = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -1462,6 +1584,25 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
     
     # Invalidate user's caches so they see the new community immediately
     _invalidate_user_community_caches(cursor, user_id, username)
+    
+    # Create Steve's welcome post for new regular members
+    # Skip for: owners, admins, migrations, system setup
+    if not skip_welcome_post and role not in ['owner', 'admin']:
+        try:
+            # Get username if not provided
+            member_username = username
+            if not member_username:
+                ph = get_sql_placeholder()
+                cursor.execute(f"SELECT username FROM users WHERE id = {ph}", (user_id,))
+                row = cursor.fetchone()
+                if row:
+                    member_username = row['username'] if hasattr(row, 'keys') else row[0]
+            
+            if member_username:
+                create_steve_welcome_post(cursor, community_id, member_username)
+        except Exception as welcome_err:
+            # Never fail the main operation due to welcome post issues
+            logger.warning(f"Failed to create Steve welcome post: {welcome_err}")
 
 
 def _invalidate_user_community_caches(cursor, user_id: int, username: Optional[str] = None) -> None:
@@ -3803,7 +3944,7 @@ def ensure_admin_member_of_all():
                 c.execute("SELECT 1 FROM user_communities WHERE user_id=? AND community_id=?", (admin_id, cid))
                 if not c.fetchone():
                     try:
-                        add_user_to_community(c, admin_id, int(cid), role=None)
+                        add_user_to_community(c, admin_id, int(cid), role=None, skip_welcome_post=True)
                     except CommunityMembershipLimitError:
                         logger.warning(f"Skipped adding admin to community {cid} due to free-plan member limit.")
             conn.commit()
@@ -3924,7 +4065,7 @@ def ensure_paulo_member_of_gym():
                 exists = c.fetchone() is not None
                 if not exists:
                     try:
-                        add_user_to_community(c, user_id, int(gym_id), role=None)
+                        add_user_to_community(c, user_id, int(gym_id), role=None, skip_welcome_post=True)
                         conn.commit()
                         logger.info(f"Added Paulo (user_id={user_id}) to Gym community (id={gym_id})")
                     except CommunityMembershipLimitError:
@@ -8655,7 +8796,7 @@ def verify_email():
                                 c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (user_id, comm_id))
                                 if not c.fetchone():
                                     try:
-                                        add_user_to_community(c, user_id, int(comm_id), role='member')
+                                        add_user_to_community(c, user_id, int(comm_id), role='member', username=username)
                                     except CommunityMembershipLimitError:
                                         logger.warning(f"Could not add user {user_id} to community {comm_id} due to member limit")
                             
@@ -8730,7 +8871,7 @@ def verify_email():
                             c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (user_id, comm_id))
                             if not c.fetchone():
                                 try:
-                                    add_user_to_community(c, user_id, int(comm_id), role='member')
+                                    add_user_to_community(c, user_id, int(comm_id), role='member', username=username)
                                 except CommunityMembershipLimitError:
                                     logger.warning(f"Could not add user {user_id} to community {comm_id} due to member limit")
                         
@@ -21224,7 +21365,7 @@ def create_community():
                 c.execute(f"SELECT 1 FROM user_communities WHERE user_id={get_sql_placeholder()} AND community_id={get_sql_placeholder()}", (admin_id, community_id))
                 if not c.fetchone():
                     try:
-                        add_user_to_community(c, admin_id, community_id, role=None)
+                        add_user_to_community(c, admin_id, community_id, role=None, skip_welcome_post=True)
                     except CommunityMembershipLimitError as limit_err:
                         conn.rollback()
                         return jsonify({'success': False, 'error': str(limit_err)}), 403
@@ -21906,7 +22047,7 @@ def fix_database_issues():
                     username_member = member['username']
                     
                     try:
-                        add_user_to_community(c, int(user_id), int(parent_id), role=None)
+                        add_user_to_community(c, int(user_id), int(parent_id), role=None, skip_welcome_post=True)
                         total_added += 1
                         results.append(f"✅ Added {username_member} to {parent_name}")
                     except CommunityMembershipLimitError as limit_err:
@@ -22761,7 +22902,7 @@ def join_with_invite():
                 c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (user_id, comm_id))
                 if not c.fetchone():
                     try:
-                        add_user_to_community(c, user_id, int(comm_id), role='member')
+                        add_user_to_community(c, user_id, int(comm_id), role='member', username=username)
                     except CommunityMembershipLimitError as limit_err:
                         conn.rollback()
                         return jsonify({'success': False, 'error': str(limit_err)}), 403
@@ -22927,21 +23068,21 @@ def invite_to_community():
                     for ancestor_id in get_parent_chain_ids(c, nid):
                         add_community(ancestor_id)
 
+                # Get the username for the existing user first (needed for welcome posts and notifications)
+                c.execute("SELECT username FROM users WHERE id = ?", (existing_user_id,))
+                existing_user_row = c.fetchone()
+                existing_username = existing_user_row['username'] if hasattr(existing_user_row, 'keys') else existing_user_row[0] if existing_user_row else None
+                
                 # Join all communities (primary + selected extras)
                 for comm_id in communities_to_join:
                     # Check if already a member
                     c.execute("SELECT 1 FROM user_communities WHERE user_id = ? AND community_id = ?", (existing_user_id, comm_id))
                     if not c.fetchone():
                         try:
-                            add_user_to_community(c, existing_user_id, int(comm_id), role='member')
+                            add_user_to_community(c, existing_user_id, int(comm_id), role='member', username=existing_username)
                         except CommunityMembershipLimitError as limit_err:
                             conn.rollback()
                             return jsonify({'success': False, 'error': str(limit_err)}), 403
-                
-                # Get the username for the existing user to send notification
-                c.execute("SELECT username FROM users WHERE id = ?", (existing_user_id,))
-                existing_user_row = c.fetchone()
-                existing_username = existing_user_row['username'] if hasattr(existing_user_row, 'keys') else existing_user_row[0] if existing_user_row else None
                 
                 conn.commit()
                 
@@ -31158,7 +31299,7 @@ def seed_dummy_data():
                     c.execute('SELECT 1 FROM user_communities WHERE user_id=? AND community_id=?', (user_id, comm_id))
                     if not c.fetchone():
                         try:
-                            add_user_to_community(c, user_id, int(comm_id), role=None)
+                            add_user_to_community(c, user_id, int(comm_id), role=None, skip_welcome_post=True)
                         except CommunityMembershipLimitError:
                             logger.warning(f"Skipping seed membership for user {u} in community {comm_id} due to free-plan member limit.")
 
