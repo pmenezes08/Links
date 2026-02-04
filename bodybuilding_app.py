@@ -1538,10 +1538,11 @@ def create_steve_welcome_post(cursor, community_id: int, new_member_username: st
         logger.info(f"[STEVE WELCOME] Inserting post for community {community_id}")
         
         # Insert the welcome post from Steve
+        # Note: posts table uses 'timestamp' column, not 'created_at'
         cursor.execute(f"""
-            INSERT INTO posts (username, content, timestamp, community_id, created_at)
-            VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
-        """, ('steve', content, timestamp, community_id, timestamp))
+            INSERT INTO posts (username, content, timestamp, community_id)
+            VALUES ({ph}, {ph}, {ph}, {ph})
+        """, ('steve', content, timestamp, community_id))
         
         post_id = cursor.lastrowid
         logger.info(f"[STEVE WELCOME] SUCCESS! Created post {post_id} for @{new_member_username} in community {community_id}")
