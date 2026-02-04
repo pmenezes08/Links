@@ -1502,9 +1502,12 @@ def create_steve_welcome_post(cursor, community_id: int, new_member_username: st
     
     This function is safe to call - it catches all exceptions internally.
     """
+    logger.info(f"[STEVE WELCOME] Called for user={new_member_username}, community={community_id}")
+    
     try:
         # Don't create welcome posts for Steve himself or system users
         if not new_member_username or new_member_username.lower() in ['steve', 'admin', 'system']:
+            logger.info(f"[STEVE WELCOME] Skipping - system user: {new_member_username}")
             return None
         
         ph = get_sql_placeholder()
@@ -1512,6 +1515,7 @@ def create_steve_welcome_post(cursor, community_id: int, new_member_username: st
         # First ensure Steve user exists (required for posts table foreign key)
         cursor.execute(f"SELECT id FROM users WHERE username = {ph}", ('steve',))
         steve_exists = cursor.fetchone()
+        logger.info(f"[STEVE WELCOME] Steve user exists: {bool(steve_exists)}")
         
         if not steve_exists:
             # Create Steve user if it doesn't exist
@@ -1520,16 +1524,18 @@ def create_steve_welcome_post(cursor, community_id: int, new_member_username: st
                     INSERT INTO users (username, password, email, verified)
                     VALUES ({ph}, {ph}, {ph}, 1)
                 """, ('steve', 'AI_USER_NO_LOGIN', 'steve@c-point.ai'))
-                logger.info("Created Steve AI user account")
+                logger.info("[STEVE WELCOME] Created Steve AI user account")
             except Exception as create_err:
-                # User might already exist (race condition) or other issue - try anyway
-                logger.debug(f"Could not create Steve user (may already exist): {create_err}")
+                # User might already exist (race condition) or other issue
+                logger.warning(f"[STEVE WELCOME] Could not create Steve user: {create_err}")
         
         # Pick a random welcome message and personalize it
         welcome_template = random.choice(STEVE_WELCOME_MESSAGES)
         content = welcome_template.format(username=new_member_username)
         
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        logger.info(f"[STEVE WELCOME] Inserting post for community {community_id}")
         
         # Insert the welcome post from Steve
         cursor.execute(f"""
@@ -1538,13 +1544,13 @@ def create_steve_welcome_post(cursor, community_id: int, new_member_username: st
         """, ('steve', content, timestamp, community_id, timestamp))
         
         post_id = cursor.lastrowid
-        logger.info(f"Steve created welcome post {post_id} for @{new_member_username} in community {community_id}")
+        logger.info(f"[STEVE WELCOME] SUCCESS! Created post {post_id} for @{new_member_username} in community {community_id}")
         
         return post_id
         
     except Exception as e:
-        # Never fail - just log and continue
-        logger.warning(f"Failed to create Steve welcome post for {new_member_username}: {e}")
+        # Log the full exception for debugging
+        logger.error(f"[STEVE WELCOME] FAILED for {new_member_username} in community {community_id}: {e}", exc_info=True)
         return None
 
 
@@ -1604,6 +1610,7 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
     
     # Create Steve's welcome post for new regular members
     # Skip for: owners, admins, migrations, system setup
+    logger.info(f"[ADD_USER] Checking welcome post: skip={skip_welcome_post}, role={role}, username={username}")
     if not skip_welcome_post and role not in ['owner', 'admin']:
         try:
             # Get username if not provided
@@ -1615,11 +1622,16 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
                 if row:
                     member_username = row['username'] if hasattr(row, 'keys') else row[0]
             
+            logger.info(f"[ADD_USER] Creating welcome post for member_username={member_username}")
             if member_username:
                 create_steve_welcome_post(cursor, community_id, member_username)
+            else:
+                logger.warning(f"[ADD_USER] Could not determine username for user_id={user_id}")
         except Exception as welcome_err:
             # Never fail the main operation due to welcome post issues
-            logger.warning(f"Failed to create Steve welcome post: {welcome_err}")
+            logger.error(f"[ADD_USER] Failed to create Steve welcome post: {welcome_err}", exc_info=True)
+    else:
+        logger.info(f"[ADD_USER] Skipping welcome post: skip_welcome_post={skip_welcome_post}, role={role}")
 
 
 def _invalidate_user_community_caches(cursor, user_id: int, username: Optional[str] = None) -> None:
