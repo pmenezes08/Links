@@ -1507,14 +1507,31 @@ def create_steve_welcome_post(cursor, community_id: int, new_member_username: st
         if not new_member_username or new_member_username.lower() in ['steve', 'admin', 'system']:
             return None
         
+        ph = get_sql_placeholder()
+        
+        # First ensure Steve user exists (required for posts table foreign key)
+        cursor.execute(f"SELECT id FROM users WHERE username = {ph}", ('steve',))
+        steve_exists = cursor.fetchone()
+        
+        if not steve_exists:
+            # Create Steve user if it doesn't exist
+            try:
+                cursor.execute(f"""
+                    INSERT INTO users (username, password, email, verified)
+                    VALUES ({ph}, {ph}, {ph}, 1)
+                """, ('steve', 'AI_USER_NO_LOGIN', 'steve@c-point.ai'))
+                logger.info("Created Steve AI user account")
+            except Exception as create_err:
+                # User might already exist (race condition) or other issue - try anyway
+                logger.debug(f"Could not create Steve user (may already exist): {create_err}")
+        
         # Pick a random welcome message and personalize it
         welcome_template = random.choice(STEVE_WELCOME_MESSAGES)
         content = welcome_template.format(username=new_member_username)
         
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        ph = get_sql_placeholder()
         
-        # Insert the welcome post from Steve (AI_USERNAME = 'steve')
+        # Insert the welcome post from Steve
         cursor.execute(f"""
             INSERT INTO posts (username, content, timestamp, community_id, created_at)
             VALUES ({ph}, {ph}, {ph}, {ph}, {ph})
