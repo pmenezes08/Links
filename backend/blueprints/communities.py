@@ -243,7 +243,7 @@ def add_community_member():
                 return jsonify({"success": False, "error": "User is already a member"}), 400
 
             try:
-                add_user_to_community_fn(c, new_member["id"], community_id_int, role="member")
+                add_user_to_community_fn(c, new_member["id"], community_id_int, role="member", username=new_member_username)
             except CommunityMembershipLimitError as limit_err:
                 return jsonify({"success": False, "error": str(limit_err)}), 403
             conn.commit()
@@ -658,7 +658,7 @@ def add_member_to_subcommunity():
             
             # Add user to community
             try:
-                add_user_to_community_fn(c, target_user_id, target_community_id, role="member")
+                add_user_to_community_fn(c, target_user_id, target_community_id, role="member", username=target_username)
                 conn.commit()
             except CommunityMembershipLimitError as limit_err:
                 return jsonify({"success": False, "error": str(limit_err)}), 403
