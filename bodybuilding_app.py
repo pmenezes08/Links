@@ -1547,6 +1547,13 @@ def create_steve_welcome_post(cursor, community_id: int, new_member_username: st
         post_id = cursor.lastrowid
         logger.info(f"[STEVE WELCOME] SUCCESS! Created post {post_id} for @{new_member_username} in community {community_id}")
         
+        # Invalidate community feed cache so the welcome post appears immediately
+        try:
+            invalidate_community_cache(community_id)
+            logger.info(f"[STEVE WELCOME] Invalidated cache for community {community_id}")
+        except Exception as cache_err:
+            logger.warning(f"[STEVE WELCOME] Failed to invalidate cache: {cache_err}")
+        
         return post_id
         
     except Exception as e:
