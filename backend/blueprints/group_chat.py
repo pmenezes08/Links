@@ -768,13 +768,20 @@ def get_group_messages(group_id: int):
                         SELECT message_id, reaction FROM group_message_reactions
                         WHERE message_id IN ({placeholders}) AND username = {ph}
                     """, (*message_ids, username))
-                    user_reactions = {r[0]: r[1] for r in c.fetchall()}
+                    user_reactions = {}
+                    for r in c.fetchall():
+                        # Handle both DictCursor (MySQL) and tuple (SQLite) results
+                        msg_id = r["message_id"] if hasattr(r, "keys") else r[0]
+                        reaction_emoji = r["reaction"] if hasattr(r, "keys") else r[1]
+                        user_reactions[msg_id] = reaction_emoji
                     
                     # Update messages with reactions
                     for msg in messages:
                         msg["reaction"] = user_reactions.get(msg["id"])
+                    
+                    logger.debug(f"Loaded {len(user_reactions)} reactions for user {username}")
                 except Exception as e:
-                    logger.debug(f"Could not fetch reactions: {e}")
+                    logger.warning(f"Could not fetch reactions: {e}")
             
             # Update read receipt
             if messages:
