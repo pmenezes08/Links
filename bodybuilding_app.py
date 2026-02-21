@@ -20076,8 +20076,14 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             
             # Get base personality prompt and prepend current date info
             base_system_prompt = get_ai_personality_prompt(ai_personality)
-            system_prompt = f"""CURRENT DATE AND TIME: Today is {current_date_str}. The current time is {current_time_str}.
-When asked about today's date or time-related questions, use THIS date: {current_date_str}.
+            year = current_datetime.year
+            system_prompt = f"""####### CRITICAL - TODAY'S DATE #######
+TODAY IS: {current_date_str}
+YEAR: {year}
+TIME: {current_time_str}
+If asked about today's date, YOU MUST answer: {current_date_str} (year {year}).
+DO NOT use any other date. Your training data date is WRONG.
+#######################################
 
 {base_system_prompt}"""
             
@@ -20128,7 +20134,7 @@ When asked about today's date or time-related questions, use THIS date: {current
                     try:
                         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                         response = client.chat.completions.create(
-                            model="grok-4-1-fast",
+                            model="grok-4-1-fast-non-reasoning",
                             messages=[
                                 {"role": "system", "content": system_prompt},
                                 {"role": "user", "content": context}
