@@ -20082,9 +20082,13 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 f"\nUser {author_username} mentioned you (@Steve) in their post. Respond to their post directly."
             ]
             
-            # Get current date using date.today() as per xAI documentation
-            from datetime import date
-            current_date = date.today().strftime("%B %d, %Y")
+            # Get current date using Portugal timezone for accurate local date
+            try:
+                from zoneinfo import ZoneInfo
+                portugal_tz = ZoneInfo("Europe/Lisbon")
+                current_date = datetime.now(portugal_tz).strftime("%A, %B %d, %Y")
+            except ImportError:
+                current_date = datetime.now().strftime("%A, %B %d, %Y")
             context_parts.append(f"\n[Current date: {current_date}]")
             
             context = "\n\n".join(context_parts)
