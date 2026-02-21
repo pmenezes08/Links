@@ -19946,7 +19946,7 @@ def get_ai_personality_prompt(personality_key: str) -> str:
     personality = AI_PERSONALITIES.get(personality_key, AI_PERSONALITIES['friendly'])
     base_prompt = personality['prompt']
     
-    # Add language matching instruction and capabilities to all personalities
+    # Add language matching, search capabilities, and conversation intelligence to all personalities
     language_and_search_rules = '''
 
 IMPORTANT LANGUAGE RULE: You MUST reply in the SAME language the user writes in.
@@ -19956,7 +19956,7 @@ IMPORTANT LANGUAGE RULE: You MUST reply in the SAME language the user writes in.
 - If the user writes in French, reply in French.
 - Match the user's language exactly. Do NOT default to any language.
 
-WEB SEARCH CAPABILITY: You have access to real-time web search for current information.
+WEB SEARCH CAPABILITY: You have access to real-time web search and X (Twitter) search for current information.
 
 When users ask about news, weather, or current events:
 - You CAN search the web for real, current information
@@ -19964,6 +19964,14 @@ When users ask about news, weather, or current events:
 - Put the URL directly in your response - it will be automatically formatted as a clickable link
 - Include dates when the information was published if available
 - If search returns no results, be honest about it
+
+CONVERSATION INTELLIGENCE:
+Read the full post and comment thread carefully. Adapt your response based on what's happening:
+1. If someone is asking about news, weather, sports, or current events — search the web and provide real, up-to-date information with source links.
+2. If the conversation is casual banter or fun — join in naturally. Be witty, keep it light.
+3. If a problem or challenge is being discussed and NO solution has been proposed — proactively suggest practical, actionable solutions with brief reasoning.
+4. If a solution IS already being discussed — briefly analyze it: what's good about it, any risks or blind spots, and suggest improvements or alternatives if relevant.
+5. If someone asks you a direct question — answer it helpfully and concisely.
 
 For general questions (advice, stories, explanations), answer from your knowledge.
 The current date/time is provided in the context.'''
@@ -20094,7 +20102,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             
             ai_response = None
             try:
-                logger.info(f"Steve post reply using Grok 4.1 Fast with web+X search ({ai_personality} mode)")
+                logger.info(f"Steve post reply using Grok 4.1 Fast Reasoning with web+X search ({ai_personality} mode)")
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
                 # Build user content - include images if present (Grok supports vision)
@@ -20114,7 +20122,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     effective_system = system_prompt
                 
                 response = client.responses.create(
-                    model="grok-4-1-fast-non-reasoning",
+                    model="grok-4-1-fast-reasoning",
                     input=[
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
@@ -20123,13 +20131,13 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                         {"type": "web_search"},
                         {"type": "x_search"}
                     ],
-                    max_output_tokens=500,
+                    max_output_tokens=600,
                     temperature=0.7
                 )
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve post reply Grok 4.1 Fast successful")
+                    logger.info("Steve post reply Grok 4.1 Fast Reasoning successful")
                     
             except Exception as ai_err:
                 logger.error(f"AI error in Steve post reply: {ai_err}")
@@ -20475,7 +20483,7 @@ def ai_steve_reply():
             ai_response = None
             
             try:
-                logger.info(f"Steve using Grok 4.1 Fast with web+X search ({ai_personality} mode)")
+                logger.info(f"Steve using Grok 4.1 Fast Reasoning with web+X search ({ai_personality} mode)")
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
                 # Build user content - include images if present (Grok supports vision)
@@ -20495,7 +20503,7 @@ def ai_steve_reply():
                     effective_system = system_prompt
                 
                 response = client.responses.create(
-                    model="grok-4-1-fast-non-reasoning",
+                    model="grok-4-1-fast-reasoning",
                     input=[
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
@@ -20504,13 +20512,13 @@ def ai_steve_reply():
                         {"type": "web_search"},
                         {"type": "x_search"}
                     ],
-                    max_output_tokens=500,
+                    max_output_tokens=600,
                     temperature=0.7
                 )
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve Grok 4.1 Fast with web+X search successful")
+                    logger.info("Steve Grok 4.1 Fast Reasoning with web+X search successful")
                 
                 if ai_response is None:
                     logger.error("Grok 4.1 Fast returned empty response")
