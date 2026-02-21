@@ -20077,9 +20077,11 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             elif has_video:
                 post_description += "\n[This post includes a video]"
             
+            current_datetime = datetime.utcnow()
             context_parts = [
                 post_description,
-                f"\nUser {author_username} mentioned you (@Steve) in their post. Respond to their post directly."
+                f"\nUser {author_username} mentioned you (@Steve) in their post. Respond to their post directly.",
+                f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
             ]
             
             context = "\n\n".join(context_parts)

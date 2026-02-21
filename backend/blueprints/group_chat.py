@@ -1905,6 +1905,8 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         logger.warning("XAI_API_KEY not configured, Steve cannot reply")
         return
     
+    current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
+    
     try:
         # Get recent messages for context
         with get_db_connection() as conn:
@@ -1933,10 +1935,11 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             context = f"Group chat: {group_name}\n"
             context += "Recent messages:\n" + "\n".join(recent_messages[-5:])
             context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully and concisely."
+            context += f"\n\n[Current date and time: {current_date}]"
         
         from openai import OpenAI
         
-        system_prompt = """You are Steve, a helpful and friendly AI assistant with real-time knowledge.
+        system_prompt = f"""You are Steve, a helpful and friendly AI assistant with real-time knowledge.
 
 LANGUAGE RULES:
 - If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).
@@ -1944,6 +1947,9 @@ LANGUAGE RULES:
 - If user writes in English, respond in English.
 - If user writes in Spanish, respond in Spanish.
 - Match the user's language exactly.
+
+CURRENT DATE AND TIME: {current_date}
+Always use this date when discussing current events, news, or time-sensitive topics.
 
 Keep responses concise (2-4 sentences). Be helpful, witty, conversational.
 Use emojis occasionally. This is a casual group chat."""
