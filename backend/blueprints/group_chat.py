@@ -1908,6 +1908,9 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         needs_web_search = bool(re.search(REALTIME_KEYWORDS, user_message.lower()))
         
         system_prompt = """You are Steve, a helpful and friendly AI assistant in a group chat.
+
+LANGUAGE RULE: Always respond in the SAME LANGUAGE as the user's message. If they write in Portuguese, respond in Portuguese. If in Spanish, respond in Spanish. If in English, respond in English. Match their language exactly.
+
 Keep your responses concise (2-4 sentences max) and conversational.
 Be helpful, witty, and engaging. You can use emojis occasionally.
 Don't be overly formal - this is a casual group chat.
