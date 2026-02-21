@@ -1935,18 +1935,8 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully and concisely."
         
         from openai import OpenAI
-        from datetime import datetime
-        try:
-            from zoneinfo import ZoneInfo
-            # Use Portugal timezone for accurate local date
-            portugal_tz = ZoneInfo("Europe/Lisbon")
-            current_date = datetime.now(portugal_tz).strftime("%A, %B %d, %Y")
-        except ImportError:
-            # Fallback if zoneinfo not available
-            from datetime import date
-            current_date = date.today().strftime("%A, %B %d, %Y")
         
-        system_prompt = f"""You are Steve, a helpful and friendly AI assistant. The current date is {current_date}.
+        system_prompt = """You are Steve, a helpful and friendly AI assistant with real-time knowledge.
 
 LANGUAGE RULES:
 - If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).

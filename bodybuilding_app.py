@@ -20082,20 +20082,11 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 f"\nUser {author_username} mentioned you (@Steve) in their post. Respond to their post directly."
             ]
             
-            # Get current date using Portugal timezone for accurate local date
-            try:
-                from zoneinfo import ZoneInfo
-                portugal_tz = ZoneInfo("Europe/Lisbon")
-                current_date = datetime.now(portugal_tz).strftime("%A, %B %d, %Y")
-            except ImportError:
-                current_date = datetime.now().strftime("%A, %B %d, %Y")
-            context_parts.append(f"\n[Current date: {current_date}]")
-            
             context = "\n\n".join(context_parts)
             
-            # Get base personality prompt and prepend current date info
+            # Get base personality prompt - Grok has real-time knowledge of current date
             base_system_prompt = get_ai_personality_prompt(ai_personality)
-            system_prompt = f"""You are Steve. The current date is {current_date}.
+            system_prompt = f"""You are Steve, with real-time knowledge and web search capabilities.
 
 {base_system_prompt}"""
             
