@@ -1962,7 +1962,7 @@ RESPONSE STYLE:
 - Keep responses concise (2-5 sentences). Don't lecture or over-explain.
 - Be conversational, not robotic. This is a casual group chat.
 - Use emojis occasionally.
-- When citing sources, include the URL directly — it will be auto-formatted as a clickable link."""
+- When citing news sources, mention the source name (e.g., "according to BBC" or "Reuters reports"). Do NOT include specific article URLs — they will be auto-generated from the source name."""
         
         ai_response = None
         

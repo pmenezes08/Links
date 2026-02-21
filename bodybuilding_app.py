@@ -19898,9 +19898,13 @@ Keep it short, keep it BRUTAL, and make them regret tagging you. 💀🔥'''
 
 def format_steve_response_links(response_text: str) -> str:
     """
-    Format URLs in Steve's responses as markdown links with domain as display text.
-    Converts raw URLs like 'https://elpais.com/article' to '[elpais.com](https://elpais.com/article)'
-    The frontend's renderRichText function will convert these to clickable HTML links.
+    Format URLs in Steve's responses as markdown links pointing to the domain root.
+    
+    LLMs frequently hallucinate exact article paths even when using web search,
+    so we strip the path and link to just the domain (e.g., https://bbc.com).
+    The domain is reliable; the specific article path often 404s.
+    
+    Also handles existing markdown links [text](url) by fixing their URLs.
     """
     import re
     from urllib.parse import urlparse
@@ -19908,35 +19912,50 @@ def format_steve_response_links(response_text: str) -> str:
     if not response_text:
         return response_text
     
-    # Pattern to match URLs that are NOT already in markdown link format [text](url)
-    # Negative lookbehind to avoid matching URLs already inside markdown links
-    url_pattern = r'(?<!\]\()(?<!\()(?<!\[)(https?://[^\s\)\]<>"]+)'
+    def get_domain_url(url: str) -> str:
+        """Get the domain root URL (e.g., https://bbc.com)."""
+        try:
+            parsed = urlparse(url)
+            scheme = parsed.scheme or 'https'
+            domain = parsed.netloc.lower()
+            if not domain:
+                return url
+            if domain.startswith('www.'):
+                domain = domain[4:]
+            return f'{scheme}://{domain}'
+        except Exception:
+            return url
     
     def get_domain_display(url: str) -> str:
         """Extract the domain name for display (e.g., elpais.com, bbc.com)."""
         try:
             parsed = urlparse(url)
             domain = parsed.netloc.lower()
-            
-            # Remove www. prefix for cleaner display
             if domain.startswith('www.'):
                 domain = domain[4:]
-            
-            return domain
-            
+            return domain or "link"
         except Exception:
             return "link"
     
-    def replace_url(match):
-        url = match.group(1)
-        # Clean up URL (remove trailing punctuation that got caught)
-        url = url.rstrip('.,;:!?')
-        domain = get_domain_display(url)
-        # Return markdown format: [domain](url)
-        return f'[{domain}]({url})'
+    # First pass: fix existing markdown links [text](url) to point to domain root
+    md_pattern = r'\[([^\]]+)\]\((https?://[^)]+)\)'
+    def fix_markdown_link(match):
+        display = match.group(1)
+        url = match.group(2).rstrip('.,;:!?')
+        domain_root = get_domain_url(url)
+        return f'[{display}]({domain_root})'
     
-    # Replace URLs with markdown links
-    formatted = re.sub(url_pattern, replace_url, response_text)
+    formatted = re.sub(md_pattern, fix_markdown_link, response_text)
+    
+    # Second pass: convert remaining bare URLs to markdown links with domain root
+    url_pattern = r'(?<!\]\()(?<!\()(https?://[^\s\)\]<>"]+)'
+    def replace_bare_url(match):
+        url = match.group(1).rstrip('.,;:!?')
+        domain = get_domain_display(url)
+        domain_root = get_domain_url(url)
+        return f'[{domain}]({domain_root})'
+    
+    formatted = re.sub(url_pattern, replace_bare_url, formatted)
     
     return formatted
 
@@ -19960,8 +19979,8 @@ WEB SEARCH CAPABILITY: You have access to real-time web search and X (Twitter) s
 
 When users ask about news, weather, or current events:
 - You CAN search the web for real, current information
-- ALWAYS include the full URL for any sources you cite (e.g., https://bbc.com/news/article)
-- Put the URL directly in your response - it will be automatically formatted as a clickable link
+- Mention the source by name (e.g., "according to BBC", "Reuters reports", "per ESPN")
+- Do NOT include specific article URLs — just name the source. Links will be auto-generated.
 - Include dates when the information was published if available
 - If search returns no results, be honest about it
 
