@@ -119,8 +119,7 @@ export function useAudioRecorder() {
         }
       } catch {}
 
-      // Start recording with timeslice for long recordings
-      recorder.start(1000)
+      recorder.start()
       startTimeRef.current = Date.now()
       setRecording(true)
       setRecordMs(0)
