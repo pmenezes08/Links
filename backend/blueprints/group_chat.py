@@ -1913,13 +1913,13 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             c = conn.cursor()
             ph = get_sql_placeholder()
             
-            # Get last 10 messages for context
+            # Get last 20 messages for conversation context
             c.execute(f"""
                 SELECT sender_username, message_text, created_at
                 FROM group_chat_messages
                 WHERE group_id = {ph} AND message_text IS NOT NULL
                 ORDER BY created_at DESC
-                LIMIT 10
+                LIMIT 20
             """, (group_id,))
             
             recent_messages = []
@@ -1931,15 +1931,17 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             
             recent_messages.reverse()  # Chronological order
             
-            # Build context
+            # Build context - use more messages for better conversation understanding
             context = f"Group chat: {group_name}\n"
-            context += "Recent messages:\n" + "\n".join(recent_messages[-5:])
-            context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully and concisely."
+            context += "Recent conversation:\n" + "\n".join(recent_messages[-15:])
+            context += f"\n\n{sender_username} mentioned you (@Steve)."
             context += f"\n\n[Current date and time: {current_date}]"
         
         from openai import OpenAI
         
-        system_prompt = f"""You are Steve, a helpful and friendly AI assistant with real-time knowledge.
+        system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a group chat with real-time knowledge and web search capabilities.
+
+CURRENT DATE AND TIME: {current_date}
 
 LANGUAGE RULES:
 - If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).
@@ -1948,15 +1950,23 @@ LANGUAGE RULES:
 - If user writes in Spanish, respond in Spanish.
 - Match the user's language exactly.
 
-CURRENT DATE AND TIME: {current_date}
-Always use this date when discussing current events, news, or time-sensitive topics.
+CONVERSATION INTELLIGENCE:
+Read the full conversation context carefully. Adapt your response based on what's happening:
+1. If someone is asking about news, weather, sports, or current events — search the web and provide real, up-to-date information with source links.
+2. If the group is having casual banter or fun — join in naturally. Be witty, use emojis, keep it light.
+3. If a problem or challenge is being discussed and NO solution has been proposed — proactively suggest practical, actionable solutions with brief reasoning.
+4. If a solution IS already being discussed — briefly analyze it: what's good about it, any risks or blind spots, and suggest improvements or alternatives if relevant.
+5. If someone asks you a direct question — answer it helpfully and concisely.
 
-Keep responses concise (2-4 sentences). Be helpful, witty, conversational.
-Use emojis occasionally. This is a casual group chat."""
+RESPONSE STYLE:
+- Keep responses concise (2-5 sentences). Don't lecture or over-explain.
+- Be conversational, not robotic. This is a casual group chat.
+- Use emojis occasionally.
+- When citing sources, include the URL directly — it will be auto-formatted as a clickable link."""
         
         ai_response = None
         
-        logger.info(f"Steve using Grok 4.1 Fast with web+X search for group {group_id}")
+        logger.info(f"Steve using Grok 4.1 Fast Reasoning with web+X search for group {group_id}")
         client = OpenAI(
             api_key=XAI_API_KEY,
             base_url="https://api.x.ai/v1"
@@ -1964,7 +1974,7 @@ Use emojis occasionally. This is a casual group chat."""
         
         try:
             response = client.responses.create(
-                model="grok-4-1-fast-non-reasoning",
+                model="grok-4-1-fast-reasoning",
                 input=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": context}
@@ -1973,7 +1983,7 @@ Use emojis occasionally. This is a casual group chat."""
                     {"type": "web_search"},
                     {"type": "x_search"}
                 ],
-                max_output_tokens=400,
+                max_output_tokens=600,
                 temperature=0.7
             )
             
