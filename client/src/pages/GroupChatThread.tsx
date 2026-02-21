@@ -1679,7 +1679,7 @@ export default function GroupChatThread() {
                                     {msg.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
                                       <div className="relative">
                                         <video
-                                          src={msg.media_paths[0]}
+                                          src={msg.media_paths[0] + '#t=0.1'}
                                           className="w-full rounded-lg"
                                           style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
                                           muted
@@ -1733,7 +1733,7 @@ export default function GroupChatThread() {
                                       }}
                                     >
                                       <video
-                                        src={msg.video}
+                                        src={msg.video + '#t=0.1'}
                                         preload="metadata"
                                         playsInline
                                         muted
