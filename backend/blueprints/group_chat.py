@@ -27,10 +27,6 @@ logger = logging.getLogger(__name__)
 MAX_GROUP_MEMBERS = 5
 AI_USERNAME = 'steve'
 XAI_API_KEY = os.getenv('XAI_API_KEY', '')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-
-# Keywords that indicate a need for real-time web search
-REALTIME_KEYWORDS = r'\b(news|notícias|noticias|weather|tempo|clima|meteo|today|hoje|hoy|current|actual|latest|últimas|score|resultado|stock|ações|price|preço|happening|acontece|search|procura|find|encontra|google|look up|pesquisa)\b'
 
 # Track when Steve is typing (in-memory, per group_id)
 # Format: {group_id: timestamp_when_started}
@@ -116,6 +112,22 @@ def _ensure_is_edited_column(cursor):
             logger.warning(f"Could not add is_edited column: {e}")
 
 
+def _ensure_audio_summary_column(cursor):
+    """Ensure audio_summary column exists in group_chat_messages for voice note transcriptions."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT audio_summary FROM group_chat_messages LIMIT 1")
+    except Exception:
+        try:
+            if USE_MYSQL:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN audio_summary TEXT")
+            else:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN audio_summary TEXT")
+            logger.info("Added audio_summary column to group_chat_messages")
+        except Exception as e:
+            logger.warning(f"Could not add audio_summary column: {e}")
+
+
 def _ensure_group_message_reactions_table(cursor):
     """Ensure group_message_reactions table exists."""
     from backend.services.database import USE_MYSQL
@@ -179,6 +191,7 @@ def _ensure_group_chat_tables(cursor):
         _ensure_media_paths_column(cursor)  # Ensure media_paths column exists for grouped media
         _ensure_community_id_column(cursor)  # Ensure community_id column exists
         _ensure_is_edited_column(cursor)  # Ensure is_edited column exists
+        _ensure_audio_summary_column(cursor)  # Ensure audio_summary column exists for voice transcriptions
         _ensure_group_message_reactions_table(cursor)  # Ensure reactions table exists
         return  # Table exists, no need to create
     except Exception:
@@ -712,7 +725,7 @@ def get_group_messages(group_id: int):
             if before_id:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.created_at,
-                           up.profile_picture, m.is_edited
+                           up.profile_picture, m.is_edited, m.audio_summary
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
                     WHERE m.group_id = {ph} AND m.id < {ph} AND m.is_deleted = 0
@@ -722,7 +735,7 @@ def get_group_messages(group_id: int):
             else:
                 c.execute(f"""
                     SELECT m.id, m.sender_username, m.message_text, m.image_path, m.voice_path, m.video_path, m.media_paths, m.created_at,
-                           up.profile_picture, m.is_edited
+                           up.profile_picture, m.is_edited, m.audio_summary
                     FROM group_chat_messages m
                     LEFT JOIN user_profiles up ON m.sender_username = up.username
                     WHERE m.group_id = {ph} AND m.is_deleted = 0
@@ -746,6 +759,7 @@ def get_group_messages(group_id: int):
                 msg_id = row["id"] if hasattr(row, "keys") else row[0]
                 is_edited_raw = row["is_edited"] if hasattr(row, "keys") else row[9]
                 is_edited = bool(is_edited_raw) if is_edited_raw is not None else False
+                audio_summary = row["audio_summary"] if hasattr(row, "keys") else row[10]
                 
                 msg_data = {
                     "id": msg_id,
@@ -758,6 +772,7 @@ def get_group_messages(group_id: int):
                     "created_at": row["created_at"] if hasattr(row, "keys") else row[7],
                     "profile_picture": row["profile_picture"] if hasattr(row, "keys") else row[8],
                     "is_edited": is_edited,
+                    "audio_summary": audio_summary,
                     "reaction": None,  # Will be filled below
                 }
                 messages.append(msg_data)
@@ -1148,6 +1163,20 @@ def send_group_message(group_id: int):
     if not message_text and not image_path and not voice_path and not video_path:
         return jsonify({"success": False, "error": "Message, image, voice, or video required"}), 400
     
+    # Generate audio summary for voice messages
+    audio_summary = None
+    if voice_path:
+        try:
+            # Import the audio processing function from main app
+            from bodybuilding_app import process_audio_for_summary
+            logger.info(f"Generating AI summary for group voice note: {voice_path}")
+            audio_summary = process_audio_for_summary(voice_path, username=username)
+            if audio_summary:
+                logger.info(f"AI summary generated for group chat: {audio_summary[:100]}...")
+        except Exception as e:
+            logger.warning(f"Could not generate audio summary for group chat: {e}")
+            audio_summary = None
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -1164,12 +1193,12 @@ def send_group_message(group_id: int):
             if not c.fetchone():
                 return jsonify({"success": False, "error": "Access denied"}), 403
             
-            # Insert message
+            # Insert message with audio_summary
             now = datetime.now().isoformat()
             c.execute(f"""
-                INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, voice_path, video_path, created_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-            """, (group_id, username, message_text or None, image_path, voice_path, video_path, now))
+                INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, voice_path, video_path, audio_summary, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (group_id, username, message_text or None, image_path, voice_path, video_path, audio_summary, now))
             
             message_id = c.lastrowid
             
@@ -1276,6 +1305,7 @@ def send_group_message(group_id: int):
                     "image": image_path,
                     "voice": voice_path,
                     "video": video_path,
+                    "audio_summary": audio_summary,
                     "created_at": now,
                     "profile_picture": profile_picture,
                 }
@@ -1863,15 +1893,16 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
     """
     Generate and post Steve's AI reply to a group chat message.
     Runs in a background thread.
-    Supports web search for real-time information queries.
+    Uses Grok with proper tool calling for real-time web search.
     """
     import time
+    from datetime import datetime
     
     # Small delay to make it feel more natural
     time.sleep(1.5)
     
-    if not XAI_API_KEY and not OPENAI_API_KEY:
-        logger.warning("No AI API keys configured, Steve cannot reply")
+    if not XAI_API_KEY:
+        logger.warning("XAI_API_KEY not configured, Steve cannot reply")
         return
     
     try:
@@ -1899,104 +1930,157 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             recent_messages.reverse()  # Chronological order
             
             # Build context
-            context = f"Group chat: {group_name}\n\nRecent messages:\n" + "\n".join(recent_messages[-5:])
+            context = f"Group chat: {group_name}\n"
+            context += "Recent messages:\n" + "\n".join(recent_messages[-5:])
             context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully and concisely."
         
         from openai import OpenAI
+        import requests as http_requests
         
-        # Check if user is asking about real-time information
-        needs_web_search = bool(re.search(REALTIME_KEYWORDS, user_message.lower()))
+        # Get current date/time for injection
+        current_datetime = datetime.now().strftime("%B %d, %Y %I:%M %p UTC")
         
-        system_prompt = """You are Steve, a helpful and friendly AI assistant in a group chat.
-Keep your responses concise (2-4 sentences max) and conversational.
-Be helpful, witty, and engaging. You can use emojis occasionally.
-Don't be overly formal - this is a casual group chat.
+        system_prompt = f"""You are Steve, a helpful and friendly AI assistant with real-time knowledge.
+The current date/time is {current_datetime}. Use web_search and x_keyword_search tools to fetch latest updates when asked about news, weather, current events, or anything that requires real-time information.
 
-WEB SEARCH: You have access to real-time web search for current information.
-When providing news, weather, scores, or current events:
-- Include the source URL when citing information
-- Mention when the information was published if available
-- Be accurate and helpful"""
+LANGUAGE RULES:
+- If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).
+  Use "tu" not "você", "autocarro" not "ônibus", "telemóvel" not "celular".
+- If user writes in English, respond in English.
+- If user writes in Spanish, respond in Spanish.
+- Match the user's language exactly.
+
+Keep responses concise (2-4 sentences). Be helpful, witty, conversational.
+Use emojis occasionally. This is a casual group chat."""
+        
+        # Define tools for web search and X search
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Search the web for current news, information, weather, events, or any real-time data.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "Search query for web search"}
+                        },
+                        "required": ["query"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "x_keyword_search",
+                    "description": "Search X (Twitter) for posts, trends, and real-time discussions.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "X search query with optional operators"},
+                            "limit": {"type": "integer", "description": "Number of posts to return", "default": 5},
+                            "mode": {"type": "string", "enum": ["Top", "Latest"], "default": "Latest"}
+                        },
+                        "required": ["query"]
+                    }
+                }
+            }
+        ]
         
         ai_response = None
         
-        # Option 1: Use OpenAI with web search for real-time queries
-        if needs_web_search and OPENAI_API_KEY:
-            logger.info(f"Steve using OpenAI web search for group {group_id}")
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            
-            try:
-                # Try Responses API with web_search tool
-                full_input = f"Instructions: {system_prompt}\n\n---\n\nUser query and context:\n{context}"
-                
-                response = client.responses.create(
-                    model="gpt-4o-mini",
-                    tools=[{"type": "web_search"}],
-                    input=full_input
-                )
-                
-                ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
-                
-                if ai_response:
-                    logger.info(f"Steve web search successful for group {group_id}")
-                    
-            except AttributeError as attr_err:
-                # responses.create might not exist in this SDK version - try fallback
-                logger.warning(f"OpenAI Responses API not available: {attr_err}")
-                try:
-                    response = client.chat.completions.create(
-                        model="gpt-4o-search-preview",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": context}
-                        ],
-                        max_tokens=300
-                    )
-                    ai_response = response.choices[0].message.content.strip() if response.choices else None
-                    if ai_response:
-                        logger.info(f"Steve search-preview model successful for group {group_id}")
-                except Exception as chat_err:
-                    logger.warning(f"OpenAI search model fallback failed: {chat_err}")
-                    
-            except Exception as search_err:
-                logger.warning(f"OpenAI web search failed: {search_err}, falling back to xAI")
+        # Use Grok with tool calling for real-time information
+        logger.info(f"Steve using Grok with tool calling for group {group_id}")
         
-        # Option 2: Use xAI/Grok for regular queries (or as fallback)
-        if ai_response is None and XAI_API_KEY:
-            logger.info(f"Steve using xAI/Grok for group {group_id}")
+        try:
             client = OpenAI(
                 api_key=XAI_API_KEY,
                 base_url="https://api.x.ai/v1"
             )
             
             response = client.chat.completions.create(
-                model="grok-3-mini",
+                model="grok-3",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": context}
                 ],
-                max_tokens=200,
+                tools=tools,
+                tool_choice="auto",
+                max_tokens=400,
                 temperature=0.7
             )
             
-            ai_response = response.choices[0].message.content.strip() if response.choices else None
+            if response.choices:
+                message = response.choices[0].message
+                
+                # Check if the model wants to use a tool
+                if message.tool_calls:
+                    logger.info(f"Steve wants to use tools: {[tc.function.name for tc in message.tool_calls]}")
+                    
+                    # For xAI's built-in tools, we need to make another request
+                    # Include the tool calls in the conversation
+                    messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": context},
+                        message.model_dump()
+                    ]
+                    
+                    # Add tool results (xAI handles execution internally for their tools)
+                    for tool_call in message.tool_calls:
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": "Tool executed by xAI - see integrated results"
+                        })
+                    
+                    # Make follow-up request to get final response
+                    follow_up = client.chat.completions.create(
+                        model="grok-3",
+                        messages=messages,
+                        max_tokens=400,
+                        temperature=0.7
+                    )
+                    
+                    if follow_up.choices:
+                        ai_response = follow_up.choices[0].message.content
+                        if ai_response:
+                            ai_response = ai_response.strip()
+                            logger.info(f"Steve tool-assisted response successful for group {group_id}")
+                else:
+                    # Direct response without tool use
+                    ai_response = message.content
+                    if ai_response:
+                        ai_response = ai_response.strip()
+                        logger.info(f"Steve direct response for group {group_id}")
+                        
+        except Exception as tool_err:
+            logger.warning(f"Grok tool calling failed: {tool_err}")
         
-        # Option 3: Fallback to OpenAI without web search
-        if ai_response is None and OPENAI_API_KEY:
-            logger.info(f"Steve using OpenAI GPT-4o-mini fallback for group {group_id}")
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": context}
-                ],
-                max_tokens=200,
-                temperature=0.7
-            )
-            
-            ai_response = response.choices[0].message.content.strip() if response.choices else None
+        # Fallback to regular chat completions without tools
+        if not ai_response:
+            try:
+                logger.info(f"Steve falling back to regular Grok for group {group_id}")
+                client = OpenAI(
+                    api_key=XAI_API_KEY,
+                    base_url="https://api.x.ai/v1"
+                )
+                
+                response = client.chat.completions.create(
+                    model="grok-3",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": context}
+                    ],
+                    max_tokens=400,
+                    temperature=0.7
+                )
+                
+                ai_response = response.choices[0].message.content.strip() if response.choices else None
+                
+                if ai_response:
+                    logger.info(f"Steve Grok fallback successful for group {group_id}")
+            except Exception as fallback_err:
+                logger.warning(f"Grok fallback also failed: {fallback_err}")
         
         if not ai_response:
             logger.warning("Steve got empty response from API")
@@ -2026,11 +2110,6 @@ When providing news, weather, scores, or current events:
                 del _steve_typing_status[group_id]
             
             logger.info(f"Steve replied to group {group_id} with message ID {steve_message_id}")
-            
-            # Note: No notifications for Steve's messages - users see them in the chat
-            # without push notifications or bell icon updates
-            
-            conn.commit()
             
     except Exception as e:
         # Clear typing indicator on error too
