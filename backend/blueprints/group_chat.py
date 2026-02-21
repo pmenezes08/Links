@@ -1932,15 +1932,26 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             # Build context with current date/time for real-time awareness
             current_datetime = datetime.utcnow()
             context = f"Group chat: {group_name}\n"
-            context += f"Current date/time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}\n\n"
             context += "Recent messages:\n" + "\n".join(recent_messages[-5:])
             context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully and concisely."
         
         from openai import OpenAI
         
-        system_prompt = """You are Steve, a helpful and friendly AI assistant in a group chat.
+        # Get current date/time for the system prompt
+        current_date_str = current_datetime.strftime('%A, %B %d, %Y')
+        current_time_str = current_datetime.strftime('%H:%M UTC')
+        
+        system_prompt = f"""You are Steve, a helpful and friendly AI assistant in a group chat.
 
-LANGUAGE RULE: Always respond in the SAME LANGUAGE as the user's message. If they write in Portuguese, respond in Portuguese. If in Spanish, respond in Spanish. If in English, respond in English. Match their language exactly.
+CURRENT DATE AND TIME: Today is {current_date_str}. The current time is {current_time_str}.
+When asked about today's date, the current day, or time-related questions, use THIS date: {current_date_str}.
+
+LANGUAGE RULES - VERY IMPORTANT:
+- If the user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style, NOT Brazilian Portuguese)
+- If the user writes in Spanish, respond in Spanish
+- If the user writes in English, respond in English
+- If the user writes in French, respond in French
+- Always match the user's language exactly
 
 Keep your responses concise (2-4 sentences max) and conversational.
 Be helpful, witty, and engaging. You can use emojis occasionally.
@@ -1950,7 +1961,6 @@ You have access to real-time web search and current information.
 When providing news, weather, scores, prices, or current events:
 - Search the web for the most up-to-date information
 - Include the source URL when citing information
-- Mention when the information was published if available
 - Be accurate and helpful"""
         
         ai_response = None

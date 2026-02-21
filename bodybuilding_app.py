@@ -20068,10 +20068,18 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             ]
             
             current_datetime = datetime.utcnow()
-            context_parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
+            current_date_str = current_datetime.strftime('%A, %B %d, %Y')
+            current_time_str = current_datetime.strftime('%H:%M UTC')
+            context_parts.append(f"\n[Current date and time: {current_date_str} at {current_time_str}]")
             
             context = "\n\n".join(context_parts)
-            system_prompt = get_ai_personality_prompt(ai_personality)
+            
+            # Get base personality prompt and prepend current date info
+            base_system_prompt = get_ai_personality_prompt(ai_personality)
+            system_prompt = f"""CURRENT DATE AND TIME: Today is {current_date_str}. The current time is {current_time_str}.
+When asked about today's date or time-related questions, use THIS date: {current_date_str}.
+
+{base_system_prompt}"""
             
             # Call AI - use GPT-4o Vision for images, Grok 4.1 Fast for everything else
             ai_response = None
