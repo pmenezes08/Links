@@ -20092,67 +20092,44 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
 
 {base_system_prompt}"""
             
-            # Call AI - use GPT-4o Vision for images, Grok 4.1 Fast for everything else
             ai_response = None
             try:
-                # Option 1: Use OpenAI Vision (GPT-4o) ONLY if post has images
-                if has_images and OPENAI_API_KEY:
-                    logger.info(f"Steve post reply using OpenAI Vision GPT-4o ({ai_personality} mode)")
-                    client = OpenAI(api_key=OPENAI_API_KEY)
-                    
-                    try:
-                        # Build message content with images
-                        user_content = [{"type": "text", "text": context}]
-                        
-                        # Add images (limit to first 4)
-                        for img_url in post_image_urls[:4]:
-                            user_content.append({
-                                "type": "image_url",
-                                "image_url": {"url": img_url, "detail": "low"}
-                            })
-                        
-                        if has_video:
-                            user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
-                        
-                        response = client.chat.completions.create(
-                            model="gpt-4o",
-                            messages=[
-                                {"role": "system", "content": system_prompt + "\n\nYou can see images attached to this post. Describe what you see and respond accordingly."},
-                                {"role": "user", "content": user_content}
-                            ],
-                            max_tokens=500
-                        )
-                        ai_response = response.choices[0].message.content.strip() if response.choices else None
-                        
-                        if ai_response:
-                            logger.info("Steve post reply Vision successful")
-                        else:
-                            logger.warning("OpenAI Vision returned empty response")
-                            ai_response = None
-                    except Exception as vision_err:
-                        logger.warning(f"OpenAI Vision failed for post reply: {vision_err}, falling back to Grok")
-                        ai_response = None
+                logger.info(f"Steve post reply using Grok 4.1 Fast with web+X search ({ai_personality} mode)")
+                client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
-                # Option 2: Use Grok 4.1 Fast for all other queries (has built-in web search)
-                if ai_response is None and XAI_API_KEY:
-                    logger.info(f"Steve post reply using Grok 4.1 Fast ({ai_personality} mode)")
-                    try:
-                        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-                        response = client.chat.completions.create(
-                            model="grok-4-1-fast-non-reasoning",
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": context}
-                            ],
-                            max_tokens=500,
-                            temperature=0.7
-                        )
-                        ai_response = response.choices[0].message.content.strip() if response.choices else None
-                        if ai_response:
-                            logger.info("Steve post reply Grok 4.1 Fast successful")
-                    except Exception as grok_err:
-                        logger.warning(f"Grok 4.1 Fast post reply failed: {grok_err}")
-                        ai_response = None
+                # Build user content - include images if present (Grok supports vision)
+                if has_images:
+                    user_content = [{"type": "text", "text": context}]
+                    for img_url in post_image_urls[:4]:
+                        user_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": img_url}
+                        })
+                    if has_video:
+                        user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
+                    
+                    effective_system = system_prompt + "\n\nYou can see images attached to this post. Describe what you see and respond accordingly."
+                else:
+                    user_content = context
+                    effective_system = system_prompt
+                
+                response = client.responses.create(
+                    model="grok-4-1-fast-non-reasoning",
+                    input=[
+                        {"role": "system", "content": effective_system},
+                        {"role": "user", "content": user_content}
+                    ],
+                    tools=[
+                        {"type": "web_search"},
+                        {"type": "x_search"}
+                    ],
+                    max_output_tokens=500,
+                    temperature=0.7
+                )
+                
+                ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
+                if ai_response:
+                    logger.info("Steve post reply Grok 4.1 Fast successful")
                     
             except Exception as ai_err:
                 logger.error(f"AI error in Steve post reply: {ai_err}")
@@ -20292,9 +20269,8 @@ def ai_steve_reply():
         if not user_message:
             return jsonify({'success': False, 'error': 'Message is required'}), 400
         
-        # Check xAI availability for Steve (falls back to OpenAI if xAI not configured)
-        if not XAI_API_KEY and not OPENAI_API_KEY:
-            logger.error("No AI API key available for Steve (XAI_API_KEY or OPENAI_API_KEY)")
+        if not XAI_API_KEY:
+            logger.error("XAI_API_KEY not configured for Steve")
             return jsonify({'success': False, 'error': 'AI service temporarily unavailable'}), 503
         
         with get_db_connection() as conn:
@@ -20495,152 +20471,50 @@ def ai_steve_reply():
             
             logger.info(f"[Steve AI] Context built, length: {len(context)} chars, personality: {ai_personality}")
             
-            # Call AI - use vision model if images present, web search for news, or regular model
             system_prompt = get_ai_personality_prompt(ai_personality)
             ai_response = None
             
-            # Detect if user is asking about real-time info (news, weather, current events)
-            import re
-            realtime_keywords = r'\b(news|notícias|noticias|weather|tempo|clima|meteo|today|hoje|hoy|current|actual|latest|últimas|score|resultado|stock|ações|price|preço|happening|acontece)\b'
-            needs_web_search = bool(re.search(realtime_keywords, user_message.lower()))
-            
-            # Detect if user is asking about the image/picture
-            image_keywords = r'\b(image|picture|photo|pic|imagem|foto|fotografia|see|ver|look|olha|show|mostra|what is this|o que é isto|what\'s this)\b'
-            asking_about_image = has_images and bool(re.search(image_keywords, user_message.lower()))
-            
             try:
-                # Option 0: Use OpenAI Vision (GPT-4o) if post has images and user is asking about them
-                if has_images and OPENAI_API_KEY and (asking_about_image or '@steve' in user_message.lower()):
-                    logger.info(f"Steve using OpenAI Vision (GPT-4o) for image analysis ({ai_personality} mode)")
-                    client = OpenAI(api_key=OPENAI_API_KEY)
+                logger.info(f"Steve using Grok 4.1 Fast with web+X search ({ai_personality} mode)")
+                client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+                
+                # Build user content - include images if present (Grok supports vision)
+                if has_images:
+                    user_content = [{"type": "text", "text": context}]
+                    for img_url in post_image_urls[:4]:
+                        user_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": img_url}
+                        })
+                    if has_video:
+                        user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
                     
-                    try:
-                        # Build message content with images
-                        user_content = [{"type": "text", "text": context}]
-                        
-                        # Add images (limit to first 4 to avoid token limits)
-                        for img_url in post_image_urls[:4]:
-                            user_content.append({
-                                "type": "image_url",
-                                "image_url": {"url": img_url, "detail": "low"}  # "low" for faster processing
-                            })
-                        
-                        # Add note about images
-                        if has_video:
-                            user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
-                        
-                        response = client.chat.completions.create(
-                            model="gpt-4o",  # Vision-capable model
-                            messages=[
-                                {"role": "system", "content": system_prompt + "\n\nYou can see images attached to this post. Describe what you see and respond accordingly."},
-                                {"role": "user", "content": user_content}
-                            ],
-                            max_tokens=500
-                        )
-                        ai_response = response.choices[0].message.content.strip() if response.choices else None
-                        
-                        if ai_response:
-                            logger.info("Steve OpenAI Vision (GPT-4o) successful")
-                        else:
-                            logger.warning("OpenAI Vision returned empty response")
-                            ai_response = None
-                            
-                    except Exception as vision_err:
-                        logger.warning(f"OpenAI Vision failed: {vision_err}, falling back to text-only")
-                        ai_response = None
+                    effective_system = system_prompt + "\n\nYou can see images attached to this post. Describe what you see and respond accordingly."
+                else:
+                    user_content = context
+                    effective_system = system_prompt
                 
-                # Option 1: Use OpenAI Responses API with web_search tool for real-time queries
-                if ai_response is None and needs_web_search and OPENAI_API_KEY:
-                    logger.info(f"Steve using OpenAI Responses API with web search ({ai_personality} mode)")
-                    client = OpenAI(api_key=OPENAI_API_KEY)
-                    
-                    try:
-                        # Try Responses API first (per OpenAI docs)
-                        # Combine system prompt with context for input
-                        full_input = f"Instructions: {system_prompt}\n\n---\n\nUser query and context:\n{context}"
-                        
-                        response = client.responses.create(
-                            model="gpt-4o-mini",
-                            tools=[{"type": "web_search"}],
-                            input=full_input
-                        )
-                        
-                        # Get output_text from response
-                        ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
-                        
-                        if ai_response:
-                            logger.info("Steve OpenAI Responses API web search successful")
-                        else:
-                            logger.warning("OpenAI Responses API returned empty response")
-                            ai_response = None
-                            
-                    except AttributeError as attr_err:
-                        # responses.create might not exist in this SDK version
-                        logger.warning(f"OpenAI Responses API not available: {attr_err}")
-                        # Try Chat Completions with search model as fallback
-                        try:
-                            response = client.chat.completions.create(
-                                model="gpt-4o-search-preview",
-                                messages=[
-                                    {"role": "system", "content": system_prompt},
-                                    {"role": "user", "content": context}
-                                ],
-                                max_tokens=500
-                            )
-                            ai_response = response.choices[0].message.content.strip() if response.choices else None
-                            if ai_response:
-                                logger.info("Steve OpenAI Chat search-preview model successful")
-                        except Exception as chat_err:
-                            logger.warning(f"OpenAI Chat search model also failed: {chat_err}")
-                            ai_response = None
-                            
-                    except Exception as search_err:
-                        logger.warning(f"OpenAI web search failed: {search_err}, falling back to xAI")
-                        ai_response = None
+                response = client.responses.create(
+                    model="grok-4-1-fast-non-reasoning",
+                    input=[
+                        {"role": "system", "content": effective_system},
+                        {"role": "user", "content": user_content}
+                    ],
+                    tools=[
+                        {"type": "web_search"},
+                        {"type": "x_search"}
+                    ],
+                    max_output_tokens=500,
+                    temperature=0.7
+                )
                 
-                # Option 2: Use xAI/Grok for general queries or as fallback
-                if ai_response is None and XAI_API_KEY:
-                    logger.info(f"Steve using xAI/Grok ({ai_personality} mode)")
-                    try:
-                        client = OpenAI(
-                            api_key=XAI_API_KEY,
-                            base_url="https://api.x.ai/v1"
-                        )
-                        
-                        response = client.chat.completions.create(
-                            model="grok-3",
-                            messages=[
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": context}
-                            ],
-                            max_tokens=400,
-                            temperature=0.7
-                        )
-                        ai_response = response.choices[0].message.content.strip()
-                        logger.info("Steve xAI/Grok call successful")
-                    except Exception as xai_err:
-                        logger.warning(f"xAI/Grok call failed: {xai_err}, falling back to OpenAI")
-                        ai_response = None
-                
-                # Option 3: OpenAI Chat Completions fallback (no web search)
-                if ai_response is None and OPENAI_API_KEY:
-                    logger.info(f"Steve using OpenAI Chat Completions ({ai_personality} mode)")
-                    client = OpenAI(api_key=OPENAI_API_KEY)
-                    response = client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": context}
-                        ],
-                        max_tokens=400,
-                        temperature=0.7
-                    )
-                    ai_response = response.choices[0].message.content.strip()
-                    logger.info("Steve OpenAI Chat Completions successful")
+                ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
+                if ai_response:
+                    logger.info("Steve Grok 4.1 Fast with web+X search successful")
                 
                 if ai_response is None:
-                    logger.error("No AI API available (XAI_API_KEY or OPENAI_API_KEY)")
-                    return jsonify({'success': False, 'error': 'AI service not configured'}), 503
+                    logger.error("Grok 4.1 Fast returned empty response")
+                    return jsonify({'success': False, 'error': 'AI service returned empty response'}), 503
                 
             except Exception as ai_err:
                 logger.error(f"AI API error: {ai_err}", exc_info=True)
