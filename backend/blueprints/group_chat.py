@@ -1929,49 +1929,28 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             
             recent_messages.reverse()  # Chronological order
             
-            # Build context with current date/time for real-time awareness
-            current_datetime = datetime.utcnow()
+            # Build context
             context = f"Group chat: {group_name}\n"
             context += "Recent messages:\n" + "\n".join(recent_messages[-5:])
             context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully and concisely."
         
         from openai import OpenAI
+        from datetime import date
         
-        # Get current date/time for the system prompt
-        current_date_str = current_datetime.strftime('%A, %B %d, %Y')
-        current_time_str = current_datetime.strftime('%H:%M UTC')
-        year = current_datetime.year
-        month = current_datetime.strftime('%B')
-        day = current_datetime.day
+        # Get current date using date.today() as per xAI documentation
+        current_date = date.today().strftime("%B %d, %Y")
         
-        system_prompt = f"""You are Steve, a helpful and friendly AI assistant in a group chat.
+        system_prompt = f"""You are Steve, a helpful and friendly AI assistant. The current date is {current_date}.
 
-####### CRITICAL - TODAY'S DATE #######
-TODAY IS: {current_date_str}
-YEAR: {year}
-MONTH: {month}
-DAY: {day}
-TIME: {current_time_str}
-
-If anyone asks "what day is today", "what is today's date", "que dia é hoje", or any date-related question, 
-YOU MUST answer with: {current_date_str} (year {year}).
-DO NOT use any other date. Your training data date is WRONG. Use ONLY the date above.
-#######################################
-
-####### CRITICAL - LANGUAGE RULES #######
-DETECT the user's language and respond in THE SAME language:
-
-- PORTUGUESE: If user writes in Portuguese, respond in PORTUGUESE FROM PORTUGAL (PT-PT).
-  Use "tu" instead of "você", use "autocarro" not "ônibus", "telemóvel" not "celular".
-  DO NOT use Brazilian Portuguese. Use European Portuguese from Portugal.
-  
-- ENGLISH: If user writes in English, respond in English.
-- SPANISH: If user writes in Spanish, respond in Spanish.
-- FRENCH: If user writes in French, respond in French.
-#########################################
+LANGUAGE RULES:
+- If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).
+  Use "tu" not "você", "autocarro" not "ônibus", "telemóvel" not "celular".
+- If user writes in English, respond in English.
+- If user writes in Spanish, respond in Spanish.
+- Match the user's language exactly.
 
 Keep responses concise (2-4 sentences). Be helpful, witty, conversational.
-Use emojis occasionally. Don't be overly formal - this is a casual chat."""
+Use emojis occasionally. This is a casual group chat."""
         
         ai_response = None
         

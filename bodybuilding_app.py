@@ -20067,23 +20067,16 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 f"\nUser {author_username} mentioned you (@Steve) in their post. Respond to their post directly."
             ]
             
-            current_datetime = datetime.utcnow()
-            current_date_str = current_datetime.strftime('%A, %B %d, %Y')
-            current_time_str = current_datetime.strftime('%H:%M UTC')
-            context_parts.append(f"\n[Current date and time: {current_date_str} at {current_time_str}]")
+            # Get current date using date.today() as per xAI documentation
+            from datetime import date
+            current_date = date.today().strftime("%B %d, %Y")
+            context_parts.append(f"\n[Current date: {current_date}]")
             
             context = "\n\n".join(context_parts)
             
             # Get base personality prompt and prepend current date info
             base_system_prompt = get_ai_personality_prompt(ai_personality)
-            year = current_datetime.year
-            system_prompt = f"""####### CRITICAL - TODAY'S DATE #######
-TODAY IS: {current_date_str}
-YEAR: {year}
-TIME: {current_time_str}
-If asked about today's date, YOU MUST answer: {current_date_str} (year {year}).
-DO NOT use any other date. Your training data date is WRONG.
-#######################################
+            system_prompt = f"""You are Steve. The current date is {current_date}.
 
 {base_system_prompt}"""
             
