@@ -17,6 +17,7 @@ import ZoomableImage from '../components/ZoomableImage'
 import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
+import { renderTextWithSourceLinks } from '../utils/linkUtils'
 
 type Message = {
   id: number
@@ -1093,25 +1094,10 @@ export default function GroupChatThread() {
     }
   }
 
-  // Render text with @mentions highlighted in turquoise
+  // Render text with @mentions highlighted and links clickable
   const renderTextWithMentions = (text: string) => {
     if (!text) return null
-    
-    // Pattern to match @username (letters, numbers, underscores)
-    const mentionPattern = /(@\w+)/g
-    const parts = text.split(mentionPattern)
-    
-    return parts.map((part, index) => {
-      if (part.match(/^@\w+$/)) {
-        // This is a mention - style it in turquoise
-        return (
-          <span key={index} className="text-[#4db6ac] font-medium">
-            {part}
-          </span>
-        )
-      }
-      return part
-    })
+    return renderTextWithSourceLinks(text)
   }
 
   // Message action handlers
@@ -1691,12 +1677,21 @@ export default function GroupChatThread() {
                                   >
                                     {/* Show first item as preview */}
                                     {msg.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
-                                      <video
-                                        src={msg.media_paths[0]}
-                                        className="w-full rounded-lg"
-                                        style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
-                                        muted
-                                      />
+                                      <div className="relative">
+                                        <video
+                                          src={msg.media_paths[0]}
+                                          className="w-full rounded-lg"
+                                          style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
+                                          muted
+                                          preload="metadata"
+                                          playsInline
+                                        />
+                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                          <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
+                                            <i className="fa-solid fa-play text-white text-lg ml-0.5" />
+                                          </div>
+                                        </div>
+                                      </div>
                                     ) : (
                                       <img
                                         src={msg.media_paths[0]}
@@ -1730,14 +1725,27 @@ export default function GroupChatThread() {
                                     />
                                   )}
                                   {msg.video && (
-                                    <video
-                                      src={msg.video.startsWith('http') ? msg.video : msg.video}
-                                      controls
-                                      playsInline
-                                      className="mt-1 max-w-[280px] rounded-lg"
-                                      style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
-                                      onClick={(e) => e.stopPropagation()}
-                                    />
+                                    <div 
+                                      className="relative mt-1 max-w-[280px] cursor-pointer"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setViewingMedia({ urls: [msg.video!], index: 0 })
+                                      }}
+                                    >
+                                      <video
+                                        src={msg.video}
+                                        preload="metadata"
+                                        playsInline
+                                        muted
+                                        className="w-full rounded-lg"
+                                        style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
+                                      />
+                                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                        <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
+                                          <i className="fa-solid fa-play text-white text-lg ml-0.5" />
+                                        </div>
+                                      </div>
+                                    </div>
                                   )}
                                 </>
                               )}
