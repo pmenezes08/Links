@@ -20889,6 +20889,111 @@ def get_post():
         logger.error(f"Error fetching post {post_id}: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+
+@app.route('/api/post/<int:post_id>/summary', methods=['GET'])
+@login_required
+def get_post_summary(post_id: int):
+    """Generate an AI summary of a post and its discussion using Grok."""
+    username = session.get('username')
+    
+    if not XAI_API_KEY:
+        return jsonify({'success': False, 'error': 'AI service not available'}), 503
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Fetch the post
+            c.execute(f"SELECT id, username, content, timestamp FROM posts WHERE id = {ph}", (post_id,))
+            post_raw = c.fetchone()
+            
+            if not post_raw:
+                return jsonify({'success': False, 'error': 'Post not found'}), 404
+            
+            post_author = post_raw['username'] if hasattr(post_raw, 'keys') else post_raw[1]
+            post_content = post_raw['content'] if hasattr(post_raw, 'keys') else post_raw[2]
+            
+            # Fetch all replies for the post
+            c.execute(f"""
+                SELECT username, content, timestamp 
+                FROM replies 
+                WHERE post_id = {ph} 
+                ORDER BY timestamp ASC
+            """, (post_id,))
+            replies_raw = c.fetchall()
+            
+            # Build the discussion content
+            discussion_parts = [f"Original post by @{post_author}:\n{post_content}"]
+            
+            if replies_raw:
+                discussion_parts.append("\n\nComments and replies:")
+                for reply in replies_raw:
+                    reply_author = reply['username'] if hasattr(reply, 'keys') else reply[0]
+                    reply_content = reply['content'] if hasattr(reply, 'keys') else reply[1]
+                    discussion_parts.append(f"\n@{reply_author}: {reply_content}")
+            
+            full_discussion = "\n".join(discussion_parts)
+            
+            # Limit discussion length to avoid token limits
+            if len(full_discussion) > 8000:
+                full_discussion = full_discussion[:8000] + "\n\n[Discussion truncated due to length...]"
+            
+            # Generate summary using Grok
+            from openai import OpenAI
+            from datetime import datetime
+            
+            current_datetime = datetime.utcnow()
+            
+            system_prompt = """You are a helpful assistant that summarizes social media discussions.
+
+LANGUAGE RULE: Detect the language of the discussion and write your summary in THAT SAME language.
+- If the discussion is in Portuguese, write the summary in European Portuguese (PT-PT).
+- If in English, write in English.
+- If in Spanish, write in Spanish.
+
+Create a clear, concise summary that captures:
+1. The main topic or point of the original post
+2. Key points raised in the comments
+3. Any consensus or disagreements
+4. Notable insights or conclusions
+
+Keep the summary to 3-5 sentences maximum. Be objective and informative."""
+
+            context = f"Please summarize this discussion:\n\n{full_discussion}"
+            
+            client = OpenAI(
+                api_key=XAI_API_KEY,
+                base_url="https://api.x.ai/v1"
+            )
+            
+            response = client.chat.completions.create(
+                model="grok-4-1-fast-non-reasoning",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": context}
+                ],
+                max_tokens=500,
+                temperature=0.5
+            )
+            
+            summary = response.choices[0].message.content.strip() if response.choices else None
+            
+            if not summary:
+                return jsonify({'success': False, 'error': 'Failed to generate summary'}), 500
+            
+            return jsonify({
+                'success': True, 
+                'summary': summary,
+                'post_id': post_id,
+                'reply_count': len(replies_raw)
+            })
+            
+    except Exception as e:
+        logger.error(f"Error generating summary for post {post_id}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Failed to generate summary'}), 500
+
+
 @app.route('/api/reply/<int:reply_id>')
 @login_required
 def api_get_reply(reply_id):

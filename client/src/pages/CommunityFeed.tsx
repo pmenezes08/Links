@@ -3366,6 +3366,10 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
   const [linkDisplayName, setLinkDisplayName] = useState('')
   const [showMoreMenu, setShowMoreMenu] = useState<number | null>(null)
   const [mediaCarouselIndex, setMediaCarouselIndex] = useState(0)
+  const [showSummaryModal, setShowSummaryModal] = useState(false)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryText, setSummaryText] = useState<string | null>(null)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
   
   // Parse media_paths - can be JSON string, array, or null
   const parsedMediaPaths = useMemo((): MediaItem[] => {
@@ -3392,6 +3396,31 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     document.addEventListener('click', handleClickOutside)
     return () => document.removeEventListener('click', handleClickOutside)
   }, [showMoreMenu])
+  
+  // Fetch post summary from AI
+  const fetchSummary = async () => {
+    setSummaryLoading(true)
+    setSummaryError(null)
+    setSummaryText(null)
+    setShowSummaryModal(true)
+    
+    try {
+      const response = await fetch(`/api/post/${post.id}/summary`, {
+        credentials: 'include'
+      })
+      const data = await response.json()
+      
+      if (data.success) {
+        setSummaryText(data.summary)
+      } else {
+        setSummaryError(data.error || 'Failed to generate summary')
+      }
+    } catch (err) {
+      setSummaryError('Network error. Please try again.')
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
   
   const [replyText, setReplyText] = useState('')
   const [replyGif, setReplyGif] = useState<GifSelection | null>(null)
@@ -3676,6 +3705,17 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                       className="absolute right-0 top-8 z-50 w-44 bg-[#1a1f25] border border-white/10 rounded-xl shadow-xl overflow-hidden"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      <button
+                        className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
+                        onClick={(e) => { 
+                          e.stopPropagation()
+                          setShowMoreMenu(null)
+                          fetchSummary()
+                        }}
+                      >
+                        <i className="fa-solid fa-wand-magic-sparkles text-teal-400 w-4" />
+                        Summary
+                      </button>
                       <button
                         className="w-full px-4 py-3 text-left text-sm text-white hover:bg-white/10 flex items-center gap-3"
                         onClick={(e) => { 
@@ -4536,6 +4576,66 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 onClick={(e)=> { e.stopPropagation(); saveRenamedLink() }}
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Summary Modal */}
+      {showSummaryModal && (
+        <div 
+          className="fixed inset-0 z-[1002] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setShowSummaryModal(false)}
+        >
+          <div 
+            className="bg-[#1a1f25] rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden border border-white/10 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <i className="fa-solid fa-wand-magic-sparkles text-teal-400" />
+                <span className="font-semibold text-white">AI Summary</span>
+              </div>
+              <button 
+                className="text-white/60 hover:text-white p-1"
+                onClick={() => setShowSummaryModal(false)}
+              >
+                <i className="fa-solid fa-xmark text-lg" />
+              </button>
+            </div>
+            
+            {/* Content */}
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              {summaryLoading && (
+                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                  <div className="w-8 h-8 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-white/60 text-sm">Generating summary...</span>
+                </div>
+              )}
+              
+              {summaryError && (
+                <div className="text-red-400 text-sm text-center py-4">
+                  <i className="fa-solid fa-exclamation-circle mr-2" />
+                  {summaryError}
+                </div>
+              )}
+              
+              {summaryText && !summaryLoading && (
+                <div className="text-white text-[15px] leading-relaxed whitespace-pre-wrap">
+                  {summaryText}
+                </div>
+              )}
+            </div>
+            
+            {/* Footer */}
+            <div className="px-4 py-3 border-t border-white/10">
+              <button
+                className="w-full py-2.5 rounded-xl bg-[#4db6ac] text-black font-medium hover:brightness-110"
+                onClick={() => setShowSummaryModal(false)}
+              >
+                Close
               </button>
             </div>
           </div>
