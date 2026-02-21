@@ -27,6 +27,7 @@ type Message = {
   video?: string | null
   media_paths?: string[] | null  // For grouped media
   audio_duration_seconds?: number
+  audio_summary?: string | null
   created_at: string
   profile_picture: string | null
   replySnippet?: string
@@ -1741,10 +1742,23 @@ export default function GroupChatThread() {
                                 </>
                               )}
                               {msg.voice && (
-                                <VoiceNotePlayer 
-                                  audioPath={msg.voice}
-                                  durationSeconds={msg.audio_duration_seconds}
-                                />
+                                <>
+                                  <VoiceNotePlayer 
+                                    audioPath={msg.voice}
+                                    durationSeconds={msg.audio_duration_seconds}
+                                  />
+                                  {msg.audio_summary && (
+                                    <div className="px-2 pb-1 pt-0.5">
+                                      <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
+                                        <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
+                                        <span>AI Summary</span>
+                                      </div>
+                                      <p className="text-[12px] text-white/80 leading-relaxed italic">
+                                        {msg.audio_summary}
+                                      </p>
+                                    </div>
+                                  )}
+                                </>
                               )}
                               {/* Reaction display */}
                               {messageReaction && (
