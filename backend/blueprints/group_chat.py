@@ -1956,30 +1956,33 @@ Use emojis occasionally. This is a casual group chat."""
         
         ai_response = None
         
-        # Use Grok 4.1 Fast Non-Reasoning as primary model (has built-in web search)
-        logger.info(f"Steve using Grok 4.1 Fast for group {group_id}")
+        logger.info(f"Steve using Grok 4.1 Fast with web+X search for group {group_id}")
         client = OpenAI(
             api_key=XAI_API_KEY,
             base_url="https://api.x.ai/v1"
         )
         
         try:
-            response = client.chat.completions.create(
+            response = client.responses.create(
                 model="grok-4-1-fast-non-reasoning",
-                messages=[
+                input=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": context}
                 ],
-                max_tokens=400,
+                tools=[
+                    {"type": "web_search"},
+                    {"type": "x_search"}
+                ],
+                max_output_tokens=400,
                 temperature=0.7
             )
             
-            ai_response = response.choices[0].message.content.strip() if response.choices else None
+            ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
             
             if ai_response:
                 logger.info(f"Steve Grok 4.1 Fast successful for group {group_id}")
         except Exception as grok_err:
-            logger.warning(f"Grok 4.1 Fast failed: {grok_err}, trying fallback")
+            logger.error(f"Grok 4.1 Fast failed for group {group_id}: {grok_err}")
         
         if not ai_response:
             logger.warning("Steve got empty response from API")
