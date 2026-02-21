@@ -288,6 +288,21 @@ def handle_broken_pipe(f):
 @app.after_request
 def add_cache_headers(response):
     """Add aggressive caching headers for static files to improve performance"""
+    # Force no-cache for HTML responses (especially important for iOS WKWebView)
+    content_type = response.headers.get('Content-Type', '')
+    if 'text/html' in content_type:
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
+    
+    # Force no-cache for service worker
+    if request.path.endswith('sw.js'):
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
+    
     # Check if this is a static file request
     if request.path.startswith('/static/'):
         # Images get long cache time (7 days)
