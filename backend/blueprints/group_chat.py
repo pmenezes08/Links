@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 MAX_GROUP_MEMBERS = 5
 AI_USERNAME = 'steve'
 XAI_API_KEY = os.getenv('XAI_API_KEY', '')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+
+# Keywords that indicate a need for real-time web search
+REALTIME_KEYWORDS = r'\b(news|notícias|noticias|weather|tempo|clima|meteo|today|hoje|hoy|current|actual|latest|últimas|score|resultado|stock|ações|price|preço|happening|acontece|search|procura|find|encontra|google|look up|pesquisa)\b'
 
 # Track when Steve is typing (in-memory, per group_id)
 # Format: {group_id: timestamp_when_started}
@@ -1859,14 +1863,15 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
     """
     Generate and post Steve's AI reply to a group chat message.
     Runs in a background thread.
+    Supports web search for real-time information queries.
     """
     import time
     
     # Small delay to make it feel more natural
     time.sleep(1.5)
     
-    if not XAI_API_KEY:
-        logger.warning("XAI_API_KEY not configured, Steve cannot reply")
+    if not XAI_API_KEY and not OPENAI_API_KEY:
+        logger.warning("No AI API keys configured, Steve cannot reply")
         return
     
     try:
@@ -1897,30 +1902,101 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             context = f"Group chat: {group_name}\n\nRecent messages:\n" + "\n".join(recent_messages[-5:])
             context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully and concisely."
         
-        # Call xAI/Grok API
         from openai import OpenAI
         
-        client = OpenAI(
-            api_key=XAI_API_KEY,
-            base_url="https://api.x.ai/v1"
-        )
+        # Check if user is asking about real-time information
+        needs_web_search = bool(re.search(REALTIME_KEYWORDS, user_message.lower()))
         
         system_prompt = """You are Steve, a helpful and friendly AI assistant in a group chat.
-Keep your responses concise (1-3 sentences max) and conversational.
+Keep your responses concise (2-4 sentences max) and conversational.
 Be helpful, witty, and engaging. You can use emojis occasionally.
-Don't be overly formal - this is a casual group chat."""
+Don't be overly formal - this is a casual group chat.
+
+WEB SEARCH: You have access to real-time web search for current information.
+When providing news, weather, scores, or current events:
+- Include the source URL when citing information
+- Mention when the information was published if available
+- Be accurate and helpful"""
         
-        response = client.chat.completions.create(
-            model="grok-3-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": context}
-            ],
-            max_tokens=200,
-            temperature=0.7
-        )
+        ai_response = None
         
-        ai_response = response.choices[0].message.content.strip()
+        # Option 1: Use OpenAI with web search for real-time queries
+        if needs_web_search and OPENAI_API_KEY:
+            logger.info(f"Steve using OpenAI web search for group {group_id}")
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            
+            try:
+                # Try Responses API with web_search tool
+                full_input = f"Instructions: {system_prompt}\n\n---\n\nUser query and context:\n{context}"
+                
+                response = client.responses.create(
+                    model="gpt-4o-mini",
+                    tools=[{"type": "web_search"}],
+                    input=full_input
+                )
+                
+                ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
+                
+                if ai_response:
+                    logger.info(f"Steve web search successful for group {group_id}")
+                    
+            except AttributeError as attr_err:
+                # responses.create might not exist in this SDK version - try fallback
+                logger.warning(f"OpenAI Responses API not available: {attr_err}")
+                try:
+                    response = client.chat.completions.create(
+                        model="gpt-4o-search-preview",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": context}
+                        ],
+                        max_tokens=300
+                    )
+                    ai_response = response.choices[0].message.content.strip() if response.choices else None
+                    if ai_response:
+                        logger.info(f"Steve search-preview model successful for group {group_id}")
+                except Exception as chat_err:
+                    logger.warning(f"OpenAI search model fallback failed: {chat_err}")
+                    
+            except Exception as search_err:
+                logger.warning(f"OpenAI web search failed: {search_err}, falling back to xAI")
+        
+        # Option 2: Use xAI/Grok for regular queries (or as fallback)
+        if ai_response is None and XAI_API_KEY:
+            logger.info(f"Steve using xAI/Grok for group {group_id}")
+            client = OpenAI(
+                api_key=XAI_API_KEY,
+                base_url="https://api.x.ai/v1"
+            )
+            
+            response = client.chat.completions.create(
+                model="grok-3-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": context}
+                ],
+                max_tokens=200,
+                temperature=0.7
+            )
+            
+            ai_response = response.choices[0].message.content.strip() if response.choices else None
+        
+        # Option 3: Fallback to OpenAI without web search
+        if ai_response is None and OPENAI_API_KEY:
+            logger.info(f"Steve using OpenAI GPT-4o-mini fallback for group {group_id}")
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": context}
+                ],
+                max_tokens=200,
+                temperature=0.7
+            )
+            
+            ai_response = response.choices[0].message.content.strip() if response.choices else None
         
         if not ai_response:
             logger.warning("Steve got empty response from API")
