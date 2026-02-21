@@ -1962,7 +1962,7 @@ RESPONSE STYLE:
 - Keep responses concise (2-5 sentences). Don't lecture or over-explain.
 - Be conversational, not robotic. This is a casual group chat.
 - Use emojis occasionally.
-- When citing news sources, mention the source name (e.g., "according to BBC" or "Reuters reports"). Do NOT include specific article URLs — they will be auto-generated from the source name."""
+- When citing sources, include the URL — it will be auto-formatted as a readable clickable link."""
         
         ai_response = None
         
@@ -1997,6 +1997,13 @@ RESPONSE STYLE:
         if not ai_response:
             logger.warning("Steve got empty response from API")
             return
+        
+        # Format links for clean rendering
+        try:
+            from bodybuilding_app import format_steve_response_links
+            ai_response = format_steve_response_links(ai_response)
+        except Exception as fmt_err:
+            logger.warning(f"Could not format Steve response links: {fmt_err}")
         
         # Post Steve's message to the group
         with get_db_connection() as conn:
