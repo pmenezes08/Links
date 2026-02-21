@@ -1908,16 +1908,17 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
     current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
     
     try:
-        # Get recent messages for context
+        # Get recent messages for context (including media)
+        image_urls = []
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
             
             # Get last 20 messages for conversation context
             c.execute(f"""
-                SELECT sender_username, message_text, created_at
+                SELECT sender_username, message_text, image_path, video_path, media_paths, created_at
                 FROM group_chat_messages
-                WHERE group_id = {ph} AND message_text IS NOT NULL
+                WHERE group_id = {ph}
                 ORDER BY created_at DESC
                 LIMIT 20
             """, (group_id,))
@@ -1926,15 +1927,53 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             for row in c.fetchall():
                 sender = row["sender_username"] if hasattr(row, "keys") else row[0]
                 text = row["message_text"] if hasattr(row, "keys") else row[1]
+                img = row["image_path"] if hasattr(row, "keys") else row[2]
+                vid = row["video_path"] if hasattr(row, "keys") else row[3]
+                media = row["media_paths"] if hasattr(row, "keys") else row[4]
+                
+                parts = []
                 if text:
-                    recent_messages.append(f"{sender}: {text}")
+                    parts.append(text)
+                if img:
+                    parts.append("[shared an image]")
+                    if img.startswith('http') and len(image_urls) < 4:
+                        image_urls.append(img)
+                if vid:
+                    parts.append("[shared a video]")
+                if media:
+                    try:
+                        media_list = json.loads(media) if isinstance(media, str) else media
+                        if isinstance(media_list, list):
+                            img_count = 0
+                            vid_count = 0
+                            for item in media_list:
+                                path = item if isinstance(item, str) else ''
+                                if any(path.lower().endswith(e) for e in ['.mp4', '.mov', '.webm', '.m4v']):
+                                    vid_count += 1
+                                else:
+                                    img_count += 1
+                                    if path.startswith('http') and len(image_urls) < 4:
+                                        image_urls.append(path)
+                            if img_count and vid_count:
+                                parts.append(f"[shared {img_count} image(s) and {vid_count} video(s)]")
+                            elif img_count:
+                                parts.append(f"[shared {img_count} image(s)]")
+                            elif vid_count:
+                                parts.append(f"[shared {vid_count} video(s)]")
+                    except Exception:
+                        pass
+                
+                if parts:
+                    recent_messages.append(f"{sender}: {' '.join(parts)}")
             
             recent_messages.reverse()  # Chronological order
             
-            # Build context - use more messages for better conversation understanding
+            # Build context
             context = f"Group chat: {group_name}\n"
             context += "Recent conversation:\n" + "\n".join(recent_messages[-15:])
             context += f"\n\n{sender_username} mentioned you (@Steve)."
+            if image_urls:
+                context += f"\n\n[{len(image_urls)} recent image(s) from the conversation are attached for you to analyze if relevant.]"
             context += f"\n\n[Current date and time: {current_date}]"
         
         from openai import OpenAI
@@ -1957,6 +1996,7 @@ Read the full conversation context carefully. Adapt your response based on what'
 3. If a problem or challenge is being discussed and NO solution has been proposed — proactively suggest practical, actionable solutions with brief reasoning.
 4. If a solution IS already being discussed — briefly analyze it: what's good about it, any risks or blind spots, and suggest improvements or alternatives if relevant.
 5. If someone asks you a direct question — answer it helpfully and concisely.
+6. If images are attached, you CAN see them. Analyze, describe, or comment on them if relevant to the conversation. If asked about a photo, describe what you see in detail.
 
 RESPONSE STYLE:
 - Keep responses concise (2-5 sentences). Don't lecture or over-explain.
@@ -1973,11 +2013,22 @@ RESPONSE STYLE:
         )
         
         try:
+            # Build input with images if available
+            if image_urls:
+                user_content = [{"type": "text", "text": context}]
+                for img_url in image_urls[:4]:
+                    user_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": img_url}
+                    })
+            else:
+                user_content = context
+            
             response = client.responses.create(
                 model="grok-4-1-fast-reasoning",
                 input=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": context}
+                    {"role": "user", "content": user_content}
                 ],
                 tools=[
                     {"type": "web_search"},

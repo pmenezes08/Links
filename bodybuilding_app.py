@@ -19992,6 +19992,7 @@ Read the full post and comment thread carefully. Adapt your response based on wh
 3. If a problem or challenge is being discussed and NO solution has been proposed — proactively suggest practical, actionable solutions with brief reasoning.
 4. If a solution IS already being discussed — briefly analyze it: what's good about it, any risks or blind spots, and suggest improvements or alternatives if relevant.
 5. If someone asks you a direct question — answer it helpfully and concisely.
+6. If images are attached, you CAN see them. Analyze, describe, or comment on them if relevant. If asked about a photo or image, describe what you see in detail — identify objects, people, text, emotions, context, or anything noteworthy.
 
 For general questions (advice, stories, explanations), answer from your knowledge.
 The current date/time is provided in the context.'''
