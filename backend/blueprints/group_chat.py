@@ -1908,17 +1908,16 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
     current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
     
     try:
-        # Get recent messages for context (including media)
         image_urls = []
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
             
-            # Get last 20 messages for conversation context
+            # Get recent text messages for conversation context
             c.execute(f"""
-                SELECT sender_username, message_text, image_path, video_path, media_paths, created_at
+                SELECT sender_username, message_text, created_at
                 FROM group_chat_messages
-                WHERE group_id = {ph}
+                WHERE group_id = {ph} AND message_text IS NOT NULL
                 ORDER BY created_at DESC
                 LIMIT 20
             """, (group_id,))
@@ -1927,46 +1926,39 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             for row in c.fetchall():
                 sender = row["sender_username"] if hasattr(row, "keys") else row[0]
                 text = row["message_text"] if hasattr(row, "keys") else row[1]
-                img = row["image_path"] if hasattr(row, "keys") else row[2]
-                vid = row["video_path"] if hasattr(row, "keys") else row[3]
-                media = row["media_paths"] if hasattr(row, "keys") else row[4]
-                
-                parts = []
                 if text:
-                    parts.append(text)
-                if img:
-                    parts.append("[shared an image]")
-                    if img.startswith('http') and len(image_urls) < 4:
-                        image_urls.append(img)
-                if vid:
-                    parts.append("[shared a video]")
-                if media:
-                    try:
-                        media_list = json.loads(media) if isinstance(media, str) else media
-                        if isinstance(media_list, list):
-                            img_count = 0
-                            vid_count = 0
-                            for item in media_list:
-                                path = item if isinstance(item, str) else ''
-                                if any(path.lower().endswith(e) for e in ['.mp4', '.mov', '.webm', '.m4v']):
-                                    vid_count += 1
-                                else:
-                                    img_count += 1
-                                    if path.startswith('http') and len(image_urls) < 4:
-                                        image_urls.append(path)
-                            if img_count and vid_count:
-                                parts.append(f"[shared {img_count} image(s) and {vid_count} video(s)]")
-                            elif img_count:
-                                parts.append(f"[shared {img_count} image(s)]")
-                            elif vid_count:
-                                parts.append(f"[shared {vid_count} video(s)]")
-                    except Exception:
-                        pass
-                
-                if parts:
-                    recent_messages.append(f"{sender}: {' '.join(parts)}")
+                    recent_messages.append(f"{sender}: {text}")
             
             recent_messages.reverse()  # Chronological order
+            
+            # Try to fetch recent images for vision (non-critical — if this fails Steve still responds)
+            try:
+                c.execute(f"""
+                    SELECT image_path, media_paths
+                    FROM group_chat_messages
+                    WHERE group_id = {ph}
+                      AND (image_path IS NOT NULL OR media_paths IS NOT NULL)
+                    ORDER BY created_at DESC
+                    LIMIT 5
+                """, (group_id,))
+                for row in c.fetchall():
+                    img = row["image_path"] if hasattr(row, "keys") else row[0]
+                    media = row["media_paths"] if hasattr(row, "keys") else row[1]
+                    if img and isinstance(img, str) and img.startswith('http') and len(image_urls) < 4:
+                        image_urls.append(img)
+                    if media and len(image_urls) < 4:
+                        try:
+                            media_list = json.loads(media) if isinstance(media, str) else media
+                            if isinstance(media_list, list):
+                                for path in media_list:
+                                    if isinstance(path, str) and path.startswith('http') and len(image_urls) < 4:
+                                        if not any(path.lower().endswith(e) for e in ['.mp4', '.mov', '.webm', '.m4v']):
+                                            image_urls.append(path)
+                        except Exception:
+                            pass
+            except Exception as img_err:
+                logger.warning(f"Could not fetch images for Steve vision: {img_err}")
+                image_urls = []
             
             # Build context
             context = f"Group chat: {group_name}\n"
