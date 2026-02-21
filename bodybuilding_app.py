@@ -20073,15 +20073,10 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             context = "\n\n".join(context_parts)
             system_prompt = get_ai_personality_prompt(ai_personality)
             
-            # Detect if post is asking about real-time info
-            import re
-            realtime_keywords = r'\b(news|notícias|noticias|weather|tempo|clima|meteo|today|hoje|hoy|current|actual|latest|últimas|score|resultado|stock|ações|price|preço|happening|acontece)\b'
-            needs_web_search = bool(re.search(realtime_keywords, post_content.lower()))
-            
-            # Call AI - use vision for images, web search for news, or regular model
+            # Call AI - use GPT-4o Vision for images, Grok 4.1 Fast for everything else
             ai_response = None
             try:
-                # Option 0: Use OpenAI Vision (GPT-4o) if post has images
+                # Option 1: Use OpenAI Vision (GPT-4o) ONLY if post has images
                 if has_images and OPENAI_API_KEY:
                     logger.info(f"Steve post reply using OpenAI Vision GPT-4o ({ai_personality} mode)")
                     client = OpenAI(api_key=OPENAI_API_KEY)
@@ -20116,76 +20111,29 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                             logger.warning("OpenAI Vision returned empty response")
                             ai_response = None
                     except Exception as vision_err:
-                        logger.warning(f"OpenAI Vision failed for post reply: {vision_err}, falling back")
+                        logger.warning(f"OpenAI Vision failed for post reply: {vision_err}, falling back to Grok")
                         ai_response = None
                 
-                # Use OpenAI Responses API with web_search tool for real-time queries
-                if ai_response is None and needs_web_search and OPENAI_API_KEY:
-                    logger.info("Steve post reply using OpenAI Responses API with web search")
-                    client = OpenAI(api_key=OPENAI_API_KEY)
-                    try:
-                        full_input = f"Instructions: {system_prompt}\n\n---\n\nUser query and context:\n{context}"
-                        response = client.responses.create(
-                            model="gpt-4o-mini",
-                            tools=[{"type": "web_search"}],
-                            input=full_input
-                        )
-                        ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
-                        if ai_response:
-                            logger.info("Steve post reply Responses API web search successful")
-                    except AttributeError:
-                        # Fallback to Chat Completions with search model
-                        try:
-                            response = client.chat.completions.create(
-                                model="gpt-4o-search-preview",
-                                messages=[
-                                    {"role": "system", "content": system_prompt},
-                                    {"role": "user", "content": context}
-                                ],
-                                max_tokens=500
-                            )
-                            ai_response = response.choices[0].message.content.strip() if response.choices else None
-                            if ai_response:
-                                logger.info("Steve post reply Chat search model successful")
-                        except Exception as chat_err:
-                            logger.warning(f"Chat search model failed: {chat_err}")
-                            ai_response = None
-                    except Exception as search_err:
-                        logger.warning(f"Web search failed in post reply: {search_err}")
-                        ai_response = None
-                
-                # Use xAI/Grok for general queries or as fallback
+                # Option 2: Use Grok 4.1 Fast for all other queries (has built-in web search)
                 if ai_response is None and XAI_API_KEY:
+                    logger.info(f"Steve post reply using Grok 4.1 Fast ({ai_personality} mode)")
                     try:
                         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                         response = client.chat.completions.create(
-                            model="grok-3",
+                            model="grok-4-1-fast",
                             messages=[
                                 {"role": "system", "content": system_prompt},
                                 {"role": "user", "content": context}
                             ],
-                            max_tokens=400,
+                            max_tokens=500,
                             temperature=0.7
                         )
-                        ai_response = response.choices[0].message.content.strip()
-                        logger.info("Steve post reply xAI/Grok successful")
-                    except Exception as xai_err:
-                        logger.warning(f"xAI/Grok post reply failed: {xai_err}, falling back to OpenAI")
+                        ai_response = response.choices[0].message.content.strip() if response.choices else None
+                        if ai_response:
+                            logger.info("Steve post reply Grok 4.1 Fast successful")
+                    except Exception as grok_err:
+                        logger.warning(f"Grok 4.1 Fast post reply failed: {grok_err}")
                         ai_response = None
-                
-                # OpenAI Chat Completions fallback
-                if ai_response is None and OPENAI_API_KEY:
-                    client = OpenAI(api_key=OPENAI_API_KEY)
-                    response = client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": context}
-                        ],
-                        max_tokens=400,
-                        temperature=0.7
-                    )
-                    ai_response = response.choices[0].message.content.strip()
                     
             except Exception as ai_err:
                 logger.error(f"AI error in Steve post reply: {ai_err}")
