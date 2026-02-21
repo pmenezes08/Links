@@ -19898,13 +19898,13 @@ Keep it short, keep it BRUTAL, and make them regret tagging you. 💀🔥'''
 
 def format_steve_response_links(response_text: str) -> str:
     """
-    Format URLs in Steve's responses as markdown links pointing to the domain root.
+    Clean up URLs in Steve's responses for proper frontend rendering.
     
-    LLMs frequently hallucinate exact article paths even when using web search,
-    so we strip the path and link to just the domain (e.g., https://bbc.com).
-    The domain is reliable; the specific article path often 404s.
+    Grok's web_search returns real URLs, but in citation format like:
+      [[1]](https://rtp.pt/article)[[2]](https://bbc.com/news)
     
-    Also handles existing markdown links [text](url) by fixing their URLs.
+    The double brackets and lack of spacing breaks standard markdown parsers.
+    This function normalizes everything into clean [domain](url) format.
     """
     import re
     from urllib.parse import urlparse
@@ -19912,22 +19912,8 @@ def format_steve_response_links(response_text: str) -> str:
     if not response_text:
         return response_text
     
-    def get_domain_url(url: str) -> str:
-        """Get the domain root URL (e.g., https://bbc.com)."""
-        try:
-            parsed = urlparse(url)
-            scheme = parsed.scheme or 'https'
-            domain = parsed.netloc.lower()
-            if not domain:
-                return url
-            if domain.startswith('www.'):
-                domain = domain[4:]
-            return f'{scheme}://{domain}'
-        except Exception:
-            return url
-    
     def get_domain_display(url: str) -> str:
-        """Extract the domain name for display (e.g., elpais.com, bbc.com)."""
+        """Extract clean domain name for display (e.g., rtp.pt, bbc.com)."""
         try:
             parsed = urlparse(url)
             domain = parsed.netloc.lower()
@@ -19937,25 +19923,41 @@ def format_steve_response_links(response_text: str) -> str:
         except Exception:
             return "link"
     
-    # First pass: fix existing markdown links [text](url) to point to domain root
-    md_pattern = r'\[([^\]]+)\]\((https?://[^)]+)\)'
-    def fix_markdown_link(match):
+    # Step 1: Convert citation-style [[N]](url) to [domain](url)
+    # Matches [[1]], [[2]], etc. followed by (url)
+    citation_pattern = r'\[\[(\d+)\]\]\((https?://[^)]+)\)'
+    def replace_citation(match):
+        url = match.group(2).rstrip('.,;:!?')
+        domain = get_domain_display(url)
+        return f'[{domain}]({url})'
+    
+    formatted = re.sub(citation_pattern, replace_citation, response_text)
+    
+    # Step 2: Convert standard markdown links [text](url) — keep URL, use domain as display
+    # Only replace if display text is a number or generic (keeps intentional display text)
+    std_md_pattern = r'\[([^\]]+)\]\((https?://[^)]+)\)'
+    def clean_markdown_link(match):
         display = match.group(1)
         url = match.group(2).rstrip('.,;:!?')
-        domain_root = get_domain_url(url)
-        return f'[{display}]({domain_root})'
+        # If display is just a number or "source N", replace with domain name
+        if re.match(r'^\d+$', display) or display.lower().startswith('source'):
+            display = get_domain_display(url)
+        return f'[{display}]({url})'
     
-    formatted = re.sub(md_pattern, fix_markdown_link, response_text)
+    formatted = re.sub(std_md_pattern, clean_markdown_link, formatted)
     
-    # Second pass: convert remaining bare URLs to markdown links with domain root
-    url_pattern = r'(?<!\]\()(?<!\()(https?://[^\s\)\]<>"]+)'
+    # Step 3: Add spacing between consecutive markdown links so they render separately
+    # Turns )[  into ) [  (adds space between adjacent links)
+    formatted = re.sub(r'\)\[', ') [', formatted)
+    
+    # Step 4: Convert any remaining bare URLs to [domain](url)
+    bare_url_pattern = r'(?<!\]\()(?<!\()(https?://[^\s\)\]<>"]+)'
     def replace_bare_url(match):
         url = match.group(1).rstrip('.,;:!?')
         domain = get_domain_display(url)
-        domain_root = get_domain_url(url)
-        return f'[{domain}]({domain_root})'
+        return f'[{domain}]({url})'
     
-    formatted = re.sub(url_pattern, replace_bare_url, formatted)
+    formatted = re.sub(bare_url_pattern, replace_bare_url, formatted)
     
     return formatted
 
@@ -19979,8 +19981,7 @@ WEB SEARCH CAPABILITY: You have access to real-time web search and X (Twitter) s
 
 When users ask about news, weather, or current events:
 - You CAN search the web for real, current information
-- Mention the source by name (e.g., "according to BBC", "Reuters reports", "per ESPN")
-- Do NOT include specific article URLs — just name the source. Links will be auto-generated.
+- Include source URLs when available — they will be auto-formatted as clickable links
 - Include dates when the information was published if available
 - If search returns no results, be honest about it
 
