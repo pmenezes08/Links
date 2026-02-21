@@ -20123,7 +20123,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             
             ai_response = None
             try:
-                logger.info(f"Steve post reply using Grok 4.1 Fast Reasoning with web+X search ({ai_personality} mode)")
+                logger.info(f"Steve post reply using Grok 4.1 Fast with web+X search ({ai_personality} mode)")
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
                 # Build user content - include images if present (Grok supports vision)
@@ -20143,7 +20143,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                     effective_system = system_prompt
                 
                 response = client.responses.create(
-                    model="grok-4-1-fast-reasoning",
+                    model="grok-4-1-fast-non-reasoning",
                     input=[
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
@@ -20158,7 +20158,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve post reply Grok 4.1 Fast Reasoning successful")
+                    logger.info("Steve post reply Grok 4.1 Fast successful")
                     
             except Exception as ai_err:
                 logger.error(f"AI error in Steve post reply: {ai_err}")
@@ -20504,7 +20504,7 @@ def ai_steve_reply():
             ai_response = None
             
             try:
-                logger.info(f"Steve using Grok 4.1 Fast Reasoning with web+X search ({ai_personality} mode)")
+                logger.info(f"Steve using Grok 4.1 Fast with web+X search ({ai_personality} mode)")
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
                 # Build user content - include images if present (Grok supports vision)
@@ -20524,7 +20524,7 @@ def ai_steve_reply():
                     effective_system = system_prompt
                 
                 response = client.responses.create(
-                    model="grok-4-1-fast-reasoning",
+                    model="grok-4-1-fast-non-reasoning",
                     input=[
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
@@ -20539,7 +20539,7 @@ def ai_steve_reply():
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve Grok 4.1 Fast Reasoning with web+X search successful")
+                    logger.info("Steve Grok 4.1 Fast with web+X search successful")
                 
                 if ai_response is None:
                     logger.error("Grok 4.1 Fast returned empty response")

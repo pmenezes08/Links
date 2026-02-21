@@ -2006,7 +2006,7 @@ RESPONSE STYLE:
         
         ai_response = None
         
-        logger.info(f"Steve using Grok 4.1 Fast Reasoning with web+X search for group {group_id}")
+        logger.info(f"Steve using Grok 4.1 Fast with web+X search for group {group_id}")
         client = OpenAI(
             api_key=XAI_API_KEY,
             base_url="https://api.x.ai/v1"
@@ -2025,7 +2025,7 @@ RESPONSE STYLE:
                 user_content = context
             
             response = client.responses.create(
-                model="grok-4-1-fast-reasoning",
+                model="grok-4-1-fast-non-reasoning",
                 input=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_content}
