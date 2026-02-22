@@ -4253,11 +4253,15 @@ LANGUAGE RULE - THIS IS MANDATORY:
 1. First, identify the primary language of the input text
 2. Write your ENTIRE response in that EXACT same language
 3. NEVER translate or switch to a different language
-4. Examples:
+4. Special rule for Portuguese: ALWAYS use European Portuguese (PT-PT, Portugal style).
+   Use "tu" not "você", "autocarro" not "ônibus", "telemóvel" not "celular", etc.
+5. Examples:
    - English input → English summary
-   - German input → German summary  
-   - Portuguese input → Portuguese summary
+   - German input → German summary
+   - Portuguese input → European Portuguese (PT-PT) summary
    - Spanish input → Spanish summary
+   - Irish input → Irish summary
+   - French input → French summary
 
 Content requirements:
 - Provide a concise 1-2 sentence summary of the main points
