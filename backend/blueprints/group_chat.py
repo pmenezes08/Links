@@ -2044,9 +2044,9 @@ RESPONSE STYLE:
         try:
             # Build user input — attach images if available
             if image_urls:
-                user_content = [{"type": "text", "text": context}]
+                user_content = [{"type": "input_text", "text": context}]
                 for img_url in image_urls:
-                    user_content.append({"type": "image_url", "image_url": {"url": img_url}})
+                    user_content.append({"type": "input_image", "image_url": img_url})
                 effective_system = system_prompt + "\n\nYou can see images shared in this conversation. Describe what you see if asked."
             else:
                 user_content = context

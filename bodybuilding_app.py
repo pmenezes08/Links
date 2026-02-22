@@ -20128,12 +20128,9 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 
                 # Build user content - include images if present (Grok supports vision)
                 if has_images:
-                    user_content = [{"type": "text", "text": context}]
+                    user_content = [{"type": "input_text", "text": context}]
                     for img_url in post_image_urls[:4]:
-                        user_content.append({
-                            "type": "image_url",
-                            "image_url": {"url": img_url}
-                        })
+                        user_content.append({"type": "input_image", "image_url": img_url})
                     if has_video:
                         user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
                     
@@ -20508,12 +20505,9 @@ def ai_steve_reply():
                 
                 # Build user content - include images if present (Grok supports vision)
                 if has_images:
-                    user_content = [{"type": "text", "text": context}]
+                    user_content = [{"type": "input_text", "text": context}]
                     for img_url in post_image_urls[:4]:
-                        user_content.append({
-                            "type": "image_url",
-                            "image_url": {"url": img_url}
-                        })
+                        user_content.append({"type": "input_image", "image_url": img_url})
                     if has_video:
                         user_content[0]["text"] += "\n\n[Note: This post also contains a video that you cannot view, but you can see the images above.]"
                     
