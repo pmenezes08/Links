@@ -1937,36 +1937,73 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             context += f"\n\n{sender_username} mentioned you (@Steve)."
             context += f"\n\n[Current date and time: {current_date}]"
             
-            # Try to collect images from the triggering message and recent messages
+            # Try to collect images from recent messages
             # This is non-critical: if it fails, Steve still responds with text only
             image_urls = []
+            
+            def _extract_http_images(val):
+                """Extract CDN image URLs from a value (string or JSON array)."""
+                urls = []
+                if not val:
+                    return urls
+                if isinstance(val, str) and val.startswith('http'):
+                    if not any(val.lower().endswith(e) for e in ['.mp4', '.mov', '.webm', '.m4v']):
+                        urls.append(val)
+                return urls
+            
+            def _extract_media_paths_images(raw):
+                """Extract CDN image URLs from media_paths JSON."""
+                urls = []
+                if not raw:
+                    return urls
+                try:
+                    items = json.loads(raw) if isinstance(raw, str) else raw
+                    if isinstance(items, list):
+                        for item in items:
+                            path = item if isinstance(item, str) else ''
+                            if path.startswith('http') and not any(path.lower().endswith(e) for e in ['.mp4', '.mov', '.webm', '.m4v']):
+                                urls.append(path)
+                except Exception:
+                    pass
+                return urls
+            
+            # Strategy: try media_paths first (where uploaded images actually go),
+            # fall back to image_path (legacy). Each in its own try/except.
+            
+            # 1) Try media_paths from recent messages (most images go here)
             try:
-                # First check the triggering message itself
-                c.execute(f"SELECT image_path FROM group_chat_messages WHERE id = {ph}", (reply_to_message_id,))
-                trig_row = c.fetchone()
-                if trig_row:
-                    trig_img = trig_row["image_path"] if hasattr(trig_row, "keys") else trig_row[0]
-                    if trig_img and isinstance(trig_img, str) and trig_img.startswith('http'):
-                        image_urls.append(trig_img)
-                
-                # Also check recent messages for shared images (last 5 with images)
+                c.execute(f"""
+                    SELECT media_paths FROM group_chat_messages
+                    WHERE group_id = {ph} AND media_paths IS NOT NULL AND media_paths != ''
+                    ORDER BY created_at DESC LIMIT 5
+                """, (group_id,))
+                for row in c.fetchall():
+                    raw = row["media_paths"] if hasattr(row, "keys") else row[0]
+                    for url in _extract_media_paths_images(raw):
+                        if url not in image_urls and len(image_urls) < 4:
+                            image_urls.append(url)
+            except Exception:
+                pass  # media_paths column might not exist
+            
+            # 2) Try image_path from recent messages (legacy single images)
+            try:
                 if len(image_urls) < 4:
                     c.execute(f"""
                         SELECT image_path FROM group_chat_messages
                         WHERE group_id = {ph} AND image_path IS NOT NULL AND image_path != ''
                         ORDER BY created_at DESC LIMIT 5
                     """, (group_id,))
-                    for img_row in c.fetchall():
-                        img_val = img_row["image_path"] if hasattr(img_row, "keys") else img_row[0]
-                        if img_val and isinstance(img_val, str) and img_val.startswith('http') and img_val not in image_urls and len(image_urls) < 4:
-                            image_urls.append(img_val)
-                
-                if image_urls:
-                    context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
-                    logger.info(f"Steve vision: collected {len(image_urls)} images for group {group_id}")
-            except Exception as img_err:
-                logger.warning(f"Could not fetch images for Steve (non-critical): {img_err}")
-                image_urls = []
+                    for row in c.fetchall():
+                        val = row["image_path"] if hasattr(row, "keys") else row[0]
+                        for url in _extract_http_images(val):
+                            if url not in image_urls and len(image_urls) < 4:
+                                image_urls.append(url)
+            except Exception:
+                pass  # shouldn't fail but just in case
+            
+            if image_urls:
+                context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
+                logger.info(f"Steve vision: collected {len(image_urls)} images for group {group_id}")
         
         from openai import OpenAI
         
