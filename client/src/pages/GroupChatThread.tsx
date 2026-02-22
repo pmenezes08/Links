@@ -886,6 +886,7 @@ export default function GroupChatThread() {
     if (!recording) return
     
     setSending(true)
+    const optimisticId = -Date.now()
     try {
       const previewData = await stopAndGetBlob()
       if (!previewData?.blob) {
@@ -905,6 +906,19 @@ export default function GroupChatThread() {
       const uploadData = await uploadResponse.json()
 
       if (uploadData.success && uploadData.audio_path) {
+        // Show optimistic message immediately with voice player + generating indicator
+        const optimisticMsg: Message = {
+          id: optimisticId,
+          sender: currentUsername || 'You',
+          text: null,
+          image: null,
+          voice: uploadData.audio_path,
+          audio_summary: null,
+          created_at: new Date().toISOString(),
+          profile_picture: null,
+        }
+        setServerMessages(prev => [...prev, optimisticMsg])
+
         const response = await fetch(`/api/group_chat/${group_id}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -914,8 +928,12 @@ export default function GroupChatThread() {
         const data = await response.json()
 
         if (data.success) {
-          setServerMessages(prev => [...prev, data.message])
+          // Replace optimistic message with real one (includes audio_summary)
+          setServerMessages(prev => prev.map(m => m.id === optimisticId ? data.message : m))
           lastMessageIdRef.current = data.message.id
+        } else {
+          // Remove optimistic message on failure
+          setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
         }
       }
 
@@ -924,6 +942,8 @@ export default function GroupChatThread() {
       }
     } catch (err) {
       console.error('Error sending voice:', err)
+      // Remove optimistic message on error
+      setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
     } finally {
       setSending(false)
     }
@@ -933,6 +953,7 @@ export default function GroupChatThread() {
     if (!recordingPreview?.blob) return
     
     setSending(true)
+    const optimisticId = -Date.now()
     try {
       const formData = new FormData()
       const ext = recordingPreview.blob.type.includes('mp4') ? 'mp4' : 'webm'
@@ -946,6 +967,19 @@ export default function GroupChatThread() {
       const uploadData = await uploadResponse.json()
 
       if (uploadData.success && uploadData.audio_path) {
+        // Show optimistic message immediately with voice player + generating indicator
+        const optimisticMsg: Message = {
+          id: optimisticId,
+          sender: currentUsername || 'You',
+          text: null,
+          image: null,
+          voice: uploadData.audio_path,
+          audio_summary: null,
+          created_at: new Date().toISOString(),
+          profile_picture: null,
+        }
+        setServerMessages(prev => [...prev, optimisticMsg])
+
         const response = await fetch(`/api/group_chat/${group_id}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -955,8 +989,10 @@ export default function GroupChatThread() {
         const data = await response.json()
 
         if (data.success) {
-          setServerMessages(prev => [...prev, data.message])
+          setServerMessages(prev => prev.map(m => m.id === optimisticId ? data.message : m))
           lastMessageIdRef.current = data.message.id
+        } else {
+          setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
         }
       }
 
@@ -964,6 +1000,7 @@ export default function GroupChatThread() {
       setPreviewPlaying(false)
     } catch (err) {
       console.error('Error sending voice:', err)
+      setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
     } finally {
       setSending(false)
     }
