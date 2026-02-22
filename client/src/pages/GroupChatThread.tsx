@@ -1824,53 +1824,27 @@ export default function GroupChatThread() {
                                   />
                                   {msg.audio_summary ? (
                                     <div className="px-2 pb-1 pt-0.5">
-                                      {editingSummaryId === msg.id ? (
-                                        <div className="space-y-1.5">
-                                          <div className="text-[11px] text-white/50 flex items-center gap-1">
-                                            <i className="fa-solid fa-pen text-[9px]" />
-                                            <span>Edit AI Summary</span>
-                                          </div>
-                                          <textarea
-                                            value={editSummaryText}
-                                            onChange={(e) => setEditSummaryText(e.target.value)}
-                                            className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-1.5 text-[12px] text-white resize-none focus:outline-none focus:border-[#4db6ac]"
-                                            rows={2}
-                                            autoFocus
-                                          />
-                                          <div className="flex gap-1.5">
-                                            <button
-                                              onClick={() => handleSaveSummaryEdit(msg.id)}
-                                              className="px-2 py-0.5 text-[11px] rounded bg-[#4db6ac] text-black font-medium"
-                                            >Save</button>
-                                            <button
-                                              onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}
-                                              className="px-2 py-0.5 text-[11px] rounded bg-white/10 text-white/70"
-                                            >Cancel</button>
-                                          </div>
+                                      <div
+                                        onClick={(e) => {
+                                          if (msg.sender === currentUsername || msg.sender === 'You') {
+                                            e.stopPropagation()
+                                            setEditingSummaryId(msg.id)
+                                            setEditSummaryText(msg.audio_summary || '')
+                                          }
+                                        }}
+                                        className={msg.sender === currentUsername || msg.sender === 'You' ? 'cursor-pointer' : ''}
+                                      >
+                                        <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
+                                          <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
+                                          <span>AI Summary</span>
+                                          {(msg.sender === currentUsername || msg.sender === 'You') && (
+                                            <i className="fa-solid fa-pen text-[8px] text-white/30 ml-1" />
+                                          )}
                                         </div>
-                                      ) : (
-                                        <div
-                                          onClick={(e) => {
-                                            if (msg.sender === currentUsername || msg.sender === 'You') {
-                                              e.stopPropagation()
-                                              setEditingSummaryId(msg.id)
-                                              setEditSummaryText(msg.audio_summary || '')
-                                            }
-                                          }}
-                                          className={msg.sender === currentUsername || msg.sender === 'You' ? 'cursor-pointer' : ''}
-                                        >
-                                          <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
-                                            <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
-                                            <span>AI Summary</span>
-                                            {(msg.sender === currentUsername || msg.sender === 'You') && (
-                                              <i className="fa-solid fa-pen text-[8px] text-white/30 ml-1" />
-                                            )}
-                                          </div>
-                                          <p className="text-[12px] text-white/80 leading-relaxed italic">
-                                            {msg.audio_summary}
-                                          </p>
-                                        </div>
-                                      )}
+                                        <p className="text-[12px] text-white/80 leading-relaxed italic">
+                                          {msg.audio_summary}
+                                        </p>
+                                      </div>
                                     </div>
                                   ) : msg.voice && (() => {
                                     try {
@@ -3010,6 +2984,40 @@ export default function GroupChatThread() {
               <i className="fa-solid fa-paper-plane" />
               Send
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit AI Summary modal */}
+      {editingSummaryId !== null && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}>
+          <div className="absolute inset-0 bg-black/70" />
+          <div 
+            className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[90%] max-w-md p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
+              <span className="text-white font-semibold text-sm">Edit AI Summary</span>
+            </div>
+            <textarea
+              value={editSummaryText}
+              onChange={(e) => setEditSummaryText(e.target.value)}
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-[#4db6ac] leading-relaxed"
+              rows={4}
+              autoFocus
+              placeholder="Edit the AI-generated summary..."
+            />
+            <div className="flex gap-2 mt-3 justify-end">
+              <button
+                onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}
+                className="px-4 py-2 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-white/15"
+              >Cancel</button>
+              <button
+                onClick={() => handleSaveSummaryEdit(editingSummaryId)}
+                className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
+              >Save</button>
+            </div>
           </div>
         </div>
       )}
