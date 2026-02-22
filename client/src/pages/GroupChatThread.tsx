@@ -440,8 +440,11 @@ export default function GroupChatThread() {
         )
         const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
 
-        // Simply set server messages - pending messages are separate, filter out pending deletions
-        setServerMessages(newServerMessages)
+        // Set server messages, but preserve any optimistic messages (negative IDs)
+        setServerMessages(prev => {
+          const optimistic = prev.filter(m => m.id < 0)
+          return optimistic.length > 0 ? [...newServerMessages, ...optimistic] : newServerMessages
+        })
         
         // Populate reactions from server data
         const serverReactions: Record<number, string> = {}
