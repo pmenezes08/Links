@@ -149,11 +149,7 @@ export function useAudioRecorder() {
         return
       }
 
-      // Request any buffered data
-      try { recorder.requestData() } catch {}
-
       recorder.onstop = () => {
-        // Small delay to ensure all data is collected
         setTimeout(() => {
           if (chunksRef.current.length > 0) {
             const mimeType = recorder.mimeType || 'audio/mp4'
