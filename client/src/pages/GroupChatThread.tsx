@@ -120,7 +120,7 @@ export default function GroupChatThread() {
   const [selectedMessages, setSelectedMessages] = useState<Set<number>>(new Set())
   
   // Reply state
-  const [replyTo, setReplyTo] = useState<{ text: string; sender: string; image?: string; voice?: string } | null>(null)
+  const [replyTo, setReplyTo] = useState<{ text: string; sender: string; image?: string; voice?: string; audio_summary?: string } | null>(null)
   
   // @mention autocomplete state
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
@@ -535,7 +535,8 @@ export default function GroupChatThread() {
       if (replySnapshot.image) {
         replySnippet = `📷|${replySnapshot.image}|${(replySnapshot.text || 'Photo').slice(0, 60)}`
       } else if (replySnapshot.voice) {
-        replySnippet = '🎤|Voice message'
+        const summarySnippet = replySnapshot.audio_summary ? replySnapshot.audio_summary.slice(0, 80) : ''
+        replySnippet = summarySnippet ? `🎤|${summarySnippet}` : '🎤|Voice message'
       } else {
         replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0, 90) + '…' : replySnapshot.text
       }
@@ -1647,6 +1648,7 @@ export default function GroupChatThread() {
                                 sender: isSentByMe ? 'You' : msg.sender,
                                 image: msg.image || undefined,
                                 voice: msg.voice || undefined,
+                                audio_summary: msg.audio_summary || undefined,
                               })
                               focusTextarea()
                             }}
@@ -1705,7 +1707,8 @@ export default function GroupChatThread() {
                                               </span>
                                             ) : replySnippet.startsWith('🎤|') ? (
                                               <span className="flex items-center gap-1">
-                                                <i className="fa-solid fa-microphone text-[9px]" /> Voice message
+                                                <i className="fa-solid fa-microphone text-[9px]" />
+                                                {replySnippet.length > 2 ? replySnippet.slice(2) : 'Voice message'}
                                               </span>
                                             ) : (
                                               replySnippet
@@ -2064,7 +2067,7 @@ export default function GroupChatThread() {
                     {replyTo.voice ? (
                       <span className="flex items-center gap-1">
                         <i className="fa-solid fa-microphone text-xs" />
-                        Voice message
+                        {replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}
                       </span>
                     ) : replyTo.image && !replyTo.text ? (
                       <span className="flex items-center gap-1">
