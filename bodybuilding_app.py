@@ -10505,11 +10505,141 @@ def send_message():
             except Exception as _e:
                 logger.warning(f"push send_message warn: {_e}")
 
+            # Trigger Steve AI reply if messaging Steve
+            if recipient_username.lower() == 'steve' and username.lower() != 'steve' and not is_encrypted:
+                try:
+                    import threading
+                    thread = threading.Thread(
+                        target=_trigger_steve_dm_reply,
+                        args=(username, message)
+                    )
+                    thread.daemon = True
+                    thread.start()
+                    logger.info(f"Triggered Steve DM reply for {username}")
+                except Exception as steve_err:
+                    logger.warning(f"Failed to trigger Steve DM reply: {steve_err}")
+            
             return jsonify({'success': True, 'message': 'Message sent successfully', 'message_id': inserted_id, 'time': inserted_time})
             
     except Exception as e:
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
+
+def _trigger_steve_dm_reply(sender_username: str, user_message: str):
+    """Generate and send Steve's AI reply in a 1:1 DM. Runs in a background thread."""
+    import time
+    from datetime import datetime
+    
+    time.sleep(1.5)
+    
+    if not XAI_API_KEY:
+        logger.warning("XAI_API_KEY not configured, Steve cannot reply in DM")
+        return
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            # Get recent DM history for context
+            c.execute(f"""
+                SELECT sender, message, timestamp FROM messages
+                WHERE (sender = {ph} AND receiver = 'steve')
+                   OR (sender = 'steve' AND receiver = {ph})
+                ORDER BY timestamp DESC
+                LIMIT 15
+            """, (sender_username, sender_username))
+            
+            recent = []
+            for row in c.fetchall():
+                s = row['sender'] if hasattr(row, 'keys') else row[0]
+                m = row['message'] if hasattr(row, 'keys') else row[1]
+                if m:
+                    recent.append(f"{s}: {m}")
+            recent.reverse()
+        
+        current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
+        
+        context = "Direct message conversation:\n" + "\n".join(recent[-10:])
+        context += f"\n\n{sender_username} sent you a message. Respond helpfully."
+        context += f"\n\n[Current date and time: {current_date}]"
+        
+        system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat with real-time knowledge and web search capabilities.
+
+CURRENT DATE AND TIME: {current_date}
+
+LANGUAGE RULES:
+- If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).
+  Use "tu" not "você", "autocarro" not "ônibus", "telemóvel" not "celular".
+- If user writes in English, respond in English.
+- If user writes in Spanish, respond in Spanish.
+- Match the user's language exactly.
+
+CONVERSATION INTELLIGENCE:
+1. If the user asks about news, weather, sports, or current events — search the web and provide real, up-to-date information with source links.
+2. If casual banter — join in naturally. Be witty, use emojis, keep it light.
+3. If a problem is being discussed with no solution — suggest practical, actionable solutions.
+4. If a solution is discussed — analyze it briefly: strengths, risks, improvements.
+5. Answer direct questions helpfully and concisely.
+6. If images are attached, you CAN see them. Analyze and describe when relevant.
+
+RESPONSE STYLE:
+- Keep responses concise (2-5 sentences). This is a private chat, be personable.
+- Use emojis occasionally.
+- When citing sources, include the URL — it will be auto-formatted as a clickable link."""
+        
+        from openai import OpenAI
+        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+        
+        response = client.responses.create(
+            model="grok-4-1-fast-reasoning",
+            input=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": context}
+            ],
+            tools=[
+                {"type": "web_search"},
+                {"type": "x_search"}
+            ],
+            max_output_tokens=600
+        )
+        
+        ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
+        
+        if not ai_response:
+            logger.warning("Steve DM reply: empty response from API")
+            return
+        
+        ai_response = format_steve_response_links(ai_response)
+        
+        # Insert Steve's reply as a DM
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            if USE_MYSQL:
+                c.execute("""
+                    INSERT INTO messages (sender, receiver, message, timestamp)
+                    VALUES (%s, %s, %s, NOW())
+                """, ('steve', sender_username, ai_response))
+            else:
+                _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                c.execute("""
+                    INSERT INTO messages (sender, receiver, message, timestamp)
+                    VALUES (?, ?, ?, ?)
+                """, ('steve', sender_username, ai_response, _ts))
+            conn.commit()
+            
+            # Invalidate caches so the reply appears on next poll
+            try:
+                invalidate_message_cache(sender_username, 'steve')
+                cache.delete(f"chat_threads:{sender_username}")
+            except Exception:
+                pass
+            
+            logger.info(f"Steve replied to DM from {sender_username}")
+    
+    except Exception as e:
+        logger.error(f"Error in Steve DM reply: {e}", exc_info=True)
+
 
 @app.route('/api/chat/edit_message', methods=['POST'])
 @login_required
