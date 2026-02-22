@@ -6979,15 +6979,39 @@ def admin_dashboard_api():
                 }
             }
             
-            # Get users list
-            c.execute("SELECT username, subscription FROM users ORDER BY username")
+            # Last user created and last community created
+            try:
+                c.execute("SELECT username, created_at FROM users ORDER BY created_at DESC LIMIT 1")
+                last_user_row = c.fetchone()
+                if last_user_row:
+                    stats['last_user'] = {
+                        'username': last_user_row['username'] if hasattr(last_user_row, 'keys') else last_user_row[0],
+                        'created_at': str(last_user_row['created_at'] if hasattr(last_user_row, 'keys') else last_user_row[1]) if (last_user_row['created_at'] if hasattr(last_user_row, 'keys') else last_user_row[1]) else None
+                    }
+            except Exception:
+                pass
+            
+            try:
+                c.execute("SELECT name, id FROM communities ORDER BY id DESC LIMIT 1")
+                last_comm_row = c.fetchone()
+                if last_comm_row:
+                    stats['last_community'] = {
+                        'name': last_comm_row['name'] if hasattr(last_comm_row, 'keys') else last_comm_row[0],
+                        'id': last_comm_row['id'] if hasattr(last_comm_row, 'keys') else last_comm_row[1]
+                    }
+            except Exception:
+                pass
+            
+            # Get users list with created_at
+            c.execute("SELECT username, subscription, created_at FROM users ORDER BY username")
             users_raw = c.fetchall()
             users = []
             for user in users_raw:
                 users.append({
                     'username': user['username'] if hasattr(user, 'keys') else user[0],
                     'subscription': user['subscription'] if hasattr(user, 'keys') else user[1],
-                    'is_active': True,  # Default for now
+                    'created_at': str(user['created_at'] if hasattr(user, 'keys') else user[2]) if (user['created_at'] if hasattr(user, 'keys') else user[2]) else None,
+                    'is_active': True,
                     'is_admin': is_app_admin(user['username'] if hasattr(user, 'keys') else user[0])
                 })
             
@@ -7796,7 +7820,8 @@ def api_public_profile(username):
                        u.gender, u.country, u.city, u.date_of_birth, u.age,
                        p.display_name, p.bio, p.location, p.website,
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo,
-                       COALESCE(p.is_public, 1)
+                       COALESCE(p.is_public, 1),
+                       u.first_name, u.last_name
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username = {ph}
@@ -7832,6 +7857,8 @@ def api_public_profile(username):
                 'is_public': bool(get_val(row, 'is_public', 15)),
                 'personal': {
                     'display_name': (get_val(row, 'display_name', 7) or actual_username),
+                    'first_name': get_val(row, 'first_name', 16),
+                    'last_name': get_val(row, 'last_name', 17),
                     'gender': get_val(row, 'gender', 2),
                     'country': get_val(row, 'country', 3),
                     'city': get_val(row, 'city', 4),

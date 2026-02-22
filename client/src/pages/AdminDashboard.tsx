@@ -21,6 +21,8 @@ interface Stats {
   wau?: number
   wru?: number
   wru_repeat_rate_pct?: number
+  last_user?: { username: string; created_at?: string | null }
+  last_community?: { name: string; id: number }
   cohorts?: { month: string; size: number; retention: number[] }[]
   leaderboards?: {
     top_posters: { username: string; count: number }[]
@@ -143,6 +145,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'premium' | 'free'>('all')
+  const [userSortBy, setUserSortBy] = useState<'name' | 'date'>('name')
   const [showAddUserModal, setShowAddUserModal] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteCommunityId, setInviteCommunityId] = useState<number | null>(null)
@@ -858,6 +861,13 @@ export default function AdminDashboard() {
       (filterType === 'premium' && user.subscription === 'premium') ||
       (filterType === 'free' && user.subscription === 'free')
     return matchesSearch && matchesFilter
+  }).sort((a, b) => {
+    if (userSortBy === 'date') {
+      const da = a.created_at ? new Date(a.created_at).getTime() : 0
+      const db = b.created_at ? new Date(b.created_at).getTime() : 0
+      return db - da
+    }
+    return a.username.localeCompare(b.username)
   })
 
   const filteredCommunities = communities.filter(community => {
@@ -1145,7 +1155,24 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Leaderboards removed from overview; available in Metrics tab */}
+            {/* Latest Activity */}
+            <div className="grid grid-cols-1 gap-3">
+              {stats.last_user && (
+                <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                  <div className="text-xs text-white/60 mb-1">Last User Created</div>
+                  <div className="text-sm font-semibold text-[#4db6ac]">{stats.last_user.username}</div>
+                  {stats.last_user.created_at && (
+                    <div className="text-[11px] text-white/40 mt-0.5">{new Date(stats.last_user.created_at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                  )}
+                </div>
+              )}
+              {stats.last_community && (
+                <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
+                  <div className="text-xs text-white/60 mb-1">Last Community Created</div>
+                  <div className="text-sm font-semibold text-[#4db6ac]">{stats.last_community.name}</div>
+                </div>
+              )}
+            </div>
 
             {/* Parent Communities section removed per request */}
 
@@ -1311,6 +1338,13 @@ export default function AdminDashboard() {
                 <option value="free">Free</option>
               </select>
               <button
+                onClick={() => setUserSortBy(prev => prev === 'name' ? 'date' : 'name')}
+                className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white hover:bg-white/10 flex items-center gap-1"
+              >
+                <i className={`fa-solid ${userSortBy === 'date' ? 'fa-calendar' : 'fa-arrow-down-a-z'} text-xs`} />
+                {userSortBy === 'date' ? 'Date' : 'A-Z'}
+              </button>
+              <button
                 onClick={() => setShowAddUserModal(true)}
                 className="px-3 py-1.5 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:bg-[#45a099]"
               >
@@ -1329,7 +1363,7 @@ export default function AdminDashboard() {
                       </div>
                       <div>
                         <div className="font-medium text-sm">{user.username}</div>
-                        <div className="text-xs text-white/60">
+                        <div className="text-xs text-white/60 flex flex-wrap items-center gap-1">
                           {user.subscription === 'premium' ? (
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-[#4db6ac]/20 text-[#4db6ac] font-medium">
                               PREMIUM
@@ -1340,11 +1374,16 @@ export default function AdminDashboard() {
                             </span>
                           )}
                           {user.is_admin && (
-                            <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
                               ADMIN
                             </span>
                           )}
                         </div>
+                        {user.created_at && (
+                          <div className="text-[10px] text-white/30 mt-0.5">
+                            Joined {new Date(user.created_at).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-1">

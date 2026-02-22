@@ -7,6 +7,8 @@ import { useUserProfile } from '../contexts/UserProfileContext'
 
 type PersonalInfo = {
   display_name?: string | null
+  first_name?: string | null
+  last_name?: string | null
   date_of_birth?: string | null
   gender?: string | null
   country?: string | null
@@ -251,6 +253,11 @@ export default function PublicProfile() {
                   </span>
                 ) : null}
               </div>
+              {(personal.first_name || personal.last_name) ? (
+                <div className="text-sm text-white/80 font-medium">
+                  {[personal.first_name, personal.last_name].filter(Boolean).join(' ')}
+                </div>
+              ) : null}
               {location ? (
                 <div className="flex flex-wrap items-center gap-1 text-xs text-[#9fb0b5]">
                   <i className="fa-solid fa-location-dot" />

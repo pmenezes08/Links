@@ -1525,6 +1525,45 @@ def delete_group_message(group_id: int, message_id: int):
         return jsonify({"success": False, "error": "Failed to delete message"}), 500
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/message/<int:message_id>/update_summary", methods=["POST"])
+@_login_required
+def update_group_audio_summary(group_id: int, message_id: int):
+    """Update the AI summary for a voice message. Only the sender can edit."""
+    username = session["username"]
+    data = request.get_json() or {}
+    new_summary = (data.get("summary") or "").strip()
+    
+    if not new_summary:
+        return jsonify({"success": False, "error": "Summary cannot be empty"}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            
+            c.execute(f"""
+                SELECT sender_username FROM group_chat_messages
+                WHERE id = {ph} AND group_id = {ph} AND is_deleted = 0
+            """, (message_id, group_id))
+            
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Message not found"}), 404
+            
+            sender = row["sender_username"] if hasattr(row, "keys") else row[0]
+            if sender != username:
+                return jsonify({"success": False, "error": "You can only edit your own summaries"}), 403
+            
+            c.execute(f"UPDATE group_chat_messages SET audio_summary = {ph} WHERE id = {ph}", (new_summary, message_id))
+            conn.commit()
+            
+            return jsonify({"success": True, "summary": new_summary})
+            
+    except Exception as e:
+        logger.error(f"Error updating audio summary for message {message_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to update summary"}), 500
+
+
 @group_chat_bp.route("/api/group_chat/<int:group_id>/messages/bulk_delete", methods=["POST"])
 @_login_required
 def bulk_delete_group_messages(group_id: int):

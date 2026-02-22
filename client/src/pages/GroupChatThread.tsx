@@ -110,6 +110,8 @@ export default function GroupChatThread() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
+  const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null)
+  const [editSummaryText, setEditSummaryText] = useState('')
   const pendingDeletions = useRef<Set<number>>(new Set())
   const [steveIsTyping, setSteveIsTyping] = useState(false)
   
@@ -1363,6 +1365,31 @@ export default function GroupChatThread() {
     setEditText('')
   }
 
+  const handleSaveSummaryEdit = async (messageId: number) => {
+    const newSummary = editSummaryText.trim()
+    if (!newSummary) return
+    
+    const oldMsg = serverMessages.find(m => m.id === messageId)
+    setServerMessages(prev => prev.map(m => m.id === messageId ? { ...m, audio_summary: newSummary } : m))
+    setEditingSummaryId(null)
+    setEditSummaryText('')
+    
+    try {
+      const response = await fetch(`/api/group_chat/${group_id}/message/${messageId}/update_summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ summary: newSummary }),
+      })
+      const data = await response.json()
+      if (!data.success) {
+        if (oldMsg) setServerMessages(prev => prev.map(m => m.id === messageId ? { ...m, audio_summary: oldMsg.audio_summary } : m))
+      }
+    } catch {
+      if (oldMsg) setServerMessages(prev => prev.map(m => m.id === messageId ? { ...m, audio_summary: oldMsg.audio_summary } : m))
+    }
+  }
+
   if (loading && !group) {
     return (
       <div className="min-h-screen chat-thread-bg text-white flex items-center justify-center">
@@ -1797,13 +1824,53 @@ export default function GroupChatThread() {
                                   />
                                   {msg.audio_summary ? (
                                     <div className="px-2 pb-1 pt-0.5">
-                                      <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
-                                        <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
-                                        <span>AI Summary</span>
-                                      </div>
-                                      <p className="text-[12px] text-white/80 leading-relaxed italic">
-                                        {msg.audio_summary}
-                                      </p>
+                                      {editingSummaryId === msg.id ? (
+                                        <div className="space-y-1.5">
+                                          <div className="text-[11px] text-white/50 flex items-center gap-1">
+                                            <i className="fa-solid fa-pen text-[9px]" />
+                                            <span>Edit AI Summary</span>
+                                          </div>
+                                          <textarea
+                                            value={editSummaryText}
+                                            onChange={(e) => setEditSummaryText(e.target.value)}
+                                            className="w-full bg-white/10 border border-white/20 rounded-lg px-2 py-1.5 text-[12px] text-white resize-none focus:outline-none focus:border-[#4db6ac]"
+                                            rows={2}
+                                            autoFocus
+                                          />
+                                          <div className="flex gap-1.5">
+                                            <button
+                                              onClick={() => handleSaveSummaryEdit(msg.id)}
+                                              className="px-2 py-0.5 text-[11px] rounded bg-[#4db6ac] text-black font-medium"
+                                            >Save</button>
+                                            <button
+                                              onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}
+                                              className="px-2 py-0.5 text-[11px] rounded bg-white/10 text-white/70"
+                                            >Cancel</button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div
+                                          onClick={(e) => {
+                                            if (msg.sender === currentUsername || msg.sender === 'You') {
+                                              e.stopPropagation()
+                                              setEditingSummaryId(msg.id)
+                                              setEditSummaryText(msg.audio_summary || '')
+                                            }
+                                          }}
+                                          className={msg.sender === currentUsername || msg.sender === 'You' ? 'cursor-pointer' : ''}
+                                        >
+                                          <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
+                                            <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
+                                            <span>AI Summary</span>
+                                            {(msg.sender === currentUsername || msg.sender === 'You') && (
+                                              <i className="fa-solid fa-pen text-[8px] text-white/30 ml-1" />
+                                            )}
+                                          </div>
+                                          <p className="text-[12px] text-white/80 leading-relaxed italic">
+                                            {msg.audio_summary}
+                                          </p>
+                                        </div>
+                                      )}
                                     </div>
                                   ) : msg.voice && (() => {
                                     try {
