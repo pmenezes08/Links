@@ -1983,8 +1983,7 @@ RESPONSE STYLE:
                     {"type": "web_search"},
                     {"type": "x_search"}
                 ],
-                max_output_tokens=600,
-                temperature=0.7
+                max_output_tokens=600
             )
             
             ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None

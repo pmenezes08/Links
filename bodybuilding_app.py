@@ -20151,13 +20151,12 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                         {"type": "web_search"},
                         {"type": "x_search"}
                     ],
-                    max_output_tokens=600,
-                    temperature=0.7
+                    max_output_tokens=600
                 )
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve post reply Grok 4.1 Fast Reasoning successful")
+                    logger.info("Steve post reply Grok 4.1 Fast successful")
                     
             except Exception as ai_err:
                 logger.error(f"AI error in Steve post reply: {ai_err}")
@@ -20532,13 +20531,12 @@ def ai_steve_reply():
                         {"type": "web_search"},
                         {"type": "x_search"}
                     ],
-                    max_output_tokens=600,
-                    temperature=0.7
+                    max_output_tokens=600
                 )
                 
                 ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
                 if ai_response:
-                    logger.info("Steve Grok 4.1 Fast Reasoning with web+X search successful")
+                    logger.info("Steve Grok 4.1 Fast with web+X search successful")
                 
                 if ai_response is None:
                     logger.error("Grok 4.1 Fast returned empty response")
