@@ -1936,6 +1936,37 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             context += "Recent conversation:\n" + "\n".join(recent_messages[-15:])
             context += f"\n\n{sender_username} mentioned you (@Steve)."
             context += f"\n\n[Current date and time: {current_date}]"
+            
+            # Try to collect images from the triggering message and recent messages
+            # This is non-critical: if it fails, Steve still responds with text only
+            image_urls = []
+            try:
+                # First check the triggering message itself
+                c.execute(f"SELECT image_path FROM group_chat_messages WHERE id = {ph}", (reply_to_message_id,))
+                trig_row = c.fetchone()
+                if trig_row:
+                    trig_img = trig_row["image_path"] if hasattr(trig_row, "keys") else trig_row[0]
+                    if trig_img and isinstance(trig_img, str) and trig_img.startswith('http'):
+                        image_urls.append(trig_img)
+                
+                # Also check recent messages for shared images (last 5 with images)
+                if len(image_urls) < 4:
+                    c.execute(f"""
+                        SELECT image_path FROM group_chat_messages
+                        WHERE group_id = {ph} AND image_path IS NOT NULL AND image_path != ''
+                        ORDER BY created_at DESC LIMIT 5
+                    """, (group_id,))
+                    for img_row in c.fetchall():
+                        img_val = img_row["image_path"] if hasattr(img_row, "keys") else img_row[0]
+                        if img_val and isinstance(img_val, str) and img_val.startswith('http') and img_val not in image_urls and len(image_urls) < 4:
+                            image_urls.append(img_val)
+                
+                if image_urls:
+                    context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
+                    logger.info(f"Steve vision: collected {len(image_urls)} images for group {group_id}")
+            except Exception as img_err:
+                logger.warning(f"Could not fetch images for Steve (non-critical): {img_err}")
+                image_urls = []
         
         from openai import OpenAI
         
@@ -1957,6 +1988,7 @@ Read the full conversation context carefully. Adapt your response based on what'
 3. If a problem or challenge is being discussed and NO solution has been proposed — proactively suggest practical, actionable solutions with brief reasoning.
 4. If a solution IS already being discussed — briefly analyze it: what's good about it, any risks or blind spots, and suggest improvements or alternatives if relevant.
 5. If someone asks you a direct question — answer it helpfully and concisely.
+6. If images are attached, you CAN see them. Analyze, describe, or comment on them when relevant or asked.
 
 RESPONSE STYLE:
 - Keep responses concise (2-5 sentences). Don't lecture or over-explain.
@@ -1973,11 +2005,21 @@ RESPONSE STYLE:
         )
         
         try:
+            # Build user input — attach images if available
+            if image_urls:
+                user_content = [{"type": "text", "text": context}]
+                for img_url in image_urls:
+                    user_content.append({"type": "image_url", "image_url": {"url": img_url}})
+                effective_system = system_prompt + "\n\nYou can see images shared in this conversation. Describe what you see if asked."
+            else:
+                user_content = context
+                effective_system = system_prompt
+            
             response = client.responses.create(
                 model="grok-4-1-fast-reasoning",
                 input=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": context}
+                    {"role": "system", "content": effective_system},
+                    {"role": "user", "content": user_content}
                 ],
                 tools=[
                     {"type": "web_search"},
