@@ -3028,7 +3028,7 @@ export default function GroupChatThread() {
               {translateLanguages.map(lang => (
                 <button
                   key={lang.code}
-                  onClick={() => handleTranslateSummary(showLangPicker!, langPickerSummary, lang.code)}
+                  onClick={() => handleTranslateSummary(showLangPicker, langPickerSummary, lang.code)}
                   className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10 rounded-lg flex items-center gap-3"
                 >
                   <span className="text-lg">{lang.flag}</span>
