@@ -21590,6 +21590,362 @@ def get_user_communities():
         logger.error(f"Error fetching user communities: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to fetch communities'}), 500
 
+
+@app.route('/api/networking/community_members/<int:community_id>', methods=['GET'])
+@login_required
+def api_networking_community_members(community_id):
+    """Get community members with profiles for networking. Only members of the community can access."""
+    username = session.get('username')
+    location = request.args.get('location', '').strip()
+    industry = request.args.get('industry', '').strip()
+    interests = request.args.get('interests', '').strip()
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            # Verify user belongs to the community
+            c.execute(f"""
+                SELECT 1 FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {ph} AND uc.community_id = {ph}
+            """, (username, community_id))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
+
+            # Build query for members with profiles
+            # Only show members from communities the logged-in user belongs to (this community)
+            base_sql = """
+                SELECT u.username, COALESCE(p.display_name, u.username) as display_name,
+                       p.profile_picture, u.city, u.country, u.industry, u.role, u.company,
+                       u.professional_interests, COALESCE(p.bio, u.professional_about) as bio
+                FROM users u
+                JOIN user_communities uc ON u.id = uc.user_id
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE uc.community_id = {ph} AND u.username != {ph}
+            """.replace('{ph}', ph)
+            params = [community_id, username]
+
+            conditions = []
+            if location:
+                conditions.append(f"(u.city LIKE {ph} OR u.country LIKE {ph})")
+                loc_pattern = f"%{location}%"
+                params.extend([loc_pattern, loc_pattern])
+            if industry:
+                conditions.append(f"u.industry LIKE {ph}")
+                params.append(f"%{industry}%")
+            if interests:
+                conditions.append(f"u.professional_interests LIKE {ph}")
+                params.append(f"%{interests}%")
+
+            if conditions:
+                base_sql += " AND " + " AND ".join(conditions)
+            base_sql += " ORDER BY u.username"
+
+            c.execute(base_sql, tuple(params))
+            rows = c.fetchall()
+
+            members = []
+            for row in rows:
+                interests_raw = row['professional_interests'] if hasattr(row, 'keys') else row[8]
+                interests_list = []
+                if interests_raw:
+                    try:
+                        decoded = json.loads(interests_raw)
+                        interests_list = [str(x).strip() for x in decoded if isinstance(x, (str, int, float)) and str(x).strip()] if isinstance(decoded, list) else []
+                    except Exception:
+                        interests_list = [p.strip() for p in str(interests_raw).split(',') if p and p.strip()]
+                members.append({
+                    'username': row['username'] if hasattr(row, 'keys') else row[0],
+                    'display_name': row['display_name'] if hasattr(row, 'keys') else row[1],
+                    'profile_picture': row['profile_picture'] if hasattr(row, 'keys') else row[2],
+                    'city': row['city'] if hasattr(row, 'keys') else row[3],
+                    'country': row['country'] if hasattr(row, 'keys') else row[4],
+                    'industry': row['industry'] if hasattr(row, 'keys') else row[5],
+                    'role': row['role'] if hasattr(row, 'keys') else row[6],
+                    'company': row['company'] if hasattr(row, 'keys') else row[7],
+                    'professional_interests': interests_list,
+                    'bio': row['bio'] if hasattr(row, 'keys') else row[9],
+                })
+
+            # Get distinct filter values for dropdowns
+            c.execute(f"""
+                SELECT DISTINCT u.city, u.country, u.industry, u.professional_interests
+                FROM users u
+                JOIN user_communities uc ON u.id = uc.user_id
+                WHERE uc.community_id = {ph} AND u.username != {ph}
+            """, (community_id, username))
+            filter_rows = c.fetchall()
+
+            cities = set()
+            countries = set()
+            industries = set()
+            all_interests = set()
+            for fr in filter_rows:
+                city = fr['city'] if hasattr(fr, 'keys') else fr[0]
+                country = fr['country'] if hasattr(fr, 'keys') else fr[1]
+                ind = fr['industry'] if hasattr(fr, 'keys') else fr[2]
+                inter_raw = fr['professional_interests'] if hasattr(fr, 'keys') else fr[3]
+                if city:
+                    cities.add(city)
+                if country:
+                    countries.add(country)
+                if ind:
+                    industries.add(ind)
+                if inter_raw:
+                    try:
+                        decoded = json.loads(inter_raw)
+                        for x in decoded if isinstance(decoded, list) else []:
+                            if isinstance(x, (str, int, float)) and str(x).strip():
+                                all_interests.add(str(x).strip())
+                    except Exception:
+                        for p in str(inter_raw).split(','):
+                            if p and p.strip():
+                                all_interests.add(p.strip())
+
+            return jsonify({
+                'success': True,
+                'members': members,
+                'filters': {
+                    'cities': sorted(cities),
+                    'countries': sorted(countries),
+                    'industries': sorted(industries),
+                    'interests': sorted(all_interests),
+                }
+            })
+    except Exception as e:
+        logger.error(f"Error fetching community members: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/networking/steve_match', methods=['POST'])
+@login_required
+def api_networking_steve_match():
+    """Ask Steve to find matching community members based on the user's message."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    community_id = data.get('community_id')
+    message = (data.get('message') or '').strip()
+
+    if not community_id or not message:
+        return jsonify({'success': False, 'error': 'community_id and message are required'}), 400
+
+    if not XAI_API_KEY:
+        return jsonify({'success': False, 'error': 'AI service not available'}), 503
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            # Verify user belongs to community
+            c.execute(f"""
+                SELECT 1 FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {ph} AND uc.community_id = {ph}
+            """, (username, community_id))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
+
+            # Fetch current user's profile
+            c.execute(f"""
+                SELECT u.username, COALESCE(p.display_name, u.username), p.bio, u.city, u.country,
+                       u.industry, u.role, u.company, u.professional_interests, u.professional_about
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = {ph}
+            """, (username,))
+            user_row = c.fetchone()
+            user_profile = ""
+            if user_row:
+                def v(r, k, i):
+                    try:
+                        return r[k] if hasattr(r, 'keys') else r[i]
+                    except Exception:
+                        return None
+                interests_raw = v(user_row, 'professional_interests', 8)
+                interests_list = []
+                if interests_raw:
+                    try:
+                        d = json.loads(interests_raw)
+                        interests_list = [str(x) for x in d] if isinstance(d, list) else []
+                    except Exception:
+                        interests_list = [p.strip() for p in str(interests_raw).split(',') if p and p.strip()]
+                user_profile = f"User: {v(user_row, 'username', 0)} | {v(user_row, 'display_name', 1)} | {v(user_row, 'bio', 2) or ''} | City: {v(user_row, 'city', 3) or ''} | Country: {v(user_row, 'country', 4) or ''} | Industry: {v(user_row, 'industry', 5) or ''} | Role: {v(user_row, 'role', 6) or ''} | Company: {v(user_row, 'company', 7) or ''} | Interests: {', '.join(interests_list)} | About: {v(user_row, 'professional_about', 9) or ''}"
+
+            # Fetch all community members with profiles
+            c.execute(f"""
+                SELECT u.username, COALESCE(p.display_name, u.username), p.bio, u.city, u.country,
+                       u.industry, u.role, u.company, u.professional_interests, u.professional_about
+                FROM users u
+                JOIN user_communities uc ON u.id = uc.user_id
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE uc.community_id = {ph} AND u.username != {ph}
+            """, (community_id, username))
+            member_rows = c.fetchall()
+
+            members_text = []
+            for mr in member_rows:
+                def v(r, k, i):
+                    try:
+                        return r[k] if hasattr(r, 'keys') else r[i]
+                    except Exception:
+                        return None
+                interests_raw = v(mr, 'professional_interests', 8)
+                interests_list = []
+                if interests_raw:
+                    try:
+                        d = json.loads(interests_raw)
+                        interests_list = [str(x) for x in d] if isinstance(d, list) else []
+                    except Exception:
+                        interests_list = [p.strip() for p in str(interests_raw).split(',') if p and p.strip()]
+                members_text.append(
+                    f"- {v(mr, 'username', 0)} | {v(mr, 'display_name', 1)} | {v(mr, 'bio', 2) or ''} | City: {v(mr, 'city', 3) or ''} | Country: {v(mr, 'country', 4) or ''} | Industry: {v(mr, 'industry', 5) or ''} | Role: {v(mr, 'role', 6) or ''} | Company: {v(mr, 'company', 7) or ''} | Interests: {', '.join(interests_list)} | About: {v(mr, 'professional_about', 9) or ''}"
+                )
+
+            system_prompt = """You are Steve, a helpful networking assistant. The user is asking you to find community members who match their request.
+
+Given the user's profile and the list of community members with their profiles, identify and recommend the best matching members based on the user's message.
+
+Respond with a concise, friendly message listing the recommended matches and why they're a good fit. Use markdown for readability. Do not make up profiles - only reference members from the provided list."""
+
+            context = f"""User's profile:\n{user_profile}\n\nUser's request: {message}\n\nCommunity members:\n""" + "\n".join(members_text)
+
+            from openai import OpenAI
+            client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+            response = client.responses.create(
+                model="grok-4-1-fast-non-reasoning",
+                input=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": context}
+                ],
+                tools=[{"type": "web_search"}, {"type": "x_search"}],
+                max_output_tokens=800,
+                temperature=0.7
+            )
+            ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else ""
+            if not ai_response:
+                ai_response = "I couldn't find matching members. Try refining your request."
+            ai_response = format_steve_response_links(ai_response)
+            return jsonify({'success': True, 'response': ai_response})
+    except Exception as e:
+        logger.error(f"Error in steve_match: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/networking/steve_auto_match', methods=['POST'])
+@login_required
+def api_networking_steve_auto_match():
+    """Ask Steve to suggest top matches based on profile compatibility."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    community_id = data.get('community_id')
+
+    if not community_id:
+        return jsonify({'success': False, 'error': 'community_id is required'}), 400
+
+    if not XAI_API_KEY:
+        return jsonify({'success': False, 'error': 'AI service not available'}), 503
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            # Verify user belongs to community
+            c.execute(f"""
+                SELECT 1 FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {ph} AND uc.community_id = {ph}
+            """, (username, community_id))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
+
+            # Fetch user's own profile
+            c.execute(f"""
+                SELECT u.username, COALESCE(p.display_name, u.username), p.bio, u.city, u.country,
+                       u.industry, u.role, u.company, u.professional_interests, u.professional_about
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = {ph}
+            """, (username,))
+            user_row = c.fetchone()
+            user_profile = ""
+            if user_row:
+                def v(r, k, i):
+                    try:
+                        return r[k] if hasattr(r, 'keys') else r[i]
+                    except Exception:
+                        return None
+                interests_raw = v(user_row, 'professional_interests', 8)
+                interests_list = []
+                if interests_raw:
+                    try:
+                        d = json.loads(interests_raw)
+                        interests_list = [str(x) for x in d] if isinstance(d, list) else []
+                    except Exception:
+                        interests_list = [p.strip() for p in str(interests_raw).split(',') if p and p.strip()]
+                user_profile = f"User: {v(user_row, 'username', 0)} | {v(user_row, 'display_name', 1)} | {v(user_row, 'bio', 2) or ''} | City: {v(user_row, 'city', 3) or ''} | Country: {v(user_row, 'country', 4) or ''} | Industry: {v(user_row, 'industry', 5) or ''} | Role: {v(user_row, 'role', 6) or ''} | Company: {v(user_row, 'company', 7) or ''} | Interests: {', '.join(interests_list)} | About: {v(user_row, 'professional_about', 9) or ''}"
+
+            # Fetch all community members with profiles
+            c.execute(f"""
+                SELECT u.username, COALESCE(p.display_name, u.username), p.bio, u.city, u.country,
+                       u.industry, u.role, u.company, u.professional_interests, u.professional_about
+                FROM users u
+                JOIN user_communities uc ON u.id = uc.user_id
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE uc.community_id = {ph} AND u.username != {ph}
+            """, (community_id, username))
+            member_rows = c.fetchall()
+
+            members_text = []
+            for mr in member_rows:
+                def v(r, k, i):
+                    try:
+                        return r[k] if hasattr(r, 'keys') else r[i]
+                    except Exception:
+                        return None
+                interests_raw = v(mr, 'professional_interests', 8)
+                interests_list = []
+                if interests_raw:
+                    try:
+                        d = json.loads(interests_raw)
+                        interests_list = [str(x) for x in d] if isinstance(d, list) else []
+                    except Exception:
+                        interests_list = [p.strip() for p in str(interests_raw).split(',') if p and p.strip()]
+                members_text.append(
+                    f"- {v(mr, 'username', 0)} | {v(mr, 'display_name', 1)} | {v(mr, 'bio', 2) or ''} | City: {v(mr, 'city', 3) or ''} | Country: {v(mr, 'country', 4) or ''} | Industry: {v(mr, 'industry', 5) or ''} | Role: {v(mr, 'role', 6) or ''} | Company: {v(mr, 'company', 7) or ''} | Interests: {', '.join(interests_list)} | About: {v(mr, 'professional_about', 9) or ''}"
+                )
+
+            system_prompt = """You are Steve, a helpful networking assistant. Based on the user's profile and the list of community members, suggest the top 3-5 members who would be the best professional matches.
+
+Consider compatibility based on: industry, role, location, interests, and professional goals. Respond with a concise, friendly message listing your top picks and why they're good matches. Use markdown for readability. Do not make up profiles - only reference members from the provided list."""
+
+            context = f"""User's profile:\n{user_profile}\n\nCommunity members:\n""" + "\n".join(members_text)
+
+            from openai import OpenAI
+            client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+            response = client.responses.create(
+                model="grok-4-1-fast-non-reasoning",
+                input=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": context}
+                ],
+                tools=[{"type": "web_search"}, {"type": "x_search"}],
+                max_output_tokens=800,
+                temperature=0.7
+            )
+            ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else ""
+            if not ai_response:
+                ai_response = "I couldn't suggest matches. Make sure your profile and community members have some professional info filled in."
+            ai_response = format_steve_response_links(ai_response)
+            return jsonify({'success': True, 'response': ai_response})
+    except Exception as e:
+        logger.error(f"Error in steve_auto_match: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/edit_community', methods=['POST'])
 @login_required
 def edit_community():
