@@ -3344,7 +3344,9 @@ export default function ChatThread(){
                   const newSummary = editSummaryText.trim()
                   if (!newSummary || !editingSummaryId) return
                   const msgId = editingSummaryId
-                  setMessages(prev => prev.map(m => (m.id === msgId || m.clientKey === msgId) ? { ...m, audio_summary: newSummary } : m))
+                  const matchMsg = (m: any) => String(m.id) === String(msgId) || String(m.clientKey) === String(msgId)
+                  const oldSummary = messages.find(matchMsg)?.audio_summary || ''
+                  setMessages(prev => prev.map(m => matchMsg(m) ? { ...m, audio_summary: newSummary } : m))
                   setEditingSummaryId(null)
                   setEditSummaryText('')
                   try {
@@ -3352,13 +3354,15 @@ export default function ChatThread(){
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       credentials: 'include',
-                      body: JSON.stringify({ message_id: msgId, summary: newSummary }),
+                      body: JSON.stringify({ message_id: Number(msgId), summary: newSummary }),
                     })
                     const data = await res.json()
                     if (!data.success) {
-                      setMessages(prev => prev.map(m => (m.id === msgId || m.clientKey === msgId) ? { ...m, audio_summary: m.audio_summary } : m))
+                      setMessages(prev => prev.map(m => matchMsg(m) ? { ...m, audio_summary: oldSummary } : m))
                     }
-                  } catch {}
+                  } catch {
+                    setMessages(prev => prev.map(m => matchMsg(m) ? { ...m, audio_summary: oldSummary } : m))
+                  }
                 }}
                 className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
               >Save</button>
