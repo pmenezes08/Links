@@ -10592,7 +10592,7 @@ RESPONSE STYLE:
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         
         response = client.responses.create(
-            model="grok-4-1-fast-reasoning",
+            model="grok-4-1-fast-non-reasoning",
             input=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": context}
@@ -10601,7 +10601,8 @@ RESPONSE STYLE:
                 {"type": "web_search"},
                 {"type": "x_search"}
             ],
-            max_output_tokens=600
+            max_output_tokens=600,
+            temperature=0.7
         )
         
         ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None

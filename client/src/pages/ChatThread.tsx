@@ -1751,6 +1751,7 @@ export default function ChatThread(){
                   ...m,
                   id: serverId,
                   audio_path: j.audio_path || m.audio_path,
+                  audio_summary: j.audio_summary || m.audio_summary || null,
                   isOptimistic: false,
                   clientKey: tempId,
                 }
@@ -1918,6 +1919,7 @@ export default function ChatThread(){
                   ...m,
                   id: serverId,
                   audio_path: j.audio_path || m.audio_path,
+                  audio_summary: j.audio_summary || m.audio_summary || null,
                   audio_duration_seconds: durationSeconds,
                   isOptimistic: false,
                   clientKey: tempId,
