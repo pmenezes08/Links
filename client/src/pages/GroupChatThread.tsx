@@ -112,6 +112,32 @@ export default function GroupChatThread() {
   const [editingSaving, setEditingSaving] = useState(false)
   const [editingSummaryId, setEditingSummaryId] = useState<number | null>(null)
   const [editSummaryText, setEditSummaryText] = useState('')
+  const [translations, setTranslations] = useState<Record<number, string>>({})
+  const [translatingId, setTranslatingId] = useState<number | null>(null)
+  const [showLangPicker, setShowLangPicker] = useState<number | null>(null)
+  const translateLanguages = [
+    { code: 'pt', name: 'Portuguese (PT)', flag: '🇵🇹' },
+    { code: 'en', name: 'English', flag: '🇬🇧' },
+    { code: 'fr', name: 'French', flag: '🇫🇷' },
+    { code: 'de', name: 'German', flag: '🇩🇪' },
+    { code: 'es', name: 'Spanish', flag: '🇪🇸' },
+    { code: 'it', name: 'Italian', flag: '🇮🇹' },
+  ]
+  const handleTranslateSummary = async (msgId: number, summary: string, langCode: string) => {
+    setShowLangPicker(null)
+    setTranslatingId(msgId)
+    try {
+      const res = await fetch('/translate_summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ summary, target_language: langCode }),
+      })
+      const data = await res.json()
+      if (data.success) setTranslations(prev => ({ ...prev, [msgId]: data.translated_summary }))
+    } catch {}
+    setTranslatingId(null)
+  }
   const pendingDeletions = useRef<Set<number>>(new Set())
   const [steveIsTyping, setSteveIsTyping] = useState(false)
   
@@ -1827,27 +1853,35 @@ export default function GroupChatThread() {
                                   />
                                   {msg.audio_summary ? (
                                     <div className="px-2 pb-1 pt-0.5">
-                                      <div
-                                        onClick={(e) => {
-                                          if (msg.sender === currentUsername || msg.sender === 'You') {
-                                            e.stopPropagation()
-                                            setEditingSummaryId(msg.id)
-                                            setEditSummaryText(msg.audio_summary || '')
-                                          }
-                                        }}
-                                        className={msg.sender === currentUsername || msg.sender === 'You' ? 'cursor-pointer' : ''}
-                                      >
-                                        <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
-                                          <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
-                                          <span>AI Summary</span>
+                                      <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
+                                        <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
+                                        <span>{translations[msg.id] ? 'AI Summary (Translated)' : 'AI Summary'}</span>
+                                        <div className="ml-auto flex items-center gap-1">
+                                          {translations[msg.id] && (
+                                            <button onClick={(e) => { e.stopPropagation(); setTranslations(prev => { const n = { ...prev }; delete n[msg.id]; return n }) }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
+                                          )}
+                                          <div className="relative">
+                                            <button onClick={(e) => { e.stopPropagation(); setShowLangPicker(showLangPicker === msg.id ? null : msg.id) }} className="text-white/30 hover:text-white/50 px-0.5" disabled={translatingId === msg.id}>
+                                              {translatingId === msg.id ? <i className="fa-solid fa-spinner fa-spin text-[9px]" /> : <i className="fa-solid fa-globe text-[9px]" />}
+                                            </button>
+                                            {showLangPicker === msg.id && (
+                                              <div className="absolute right-0 top-5 z-50 bg-[#1a1a2e] border border-white/15 rounded-lg shadow-lg min-w-[140px]" onClick={(e) => e.stopPropagation()}>
+                                                {translateLanguages.map(lang => (
+                                                  <button key={lang.code} onClick={(e) => { e.stopPropagation(); handleTranslateSummary(msg.id, msg.audio_summary!, lang.code) }} className="w-full px-3 py-1.5 text-left text-[11px] text-white hover:bg-white/10 flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg">
+                                                    <span>{lang.flag}</span><span>{lang.name}</span>
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
                                           {(msg.sender === currentUsername || msg.sender === 'You') && (
-                                            <i className="fa-solid fa-pen text-[8px] text-white/30 ml-1" />
+                                            <button onClick={(e) => { e.stopPropagation(); setEditingSummaryId(msg.id); setEditSummaryText(msg.audio_summary || '') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-pen text-[8px]" /></button>
                                           )}
                                         </div>
-                                        <p className="text-[12px] text-white/80 leading-relaxed italic">
-                                          {msg.audio_summary}
-                                        </p>
                                       </div>
+                                      <p className="text-[12px] text-white/80 leading-relaxed italic">
+                                        {translations[msg.id] || msg.audio_summary}
+                                      </p>
                                     </div>
                                   ) : msg.voice && (() => {
                                     try {

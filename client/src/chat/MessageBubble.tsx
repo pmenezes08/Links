@@ -61,6 +61,12 @@ export interface MessageBubbleProps {
   onImageClick: (imagePath: string) => void
   /** Handler for editing AI summary */
   onEditSummary?: (messageId: number | string, currentSummary: string) => void
+  /** Handler for translating AI summary */
+  onTranslateSummary?: (messageId: number | string, summary: string, langCode: string) => void
+  /** Map of translated summaries by message ID */
+  translatedSummaries?: Record<string | number, string>
+  /** ID of message currently being translated */
+  translatingId?: number | string | null
   /** Handler for story reply click - navigates to story */
   onStoryReplyClick?: (storyId: string, username: string) => void
   /** Username of the other person in the chat (for story navigation) */
@@ -86,6 +92,9 @@ function MessageBubbleInner({
   onCancelEdit,
   onImageClick,
   onEditSummary,
+  onTranslateSummary,
+  translatedSummaries,
+  translatingId,
   onStoryReplyClick,
   otherUsername,
   linkifyText,
@@ -253,24 +262,26 @@ function MessageBubbleInner({
                 audioPath={normalizeMediaPath(m.audio_path)}
               />
               {m.audio_summary ? (
-                <div
-                  className={`px-2 pb-1 pt-0.5 ${m.sent && onEditSummary ? 'cursor-pointer' : ''}`}
-                  onClick={(e) => {
-                    if (m.sent && onEditSummary) {
-                      e.stopPropagation()
-                      onEditSummary(m.id, m.audio_summary || '')
-                    }
-                  }}
-                >
+                <div className="px-2 pb-1 pt-0.5">
                   <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
                     <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
-                    <span>AI Summary</span>
-                    {m.sent && onEditSummary && (
-                      <i className="fa-solid fa-pen text-[8px] text-white/30 ml-1" />
-                    )}
+                    <span>{translatedSummaries?.[m.id] ? 'AI Summary (Translated)' : 'AI Summary'}</span>
+                    <div className="ml-auto flex items-center gap-1">
+                      {translatedSummaries?.[m.id] && onTranslateSummary && (
+                        <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, '', 'reset') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
+                      )}
+                      {onTranslateSummary && (
+                        <button onClick={(e) => { e.stopPropagation(); onTranslateSummary(m.id, m.audio_summary || '', 'pick') }} className="text-white/30 hover:text-white/50 px-0.5" disabled={translatingId === m.id}>
+                          {translatingId === m.id ? <i className="fa-solid fa-spinner fa-spin text-[9px]" /> : <i className="fa-solid fa-globe text-[9px]" />}
+                        </button>
+                      )}
+                      {m.sent && onEditSummary && (
+                        <button onClick={(e) => { e.stopPropagation(); onEditSummary(m.id, m.audio_summary || '') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-pen text-[8px]" /></button>
+                      )}
+                    </div>
                   </div>
                   <p className="text-[12px] text-white/80 leading-relaxed italic">
-                    {m.audio_summary}
+                    {translatedSummaries?.[m.id] || m.audio_summary}
                   </p>
                 </div>
               ) : m.audio_path && (() => {
