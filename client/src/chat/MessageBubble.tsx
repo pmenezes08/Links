@@ -59,6 +59,8 @@ export interface MessageBubbleProps {
   onCancelEdit: () => void
   /** Handler for image preview */
   onImageClick: (imagePath: string) => void
+  /** Handler for editing AI summary */
+  onEditSummary?: (messageId: number | string, currentSummary: string) => void
   /** Handler for story reply click - navigates to story */
   onStoryReplyClick?: (storyId: string, username: string) => void
   /** Username of the other person in the chat (for story navigation) */
@@ -83,6 +85,7 @@ function MessageBubbleInner({
   onCommitEdit,
   onCancelEdit,
   onImageClick,
+  onEditSummary,
   onStoryReplyClick,
   otherUsername,
   linkifyText,
@@ -244,10 +247,52 @@ function MessageBubbleInner({
 
           {/* Audio message */}
           {m.audio_path && !m.image_path ? (
-            <AudioMessage
-              message={m}
-              audioPath={normalizeMediaPath(m.audio_path)}
-            />
+            <>
+              <AudioMessage
+                message={m}
+                audioPath={normalizeMediaPath(m.audio_path)}
+              />
+              {m.audio_summary ? (
+                <div
+                  className={`px-2 pb-1 pt-0.5 ${m.sent && onEditSummary ? 'cursor-pointer' : ''}`}
+                  onClick={(e) => {
+                    if (m.sent && onEditSummary) {
+                      e.stopPropagation()
+                      onEditSummary(m.id, m.audio_summary || '')
+                    }
+                  }}
+                >
+                  <div className="text-[11px] text-white/50 flex items-center gap-1 mb-0.5">
+                    <i className="fa-solid fa-wand-magic-sparkles text-[9px]" />
+                    <span>AI Summary</span>
+                    {m.sent && onEditSummary && (
+                      <i className="fa-solid fa-pen text-[8px] text-white/30 ml-1" />
+                    )}
+                  </div>
+                  <p className="text-[12px] text-white/80 leading-relaxed italic">
+                    {m.audio_summary}
+                  </p>
+                </div>
+              ) : m.audio_path && (() => {
+                try {
+                  const t = new Date(m.time).getTime()
+                  if (Date.now() - t < 120000) return (
+                    <div className="px-2 pb-1 pt-0.5">
+                      <div className="flex items-center gap-1">
+                        <i className="fa-solid fa-wand-magic-sparkles text-[9px] text-white/40" />
+                        <span className="text-[11px] text-white/40">AI Summary generating</span>
+                        <span className="flex gap-0.5 ml-0.5">
+                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1 h-1 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      </div>
+                    </div>
+                  )
+                } catch {}
+                return null
+              })()}
+            </>
           ) : null}
 
           {/* Image display */}

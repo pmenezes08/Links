@@ -11150,25 +11150,16 @@ def send_audio_message():
             # stored_path is either CDN URL or local path
             rel_path = stored_path
 
-            # Generate AI summary if requested and user is premium
+            # Generate AI summary for voice notes
             audio_summary = None
-            if include_summary:
-                # Check if user is premium
-                c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-                user_row = c.fetchone()
-                user_subscription = user_row['subscription'] if hasattr(user_row, 'keys') else user_row[0] if user_row else 'free'
-                
-                if user_subscription == 'premium':
-                    try:
-                        logger.info(f"Generating AI summary for chat voice note: {rel_path}")
-                        audio_summary = process_audio_for_summary(rel_path, username=username)
-                        if audio_summary:
-                            logger.info(f"AI summary generated for chat: {audio_summary[:100]}...")
-                    except Exception as e:
-                        logger.error(f"Error generating AI summary for chat voice note: {e}")
-                        audio_summary = None
-                else:
-                    logger.info(f"User {username} is not premium, skipping AI summary")
+            try:
+                logger.info(f"Generating AI summary for chat voice note: {rel_path}")
+                audio_summary = process_audio_for_summary(rel_path, username=username)
+                if audio_summary:
+                    logger.info(f"AI summary generated for chat: {audio_summary[:100]}...")
+            except Exception as e:
+                logger.error(f"Error generating AI summary for chat voice note: {e}")
+                audio_summary = None
 
             # Ensure messages table has audio_summary column
             try:
@@ -11258,6 +11249,39 @@ def send_audio_message():
     except Exception as e:
         logger.error(f"Error sending audio message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send audio'})
+
+
+@app.route('/api/chat/update_audio_summary', methods=['POST'])
+@login_required
+def update_dm_audio_summary():
+    """Update the AI summary for a DM voice message. Only the sender can edit."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    message_id = data.get('message_id')
+    new_summary = (data.get('summary') or '').strip()
+    
+    if not message_id:
+        return jsonify({'success': False, 'error': 'Message ID required'}), 400
+    if not new_summary:
+        return jsonify({'success': False, 'error': 'Summary cannot be empty'}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT sender FROM messages WHERE id = {ph}", (message_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Message not found'}), 404
+            sender = row['sender'] if hasattr(row, 'keys') else row[0]
+            if sender != username:
+                return jsonify({'success': False, 'error': 'You can only edit your own summaries'}), 403
+            c.execute(f"UPDATE messages SET audio_summary = {ph} WHERE id = {ph}", (new_summary, message_id))
+            conn.commit()
+            return jsonify({'success': True, 'summary': new_summary})
+    except Exception as e:
+        logger.error(f"Error updating DM audio summary: {e}")
+        return jsonify({'success': False, 'error': 'Failed to update summary'}), 500
 
 
 @app.route('/audio_compat/<path:filename>')

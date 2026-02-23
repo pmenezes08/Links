@@ -90,10 +90,12 @@ export default function ChatThread(){
   const [editingId, setEditingId] = useState<number|string| null>(null)
   const [editText, setEditText] = useState('')
   const [editingSaving, setEditingSaving] = useState(false)
+  const [editingSummaryId, setEditingSummaryId] = useState<number|string|null>(null)
+  const [editSummaryText, setEditSummaryText] = useState('')
   const [selectedMessages, setSelectedMessages] = useState<Set<number|string>>(new Set())
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false)
   const [draft, setDraft] = useState('')
-  const [replyTo, setReplyTo] = useState<{ text:string; sender?:string; image_path?:string; video_path?:string; audio_path?:string }|null>(null)
+  const [replyTo, setReplyTo] = useState<{ text:string; sender?:string; image_path?:string; video_path?:string; audio_path?:string; audio_summary?:string }|null>(null)
   const [sending, setSendingState] = useState(false)
   // Check if encryption keys need to be synced from another device
   const [encryptionNeedsSync] = useState(() => 
@@ -1381,7 +1383,8 @@ export default function ChatThread(){
           const caption = replySnapshot.text || 'Video'
           replySnippet = `🎥|${replySnapshot.video_path}|${caption.slice(0,60)}`
         } else if (replySnapshot.audio_path) {
-          replySnippet = '🎤|Voice message'
+          const summarySnippet = replySnapshot.audio_summary ? replySnapshot.audio_summary.slice(0, 80) : ''
+          replySnippet = summarySnippet ? `🎤|${summarySnippet}` : '🎤|Voice message'
         } else {
           replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text
         }
@@ -2411,6 +2414,7 @@ export default function ChatThread(){
                       image_path: m.image_path,
                       video_path: m.video_path,
                       audio_path: m.audio_path,
+                      audio_summary: m.audio_summary || undefined,
                     })
                     focusTextarea()
                   }}
@@ -2435,6 +2439,10 @@ export default function ChatThread(){
                     setEditText('')
                   }}
                   onImageClick={(imagePath) => setPreviewImage(imagePath)}
+                  onEditSummary={(msgId, currentSummary) => {
+                    setEditingSummaryId(msgId)
+                    setEditSummaryText(currentSummary)
+                  }}
                   onStoryReplyClick={async (storyId) => {
                     // Fetch the story to get its community_id, then navigate
                     try {
@@ -2727,7 +2735,7 @@ export default function ChatThread(){
                     ) : replyTo.audio_path ? (
                       <>
                         <i className="fa-solid fa-microphone text-[11px] text-white/50" />
-                        <span>Voice message</span>
+                        <span>{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</span>
                       </>
                     ) : (
                       <span>{replyTo.text.length > 80 ? replyTo.text.slice(0, 80) + '…' : replyTo.text}</span>
@@ -3239,6 +3247,59 @@ export default function ChatThread(){
       )}
 
       {/* Voice message preview is now inline in the composer - no modal needed */}
+
+      {/* Edit AI Summary modal */}
+      {editingSummaryId !== null && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}>
+          <div className="absolute inset-0 bg-black/70" />
+          <div 
+            className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[90%] max-w-md p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac]" />
+              <span className="text-white font-semibold text-sm">Edit AI Summary</span>
+            </div>
+            <textarea
+              value={editSummaryText}
+              onChange={(e) => setEditSummaryText(e.target.value)}
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white resize-none focus:outline-none focus:border-[#4db6ac] leading-relaxed"
+              rows={4}
+              autoFocus
+              placeholder="Edit the AI-generated summary..."
+            />
+            <div className="flex gap-2 mt-3 justify-end">
+              <button
+                onClick={() => { setEditingSummaryId(null); setEditSummaryText('') }}
+                className="px-4 py-2 text-sm rounded-lg bg-white/10 text-white/70 hover:bg-white/15"
+              >Cancel</button>
+              <button
+                onClick={async () => {
+                  const newSummary = editSummaryText.trim()
+                  if (!newSummary || !editingSummaryId) return
+                  const msgId = editingSummaryId
+                  setMessages(prev => prev.map(m => (m.id === msgId || m.clientKey === msgId) ? { ...m, audio_summary: newSummary } : m))
+                  setEditingSummaryId(null)
+                  setEditSummaryText('')
+                  try {
+                    const res = await fetch('/api/chat/update_audio_summary', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({ message_id: msgId, summary: newSummary }),
+                    })
+                    const data = await res.json()
+                    if (!data.success) {
+                      setMessages(prev => prev.map(m => (m.id === msgId || m.clientKey === msgId) ? { ...m, audio_summary: m.audio_summary } : m))
+                    }
+                  } catch {}
+                }}
+                className="px-4 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
+              >Save</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Photo preview modal */}
       {previewImage && (
