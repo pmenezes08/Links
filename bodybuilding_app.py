@@ -5869,6 +5869,26 @@ def premium_dashboard_react():
         abort(500)
 
 
+@app.route('/networking')
+@login_required
+def networking_page():
+    """Serve the React SPA for the Networking page."""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        resp = send_from_directory(dist_dir, 'index.html')
+        try:
+            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            resp.headers['Pragma'] = 'no-cache'
+            resp.headers['Expires'] = '0'
+        except Exception:
+            pass
+        return resp
+    except Exception as e:
+        logger.error(f"Error serving Networking page: {str(e)}")
+        abort(500)
+
+
 @app.route('/followers')
 @login_required
 def followers_page():

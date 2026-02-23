@@ -32,6 +32,7 @@ import Members from './pages/Members'
 import EditCommunity from './pages/EditCommunity'
 import Communities from './pages/Communities'
 import Followers from './pages/Followers'
+import Networking from './pages/Networking'
 import HomeTimeline from './pages/HomeTimeline'
 import WorkoutTracking from './pages/WorkoutTracking'
 import Gym from './pages/Gym'
@@ -672,6 +673,7 @@ function AppRoutes(){
                 <Route path="/crossfit_react" element={<CrossfitExact />} />
                 <Route path="/communities" element={<Communities />} />
                 <Route path="/followers" element={<Followers />} />
+                <Route path="/networking" element={<Networking />} />
                 <Route path="/your_sports" element={<YourSports />} />
                 <Route path="/gym" element={<Gym />} />
                 <Route path="/user_chat" element={<Messages />} />
