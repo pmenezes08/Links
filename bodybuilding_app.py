@@ -10505,17 +10505,25 @@ def send_message():
             except Exception as _e:
                 logger.warning(f"push send_message warn: {_e}")
 
-            # Trigger Steve AI reply if messaging Steve
-            if recipient_username.lower() == 'steve' and username.lower() != 'steve' and not is_encrypted:
+            # Trigger Steve AI reply if messaging Steve directly OR mentioning @Steve in any DM
+            mentions_steve = bool(message and re.search(r'@steve\b', message, re.IGNORECASE))
+            is_steve_dm = recipient_username.lower() == 'steve'
+            if (is_steve_dm or mentions_steve) and username.lower() != 'steve' and not is_encrypted:
                 try:
                     import threading
+                    # Steve replies in the same DM thread
+                    # If messaging Steve directly: Steve replies to sender
+                    # If @Steve in a DM with someone else: Steve replies to sender (appears in Steve-sender thread)
+                    # but we also insert into the current thread so both users see it
+                    steve_reply_to = username
+                    steve_also_notify = recipient_username if not is_steve_dm else None
                     thread = threading.Thread(
                         target=_trigger_steve_dm_reply,
-                        args=(username, message)
+                        args=(username, message, recipient_username if not is_steve_dm else None)
                     )
                     thread.daemon = True
                     thread.start()
-                    logger.info(f"Triggered Steve DM reply for {username}")
+                    logger.info(f"Triggered Steve DM reply for {username} (in chat with {recipient_username})")
                 except Exception as steve_err:
                     logger.warning(f"Failed to trigger Steve DM reply: {steve_err}")
             
@@ -10525,8 +10533,13 @@ def send_message():
         logger.error(f"Error sending message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send message'})
 
-def _trigger_steve_dm_reply(sender_username: str, user_message: str):
-    """Generate and send Steve's AI reply in a 1:1 DM. Runs in a background thread."""
+def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_username: str = None):
+    """Generate and send Steve's AI reply in a 1:1 DM. Runs in a background thread.
+    
+    If other_username is provided, Steve was @mentioned in a DM between sender and other_username.
+    Steve's reply goes into the same thread (sender <-> other_username) so both users see it.
+    If other_username is None, sender is chatting directly with Steve.
+    """
     import time
     from datetime import datetime
     
@@ -10537,6 +10550,16 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str):
         return
     
     try:
+        # Determine the chat thread to read context from and reply into
+        if other_username:
+            # @Steve mentioned in a DM between two users
+            chat_user_a = sender_username
+            chat_user_b = other_username
+        else:
+            # Direct chat with Steve
+            chat_user_a = sender_username
+            chat_user_b = 'steve'
+        
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
@@ -10544,11 +10567,11 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str):
             # Get recent DM history for context
             c.execute(f"""
                 SELECT sender, message, timestamp FROM messages
-                WHERE (sender = {ph} AND receiver = 'steve')
-                   OR (sender = 'steve' AND receiver = {ph})
+                WHERE (sender = {ph} AND receiver = {ph})
+                   OR (sender = {ph} AND receiver = {ph})
                 ORDER BY timestamp DESC
                 LIMIT 15
-            """, (sender_username, sender_username))
+            """, (chat_user_a, chat_user_b, chat_user_b, chat_user_a))
             
             recent = []
             for row in c.fetchall():
@@ -10561,7 +10584,7 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str):
         current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
         
         context = "Direct message conversation:\n" + "\n".join(recent[-10:])
-        context += f"\n\n{sender_username} sent you a message. Respond helpfully."
+        context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully."
         context += f"\n\n[Current date and time: {current_date}]"
         
         system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat with real-time knowledge and web search capabilities.
@@ -10613,30 +10636,39 @@ RESPONSE STYLE:
         
         ai_response = format_steve_response_links(ai_response)
         
-        # Insert Steve's reply as a DM
+        # Insert Steve's reply into the correct DM thread
+        # If @Steve in a DM between two users: Steve sends to the sender,
+        # appearing in the sender's chat thread. The other user sees it on
+        # their next visit to their chat with Steve.
+        # For direct Steve chats: Steve replies to sender as normal.
+        reply_receiver = sender_username
+        
         with get_db_connection() as conn:
             c = conn.cursor()
             if USE_MYSQL:
                 c.execute("""
                     INSERT INTO messages (sender, receiver, message, timestamp)
                     VALUES (%s, %s, %s, NOW())
-                """, ('steve', sender_username, ai_response))
+                """, ('steve', reply_receiver, ai_response))
             else:
                 _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 c.execute("""
                     INSERT INTO messages (sender, receiver, message, timestamp)
                     VALUES (?, ?, ?, ?)
-                """, ('steve', sender_username, ai_response, _ts))
+                """, ('steve', reply_receiver, ai_response, _ts))
             conn.commit()
             
             # Invalidate caches so the reply appears on next poll
             try:
                 invalidate_message_cache(sender_username, 'steve')
                 cache.delete(f"chat_threads:{sender_username}")
+                if other_username:
+                    invalidate_message_cache(other_username, 'steve')
+                    cache.delete(f"chat_threads:{other_username}")
             except Exception:
                 pass
             
-            logger.info(f"Steve replied to DM from {sender_username}")
+            logger.info(f"Steve replied to DM from {sender_username}" + (f" (mentioned in chat with {other_username})" if other_username else ""))
     
     except Exception as e:
         logger.error(f"Error in Steve DM reply: {e}", exc_info=True)
