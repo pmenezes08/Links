@@ -220,33 +220,38 @@ export default function Networking() {
               </div>
 
             </section>
-            {/* Input bar — sticky at bottom, keyboard-aware */}
-            <div className="sticky bottom-0 z-10 bg-black/95 backdrop-blur border-t border-white/10 -mx-1 sm:-mx-3 px-3 py-2">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={triggerAutoMatch}
-                  disabled={autoMatching || steveSending || !steveCommunity}
-                  className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
-                  title="Auto-match based on my profile"
-                >
-                  <i className="fa-solid fa-wand-magic-sparkles text-xs text-[#4db6ac]" />
-                </button>
-                <input
-                  value={steveInput}
-                  onChange={e => setSteveInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSteveMessage() } }}
-                  placeholder="What's on your mind?"
-                  className="flex-1 rounded-lg border border-white/15 bg-transparent px-3 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
-                  disabled={steveSending || autoMatching}
-                />
-                <button
-                  onClick={sendSteveMessage}
-                  disabled={!steveInput.trim() || steveSending || autoMatching}
-                  className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
-                >
-                  <i className="fa-solid fa-arrow-up text-xs text-white" />
-                </button>
-              </div>
+            {/* Spacer for fixed input bar */}
+            <div className="h-16" />
+          </div>
+        )}
+
+        {/* Steve input bar — fixed at viewport bottom, always above keyboard */}
+        {activeSection === 'steve' && (
+          <div className="fixed left-0 right-0 bottom-0 z-50 bg-black border-t border-white/10 px-3 py-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}>
+            <div className="max-w-3xl mx-auto flex items-center gap-2">
+              <button
+                onClick={triggerAutoMatch}
+                disabled={autoMatching || steveSending || !steveCommunity}
+                className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
+                title="Auto-match based on my profile"
+              >
+                <i className="fa-solid fa-wand-magic-sparkles text-xs text-[#4db6ac]" />
+              </button>
+              <input
+                value={steveInput}
+                onChange={e => setSteveInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSteveMessage() } }}
+                placeholder="What's on your mind?"
+                className="flex-1 rounded-lg border border-white/15 bg-transparent px-3 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
+                disabled={steveSending || autoMatching}
+              />
+              <button
+                onClick={sendSteveMessage}
+                disabled={!steveInput.trim() || steveSending || autoMatching}
+                className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
+              >
+                <i className="fa-solid fa-arrow-up text-xs text-white" />
+              </button>
             </div>
           </div>
         )}

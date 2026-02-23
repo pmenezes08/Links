@@ -11400,11 +11400,12 @@ def api_networking_community_members(community_id):
             if not c.fetchone():
                 return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
 
-            # Get all member usernames in these communities (excluding self)
+            # Get all member usernames (excluding self, admin, steve)
             c.execute(f"""
                 SELECT DISTINCT u.username FROM users u
                 JOIN user_communities uc ON u.id = uc.user_id
                 WHERE uc.community_id IN ({comm_ph}) AND u.username != {ph}
+                  AND LOWER(u.username) NOT IN ('admin', 'steve')
             """, tuple(community_ids) + (username,))
             member_usernames = [r['username'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
 
@@ -11533,8 +11534,8 @@ def api_networking_steve_match():
                 try: return r[i] if not hasattr(r, 'keys') else list(r.values())[i]
                 except: return ''
             user_profile = f"User: {_v(ur,0)} | {_v(ur,1)} | Bio: {_v(ur,2) or ''} | City: {_v(ur,3) or ''} | Country: {_v(ur,4) or ''} | Industry: {_v(ur,5) or ''} | Role: {_v(ur,6) or ''} | Company: {_v(ur,7) or ''}" if ur else ""
-            # Members
-            c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph}", tuple(community_ids) + (username,))
+            # Members (exclude admin and steve)
+            c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             members_text = "\n".join([f"- {_v(r,0)} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}" for r in c.fetchall()])
 
         from openai import OpenAI
@@ -11580,7 +11581,7 @@ def api_networking_steve_auto_match():
                 try: return r[i] if not hasattr(r, 'keys') else list(r.values())[i]
                 except: return ''
             user_profile = f"User: {_v(ur,0)} | {_v(ur,1)} | Bio: {_v(ur,2) or ''} | City: {_v(ur,3) or ''} | Country: {_v(ur,4) or ''} | Industry: {_v(ur,5) or ''} | Role: {_v(ur,6) or ''} | Company: {_v(ur,7) or ''} | Interests: {_v(ur,8) or ''} | About: {_v(ur,9) or ''}" if ur else ""
-            c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph}", tuple(community_ids) + (username,))
+            c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             members_text = "\n".join([f"- {_v(r,0)} | {_v(r,1)} | Bio: {_v(r,2) or ''} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'} | Interests: {_v(r,8) or ''} | About: {_v(r,9) or ''}" for r in c.fetchall()])
 
         from openai import OpenAI
