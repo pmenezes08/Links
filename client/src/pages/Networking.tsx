@@ -52,7 +52,7 @@ export default function Networking() {
   const [personalLoading, setPersonalLoading] = useState(false)
 
   useEffect(() => {
-    fetch('/get_user_communities', { credentials: 'include' })
+    fetch('/api/networking/communities', { credentials: 'include' })
       .then(r => r.json())
       .then(data => {
         if (data.success && data.communities?.length) {
@@ -172,7 +172,7 @@ export default function Networking() {
               <select
                 value={steveCommunity || ''}
                 onChange={e => { setSteveCommunity(Number(e.target.value)); setSteveMessages([]) }}
-                className="w-full rounded-full border border-white/15 bg-transparent px-4 py-2 text-xs text-white focus:outline-none focus:border-[#4db6ac]"
+                className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-xs text-white focus:outline-none focus:border-[#4db6ac]"
               >
                 {communities.map(c => <option key={c.id} value={c.id} className="bg-black">{c.name}</option>)}
               </select>
@@ -219,35 +219,35 @@ export default function Networking() {
                 <div ref={steveEndRef} />
               </div>
 
-              {/* Input — minimal, like SuperGrok */}
+            </section>
+            {/* Input bar — sticky at bottom, keyboard-aware */}
+            <div className="sticky bottom-0 z-10 bg-black/95 backdrop-blur border-t border-white/10 -mx-1 sm:-mx-3 px-3 py-2">
               <div className="flex items-center gap-2">
                 <button
                   onClick={triggerAutoMatch}
                   disabled={autoMatching || steveSending || !steveCommunity}
-                  className="w-9 h-9 rounded-full border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
+                  className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
                   title="Auto-match based on my profile"
                 >
                   <i className="fa-solid fa-wand-magic-sparkles text-xs text-[#4db6ac]" />
                 </button>
-                <div className="flex-1 relative">
-                  <input
-                    value={steveInput}
-                    onChange={e => setSteveInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSteveMessage() } }}
-                    placeholder="What's on your mind?"
-                    className="w-full rounded-full border border-white/15 bg-transparent px-4 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
-                    disabled={steveSending || autoMatching}
-                  />
-                </div>
+                <input
+                  value={steveInput}
+                  onChange={e => setSteveInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSteveMessage() } }}
+                  placeholder="What's on your mind?"
+                  className="flex-1 rounded-lg border border-white/15 bg-transparent px-3 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
+                  disabled={steveSending || autoMatching}
+                />
                 <button
                   onClick={sendSteveMessage}
                   disabled={!steveInput.trim() || steveSending || autoMatching}
-                  className="w-9 h-9 rounded-full border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
+                  className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
                 >
                   <i className="fa-solid fa-arrow-up text-xs text-white" />
                 </button>
               </div>
-            </section>
+            </div>
           </div>
         )}
 
@@ -267,7 +267,7 @@ export default function Networking() {
               <select
                 value={personalCommunity || ''}
                 onChange={e => setPersonalCommunity(Number(e.target.value))}
-                className="w-full rounded-full border border-white/15 bg-transparent px-4 py-2 text-xs text-white focus:outline-none focus:border-[#4db6ac]"
+                className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-xs text-white focus:outline-none focus:border-[#4db6ac]"
               >
                 {communities.map(c => <option key={c.id} value={c.id} className="bg-black">{c.name}</option>)}
               </select>
@@ -277,7 +277,7 @@ export default function Networking() {
                 <select
                   value={selectedLocation}
                   onChange={e => setSelectedLocation(e.target.value)}
-                  className="rounded-full border border-white/15 bg-transparent px-2.5 py-1.5 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
+                  className="rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
                 >
                   <option value="" className="bg-black">Location</option>
                   {[...new Set([...filterOptions.cities, ...filterOptions.countries])].filter(Boolean).sort().map(loc => (
@@ -287,7 +287,7 @@ export default function Networking() {
                 <select
                   value={selectedIndustry}
                   onChange={e => setSelectedIndustry(e.target.value)}
-                  className="rounded-full border border-white/15 bg-transparent px-2.5 py-1.5 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
+                  className="rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
                 >
                   <option value="" className="bg-black">Industry</option>
                   {filterOptions.industries.filter(Boolean).sort().map(ind => (
@@ -297,7 +297,7 @@ export default function Networking() {
                 <select
                   value={selectedInterest}
                   onChange={e => setSelectedInterest(e.target.value)}
-                  className="rounded-full border border-white/15 bg-transparent px-2.5 py-1.5 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
+                  className="rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
                 >
                   <option value="" className="bg-black">Interests</option>
                   {filterOptions.interests.filter(Boolean).sort().map(int => (

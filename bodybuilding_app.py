@@ -11349,6 +11349,240 @@ def update_dm_audio_summary():
         return jsonify({'success': False, 'error': 'Failed to update summary'}), 500
 
 
+# ==================== NETWORKING API ====================
+
+@app.route('/api/networking/communities', methods=['GET'])
+@login_required
+def api_networking_communities():
+    """Get parent-level communities the user belongs to for networking dropdowns."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"""
+                SELECT DISTINCT c.id, c.name FROM communities c
+                JOIN user_communities uc ON c.id = uc.community_id
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {ph} AND (c.parent_community_id IS NULL)
+                ORDER BY c.name
+            """, (username,))
+            comms = [{'id': r['id'] if hasattr(r, 'keys') else r[0], 'name': r['name'] if hasattr(r, 'keys') else r[1]} for r in c.fetchall()]
+            return jsonify({'success': True, 'communities': comms})
+    except Exception as e:
+        logger.error(f"Error fetching networking communities: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/networking/community_members/<int:community_id>', methods=['GET'])
+@login_required
+def api_networking_community_members(community_id):
+    """Get community members with profiles for networking. Includes members from child communities."""
+    username = session.get('username')
+    location = request.args.get('location', '').strip()
+    industry = request.args.get('industry', '').strip()
+    interests = request.args.get('interests', '').strip()
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            # Get this community + all its children
+            c.execute(f"SELECT id FROM communities WHERE id = {ph} OR parent_community_id = {ph}", (community_id, community_id))
+            community_ids = [r['id'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+            if not community_ids:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+
+            # Verify user belongs to at least one of these communities
+            placeholders = ','.join([ph] * len(community_ids))
+            c.execute(f"""
+                SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {ph} AND uc.community_id IN ({placeholders})
+            """, (username, *community_ids))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Not a member of this community'}), 403
+
+            # Build members query across parent + children
+            comm_placeholders = ','.join([ph] * len(community_ids))
+            base_sql = f"""
+                SELECT DISTINCT u.username, COALESCE(p.display_name, u.username) as display_name,
+                       p.profile_picture, u.city, u.country, u.industry, u.role, u.company,
+                       u.professional_interests, COALESCE(p.bio, u.professional_about) as bio
+                FROM users u
+                JOIN user_communities uc ON u.id = uc.user_id
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE uc.community_id IN ({comm_placeholders}) AND u.username != {ph}
+            """
+            params = list(community_ids) + [username]
+
+            conditions = []
+            if location:
+                conditions.append(f"(u.city LIKE {ph} OR u.country LIKE {ph})")
+                params.extend([f"%{location}%", f"%{location}%"])
+            if industry:
+                conditions.append(f"u.industry LIKE {ph}")
+                params.append(f"%{industry}%")
+            if interests:
+                conditions.append(f"u.professional_interests LIKE {ph}")
+                params.append(f"%{interests}%")
+            if conditions:
+                base_sql += " AND " + " AND ".join(conditions)
+            base_sql += " ORDER BY u.username"
+
+            c.execute(base_sql, tuple(params))
+            members = []
+            for row in c.fetchall():
+                interests_raw = row['professional_interests'] if hasattr(row, 'keys') else row[8]
+                interests_list = []
+                if interests_raw:
+                    try:
+                        decoded = json.loads(interests_raw)
+                        interests_list = [str(x).strip() for x in decoded if str(x).strip()] if isinstance(decoded, list) else []
+                    except Exception:
+                        interests_list = [p.strip() for p in str(interests_raw).split(',') if p.strip()]
+                members.append({
+                    'username': row['username'] if hasattr(row, 'keys') else row[0],
+                    'display_name': row['display_name'] if hasattr(row, 'keys') else row[1],
+                    'profile_picture': row['profile_picture'] if hasattr(row, 'keys') else row[2],
+                    'city': row['city'] if hasattr(row, 'keys') else row[3],
+                    'country': row['country'] if hasattr(row, 'keys') else row[4],
+                    'industry': row['industry'] if hasattr(row, 'keys') else row[5],
+                    'role': row['role'] if hasattr(row, 'keys') else row[6],
+                    'company': row['company'] if hasattr(row, 'keys') else row[7],
+                    'professional_interests': interests_list,
+                    'bio': row['bio'] if hasattr(row, 'keys') else row[9],
+                })
+
+            # Filter options
+            c.execute(f"""
+                SELECT DISTINCT u.city, u.country, u.industry, u.professional_interests
+                FROM users u JOIN user_communities uc ON u.id = uc.user_id
+                WHERE uc.community_id IN ({comm_placeholders}) AND u.username != {ph}
+            """, tuple(community_ids) + (username,))
+            cities, countries, industries_set, all_interests = set(), set(), set(), set()
+            for fr in c.fetchall():
+                city = fr['city'] if hasattr(fr, 'keys') else fr[0]
+                country = fr['country'] if hasattr(fr, 'keys') else fr[1]
+                ind = fr['industry'] if hasattr(fr, 'keys') else fr[2]
+                inter_raw = fr['professional_interests'] if hasattr(fr, 'keys') else fr[3]
+                if city: cities.add(city)
+                if country: countries.add(country)
+                if ind: industries_set.add(ind)
+                if inter_raw:
+                    try:
+                        decoded = json.loads(inter_raw)
+                        for x in (decoded if isinstance(decoded, list) else []):
+                            if str(x).strip(): all_interests.add(str(x).strip())
+                    except Exception:
+                        for p in str(inter_raw).split(','):
+                            if p.strip(): all_interests.add(p.strip())
+
+            return jsonify({'success': True, 'members': members, 'filters': {
+                'cities': sorted(cities), 'countries': sorted(countries),
+                'industries': sorted(industries_set), 'interests': sorted(all_interests),
+            }})
+    except Exception as e:
+        logger.error(f"Error fetching community members: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/networking/steve_match', methods=['POST'])
+@login_required
+def api_networking_steve_match():
+    """Ask Steve to find matching community members."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    community_id = data.get('community_id')
+    message = (data.get('message') or '').strip()
+    if not community_id or not message:
+        return jsonify({'success': False, 'error': 'community_id and message required'}), 400
+    if not XAI_API_KEY:
+        return jsonify({'success': False, 'error': 'AI service not available'}), 503
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            # Get parent + child community IDs
+            c.execute(f"SELECT id FROM communities WHERE id = {ph} OR parent_community_id = {ph}", (community_id, community_id))
+            community_ids = [r['id'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+            comm_ph = ','.join([ph] * len(community_ids))
+            # User profile
+            c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u LEFT JOIN user_profiles p ON u.username=p.username WHERE u.username={ph}", (username,))
+            ur = c.fetchone()
+            def _v(r, i):
+                try: return r[i] if not hasattr(r, 'keys') else list(r.values())[i]
+                except: return ''
+            user_profile = f"User: {_v(ur,0)} | {_v(ur,1)} | Bio: {_v(ur,2) or ''} | City: {_v(ur,3) or ''} | Country: {_v(ur,4) or ''} | Industry: {_v(ur,5) or ''} | Role: {_v(ur,6) or ''} | Company: {_v(ur,7) or ''}" if ur else ""
+            # Members
+            c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph}", tuple(community_ids) + (username,))
+            members_text = "\n".join([f"- {_v(r,0)} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}" for r in c.fetchall()])
+
+        from openai import OpenAI
+        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+        response = client.responses.create(
+            model="grok-4-1-fast-non-reasoning",
+            input=[
+                {"role": "system", "content": "You are Steve, a networking assistant. Given a user's profile and community members, recommend the best matches for the user's request. Be concise and friendly. Only reference actual members from the list."},
+                {"role": "user", "content": f"My profile:\n{user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"}
+            ],
+            tools=[{"type": "web_search"}, {"type": "x_search"}],
+            max_output_tokens=800, temperature=0.7
+        )
+        ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
+        if not ai_response: ai_response = "I couldn't find matching members. Try refining your request."
+        return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
+    except Exception as e:
+        logger.error(f"Error in steve_match: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'AI service error'}), 500
+
+
+@app.route('/api/networking/steve_auto_match', methods=['POST'])
+@login_required
+def api_networking_steve_auto_match():
+    """Steve suggests top matches based on profile compatibility."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    community_id = data.get('community_id')
+    if not community_id:
+        return jsonify({'success': False, 'error': 'community_id required'}), 400
+    if not XAI_API_KEY:
+        return jsonify({'success': False, 'error': 'AI service not available'}), 503
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM communities WHERE id = {ph} OR parent_community_id = {ph}", (community_id, community_id))
+            community_ids = [r['id'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+            comm_ph = ','.join([ph] * len(community_ids))
+            c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u LEFT JOIN user_profiles p ON u.username=p.username WHERE u.username={ph}", (username,))
+            ur = c.fetchone()
+            def _v(r, i):
+                try: return r[i] if not hasattr(r, 'keys') else list(r.values())[i]
+                except: return ''
+            user_profile = f"User: {_v(ur,0)} | {_v(ur,1)} | Bio: {_v(ur,2) or ''} | City: {_v(ur,3) or ''} | Country: {_v(ur,4) or ''} | Industry: {_v(ur,5) or ''} | Role: {_v(ur,6) or ''} | Company: {_v(ur,7) or ''} | Interests: {_v(ur,8) or ''} | About: {_v(ur,9) or ''}" if ur else ""
+            c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph}", tuple(community_ids) + (username,))
+            members_text = "\n".join([f"- {_v(r,0)} | {_v(r,1)} | Bio: {_v(r,2) or ''} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'} | Interests: {_v(r,8) or ''} | About: {_v(r,9) or ''}" for r in c.fetchall()])
+
+        from openai import OpenAI
+        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+        response = client.responses.create(
+            model="grok-4-1-fast-non-reasoning",
+            input=[
+                {"role": "system", "content": "You are Steve, a networking assistant. Analyze the user's profile and all community members' profiles. Suggest the top 3-5 best matches based on shared interests, location, industry, or complementary skills. Be concise and explain why each is a good match."},
+                {"role": "user", "content": f"My profile:\n{user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
+            ],
+            tools=[{"type": "web_search"}, {"type": "x_search"}],
+            max_output_tokens=800, temperature=0.7
+        )
+        ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
+        if not ai_response: ai_response = "I couldn't generate matches. Please try again."
+        return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
+    except Exception as e:
+        logger.error(f"Error in steve_auto_match: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'AI service error'}), 500
+
+
 @app.route('/audio_compat/<path:filename>')
 def serve_audio_compat(filename):
     """
