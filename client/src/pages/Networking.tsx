@@ -41,6 +41,25 @@ export default function Networking() {
   const [steveSending, setSteveSending] = useState(false)
   const [autoMatching, setAutoMatching] = useState(false)
   const steveEndRef = useRef<HTMLDivElement>(null)
+  const [keyboardLift, setKeyboardLift] = useState(0)
+  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+
+  // Keyboard detection via visualViewport (same pattern as GroupChatThread)
+  useEffect(() => {
+    if (!isMobile) return
+    const vv = window.visualViewport
+    if (!vv) return
+    let baseHeight: number | null = null
+    const onResize = () => {
+      const h = vv.height
+      if (baseHeight === null || h > (baseHeight ?? 0)) baseHeight = h
+      const offset = Math.max(0, (baseHeight ?? h) - h)
+      setKeyboardLift(offset < 50 ? 0 : offset)
+    }
+    vv.addEventListener('resize', onResize)
+    onResize()
+    return () => vv.removeEventListener('resize', onResize)
+  }, [isMobile])
 
   // Personal state
   const [personalCommunity, setPersonalCommunity] = useState<number | null>(null)
@@ -225,9 +244,9 @@ export default function Networking() {
           </div>
         )}
 
-        {/* Steve input bar — fixed at viewport bottom, always above keyboard */}
+        {/* Steve input bar — fixed at viewport bottom, lifted above keyboard */}
         {activeSection === 'steve' && (
-          <div className="fixed left-0 right-0 bottom-0 z-50 bg-black border-t border-white/10 px-3 py-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}>
+          <div className="fixed left-0 right-0 z-50 bg-black border-t border-white/10 px-3 py-2" style={{ bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0, paddingBottom: keyboardLift > 0 ? '4px' : 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}>
             <div className="max-w-3xl mx-auto flex items-center gap-2">
               <button
                 onClick={triggerAutoMatch}
