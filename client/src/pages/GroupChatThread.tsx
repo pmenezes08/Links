@@ -115,6 +115,7 @@ export default function GroupChatThread() {
   const [translations, setTranslations] = useState<Record<number, string>>({})
   const [translatingId, setTranslatingId] = useState<number | null>(null)
   const [showLangPicker, setShowLangPicker] = useState<number | null>(null)
+  const [langPickerSummary, setLangPickerSummary] = useState('')
   const translateLanguages = [
     { code: 'pt', name: 'Portuguese (PT)', flag: '🇵🇹' },
     { code: 'en', name: 'English', flag: '🇬🇧' },
@@ -1860,20 +1861,9 @@ export default function GroupChatThread() {
                                           {translations[msg.id] && (
                                             <button onClick={(e) => { e.stopPropagation(); setTranslations(prev => { const n = { ...prev }; delete n[msg.id]; return n }) }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-rotate-left text-[8px]" /></button>
                                           )}
-                                          <div className="relative">
-                                            <button onClick={(e) => { e.stopPropagation(); setShowLangPicker(showLangPicker === msg.id ? null : msg.id) }} className="text-white/30 hover:text-white/50 px-0.5" disabled={translatingId === msg.id}>
-                                              {translatingId === msg.id ? <i className="fa-solid fa-spinner fa-spin text-[9px]" /> : <i className="fa-solid fa-globe text-[9px]" />}
-                                            </button>
-                                            {showLangPicker === msg.id && (
-                                              <div className="absolute right-0 top-5 z-50 bg-[#1a1a2e] border border-white/15 rounded-lg shadow-lg min-w-[140px]" onClick={(e) => e.stopPropagation()}>
-                                                {translateLanguages.map(lang => (
-                                                  <button key={lang.code} onClick={(e) => { e.stopPropagation(); handleTranslateSummary(msg.id, msg.audio_summary!, lang.code) }} className="w-full px-3 py-1.5 text-left text-[11px] text-white hover:bg-white/10 flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg">
-                                                    <span>{lang.flag}</span><span>{lang.name}</span>
-                                                  </button>
-                                                ))}
-                                              </div>
-                                            )}
-                                          </div>
+                                          <button onClick={(e) => { e.stopPropagation(); setShowLangPicker(msg.id); setLangPickerSummary(msg.audio_summary!) }} className="text-white/30 hover:text-white/50 px-0.5" disabled={translatingId === msg.id}>
+                                            {translatingId === msg.id ? <i className="fa-solid fa-spinner fa-spin text-[9px]" /> : <i className="fa-solid fa-globe text-[9px]" />}
+                                          </button>
                                           {(msg.sender === currentUsername || msg.sender === 'You') && (
                                             <button onClick={(e) => { e.stopPropagation(); setEditingSummaryId(msg.id); setEditSummaryText(msg.audio_summary || '') }} className="text-white/30 hover:text-white/50 px-0.5"><i className="fa-solid fa-pen text-[8px]" /></button>
                                           )}
@@ -3021,6 +3011,56 @@ export default function GroupChatThread() {
               <i className="fa-solid fa-paper-plane" />
               Send
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Translate language picker modal */}
+      {showLangPicker !== null && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setShowLangPicker(null)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <i className="fa-solid fa-globe text-[#4db6ac]" />
+              <span className="text-white font-semibold text-sm">Translate to</span>
+            </div>
+            <div className="space-y-1">
+              {translateLanguages.map(lang => (
+                <button
+                  key={lang.code}
+                  onClick={() => handleTranslateSummary(showLangPicker!, langPickerSummary, lang.code)}
+                  className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10 rounded-lg flex items-center gap-3"
+                >
+                  <span className="text-lg">{lang.flag}</span>
+                  <span>{lang.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Translate language picker modal */}
+      {showLangPicker !== null && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setShowLangPicker(null)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <i className="fa-solid fa-globe text-[#4db6ac]" />
+              <span className="text-white font-semibold text-sm">Translate to</span>
+            </div>
+            <div className="space-y-1">
+              {translateLanguages.map(lang => (
+                <button
+                  key={lang.code}
+                  onClick={() => handleTranslateSummary(showLangPicker, langPickerSummary, lang.code)}
+                  className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10 rounded-lg flex items-center gap-3"
+                >
+                  <span className="text-lg">{lang.flag}</span>
+                  <span>{lang.name}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

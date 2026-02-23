@@ -4189,13 +4189,15 @@ def transcribe_audio_file(audio_file_path):
             
             try:
                 with open(tmp_path, 'rb') as audio_file:
-                    transcription = client.audio.transcriptions.create(
+                    result = client.audio.transcriptions.create(
                         model="whisper-1",
                         file=audio_file,
-                        response_format="text"
+                        response_format="verbose_json"
                     )
-                logger.info(f"Transcription successful: {transcription[:100]}...")
-                return transcription
+                detected_lang = getattr(result, 'language', None) or 'en'
+                transcription = result.text or ''
+                logger.info(f"Transcription successful (lang={detected_lang}): {transcription[:100]}...")
+                return transcription, detected_lang
             finally:
                 # Clean up temp file
                 try:
@@ -4211,24 +4213,25 @@ def transcribe_audio_file(audio_file_path):
             else:
                 full_path = audio_file_path
             
-            # Open and transcribe the audio file
             with open(full_path, 'rb') as audio_file:
-                transcription = client.audio.transcriptions.create(
+                result = client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio_file,
-                    response_format="text"
+                    response_format="verbose_json"
                 )
-            
-            logger.info(f"Transcription successful: {transcription[:100]}...")
-            return transcription
+            detected_lang = getattr(result, 'language', None) or 'en'
+            transcription = result.text or ''
+            logger.info(f"Transcription successful (lang={detected_lang}): {transcription[:100]}...")
+            return transcription, detected_lang
     except Exception as e:
         logger.error(f"Error transcribing audio: {str(e)}")
         return None
 
-def summarize_text(text, username=None):
+def summarize_text(text, username=None, language=None):
     """
     Summarize text using OpenAI GPT
     Returns a concise summary or None if summarization fails
+    language: ISO language code detected by Whisper (e.g., 'en', 'pt', 'es')
     """
     if not OPENAI_AVAILABLE:
         logger.warning("OpenAI package not available for summarization")
@@ -4246,26 +4249,28 @@ def summarize_text(text, username=None):
         logger.info(f"Summarizing text of length: {len(text)} for user: {username}")
         client = OpenAI(api_key=OPENAI_API_KEY)
         
-        # Create a personalized prompt with the username and language instructions
-        system_prompt = """You are a helpful assistant that summarizes audio transcriptions.
+        # Map ISO language code to full name for the prompt
+        lang_map = {
+            'en': 'English', 'pt': 'European Portuguese (PT-PT)', 'es': 'Spanish',
+            'fr': 'French', 'de': 'German', 'it': 'Italian', 'nl': 'Dutch',
+            'ga': 'Irish', 'pl': 'Polish', 'ru': 'Russian', 'ja': 'Japanese',
+            'zh': 'Mandarin Chinese', 'ko': 'Korean', 'ar': 'Arabic',
+        }
+        target_lang = lang_map.get(language, 'English') if language else 'English'
+        
+        system_prompt = f"""You are a helpful assistant that summarizes audio transcriptions.
 
-CRITICAL LANGUAGE RULE — FOLLOW THIS EXACTLY:
-1. Detect the language of the transcription text below
-2. Your summary MUST be written in that SAME language — no exceptions
-3. If the text is in English, your summary MUST be in English
-4. If the text is in Portuguese, your summary MUST be in European Portuguese (PT-PT)
-5. If the text is in Spanish, your summary MUST be in Spanish
-6. NEVER default to Portuguese or any other language if the input is in English
-7. Match the input language character for character — do NOT translate
+You MUST write your summary in {target_lang}. This is non-negotiable.
 
 Content requirements:
 - Provide a concise 1-2 sentence summary of the main points
-- Refer to the person by their name if provided, not as 'the speaker' or 'the user'"""
+- Refer to the person by their name if provided, not as 'the speaker' or 'the user'
+- Write ONLY in {target_lang}"""
         
         if username:
-            user_prompt = f"Summarize this audio transcription from {username}. IMPORTANT: Write the summary in the SAME language as the transcription text. If the text is English, write in English. If Portuguese, write in European Portuguese (PT-PT). Do NOT switch languages.\n\nTranscription:\n{text}"
+            user_prompt = f"Summarize this audio transcription from {username}. Write the summary in {target_lang}.\n\n{text}"
         else:
-            user_prompt = f"Summarize this audio transcription. IMPORTANT: Write the summary in the SAME language as the transcription text. If the text is English, write in English. If Portuguese, write in European Portuguese (PT-PT). Do NOT switch languages.\n\nTranscription:\n{text}"
+            user_prompt = f"Summarize this audio transcription. Write the summary in {target_lang}.\n\n{text}"
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",  # Fast and cost-effective
@@ -4300,14 +4305,26 @@ def process_audio_for_summary(audio_file_path, username=None):
     
     logger.info(f"Processing audio for AI summary: {audio_file_path} (user: {username})")
     
-    # Step 1: Transcribe audio
-    transcription = transcribe_audio_file(audio_file_path)
-    if not transcription:
+    # Step 1: Transcribe audio (returns (text, language) tuple)
+    result = transcribe_audio_file(audio_file_path)
+    if not result:
         logger.warning("Transcription failed, no summary generated")
         return None
     
-    # Step 2: Summarize transcription with username
-    summary = summarize_text(transcription, username=username)
+    # Handle both old (string) and new (tuple) return format
+    if isinstance(result, tuple):
+        transcription, detected_lang = result
+    else:
+        transcription = result
+        detected_lang = 'en'
+    
+    if not transcription:
+        return None
+    
+    logger.info(f"Detected language: {detected_lang}")
+    
+    # Step 2: Summarize transcription with username and detected language
+    summary = summarize_text(transcription, username=username, language=detected_lang)
     if not summary:
         logger.warning("Summarization failed, returning transcription")
         # Return first 200 chars of transcription as fallback
