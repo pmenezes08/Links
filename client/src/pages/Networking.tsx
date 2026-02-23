@@ -17,7 +17,7 @@ type MemberProfile = {
   professional_interests?: string | null
   bio?: string | null
 }
-type FilterOptions = { cities: string[]; countries: string[]; industries: string[]; interests: string[] }
+type FilterOptions = { locations: string[]; industries: string[]; interests: string[] }
 
 const SECTION_DEFINITIONS = [
   { key: 'steve', label: 'Steve Recommendations' },
@@ -44,7 +44,7 @@ export default function Networking() {
 
   // Personal state
   const [personalCommunity, setPersonalCommunity] = useState<number | null>(null)
-  const [filterOptions, setFilterOptions] = useState<FilterOptions>({ cities: [], countries: [], industries: [], interests: [] })
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({ locations: [], industries: [], interests: [] })
   const [selectedLocation, setSelectedLocation] = useState('')
   const [selectedIndustry, setSelectedIndustry] = useState('')
   const [selectedInterest, setSelectedInterest] = useState('')
@@ -75,7 +75,7 @@ export default function Networking() {
       .then(r => r.json())
       .then(data => {
         if (data.success) {
-          setFilterOptions({ cities: data.filters?.cities || [], countries: data.filters?.countries || [], industries: data.filters?.industries || [], interests: data.filters?.interests || [] })
+          setFilterOptions({ locations: data.filters?.locations || [], industries: data.filters?.industries || [], interests: data.filters?.interests || [] })
           setPersonalMembers(data.members || [])
         }
       })
@@ -280,7 +280,7 @@ export default function Networking() {
                   className="rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
                 >
                   <option value="" className="bg-black">Location</option>
-                  {[...new Set([...filterOptions.cities, ...filterOptions.countries])].filter(Boolean).sort().map(loc => (
+                  {filterOptions.locations.filter(Boolean).sort().map(loc => (
                     <option key={loc} value={loc} className="bg-black">{loc}</option>
                   ))}
                 </select>
