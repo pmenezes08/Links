@@ -46,6 +46,7 @@ export default function Networking() {
   const [autoMatching, setAutoMatching] = useState(false)
   const steveEndRef = useRef<HTMLDivElement>(null)
   const steveListRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Layout helpers — matching GroupChatThread exactly
   const safeBottom = 'env(safe-area-inset-bottom, 0px)'
@@ -67,6 +68,14 @@ export default function Networking() {
   const scrollToBottom = useCallback(() => {
     const el = steveListRef.current
     if (el) el.scrollTop = el.scrollHeight
+  }, [])
+
+  const focusTextarea = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.focus()
+    const len = el.value.length
+    el.setSelectionRange(len, len)
   }, [])
 
   // Composer height observer (same as GroupChatThread)
@@ -388,7 +397,7 @@ export default function Networking() {
           </div>
         </div>
 
-        {/* ====== COMPOSER — fixed at bottom, lifted above keyboard (same as GroupChatThread) ====== */}
+        {/* ====== COMPOSER — identical to GroupChatThread ====== */}
         <div
           ref={composerRef}
           className="fixed left-0 right-0"
@@ -402,35 +411,93 @@ export default function Networking() {
         >
           <div
             ref={composerCardRef}
-            className="max-w-3xl w-[calc(100%-24px)] mx-auto bg-black border-t border-white/10 px-3 py-2 rounded-t-xl"
+            className="relative max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3"
+            style={{ background: '#0a0a0c', marginBottom: 0 }}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-end gap-2">
+              {/* Wand / auto-match button (replaces the + attachment button) */}
               <button
+                className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 transition-all cursor-pointer select-none disabled:opacity-40"
                 onClick={triggerAutoMatch}
                 disabled={autoMatching || steveSending || !steveCommunity}
-                className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
                 title="Auto-match based on my profile"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                  WebkitUserSelect: 'none',
+                  userSelect: 'none',
+                } as CSSProperties}
               >
-                <i className="fa-solid fa-wand-magic-sparkles text-xs text-[#4db6ac]" />
+                <i className="fa-solid fa-wand-magic-sparkles text-base sm:text-lg text-[#4db6ac] pointer-events-none" />
               </button>
-              <input
-                value={steveInput}
-                onChange={e => setSteveInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSteveMessage() } }}
-                placeholder="What's on your mind?"
-                className="flex-1 rounded-lg border border-white/15 bg-transparent px-3 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
-                disabled={steveSending || autoMatching}
-              />
+
+              {/* Message input container */}
+              <div
+                className="flex-1 flex items-center rounded-lg bg-white/8 overflow-hidden relative"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+                onPointerDown={focusTextarea}
+              >
+                <textarea
+                  ref={textareaRef}
+                  rows={1}
+                  value={steveInput}
+                  onChange={e => setSteveInput(e.target.value)}
+                  className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
+                  placeholder="Message"
+                  autoComplete="off"
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  spellCheck={true}
+                  tabIndex={0}
+                  inputMode="text"
+                  enterKeyHint="send"
+                  disabled={steveSending || autoMatching}
+                  style={{
+                    touchAction: 'manipulation',
+                    WebkitUserSelect: 'text',
+                    userSelect: 'text',
+                    pointerEvents: 'auto',
+                  } as CSSProperties}
+                  onPointerDown={() => focusTextarea()}
+                  onTouchEnd={(e) => { e.preventDefault(); focusTextarea() }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      sendSteveMessage()
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Send button */}
               <button
+                className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
+                  steveSending || autoMatching
+                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                    : steveInput.trim()
+                      ? 'bg-[#4db6ac] text-black'
+                      : 'bg-white/12 text-white/70'
+                } ${!(steveSending || autoMatching) ? 'active:scale-95' : ''}`}
                 onClick={sendSteveMessage}
                 disabled={!steveInput.trim() || steveSending || autoMatching}
-                className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
+                aria-label="Send"
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
               >
-                <i className="fa-solid fa-arrow-up text-xs text-white" />
+                {steveSending || autoMatching ? (
+                  <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
+                ) : (
+                  <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
+                )}
               </button>
             </div>
           </div>
-          {/* Safe area spacer (same as GroupChatThread) */}
+          {/* Safe area spacer */}
           <div
             style={{
               height: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
