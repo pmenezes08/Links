@@ -11470,9 +11470,10 @@ def api_networking_community_members(community_id):
                 except Exception:
                     pass
 
-                # Collect filter values
-                for loc in loc_display:
-                    if loc: locations_set.add(loc)
+                # Collect filter values — use "City, Country" combined format
+                loc_combined = ', '.join(loc_display) if loc_display else ''
+                if loc_combined:
+                    locations_set.add(loc_combined)
                 if industry:
                     industries_set.add(industry)
                 for interest in pro_interests:
@@ -11480,8 +11481,7 @@ def api_networking_community_members(community_id):
 
                 # Apply filters
                 if location_filter:
-                    loc_str = ' '.join(loc_display).lower()
-                    if location_filter.lower() not in loc_str:
+                    if location_filter.lower() != loc_combined.lower():
                         continue
                 if industry_filter:
                     if industry_filter.lower() not in industry.lower():
