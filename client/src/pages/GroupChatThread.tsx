@@ -135,8 +135,14 @@ export default function GroupChatThread() {
         body: JSON.stringify({ summary, target_language: langCode }),
       })
       const data = await res.json()
-      if (data.success) setTranslations(prev => ({ ...prev, [msgId]: data.translated_summary }))
-    } catch {}
+      if (data.success && data.translated_summary) {
+        setTranslations(prev => ({ ...prev, [msgId]: data.translated_summary }))
+      } else {
+        console.error('Translation failed:', data.error || 'Unknown error')
+      }
+    } catch (err) {
+      console.error('Translation request failed:', err)
+    }
     setTranslatingId(null)
   }
   const pendingDeletions = useRef<Set<number>>(new Set())
@@ -3011,31 +3017,6 @@ export default function GroupChatThread() {
               <i className="fa-solid fa-paper-plane" />
               Send
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Translate language picker modal */}
-      {showLangPicker !== null && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setShowLangPicker(null)}>
-          <div className="absolute inset-0 bg-black/60" />
-          <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-3">
-              <i className="fa-solid fa-globe text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Translate to</span>
-            </div>
-            <div className="space-y-1">
-              {translateLanguages.map(lang => (
-                <button
-                  key={lang.code}
-                  onClick={() => handleTranslateSummary(showLangPicker, langPickerSummary, lang.code)}
-                  className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10 rounded-lg flex items-center gap-3"
-                >
-                  <span className="text-lg">{lang.flag}</span>
-                  <span>{lang.name}</span>
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       )}
