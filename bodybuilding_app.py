@@ -4249,14 +4249,21 @@ def summarize_text(text, username=None, language=None):
         logger.info(f"Summarizing text of length: {len(text)} for user: {username}")
         client = OpenAI(api_key=OPENAI_API_KEY)
         
-        # Map ISO language code to full name for the prompt
+        # Map language identifiers to full names for the prompt.
+        # Whisper returns full lowercase names (e.g. "portuguese"), but callers
+        # may also pass ISO 639-1 codes (e.g. "pt"), so we accept both.
         lang_map = {
             'en': 'English', 'pt': 'European Portuguese (PT-PT)', 'es': 'Spanish',
             'fr': 'French', 'de': 'German', 'it': 'Italian', 'nl': 'Dutch',
             'ga': 'Irish', 'pl': 'Polish', 'ru': 'Russian', 'ja': 'Japanese',
             'zh': 'Mandarin Chinese', 'ko': 'Korean', 'ar': 'Arabic',
+            'english': 'English', 'portuguese': 'European Portuguese (PT-PT)',
+            'spanish': 'Spanish', 'french': 'French', 'german': 'German',
+            'italian': 'Italian', 'dutch': 'Dutch', 'irish': 'Irish',
+            'polish': 'Polish', 'russian': 'Russian', 'japanese': 'Japanese',
+            'chinese': 'Mandarin Chinese', 'korean': 'Korean', 'arabic': 'Arabic',
         }
-        target_lang = lang_map.get(language, 'English') if language else 'English'
+        target_lang = lang_map.get(language.lower() if language else '', 'English') or 'English'
         
         system_prompt = f"""You are a helpful assistant that summarizes audio transcriptions.
 
