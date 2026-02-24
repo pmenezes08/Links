@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
@@ -45,22 +45,47 @@ export default function Networking() {
   const [steveSending, setSteveSending] = useState(false)
   const [autoMatching, setAutoMatching] = useState(false)
   const steveEndRef = useRef<HTMLDivElement>(null)
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
-  const [viewportLift, setViewportLift] = useState(0)
+  const steveListRef = useRef<HTMLDivElement>(null)
+
+  // Layout helpers — matching GroupChatThread exactly
+  const safeBottom = 'env(safe-area-inset-bottom, 0px)'
+  const defaultComposerPadding = 64
+  const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
+  const NATIVE_KEYBOARD_MIN_HEIGHT = 60
+  const KEYBOARD_OFFSET_EPSILON = 6
+  const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const [safeBottomPx, setSafeBottomPx] = useState(0)
+  const [viewportLift, setViewportLift] = useState(0)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+
+  const composerRef = useRef<HTMLDivElement | null>(null)
+  const composerCardRef = useRef<HTMLDivElement | null>(null)
   const keyboardOffsetRef = useRef(0)
   const viewportBaseRef = useRef<number | null>(null)
   const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
-  const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
-  const NATIVE_KEYBOARD_MIN_HEIGHT = 60
-  const KEYBOARD_OFFSET_EPSILON = 6
-
   const scrollToBottom = useCallback(() => {
-    steveEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = steveListRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [])
 
-  // Probe safe area inset
+  // Composer height observer (same as GroupChatThread)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof ResizeObserver === 'undefined') return
+    const node = composerCardRef.current
+    if (!node) return
+    const updateHeight = () => {
+      const height = node.getBoundingClientRect().height
+      if (!height) return
+      setComposerHeight(prev => (Math.abs(prev - height) < 1 ? prev : height))
+    }
+    updateHeight()
+    const observer = new ResizeObserver(updateHeight)
+    observer.observe(node)
+    return () => { observer.disconnect() }
+  }, [])
+
+  // Safe bottom probe (same as GroupChatThread)
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
     const probe = document.createElement('div')
@@ -86,7 +111,17 @@ export default function Networking() {
     }
   }, [])
 
-  // Web visual viewport tracking (web only — native uses Capacitor Keyboard plugin)
+  const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
+  const liftSource = Math.max(keyboardOffset, viewportLift)
+  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
+  const showKeyboard = liftSource > 50
+  const composerGapPx = 4
+
+  const listPaddingBottom = showKeyboard
+    ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
+    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
+
+  // Web visual viewport tracking (web only)
   useEffect(() => {
     if (!isMobile) return
     if (Capacitor.getPlatform() !== 'web') return
@@ -146,9 +181,14 @@ export default function Networking() {
     return () => { showSub?.remove(); hideSub?.remove() }
   }, [scrollToBottom])
 
-  const liftSource = Math.max(keyboardOffset, viewportLift)
-  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
-  const showKeyboard = liftSource > 50
+  // Scroll on keyboard change (same as GroupChatThread)
+  useEffect(() => {
+    if (liftSource < 0) return
+    scrollToBottom()
+    const t1 = setTimeout(scrollToBottom, 120)
+    const t2 = setTimeout(scrollToBottom, 260)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [liftSource, scrollToBottom])
 
   // Personal state
   const [personalCommunity, setPersonalCommunity] = useState<number | null>(null)
@@ -173,7 +213,7 @@ export default function Networking() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { steveEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [steveMessages])
+  useEffect(() => { scrollToBottom() }, [steveMessages, scrollToBottom])
 
   // Personal: load filters + members
   useEffect(() => {
@@ -233,9 +273,180 @@ export default function Networking() {
 
   if (loading) return <div className="glass-page min-h-screen text-white flex items-center justify-center"><span className="text-[#9fb0b5]">Loading…</span></div>
 
+  /* ── Steve tab: fixed viewport layout (matching GroupChatThread) ── */
+  if (activeSection === 'steve') {
+    return (
+      <div
+        className="text-white"
+        style={{
+          position: 'fixed',
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          background: '#000',
+        }}
+      >
+        {/* App header spacer — matches the global header height */}
+        <div style={{ flexShrink: 0, height: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }} />
+
+        {/* Sub-nav tabs */}
+        <div className="flex-shrink-0 h-10 bg-black/70 backdrop-blur border-b border-white/5">
+          <div className="max-w-3xl mx-auto h-full flex items-center px-2">
+            <div className="flex-1 h-full flex">
+              {SECTION_DEFINITIONS.map(section => {
+                const isActive = section.key === activeSection
+                return (
+                  <button
+                    key={section.key}
+                    type="button"
+                    className={`flex-1 text-center text-sm font-medium ${isActive ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+                    onClick={() => setActiveSection(section.key)}
+                  >
+                    <div className="pt-2">{section.label}</div>
+                    <div className={`h-0.5 rounded-full w-20 mx-auto mt-1 ${isActive ? 'bg-[#4db6ac]' : 'bg-transparent'}`} />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Info card — non-scrollable */}
+        <div className="flex-shrink-0 max-w-3xl w-full mx-auto px-1 sm:px-3 pt-2">
+          <section className="rounded-xl border border-white/10 bg-black p-3 space-y-2.5">
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">AI Networking</p>
+              <h1 className="text-xl font-semibold tracking-tight text-white">Who would you like to meet?</h1>
+              <p className="text-[13px] leading-relaxed text-[#a7b8be]">
+                Ask Steve to find the right people for you, or let AI suggest matches based on your profile.
+              </p>
+            </div>
+            <select
+              value={steveCommunity || ''}
+              onChange={e => { setSteveCommunity(Number(e.target.value)); setSteveMessages([]) }}
+              className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-xs text-white focus:outline-none focus:border-[#4db6ac]"
+            >
+              {communities.map(c => <option key={c.id} value={c.id} className="bg-black">{c.name}</option>)}
+            </select>
+          </section>
+        </div>
+
+        {/* Chat messages — scrollable, fills remaining space */}
+        <div
+          ref={steveListRef}
+          className="flex-1 overflow-y-auto overflow-x-hidden max-w-3xl w-full mx-auto px-1 sm:px-3"
+          style={{
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehaviorY: 'auto',
+            paddingBottom: listPaddingBottom,
+            minHeight: 0,
+          } as CSSProperties}
+        >
+          <div className="rounded-xl border border-white/10 bg-black/50 p-3 space-y-3 mt-2">
+            {steveMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 space-y-4 text-center">
+                <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center">
+                  <i className="fa-solid fa-wand-magic-sparkles text-xl text-[#4db6ac]/50" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-[#9fb0b5]">What's on your mind?</p>
+                  <p className="text-[11px] text-[#6f7c81]">e.g. "I want to meet people who work in tech" or "Find members from Lisbon"</p>
+                </div>
+              </div>
+            ) : (
+              steveMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-white/10 text-white rounded-br-md'
+                      : 'bg-transparent text-[#c8d6db] rounded-bl-md'
+                  }`}>
+                    {msg.role === 'steve' ? (
+                      <div className="whitespace-pre-wrap">{renderTextWithSourceLinks(msg.text)}</div>
+                    ) : msg.text}
+                  </div>
+                </div>
+              ))
+            )}
+            {(steveSending || autoMatching) && (
+              <div className="flex justify-start">
+                <div className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-[#9fb0b5]">
+                  <span>Steve is thinking</span>
+                  <span className="flex gap-0.5">
+                    <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </span>
+                </div>
+              </div>
+            )}
+            <div ref={steveEndRef} />
+          </div>
+        </div>
+
+        {/* ====== COMPOSER — fixed at bottom, lifted above keyboard (same as GroupChatThread) ====== */}
+        <div
+          ref={composerRef}
+          className="fixed left-0 right-0"
+          style={{
+            bottom: showKeyboard ? `${keyboardLift}px` : 0,
+            zIndex: 1000,
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <div
+            ref={composerCardRef}
+            className="max-w-3xl w-[calc(100%-24px)] mx-auto bg-black border-t border-white/10 px-3 py-2 rounded-t-xl"
+          >
+            <div className="flex items-center gap-2">
+              <button
+                onClick={triggerAutoMatch}
+                disabled={autoMatching || steveSending || !steveCommunity}
+                className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
+                title="Auto-match based on my profile"
+              >
+                <i className="fa-solid fa-wand-magic-sparkles text-xs text-[#4db6ac]" />
+              </button>
+              <input
+                value={steveInput}
+                onChange={e => setSteveInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSteveMessage() } }}
+                placeholder="What's on your mind?"
+                className="flex-1 rounded-lg border border-white/15 bg-transparent px-3 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
+                disabled={steveSending || autoMatching}
+              />
+              <button
+                onClick={sendSteveMessage}
+                disabled={!steveInput.trim() || steveSending || autoMatching}
+                className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
+              >
+                <i className="fa-solid fa-arrow-up text-xs text-white" />
+              </button>
+            </div>
+          </div>
+          {/* Safe area spacer (same as GroupChatThread) */}
+          <div
+            style={{
+              height: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
+              background: '#000',
+              flexShrink: 0,
+            }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  /* ── Personal tab + default: normal page layout ── */
   return (
     <div className="glass-page min-h-screen text-white">
-      {/* Fixed sub-nav tabs — same as Followers page */}
+      {/* Fixed sub-nav tabs */}
       <div
         className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' }}
@@ -264,107 +475,6 @@ export default function Networking() {
         className="app-subnav-offset max-w-3xl mx-auto px-1 sm:px-3 pb-2 overflow-y-auto overscroll-auto"
         style={{ WebkitOverflowScrolling: 'touch' as any }}
       >
-        {/* ── Steve Recommendations ── */}
-        {activeSection === 'steve' && (
-          <div className="space-y-3">
-            <section className="rounded-xl border border-white/10 bg-black p-3 space-y-2.5">
-              <div className="space-y-1.5">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">AI Networking</p>
-                <h1 className="text-xl font-semibold tracking-tight text-white">Who would you like to meet?</h1>
-                <p className="text-[13px] leading-relaxed text-[#a7b8be]">
-                  Ask Steve to find the right people for you, or let AI suggest matches based on your profile.
-                </p>
-              </div>
-
-              {/* Community selector */}
-              <select
-                value={steveCommunity || ''}
-                onChange={e => { setSteveCommunity(Number(e.target.value)); setSteveMessages([]) }}
-                className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-xs text-white focus:outline-none focus:border-[#4db6ac]"
-              >
-                {communities.map(c => <option key={c.id} value={c.id} className="bg-black">{c.name}</option>)}
-              </select>
-
-              {/* Chat area */}
-              <div className="rounded-xl border border-white/10 bg-black/50 p-3 min-h-[280px] max-h-[50vh] overflow-y-auto space-y-3">
-                {steveMessages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 space-y-4 text-center">
-                    <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center">
-                      <i className="fa-solid fa-wand-magic-sparkles text-xl text-[#4db6ac]/50" />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-[#9fb0b5]">What's on your mind?</p>
-                      <p className="text-[11px] text-[#6f7c81]">e.g. "I want to meet people who work in tech" or "Find members from Lisbon"</p>
-                    </div>
-                  </div>
-                ) : (
-                  steveMessages.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
-                        msg.role === 'user'
-                          ? 'bg-white/10 text-white rounded-br-md'
-                          : 'bg-transparent text-[#c8d6db] rounded-bl-md'
-                      }`}>
-                        {msg.role === 'steve' ? (
-                          <div className="whitespace-pre-wrap">{renderTextWithSourceLinks(msg.text)}</div>
-                        ) : msg.text}
-                      </div>
-                    </div>
-                  ))
-                )}
-                {(steveSending || autoMatching) && (
-                  <div className="flex justify-start">
-                    <div className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-[#9fb0b5]">
-                      <span>Steve is thinking</span>
-                      <span className="flex gap-0.5">
-                        <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 bg-[#4db6ac] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </span>
-                    </div>
-                  </div>
-                )}
-                <div ref={steveEndRef} />
-              </div>
-
-            </section>
-            {/* Spacer for fixed input bar */}
-            <div className="h-16" />
-          </div>
-        )}
-
-        {/* Steve input bar — fixed at viewport bottom, lifted above keyboard */}
-        {activeSection === 'steve' && (
-          <div className="fixed left-0 right-0 z-50 bg-black border-t border-white/10 px-3 py-2" style={{ bottom: showKeyboard ? `${keyboardLift}px` : 0, paddingBottom: showKeyboard ? '4px' : 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}>
-            <div className="max-w-3xl mx-auto flex items-center gap-2">
-              <button
-                onClick={triggerAutoMatch}
-                disabled={autoMatching || steveSending || !steveCommunity}
-                className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
-                title="Auto-match based on my profile"
-              >
-                <i className="fa-solid fa-wand-magic-sparkles text-xs text-[#4db6ac]" />
-              </button>
-              <input
-                value={steveInput}
-                onChange={e => setSteveInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSteveMessage() } }}
-                placeholder="What's on your mind?"
-                className="flex-1 rounded-lg border border-white/15 bg-transparent px-3 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
-                disabled={steveSending || autoMatching}
-              />
-              <button
-                onClick={sendSteveMessage}
-                disabled={!steveInput.trim() || steveSending || autoMatching}
-                className="w-9 h-9 rounded-lg border border-white/15 flex items-center justify-center flex-shrink-0 hover:border-white/35 disabled:opacity-40 transition"
-              >
-                <i className="fa-solid fa-arrow-up text-xs text-white" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Personal ── */}
         {activeSection === 'personal' && (
           <div className="space-y-3">
             <section className="rounded-xl border border-white/10 bg-black p-3 space-y-2.5">
@@ -376,7 +486,6 @@ export default function Networking() {
                 </p>
               </div>
 
-              {/* Community selector */}
               <select
                 value={personalCommunity || ''}
                 onChange={e => setPersonalCommunity(Number(e.target.value))}
@@ -385,7 +494,6 @@ export default function Networking() {
                 {communities.map(c => <option key={c.id} value={c.id} className="bg-black">{c.name}</option>)}
               </select>
 
-              {/* Filters */}
               <div className="grid grid-cols-3 gap-1.5">
                 <select
                   value={selectedLocation}
@@ -419,7 +527,6 @@ export default function Networking() {
                 </select>
               </div>
 
-              {/* Results */}
               <div className="rounded-xl border border-white/10 bg-black/50 p-3">
                 {personalLoading ? (
                   <div className="text-[#9fb0b5]">Loading…</div>
