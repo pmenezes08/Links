@@ -252,7 +252,7 @@ export default function Networking() {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8ca0a8]">AI Networking</p>
                 <h1 className="text-xl font-semibold tracking-tight text-white">Who would you like to meet?</h1>
                 <p className="text-[13px] leading-relaxed text-[#a7b8be]">
-                  Ask Steve to find the right people for you, or let AI suggest matches based on your profile.
+                  Ask Steve to find the right people for you, or let Steve suggest matches based on your profile.
                 </p>
               </div>
 
