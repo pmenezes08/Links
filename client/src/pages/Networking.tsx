@@ -1,4 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
+import { Keyboard } from '@capacitor/keyboard'
+import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import { useNavigate } from 'react-router-dom'
@@ -41,25 +45,110 @@ export default function Networking() {
   const [steveSending, setSteveSending] = useState(false)
   const [autoMatching, setAutoMatching] = useState(false)
   const steveEndRef = useRef<HTMLDivElement>(null)
-  const [keyboardLift, setKeyboardLift] = useState(0)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [viewportLift, setViewportLift] = useState(0)
+  const [safeBottomPx, setSafeBottomPx] = useState(0)
+  const keyboardOffsetRef = useRef(0)
+  const viewportBaseRef = useRef<number | null>(null)
   const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
-  // Keyboard detection via visualViewport (same pattern as GroupChatThread)
+  const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
+  const NATIVE_KEYBOARD_MIN_HEIGHT = 60
+  const KEYBOARD_OFFSET_EPSILON = 6
+
+  const scrollToBottom = useCallback(() => {
+    steveEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [])
+
+  // Probe safe area inset
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    const probe = document.createElement('div')
+    probe.style.position = 'fixed'
+    probe.style.bottom = '0'
+    probe.style.left = '0'
+    probe.style.width = '0'
+    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
+    probe.style.pointerEvents = 'none'
+    probe.style.opacity = '0'
+    probe.style.zIndex = '-1'
+    document.body.appendChild(probe)
+    const updateSafeBottom = () => {
+      const rect = probe.getBoundingClientRect()
+      const next = rect.height || 0
+      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
+    }
+    updateSafeBottom()
+    window.addEventListener('resize', updateSafeBottom)
+    return () => {
+      window.removeEventListener('resize', updateSafeBottom)
+      probe.remove()
+    }
+  }, [])
+
+  // Web visual viewport tracking (web only — native uses Capacitor Keyboard plugin)
   useEffect(() => {
     if (!isMobile) return
-    const vv = window.visualViewport
-    if (!vv) return
-    let baseHeight: number | null = null
-    const onResize = () => {
-      const h = vv.height
-      if (baseHeight === null || h > (baseHeight ?? 0)) baseHeight = h
-      const offset = Math.max(0, (baseHeight ?? h) - h)
-      setKeyboardLift(offset < 50 ? 0 : offset)
+    if (Capacitor.getPlatform() !== 'web') return
+    if (typeof window === 'undefined') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+    let rafId: number | null = null
+    const updateOffset = () => {
+      const currentHeight = viewport.height
+      if (
+        viewportBaseRef.current === null ||
+        currentHeight > (viewportBaseRef.current ?? currentHeight) - 4
+      ) {
+        viewportBaseRef.current = currentHeight
+      }
+      const baseHeight = viewportBaseRef.current ?? currentHeight
+      const nextOffset = Math.max(0, baseHeight - currentHeight)
+      const normalizedOffset = nextOffset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : nextOffset
+      if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 5) return
+      setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 5 ? prev : normalizedOffset))
+      keyboardOffsetRef.current = normalizedOffset
+      setKeyboardOffset(normalizedOffset)
+      if (normalizedOffset > 0) requestAnimationFrame(scrollToBottom)
     }
-    vv.addEventListener('resize', onResize)
-    onResize()
-    return () => vv.removeEventListener('resize', onResize)
-  }, [isMobile])
+    const handleChange = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updateOffset)
+    }
+    viewport.addEventListener('resize', handleChange)
+    handleChange()
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      viewport.removeEventListener('resize', handleChange)
+    }
+  }, [isMobile, scrollToBottom])
+
+  // Native Capacitor keyboard events (iOS/Android)
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+    let showSub: PluginListenerHandle | undefined
+    let hideSub: PluginListenerHandle | undefined
+    const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
+    const handleShow = (info: KeyboardInfo) => {
+      const height = normalizeHeight(info?.keyboardHeight ?? 0)
+      if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
+      keyboardOffsetRef.current = height
+      setKeyboardOffset(height)
+      requestAnimationFrame(scrollToBottom)
+    }
+    const handleHide = () => {
+      if (Math.abs(keyboardOffsetRef.current) < KEYBOARD_OFFSET_EPSILON) return
+      keyboardOffsetRef.current = 0
+      setKeyboardOffset(0)
+    }
+    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => { showSub = handle })
+    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => { hideSub = handle })
+    return () => { showSub?.remove(); hideSub?.remove() }
+  }, [scrollToBottom])
+
+  const liftSource = Math.max(keyboardOffset, viewportLift)
+  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
+  const showKeyboard = liftSource > 50
 
   // Personal state
   const [personalCommunity, setPersonalCommunity] = useState<number | null>(null)
@@ -246,7 +335,7 @@ export default function Networking() {
 
         {/* Steve input bar — fixed at viewport bottom, lifted above keyboard */}
         {activeSection === 'steve' && (
-          <div className="fixed left-0 right-0 z-50 bg-black border-t border-white/10 px-3 py-2" style={{ bottom: keyboardLift > 0 ? `${keyboardLift}px` : 0, paddingBottom: keyboardLift > 0 ? '4px' : 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}>
+          <div className="fixed left-0 right-0 z-50 bg-black border-t border-white/10 px-3 py-2" style={{ bottom: showKeyboard ? `${keyboardLift}px` : 0, paddingBottom: showKeyboard ? '4px' : 'calc(env(safe-area-inset-bottom, 0px) + 8px)' }}>
             <div className="max-w-3xl mx-auto flex items-center gap-2">
               <button
                 onClick={triggerAutoMatch}
