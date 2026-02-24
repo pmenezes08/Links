@@ -4249,14 +4249,21 @@ def summarize_text(text, username=None, language=None):
         logger.info(f"Summarizing text of length: {len(text)} for user: {username}")
         client = OpenAI(api_key=OPENAI_API_KEY)
         
-        # Map ISO language code to full name for the prompt
+        # Map language identifiers to full names for the prompt.
+        # Whisper returns full lowercase names (e.g. "portuguese"), but callers
+        # may also pass ISO 639-1 codes (e.g. "pt"), so we accept both.
         lang_map = {
             'en': 'English', 'pt': 'European Portuguese (PT-PT)', 'es': 'Spanish',
             'fr': 'French', 'de': 'German', 'it': 'Italian', 'nl': 'Dutch',
             'ga': 'Irish', 'pl': 'Polish', 'ru': 'Russian', 'ja': 'Japanese',
             'zh': 'Mandarin Chinese', 'ko': 'Korean', 'ar': 'Arabic',
+            'english': 'English', 'portuguese': 'European Portuguese (PT-PT)',
+            'spanish': 'Spanish', 'french': 'French', 'german': 'German',
+            'italian': 'Italian', 'dutch': 'Dutch', 'irish': 'Irish',
+            'polish': 'Polish', 'russian': 'Russian', 'japanese': 'Japanese',
+            'chinese': 'Mandarin Chinese', 'korean': 'Korean', 'arabic': 'Arabic',
         }
-        target_lang = lang_map.get(language, 'English') if language else 'English'
+        target_lang = lang_map.get(language.lower() if language else '', 'English') or 'English'
         
         system_prompt = f"""You are a helpful assistant that summarizes audio transcriptions.
 
@@ -11457,15 +11464,16 @@ def api_networking_community_members(community_id):
                         if inter_raw:
                             try:
                                 decoded = json.loads(inter_raw)
-                                pro_interests = [str(x).strip() for x in decoded if str(x).strip()] if isinstance(decoded, list) else []
+                                pro_interests = [str(x).strip() for x in decoded if isinstance(x, str) and len(str(x).strip()) > 1] if isinstance(decoded, list) else []
                             except Exception:
-                                pro_interests = [p.strip() for p in str(inter_raw).split(',') if p.strip()]
+                                pro_interests = [p.strip() for p in str(inter_raw).split(',') if p.strip() and len(p.strip()) > 1]
                 except Exception:
                     pass
 
-                # Collect filter values
-                for loc in loc_display:
-                    if loc: locations_set.add(loc)
+                # Collect filter values — use "City, Country" format for locations
+                loc_combined = ', '.join(loc_display) if loc_display else ''
+                if loc_combined:
+                    locations_set.add(loc_combined)
                 if industry:
                     industries_set.add(industry)
                 for interest in pro_interests:
@@ -11473,8 +11481,10 @@ def api_networking_community_members(community_id):
 
                 # Apply filters
                 if location_filter:
-                    loc_str = ' '.join(loc_display).lower()
-                    if location_filter.lower() not in loc_str:
+                    loc_combined_lower = loc_combined.lower()
+                    loc_parts_lower = ' '.join(loc_display).lower()
+                    filter_lower = location_filter.lower()
+                    if filter_lower != loc_combined_lower and filter_lower not in loc_parts_lower:
                         continue
                 if industry_filter:
                     if industry_filter.lower() not in industry.lower():

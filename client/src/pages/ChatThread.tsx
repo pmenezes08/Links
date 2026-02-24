@@ -92,18 +92,6 @@ export default function ChatThread(){
   const [editingSaving, setEditingSaving] = useState(false)
   const [editingSummaryId, setEditingSummaryId] = useState<number|string|null>(null)
   const [editSummaryText, setEditSummaryText] = useState('')
-  const [dmTranslations, setDmTranslations] = useState<Record<string|number, string>>({})
-  const [dmTranslatingId, setDmTranslatingId] = useState<number|string|null>(null)
-  const [dmLangPickerId, setDmLangPickerId] = useState<number|string|null>(null)
-  const [dmLangPickerSummary, setDmLangPickerSummary] = useState('')
-  const dmTranslateLanguages = [
-    { code: 'pt', name: 'Portuguese (PT)', flag: '🇵🇹' },
-    { code: 'en', name: 'English', flag: '🇬🇧' },
-    { code: 'fr', name: 'French', flag: '🇫🇷' },
-    { code: 'de', name: 'German', flag: '🇩🇪' },
-    { code: 'es', name: 'Spanish', flag: '🇪🇸' },
-    { code: 'it', name: 'Italian', flag: '🇮🇹' },
-  ]
   const [selectedMessages, setSelectedMessages] = useState<Set<number|string>>(new Set())
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false)
   const [draft, setDraft] = useState('')
@@ -2458,16 +2446,6 @@ export default function ChatThread(){
                     setEditingSummaryId(msgId)
                     setEditSummaryText(currentSummary)
                   }}
-                  translatedSummaries={dmTranslations}
-                  translatingId={dmTranslatingId}
-                  onTranslateSummary={(msgId, summary, langCode) => {
-                    if (langCode === 'reset') {
-                      setDmTranslations(prev => { const n = { ...prev }; delete n[msgId]; return n })
-                    } else if (langCode === 'pick') {
-                      setDmLangPickerId(msgId)
-                      setDmLangPickerSummary(summary)
-                    }
-                  }}
                   onStoryReplyClick={async (storyId) => {
                     // Fetch the story to get its community_id, then navigate
                     try {
@@ -3272,47 +3250,6 @@ export default function ChatThread(){
       )}
 
       {/* Voice message preview is now inline in the composer - no modal needed */}
-
-      {/* Translate language picker modal */}
-      {dmLangPickerId !== null && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setDmLangPickerId(null)}>
-          <div className="absolute inset-0 bg-black/60" />
-          <div className="relative bg-[#1a1a2e] rounded-2xl border border-white/15 w-[80%] max-w-xs p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-3">
-              <i className="fa-solid fa-globe text-[#4db6ac]" />
-              <span className="text-white font-semibold text-sm">Translate to</span>
-            </div>
-            <div className="space-y-1">
-              {dmTranslateLanguages.map(lang => (
-                <button
-                  key={lang.code}
-                  onClick={async () => {
-                    const msgId = dmLangPickerId!
-                    const summary = dmLangPickerSummary
-                    setDmLangPickerId(null)
-                    setDmTranslatingId(msgId)
-                    try {
-                      const res = await fetch('/translate_summary', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'include',
-                        body: JSON.stringify({ summary, target_language: lang.code }),
-                      })
-                      const data = await res.json()
-                      if (data.success) setDmTranslations(prev => ({ ...prev, [msgId]: data.translated_summary }))
-                    } catch {}
-                    setDmTranslatingId(null)
-                  }}
-                  className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10 rounded-lg flex items-center gap-3"
-                >
-                  <span className="text-lg">{lang.flag}</span>
-                  <span>{lang.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Edit AI Summary modal */}
       {editingSummaryId !== null && (
