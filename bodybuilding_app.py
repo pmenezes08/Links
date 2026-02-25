@@ -25812,6 +25812,106 @@ def api_key_posts():
         logger.error(f"key posts error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
 
+# Group Key Posts
+@app.route('/api/group_key_posts/<int:group_id>', methods=['GET'])
+@login_required
+def api_group_key_posts(group_id):
+    """Get key posts for a group (from group_posts table)."""
+    username = session.get('username')
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            gp_table = '`group_posts`' if USE_MYSQL else 'group_posts'
+            gpr_table = '`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'
+            # Community key posts for groups: check group_key_posts table
+            try:
+                if USE_MYSQL:
+                    c.execute(f"CREATE TABLE IF NOT EXISTS `group_key_posts` (id INTEGER PRIMARY KEY AUTO_INCREMENT, group_id INTEGER NOT NULL, post_id INTEGER NOT NULL, added_by VARCHAR(191), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_gkp (group_id, post_id))")
+                else:
+                    c.execute("CREATE TABLE IF NOT EXISTS group_key_posts (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL, post_id INTEGER NOT NULL, added_by TEXT, created_at TEXT DEFAULT (datetime('now')), UNIQUE(group_id, post_id))")
+                conn.commit()
+            except Exception:
+                pass
+            c.execute(f"SELECT post_id FROM group_key_posts WHERE group_id = {ph} ORDER BY id DESC", (group_id,))
+            post_ids = [(r['post_id'] if hasattr(r, 'keys') else r[0]) for r in (c.fetchall() or [])]
+            if not post_ids:
+                return jsonify({'success': True, 'posts': []})
+            placeholders = ','.join([ph] * len(post_ids))
+            c.execute(f"""
+                SELECT gp.id, gp.username, gp.content, gp.image_path, gp.created_at,
+                       COALESCE(up.profile_picture, '') as profile_picture
+                FROM {gp_table} gp
+                LEFT JOIN user_profiles up ON gp.username = up.username
+                WHERE gp.id IN ({placeholders})
+                ORDER BY gp.created_at DESC
+            """, tuple(post_ids))
+            posts = []
+            for r in c.fetchall():
+                if hasattr(r, 'keys'):
+                    pid, uname, content, img, ts, pp = r['id'], r['username'], r['content'], r['image_path'], r['created_at'], r['profile_picture']
+                else:
+                    pid, uname, content, img, ts, pp = r[0], r[1], r[2], r[3], r[4], r[5]
+                c.execute(f"SELECT reaction, COUNT(*) as cnt FROM {gpr_table} WHERE group_post_id = {ph} GROUP BY reaction", (pid,))
+                reactions = {}
+                for rr in (c.fetchall() or []):
+                    rk = rr['reaction'] if hasattr(rr, 'keys') else rr[0]
+                    rv = rr['cnt'] if hasattr(rr, 'keys') else rr[1]
+                    reactions[rk] = rv
+                c.execute(f"SELECT reaction FROM {gpr_table} WHERE group_post_id = {ph} AND username = {ph}", (pid, username))
+                ur = c.fetchone()
+                user_reaction = (ur['reaction'] if hasattr(ur, 'keys') else ur[0]) if ur else None
+                posts.append({
+                    'id': pid, 'username': uname, 'content': content, 'image_path': img,
+                    'timestamp': ts, 'profile_picture': pp, 'reactions': reactions,
+                    'user_reaction': user_reaction, 'is_starred': True,
+                })
+            return jsonify({'success': True, 'posts': posts})
+    except Exception as e:
+        logger.error(f"group key posts error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+
+@app.route('/api/group_key_posts/<int:group_id>/toggle', methods=['POST'])
+@login_required
+def api_group_key_posts_toggle(group_id):
+    """Toggle a group post as a key post."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    post_id = data.get('post_id')
+    if not post_id:
+        return jsonify({'success': False, 'error': 'post_id required'}), 400
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                if USE_MYSQL:
+                    c.execute("CREATE TABLE IF NOT EXISTS `group_key_posts` (id INTEGER PRIMARY KEY AUTO_INCREMENT, group_id INTEGER NOT NULL, post_id INTEGER NOT NULL, added_by VARCHAR(191), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_gkp (group_id, post_id))")
+                else:
+                    c.execute("CREATE TABLE IF NOT EXISTS group_key_posts (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL, post_id INTEGER NOT NULL, added_by TEXT, created_at TEXT DEFAULT (datetime('now')), UNIQUE(group_id, post_id))")
+                conn.commit()
+            except Exception:
+                pass
+            c.execute(f"SELECT id FROM group_key_posts WHERE group_id = {ph} AND post_id = {ph}", (group_id, post_id))
+            existing = c.fetchone()
+            if existing:
+                eid = existing['id'] if hasattr(existing, 'keys') else existing[0]
+                c.execute(f"DELETE FROM group_key_posts WHERE id = {ph}", (eid,))
+                conn.commit()
+                return jsonify({'success': True, 'starred': False})
+            else:
+                if USE_MYSQL:
+                    c.execute(f"INSERT INTO group_key_posts (group_id, post_id, added_by) VALUES ({ph}, {ph}, {ph})", (group_id, post_id, username))
+                else:
+                    c.execute(f"INSERT INTO group_key_posts (group_id, post_id, added_by) VALUES ({ph}, {ph}, {ph})", (group_id, post_id, username))
+                conn.commit()
+                return jsonify({'success': True, 'starred': True})
+    except Exception as e:
+        logger.error(f"group key posts toggle error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'server error'}), 500
+
+
 # Product Development APIs
 @app.route('/api/product_posts', methods=['GET'])
 @login_required
@@ -28594,6 +28694,7 @@ def api_group_members_list(group_id):
                 JOIN users u ON u.username = gm.username
                 LEFT JOIN user_profiles up ON up.username = gm.username
                 WHERE gm.group_id = {ph} AND gm.status = 'member'
+                  AND LOWER(gm.username) NOT IN ('admin', 'steve')
                 ORDER BY gm.created_at ASC
             """, (group_id,))
             members = []

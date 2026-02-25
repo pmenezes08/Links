@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
@@ -9,6 +9,9 @@ type Post = { id:number; username:string; content:string; image_path?:string|nul
 export default function KeyPosts(){
   const { community_id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const groupId = searchParams.get('group_id')
+  const goBack = () => navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)
   const [activeTab, setActiveTab] = useState<'community'|'yours'>('community')
   const [communityPosts, setCommunityPosts] = useState<Post[]>([])
   const [yourPosts, setYourPosts] = useState<Post[]>([])
@@ -20,16 +23,23 @@ export default function KeyPosts(){
     async function load(){
       setLoading(true)
       try{
+        const communityUrl = groupId
+          ? `/api/group_key_posts/${groupId}`
+          : `/api/community_key_posts?community_id=${community_id}`
+        const yourUrl = groupId
+          ? `/api/group_key_posts/${groupId}`
+          : `/api/key_posts?community_id=${community_id}`
         const [rc, ry] = await Promise.all([
-          fetch(`/api/community_key_posts?community_id=${community_id}`, { credentials:'include' }),
-          fetch(`/api/key_posts?community_id=${community_id}`, { credentials:'include' })
+          fetch(communityUrl, { credentials:'include' }),
+          groupId ? Promise.resolve(null) : fetch(yourUrl, { credentials:'include' })
         ])
         const jc = await rc.json().catch(()=>null)
-        const jy = await ry.json().catch(()=>null)
+        const jy = ry ? await ry.json().catch(()=>null) : null
         if (!ok) return
         if (jc?.success) setCommunityPosts(jc.posts || [])
         if (jy?.success) setYourPosts(jy.posts || [])
-        if (!jc?.success && !jy?.success) setError(jc?.error || jy?.error || 'Error')
+        else if (groupId) setYourPosts([])
+        if (!jc?.success && !jy?.success && !groupId) setError(jc?.error || jy?.error || 'Error')
       }catch{
         if (ok) setError('Error loading key posts')
       } finally {
@@ -50,7 +60,7 @@ export default function KeyPosts(){
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(-1)} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={goBack} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
@@ -74,7 +84,7 @@ export default function KeyPosts(){
         } as CSSProperties}
       >
         <div className="mb-3 flex items-center">
-          <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={()=> navigate(-1)}>
+          <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={goBack}>
             ← Back
           </button>
           <div className="ml-auto font-semibold">Key Posts</div>

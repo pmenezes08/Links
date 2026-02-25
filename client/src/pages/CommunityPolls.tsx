@@ -10,6 +10,7 @@ export default function CommunityPolls(){
   const { community_id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const groupId = searchParams.get('group_id')
   const { setTitle } = useHeader()
   const [activeTab, setActiveTab] = useState<'active'|'archive'|'create'>('active')
   const [polls, setPolls] = useState<ActivePoll[]>([])
@@ -232,7 +233,7 @@ export default function CommunityPolls(){
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id}`)} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">

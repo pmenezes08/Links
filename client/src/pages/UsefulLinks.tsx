@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
 type LinkItem = { id:number; username:string; url:string; description:string; created_at:string; can_delete?:boolean }
@@ -20,6 +20,8 @@ function resolveDocUrl(filePath: string): string {
 
 export default function UsefulLinks(){
   const { community_id } = useParams()
+  const [searchParams] = useSearchParams()
+  const groupId = searchParams.get('group_id')
   const { setTitle } = useHeader()
   const navigate = useNavigate()
   const [links, setLinks] = useState<LinkItem[]>([])
@@ -148,7 +150,7 @@ export default function UsefulLinks(){
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
         <div className="max-w-2xl mx-auto h-full flex items-center gap-2 px-2">
-          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(`/community_feed_react/${community_id||''}`)} aria-label="Back">
+          <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id||''}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
           <div className="flex-1 h-full flex">
