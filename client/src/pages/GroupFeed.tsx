@@ -55,6 +55,18 @@ export default function GroupFeed(){
   const [hasUnseenDocs, setHasUnseenDocs] = useState(false)
   const [hasPendingRsvps, setHasPendingRsvps] = useState(false)
 
+  // Members + invite
+  type MemberInfo = { username: string; display_name: string; profile_picture?: string | null; status?: string }
+  const [showMembers, setShowMembers] = useState(false)
+  const [groupMembers, setGroupMembers] = useState<MemberInfo[]>([])
+  const [membersLoading, setMembersLoading] = useState(false)
+  const [showInvite, setShowInvite] = useState(false)
+  const [availableMembers, setAvailableMembers] = useState<MemberInfo[]>([])
+  const [inviteLoading, setInviteLoading] = useState(false)
+  const [inviteSearch, setInviteSearch] = useState('')
+  const [selectedInvites, setSelectedInvites] = useState<Set<string>>(new Set())
+  const [inviteSending, setInviteSending] = useState(false)
+
   const communityId = communityMeta?.id ? String(communityMeta.id) : ''
   const communityTypeLower = (communityMeta?.type || '').toLowerCase()
   const communityNameLower = (communityMeta?.name || '').toLowerCase()
@@ -139,6 +151,49 @@ export default function GroupFeed(){
     check()
     return () => { mounted = false }
   }, [communityId, group_id])
+
+  const openMembers = async () => {
+    setShowMembers(true)
+    setMembersLoading(true)
+    try {
+      const r = await fetch(`/api/group_members/${group_id}`, { credentials: 'include' })
+      const j = await r.json()
+      if (j?.success) setGroupMembers(j.members || [])
+    } catch {}
+    setMembersLoading(false)
+  }
+
+  const openInvite = async () => {
+    setShowInvite(true)
+    setInviteLoading(true)
+    setSelectedInvites(new Set())
+    setInviteSearch('')
+    try {
+      const r = await fetch(`/api/group_members/${group_id}/available`, { credentials: 'include' })
+      const j = await r.json()
+      if (j?.success) setAvailableMembers(j.available || [])
+    } catch {}
+    setInviteLoading(false)
+  }
+
+  const sendInvites = async () => {
+    if (selectedInvites.size === 0) return
+    setInviteSending(true)
+    try {
+      const r = await fetch(`/api/group_members/${group_id}/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ usernames: Array.from(selectedInvites) }),
+      })
+      const j = await r.json()
+      if (j?.success) {
+        setShowInvite(false)
+        openMembers()
+      }
+    } catch {}
+    setInviteSending(false)
+  }
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
@@ -312,7 +367,7 @@ export default function GroupFeed(){
             <button className="p-3 rounded-full bg-white/10 transition-colors" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
               <i className="fa-solid fa-house text-lg text-[#4db6ac]" />
             </button>
-            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Members" onClick={()=> navigate(`/community/${communityId}/members?group_id=${group_id}`)}>
+            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Members" onClick={openMembers}>
               <i className="fa-solid fa-users text-lg" />
             </button>
             <button
@@ -363,6 +418,117 @@ export default function GroupFeed(){
               {hasUnseenDocs && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
             {communityId && <ManageGroupButton communityId={communityId} onClose={()=> setMoreOpen(false)} />}
+          </div>
+        </div>
+      )}
+
+      {/* Members modal */}
+      {showMembers && (
+        <div className="fixed inset-0 z-[120] bg-black/50 flex items-end justify-center" onClick={(e) => e.currentTarget === e.target && setShowMembers(false)}>
+          <div className="w-full max-w-lg bg-black/95 backdrop-blur border border-white/10 rounded-t-2xl p-4 max-h-[75vh] flex flex-col" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-white font-semibold text-base">Group Members</div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setShowMembers(false); openInvite() }} className="px-3 py-1.5 rounded-lg bg-[#4db6ac] text-black text-xs font-medium hover:brightness-110">
+                  <i className="fa-solid fa-user-plus mr-1.5" />Add
+                </button>
+                <button onClick={() => setShowMembers(false)} className="px-2 py-1 rounded-full border border-white/10 text-white/60 text-sm hover:bg-white/5">
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-1">
+              {membersLoading ? (
+                <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading…</div>
+              ) : groupMembers.length === 0 ? (
+                <div className="text-[#9fb0b5] text-sm py-4 text-center">No members yet. Invite people to this group!</div>
+              ) : groupMembers.map(m => (
+                <div key={m.username} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-white/5 cursor-pointer" onClick={() => { setShowMembers(false); navigate(`/profile/${m.username}`) }}>
+                  <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-white truncate">{m.display_name || m.username}</div>
+                    <div className="text-[11px] text-[#6f7c81]">@{m.username}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invite modal */}
+      {showInvite && (
+        <div className="fixed inset-0 z-[130] bg-black/50 flex items-end justify-center" onClick={(e) => e.currentTarget === e.target && setShowInvite(false)}>
+          <div className="w-full max-w-lg bg-black/95 backdrop-blur border border-white/10 rounded-t-2xl p-4 max-h-[75vh] flex flex-col" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-white font-semibold text-base">Add Members</div>
+              <button onClick={() => setShowInvite(false)} className="px-2 py-1 rounded-full border border-white/10 text-white/60 text-sm hover:bg-white/5">
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            {/* Search */}
+            <div className="relative mb-3">
+              <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#6f7c81]" />
+              <input
+                value={inviteSearch}
+                onChange={e => setInviteSearch(e.target.value)}
+                placeholder="Search by name…"
+                className="w-full rounded-lg border border-white/15 bg-transparent pl-9 pr-3 py-2 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
+                autoFocus
+              />
+            </div>
+            {/* Selected count + add button */}
+            {selectedInvites.size > 0 && (
+              <div className="flex items-center justify-between mb-3 px-1">
+                <span className="text-xs text-[#9fb0b5]">{selectedInvites.size} selected</span>
+                <button onClick={sendInvites} disabled={inviteSending} className="px-4 py-1.5 rounded-lg bg-[#4db6ac] text-black text-xs font-medium hover:brightness-110 disabled:opacity-50">
+                  {inviteSending ? <i className="fa-solid fa-spinner fa-spin" /> : 'Add to Group'}
+                </button>
+              </div>
+            )}
+            {/* Available members list */}
+            <div className="flex-1 overflow-y-auto space-y-1">
+              {inviteLoading ? (
+                <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading…</div>
+              ) : (() => {
+                const q = inviteSearch.trim().toLowerCase()
+                const filtered = q ? availableMembers.filter(m => (m.display_name || '').toLowerCase().includes(q) || m.username.toLowerCase().includes(q)) : availableMembers
+                return filtered.length === 0 ? (
+                  <div className="text-[#9fb0b5] text-sm py-4 text-center">{q ? 'No matches found.' : 'All community members are already in this group.'}</div>
+                ) : (
+                  <div className="space-y-1">
+                    {filtered.map(m => {
+                      const selected = selectedInvites.has(m.username)
+                      return (
+                        <button
+                          key={m.username}
+                          className={`w-full flex items-center gap-3 py-2 px-2 rounded-lg transition-colors text-left ${selected ? 'bg-[#4db6ac]/15 border border-[#4db6ac]/30' : 'hover:bg-white/5 border border-transparent'}`}
+                          onClick={() => setSelectedInvites(prev => {
+                            const next = new Set(prev)
+                            if (next.has(m.username)) next.delete(m.username)
+                            else next.add(m.username)
+                            return next
+                          })}
+                        >
+                          <div className="relative">
+                            <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
+                            {selected && (
+                              <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-[#4db6ac] rounded-full flex items-center justify-center">
+                                <i className="fa-solid fa-check text-[8px] text-black" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-white truncate">{m.display_name || m.username}</div>
+                            <div className="text-[11px] text-[#6f7c81]">@{m.username}</div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </div>
           </div>
         </div>
       )}

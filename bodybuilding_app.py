@@ -28470,6 +28470,123 @@ def group_feed_react(group_id):
         logger.error(f"Error serving group feed react: {str(e)}")
         abort(500)
 
+@app.route('/api/group_members/<int:group_id>', methods=['GET'])
+@login_required
+def api_group_members_list(group_id):
+    """List members of a community group with profile info."""
+    username = session.get('username')
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
+            c.execute(f"SELECT community_id FROM {groups_table} WHERE id = {ph}", (group_id,))
+            g = c.fetchone()
+            if not g:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            community_id = g['community_id'] if hasattr(g, 'keys') else g[0]
+
+            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+            c.execute(f"""
+                SELECT gm.username, gm.status, gm.created_at,
+                       COALESCE(up.display_name, u.username) AS display_name,
+                       up.profile_picture
+                FROM {gm_table} gm
+                JOIN users u ON u.username = gm.username
+                LEFT JOIN user_profiles up ON up.username = gm.username
+                WHERE gm.group_id = {ph} AND gm.status = 'member'
+                ORDER BY gm.created_at ASC
+            """, (group_id,))
+            members = []
+            for r in c.fetchall():
+                if hasattr(r, 'keys'):
+                    members.append({k: r[k] for k in r.keys()})
+                else:
+                    members.append({'username': r[0], 'status': r[1], 'created_at': r[2], 'display_name': r[3], 'profile_picture': r[4]})
+            return jsonify({'success': True, 'members': members, 'community_id': community_id})
+    except Exception as e:
+        logger.error(f"Error listing group members: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/group_members/<int:group_id>/available', methods=['GET'])
+@login_required
+def api_group_members_available(group_id):
+    """List parent community members who are NOT yet in this group."""
+    username = session.get('username')
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
+            c.execute(f"SELECT community_id FROM {groups_table} WHERE id = {ph}", (group_id,))
+            g = c.fetchone()
+            if not g:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            community_id = g['community_id'] if hasattr(g, 'keys') else g[0]
+
+            # Get parent community id (the group's community might be a sub-community)
+            c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (community_id,))
+            prow = c.fetchone()
+            parent_id = (prow['parent_community_id'] if hasattr(prow, 'keys') else prow[0]) if prow else None
+            source_community = parent_id if parent_id else community_id
+
+            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+            c.execute(f"""
+                SELECT DISTINCT u.username,
+                       COALESCE(up.display_name, u.username) AS display_name,
+                       up.profile_picture
+                FROM users u
+                JOIN user_communities uc ON uc.user_id = u.id
+                LEFT JOIN user_profiles up ON up.username = u.username
+                WHERE uc.community_id = {ph}
+                  AND u.username NOT IN (SELECT gm.username FROM {gm_table} gm WHERE gm.group_id = {ph})
+                  AND LOWER(u.username) NOT IN ('admin', 'steve')
+                ORDER BY COALESCE(up.display_name, u.username)
+            """, (source_community, group_id))
+            available = []
+            for r in c.fetchall():
+                if hasattr(r, 'keys'):
+                    available.append({k: r[k] for k in r.keys()})
+                else:
+                    available.append({'username': r[0], 'display_name': r[1], 'profile_picture': r[2]})
+            return jsonify({'success': True, 'available': available})
+    except Exception as e:
+        logger.error(f"Error listing available members: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/group_members/<int:group_id>/add', methods=['POST'])
+@login_required
+def api_group_members_add(group_id):
+    """Add members to a community group."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    usernames = data.get('usernames', [])
+    if not usernames:
+        return jsonify({'success': False, 'error': 'No usernames provided'}), 400
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+            added = 0
+            for un in usernames:
+                try:
+                    if USE_MYSQL:
+                        c.execute(f"INSERT INTO {gm_table} (group_id, username, status) VALUES ({ph}, {ph}, 'member') ON DUPLICATE KEY UPDATE status='member'", (group_id, un))
+                    else:
+                        c.execute(f"INSERT OR IGNORE INTO {gm_table} (group_id, username, status) VALUES ({ph}, {ph}, 'member')", (group_id, un))
+                    added += 1
+                except Exception:
+                    pass
+            conn.commit()
+            return jsonify({'success': True, 'added': added})
+    except Exception as e:
+        logger.error(f"Error adding group members: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/gym_react')
 @login_required
 def gym_react():
