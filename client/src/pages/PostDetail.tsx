@@ -114,6 +114,7 @@ export default function PostDetail(){
   const { post_id } = useParams()
   const navigate = useNavigate()
   const [post, setPost] = useState<Post|null>(null)
+  const [isGroupPost, setIsGroupPost] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [content, setContent] = useState('')
@@ -649,14 +650,15 @@ export default function PostDetail(){
 
   const refreshPost = useCallback(async () => {
     try{
-      // Try group first
       let r = await fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include' })
       let j = await r.json().catch(()=>null)
-      if (!j?.success){
+      if (j?.success){
+        setPost(j.post); setIsGroupPost(true)
+      } else {
         r = await fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' })
         j = await r.json().catch(()=>null)
+        if (j?.success) { setPost(j.post); setIsGroupPost(false) }
       }
-      if (j?.success) setPost(j.post)
     }catch{}
   }, [post_id])
 
@@ -714,12 +716,15 @@ export default function PostDetail(){
       try{
         let r = await fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include' })
         let j = await r.json().catch(()=>null)
-        if (!j?.success){
+        let groupPost = false
+        if (j?.success){
+          groupPost = true
+        } else {
           r = await fetch(`/get_post?post_id=${post_id}`, { credentials: 'include' })
           j = await r.json().catch(()=>null)
         }
         if (!mounted) return
-        if (j?.success) setPost(j.post)
+        if (j?.success) { setPost(j.post); setIsGroupPost(groupPost) }
         else setError(j?.error || 'Error')
       }catch{
         if (mounted) setError('Error loading post')
@@ -764,7 +769,8 @@ export default function PostDetail(){
       return { ...p, user_reaction: nextUser, reactions: counts }
     })
     const form = new URLSearchParams({ post_id: String(post.id), reaction })
-    const r = await fetch('/add_reaction', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
+    const endpoint = isGroupPost ? '/api/group_posts/react' : '/add_reaction'
+    const r = await fetch(endpoint, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
     const j = await r.json().catch(()=>null)
     if (j?.success){
       setPost(p => p ? ({ ...p, reactions: { ...p.reactions, ...j.counts }, user_reaction: j.user_reaction }) : p)
@@ -773,7 +779,8 @@ export default function PostDetail(){
 
   async function toggleReplyReaction(replyId: number, reaction: string){
     const form = new URLSearchParams({ reply_id: String(replyId), reaction })
-    const r = await fetch('/add_reply_reaction', { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
+    const endpoint = isGroupPost ? '/api/group_replies/react' : '/add_reply_reaction'
+    const r = await fetch(endpoint, { method:'POST', credentials:'include', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: form })
     const j = await r.json().catch(()=>null)
     if (j?.success){
       setPost(p => {
@@ -797,7 +804,11 @@ export default function PostDetail(){
     
     setSubmittingReply(true)
     const fd = new FormData()
-    fd.append('post_id', String(post.id))
+    if (isGroupPost) {
+      fd.append('group_post_id', String(post.id))
+    } else {
+      fd.append('post_id', String(post.id))
+    }
     fd.append('content', content)
     if (parentReplyId) fd.append('parent_reply_id', String(parentReplyId))
     try {
@@ -818,7 +829,8 @@ export default function PostDetail(){
     }
     if (replyPreview?.blob) fd.append('audio', replyPreview.blob, (replyPreview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
     fd.append('dedupe_token', replyTokenRef.current)
-    const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
+    const replyEndpoint = isGroupPost ? '/api/group_replies' : '/post_reply'
+    const r = await fetch(replyEndpoint, { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     setSubmittingReply(false)
     if (j?.success && j.reply){
@@ -853,11 +865,14 @@ export default function PostDetail(){
     if (inlineSending[parentId]) return
     setInlineSending(s => ({ ...s, [parentId]: true }))
     const fd = new FormData()
-    fd.append('post_id', String(post.id))
+    if (isGroupPost) {
+      fd.append('group_post_id', String(post.id))
+    } else {
+      fd.append('post_id', String(post.id))
+    }
     fd.append('content', text || '')
     fd.append('parent_reply_id', String(parentId))
     if (file) {
-      // Detect whether the file is an audio blob or an image; append to the correct form field
       if (typeof (file as any).type === 'string' && (file as any).type.startsWith('audio/')) {
         fd.append('audio', file)
       } else if (typeof (file as any).type === 'string' && (file as any).type.startsWith('image/')) {
@@ -867,7 +882,8 @@ export default function PostDetail(){
       }
     }
     fd.append('dedupe_token', `${Date.now()}_${Math.random().toString(36).slice(2)}`)
-    const r = await fetch('/post_reply', { method:'POST', credentials:'include', body: fd })
+    const inlineEndpoint = isGroupPost ? '/api/group_replies' : '/post_reply'
+    const r = await fetch(inlineEndpoint, { method:'POST', credentials:'include', body: fd })
     const j = await r.json().catch(()=>null)
     setInlineSending(s => ({ ...s, [parentId]: false }))
     if (j?.success && j.reply){

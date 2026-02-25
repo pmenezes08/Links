@@ -3815,8 +3815,7 @@ def init_db():
                 'created_at': 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP',
                 'community_id': 'INTEGER',
                 'timezone': 'VARCHAR(100)',
-                'notification_preferences': "VARCHAR(50) DEFAULT 'all'",
-                'group_id': 'INTEGER',
+                'notification_preferences': "VARCHAR(50) DEFAULT 'all'"
             }
             
             for col_name, col_def in required_columns.items():
@@ -5729,102 +5728,6 @@ def api_community_photos():
     except Exception as e:
         logger.error(f"Error in community_photos: {e}")
         return jsonify({'success': False, 'error': 'Failed to load photos'}), 500
-
-@app.route('/api/group_photos/<int:group_id>')
-@login_required
-def api_group_photos(group_id):
-    """Get all photos from group_posts for a specific group."""
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            gp_table = '`group_posts`' if USE_MYSQL else 'group_posts'
-            c.execute(f"""
-                SELECT gp.id, gp.username, gp.content, gp.image_path, gp.created_at, up.profile_picture
-                FROM {gp_table} gp
-                LEFT JOIN user_profiles up ON gp.username = up.username
-                WHERE gp.group_id = {ph} AND gp.image_path IS NOT NULL AND gp.image_path != ''
-                ORDER BY gp.created_at DESC
-            """, (group_id,))
-            photos = []
-            for row in c.fetchall():
-                if hasattr(row, 'keys'):
-                    post_id, uname, content, image_path, ts, pp = row['id'], row['username'], row['content'], row['image_path'], row['created_at'], row['profile_picture']
-                else:
-                    post_id, uname, content, image_path, ts, pp = row[0], row[1], row[2], row[3], row[4], row[5]
-                if not image_path:
-                    continue
-                if image_path.startswith('http'):
-                    image_url = image_path
-                elif image_path.startswith('/static') or image_path.startswith('/uploads'):
-                    image_url = image_path
-                elif image_path.startswith('uploads/'):
-                    image_url = '/' + image_path
-                else:
-                    image_url = f"/uploads/{image_path}"
-                photos.append({
-                    'id': str(post_id),
-                    'post_id': post_id,
-                    'reply_id': None,
-                    'username': uname,
-                    'image_url': image_url,
-                    'created_at': ts or '',
-                    'profile_picture': pp,
-                })
-            return jsonify({'success': True, 'photos': photos})
-    except Exception as e:
-        logger.error(f"Error in group_photos: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Failed to load photos'}), 500
-
-
-@app.route('/api/group_calendar/<int:group_id>', methods=['GET'])
-@login_required
-def api_group_calendar_list(group_id):
-    """List calendar events for a specific group."""
-    username = session.get('username')
-    ph = get_sql_placeholder()
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute(f"""
-                SELECT ce.id, ce.username, ce.title, ce.date,
-                       COALESCE(ce.end_date, ce.date) as end_date,
-                       COALESCE(ce.start_time, ce.time) as start_time,
-                       ce.end_time, ce.time, ce.description, ce.created_at, ce.community_id, ce.timezone
-                FROM calendar_events ce
-                WHERE ce.group_id = {ph}
-                ORDER BY ce.date ASC, COALESCE(ce.start_time, ce.time) ASC
-            """, (group_id,))
-            events = []
-            for event in c.fetchall():
-                event_id = event['id'] if hasattr(event, 'keys') else event[0]
-                c.execute(f"SELECT response, COUNT(*) as count FROM event_rsvps WHERE event_id = {ph} GROUP BY response", (event_id,))
-                rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
-                for row in c.fetchall():
-                    resp = row['response'] if hasattr(row, 'keys') else row[0]
-                    cnt = row['count'] if hasattr(row, 'keys') else row[1]
-                    rsvp_counts[resp] = cnt
-                c.execute(f"SELECT response FROM event_rsvps WHERE event_id = {ph} AND username = {ph}", (event_id, username))
-                rsvp_row = c.fetchone()
-                user_rsvp = (rsvp_row['response'] if hasattr(rsvp_row, 'keys') else rsvp_row[0]) if rsvp_row else None
-                ev = {
-                    'id': event_id,
-                    'title': event['title'] if hasattr(event, 'keys') else event[2],
-                    'date': event['date'] if hasattr(event, 'keys') else event[3],
-                    'end_date': event['end_date'] if hasattr(event, 'keys') else event[4],
-                    'start_time': event['start_time'] if hasattr(event, 'keys') else event[5],
-                    'end_time': event['end_time'] if hasattr(event, 'keys') else event[6],
-                    'timezone': event['timezone'] if hasattr(event, 'keys') else event[11],
-                    'description': event['description'] if hasattr(event, 'keys') else event[8],
-                    'user_rsvp': user_rsvp,
-                    'rsvp_counts': rsvp_counts,
-                }
-                events.append(ev)
-            return jsonify({'success': True, 'events': events})
-    except Exception as e:
-        logger.error(f"Error listing group calendar: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/community_posts_search')
 @login_required
@@ -11561,13 +11464,13 @@ def api_networking_community_members(community_id):
                         if inter_raw:
                             try:
                                 decoded = json.loads(inter_raw)
-                                pro_interests = [str(x).strip() for x in decoded if str(x).strip()] if isinstance(decoded, list) else []
+                                pro_interests = [str(x).strip() for x in decoded if isinstance(x, str) and len(str(x).strip()) > 1] if isinstance(decoded, list) else []
                             except Exception:
-                                pro_interests = [p.strip() for p in str(inter_raw).split(',') if p.strip()]
+                                pro_interests = [p.strip() for p in str(inter_raw).split(',') if p.strip() and len(p.strip()) > 1]
                 except Exception:
                     pass
 
-                # Collect filter values — use "City, Country" combined format
+                # Collect filter values — use "City, Country" format for locations
                 loc_combined = ', '.join(loc_display) if loc_display else ''
                 if loc_combined:
                     locations_set.add(loc_combined)
@@ -11578,7 +11481,10 @@ def api_networking_community_members(community_id):
 
                 # Apply filters
                 if location_filter:
-                    if location_filter.lower() != loc_combined.lower():
+                    loc_combined_lower = loc_combined.lower()
+                    loc_parts_lower = ' '.join(loc_display).lower()
+                    filter_lower = location_filter.lower()
+                    if filter_lower != loc_combined_lower and filter_lower not in loc_parts_lower:
                         continue
                 if industry_filter:
                     if industry_filter.lower() not in industry.lower():
@@ -18043,9 +17949,8 @@ def add_calendar_event():
             start_time = request.form.get('time', '').strip()
         description = request.form.get('description', '').strip()
         
-        # Get community_id, group_id and invited members
+        # Get community_id and invited members
         community_id = request.form.get('community_id', type=int)
-        group_id_val = request.form.get('group_id', type=int)
         invited_members = request.form.getlist('invited_members[]')
         invite_all = request.form.get('invite_all') == 'true'
         
@@ -18119,8 +18024,8 @@ def add_calendar_event():
             created_at_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
             logger.info(f"📅 Creating event (UTC): created_at={created_at_utc}, start_time='{start_time}', end_time='{end_time}', end_date={end_date}, timezone={timezone}, notifications={notification_preferences}")
             c.execute(f"""
-                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, notification_preferences, group_id)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, notification_preferences)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """, (username, title, date, end_date, 
                   start_time_original,  # Keep time field as HH:MM for backward compatibility
                   start_time,           # start_time as DATETIME
@@ -18129,8 +18034,7 @@ def add_calendar_event():
                   created_at_utc,       # created_at in UTC
                   community_id,
                   timezone,
-                  notification_preferences,
-                  group_id_val))
+                  notification_preferences))
             
             event_id = c.lastrowid
             
@@ -25812,106 +25716,6 @@ def api_key_posts():
         logger.error(f"key posts error: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500
 
-# Group Key Posts
-@app.route('/api/group_key_posts/<int:group_id>', methods=['GET'])
-@login_required
-def api_group_key_posts(group_id):
-    """Get key posts for a group (from group_posts table)."""
-    username = session.get('username')
-    ph = get_sql_placeholder()
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            gp_table = '`group_posts`' if USE_MYSQL else 'group_posts'
-            gpr_table = '`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'
-            # Community key posts for groups: check group_key_posts table
-            try:
-                if USE_MYSQL:
-                    c.execute(f"CREATE TABLE IF NOT EXISTS `group_key_posts` (id INTEGER PRIMARY KEY AUTO_INCREMENT, group_id INTEGER NOT NULL, post_id INTEGER NOT NULL, added_by VARCHAR(191), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_gkp (group_id, post_id))")
-                else:
-                    c.execute("CREATE TABLE IF NOT EXISTS group_key_posts (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL, post_id INTEGER NOT NULL, added_by TEXT, created_at TEXT DEFAULT (datetime('now')), UNIQUE(group_id, post_id))")
-                conn.commit()
-            except Exception:
-                pass
-            c.execute(f"SELECT post_id FROM group_key_posts WHERE group_id = {ph} ORDER BY id DESC", (group_id,))
-            post_ids = [(r['post_id'] if hasattr(r, 'keys') else r[0]) for r in (c.fetchall() or [])]
-            if not post_ids:
-                return jsonify({'success': True, 'posts': []})
-            placeholders = ','.join([ph] * len(post_ids))
-            c.execute(f"""
-                SELECT gp.id, gp.username, gp.content, gp.image_path, gp.created_at,
-                       COALESCE(up.profile_picture, '') as profile_picture
-                FROM {gp_table} gp
-                LEFT JOIN user_profiles up ON gp.username = up.username
-                WHERE gp.id IN ({placeholders})
-                ORDER BY gp.created_at DESC
-            """, tuple(post_ids))
-            posts = []
-            for r in c.fetchall():
-                if hasattr(r, 'keys'):
-                    pid, uname, content, img, ts, pp = r['id'], r['username'], r['content'], r['image_path'], r['created_at'], r['profile_picture']
-                else:
-                    pid, uname, content, img, ts, pp = r[0], r[1], r[2], r[3], r[4], r[5]
-                c.execute(f"SELECT reaction, COUNT(*) as cnt FROM {gpr_table} WHERE group_post_id = {ph} GROUP BY reaction", (pid,))
-                reactions = {}
-                for rr in (c.fetchall() or []):
-                    rk = rr['reaction'] if hasattr(rr, 'keys') else rr[0]
-                    rv = rr['cnt'] if hasattr(rr, 'keys') else rr[1]
-                    reactions[rk] = rv
-                c.execute(f"SELECT reaction FROM {gpr_table} WHERE group_post_id = {ph} AND username = {ph}", (pid, username))
-                ur = c.fetchone()
-                user_reaction = (ur['reaction'] if hasattr(ur, 'keys') else ur[0]) if ur else None
-                posts.append({
-                    'id': pid, 'username': uname, 'content': content, 'image_path': img,
-                    'timestamp': ts, 'profile_picture': pp, 'reactions': reactions,
-                    'user_reaction': user_reaction, 'is_starred': True,
-                })
-            return jsonify({'success': True, 'posts': posts})
-    except Exception as e:
-        logger.error(f"group key posts error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'server error'}), 500
-
-
-@app.route('/api/group_key_posts/<int:group_id>/toggle', methods=['POST'])
-@login_required
-def api_group_key_posts_toggle(group_id):
-    """Toggle a group post as a key post."""
-    username = session.get('username')
-    data = request.get_json() or {}
-    post_id = data.get('post_id')
-    if not post_id:
-        return jsonify({'success': False, 'error': 'post_id required'}), 400
-    ph = get_sql_placeholder()
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            try:
-                if USE_MYSQL:
-                    c.execute("CREATE TABLE IF NOT EXISTS `group_key_posts` (id INTEGER PRIMARY KEY AUTO_INCREMENT, group_id INTEGER NOT NULL, post_id INTEGER NOT NULL, added_by VARCHAR(191), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uniq_gkp (group_id, post_id))")
-                else:
-                    c.execute("CREATE TABLE IF NOT EXISTS group_key_posts (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL, post_id INTEGER NOT NULL, added_by TEXT, created_at TEXT DEFAULT (datetime('now')), UNIQUE(group_id, post_id))")
-                conn.commit()
-            except Exception:
-                pass
-            c.execute(f"SELECT id FROM group_key_posts WHERE group_id = {ph} AND post_id = {ph}", (group_id, post_id))
-            existing = c.fetchone()
-            if existing:
-                eid = existing['id'] if hasattr(existing, 'keys') else existing[0]
-                c.execute(f"DELETE FROM group_key_posts WHERE id = {ph}", (eid,))
-                conn.commit()
-                return jsonify({'success': True, 'starred': False})
-            else:
-                if USE_MYSQL:
-                    c.execute(f"INSERT INTO group_key_posts (group_id, post_id, added_by) VALUES ({ph}, {ph}, {ph})", (group_id, post_id, username))
-                else:
-                    c.execute(f"INSERT INTO group_key_posts (group_id, post_id, added_by) VALUES ({ph}, {ph}, {ph})", (group_id, post_id, username))
-                conn.commit()
-                return jsonify({'success': True, 'starred': True})
-    except Exception as e:
-        logger.error(f"group key posts toggle error: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'server error'}), 500
-
-
 # Product Development APIs
 @app.route('/api/product_posts', methods=['GET'])
 @login_required
@@ -28351,34 +28155,55 @@ def api_group_post():
             c.execute(f"SELECT reaction FROM {'`group_post_reactions`' if USE_MYSQL else 'group_post_reactions'} WHERE group_post_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (pid, username))
             urr = c.fetchone(); user_reaction = urr['reaction'] if hasattr(urr, 'keys') else (urr[0] if urr else None)
 
-            # Replies
+            # Replies (with nested tree, matching /get_post format)
+            gr_table = '`group_replies`' if USE_MYSQL else 'group_replies'
+            grr_table = '`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'
             c.execute(f"""
-                SELECT gr.id, gr.username, gr.content, gr.image_path, gr.created_at, up.profile_picture
-                FROM {'`group_replies`' if USE_MYSQL else 'group_replies'} gr
+                SELECT gr.id, gr.username, gr.content, gr.image_path, gr.created_at,
+                       gr.parent_reply_id, up.profile_picture
+                FROM {gr_table} gr
                 LEFT JOIN user_profiles up ON up.username = gr.username
                 WHERE gr.group_post_id = {get_sql_placeholder()}
-                ORDER BY gr.id DESC
-                LIMIT 100
+                ORDER BY gr.id ASC
             """, (pid,))
             rep_rows = c.fetchall() or []
-            replies = []
+            all_replies = []
             for rr in rep_rows:
                 rid = rr['id'] if hasattr(rr, 'keys') else rr[0]
-                c.execute(f"SELECT reaction, COUNT(*) as c FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id = {get_sql_placeholder()} GROUP BY reaction", (rid,))
+                parent_rid = rr['parent_reply_id'] if hasattr(rr, 'keys') else rr[5]
+                c.execute(f"SELECT reaction, COUNT(*) as c FROM {grr_table} WHERE group_reply_id = {get_sql_placeholder()} GROUP BY reaction", (rid,))
                 rrx = c.fetchall() or []
                 rreactions = { (r3['reaction'] if hasattr(r3, 'keys') else r3[0]): (r3['c'] if hasattr(r3, 'keys') else r3[1]) for r3 in rrx }
-                c.execute(f"SELECT reaction FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (rid, username))
+                c.execute(f"SELECT reaction FROM {grr_table} WHERE group_reply_id = {get_sql_placeholder()} AND username = {get_sql_placeholder()}", (rid, username))
                 rur = c.fetchone(); reply_user_reaction = rur['reaction'] if hasattr(rur, 'keys') else (rur[0] if rur else None)
-                replies.append({
+                # Count direct children
+                c.execute(f"SELECT COUNT(*) as cnt FROM {gr_table} WHERE parent_reply_id = {get_sql_placeholder()}", (rid,))
+                cnt_row = c.fetchone()
+                reply_count = (cnt_row['cnt'] if hasattr(cnt_row, 'keys') else cnt_row[0]) if cnt_row else 0
+                all_replies.append({
                     'id': rid,
                     'username': rr['username'] if hasattr(rr, 'keys') else rr[1],
                     'content': rr['content'] if hasattr(rr, 'keys') else rr[2],
                     'image_path': rr['image_path'] if hasattr(rr, 'keys') else rr[3],
                     'timestamp': rr['created_at'] if hasattr(rr, 'keys') else rr[4],
-                    'profile_picture': rr['profile_picture'] if hasattr(rr, 'keys') else rr[5],
+                    'parent_reply_id': parent_rid,
+                    'profile_picture': rr['profile_picture'] if hasattr(rr, 'keys') else rr[6],
                     'reactions': rreactions,
                     'user_reaction': reply_user_reaction,
+                    'reply_count': reply_count,
+                    'children': [],
                 })
+            # Build nested tree
+            reply_map = {r['id']: r for r in all_replies}
+            root_replies = []
+            for r in all_replies:
+                parent_id = r.get('parent_reply_id')
+                if parent_id and parent_id in reply_map:
+                    reply_map[parent_id]['children'].append(r)
+                else:
+                    root_replies.append(r)
+            root_replies.reverse()
+
             post = {
                 'id': pid,
                 'username': uname,
@@ -28387,9 +28212,11 @@ def api_group_post():
                 'timestamp': created_at,
                 'reactions': reactions,
                 'user_reaction': user_reaction,
-                'replies': replies,
+                'replies': root_replies,
                 'can_edit': bool(is_manager or (uname == username)),
                 'can_delete': bool(is_manager or (uname == username)),
+                'is_group_post': True,
+                'group_id': group_id,
             }
             allow_nsfw_imagine = False
             if community_id:
@@ -28611,10 +28438,23 @@ def api_group_replies_create():
             image_path = None
             if 'image' in request.files and request.files['image'].filename:
                 image_path = save_uploaded_file(request.files['image'])
+            now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
             c.execute(f"INSERT INTO {'`group_replies`' if USE_MYSQL else 'group_replies'} (group_post_id, parent_reply_id, username, content, image_path, created_at) VALUES ({get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()},{get_sql_placeholder()})",
-                      (post_id, parent_id, username, content, image_path, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')))
+                      (post_id, parent_id, username, content, image_path, now))
             if not USE_MYSQL: conn.commit()
-            return jsonify({'success': True})
+            reply_id = c.lastrowid
+            pp = None
+            try:
+                c.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (username,))
+                pp_row = c.fetchone()
+                if pp_row: pp = pp_row['profile_picture'] if hasattr(pp_row, 'keys') else pp_row[0]
+            except Exception: pass
+            return jsonify({'success': True, 'reply': {
+                'id': reply_id, 'username': username, 'content': content,
+                'image_path': image_path, 'timestamp': now,
+                'parent_reply_id': parent_id, 'profile_picture': pp,
+                'reactions': {}, 'user_reaction': None, 'children': [], 'reply_count': 0,
+            }})
     except Exception as e:
         logger.error(f"api_group_replies_create error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
@@ -28646,13 +28486,20 @@ def api_group_replies_react():
                     if prev == reaction:
                         c.execute(f"DELETE FROM {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} WHERE group_reply_id={get_sql_placeholder()} AND username={get_sql_placeholder()}", (reply_id, username))
                         if not USE_MYSQL: conn.commit()
-                        return jsonify({'success': True, 'user_reaction': None})
+                        ur = None
                     else:
                         c.execute(f"UPDATE {'`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'} SET reaction={get_sql_placeholder()} WHERE group_reply_id={get_sql_placeholder()} AND username={get_sql_placeholder()}", (reaction, reply_id, username))
                         if not USE_MYSQL: conn.commit()
-                        return jsonify({'success': True, 'user_reaction': reaction})
-            if not USE_MYSQL: conn.commit()
-            return jsonify({'success': True, 'user_reaction': reaction})
+                        ur = reaction
+                else:
+                    ur = reaction
+            else:
+                if not USE_MYSQL: conn.commit()
+                ur = reaction
+            grr_t = '`group_reply_reactions`' if USE_MYSQL else 'group_reply_reactions'
+            c.execute(f"SELECT reaction, COUNT(*) as c FROM {grr_t} WHERE group_reply_id={get_sql_placeholder()} GROUP BY reaction", (reply_id,))
+            counts = { (r['reaction'] if hasattr(r, 'keys') else r[0]): (r['c'] if hasattr(r, 'keys') else r[1]) for r in (c.fetchall() or []) }
+            return jsonify({'success': True, 'user_reaction': ur, 'counts': counts})
     except Exception as e:
         logger.error(f"api_group_replies_react error: {e}")
         return jsonify({'success': False, 'error': 'Server error'})
@@ -28668,124 +28515,6 @@ def group_feed_react(group_id):
     except Exception as e:
         logger.error(f"Error serving group feed react: {str(e)}")
         abort(500)
-
-@app.route('/api/group_members/<int:group_id>', methods=['GET'])
-@login_required
-def api_group_members_list(group_id):
-    """List members of a community group with profile info."""
-    username = session.get('username')
-    ph = get_sql_placeholder()
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            groups_table = '`groups`' if USE_MYSQL else 'groups'
-            c.execute(f"SELECT community_id FROM {groups_table} WHERE id = {ph}", (group_id,))
-            g = c.fetchone()
-            if not g:
-                return jsonify({'success': False, 'error': 'Group not found'}), 404
-            community_id = g['community_id'] if hasattr(g, 'keys') else g[0]
-
-            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
-            c.execute(f"""
-                SELECT gm.username, gm.status, gm.created_at,
-                       COALESCE(up.display_name, u.username) AS display_name,
-                       up.profile_picture
-                FROM {gm_table} gm
-                JOIN users u ON u.username = gm.username
-                LEFT JOIN user_profiles up ON up.username = gm.username
-                WHERE gm.group_id = {ph} AND gm.status = 'member'
-                  AND LOWER(gm.username) NOT IN ('admin', 'steve')
-                ORDER BY gm.created_at ASC
-            """, (group_id,))
-            members = []
-            for r in c.fetchall():
-                if hasattr(r, 'keys'):
-                    members.append({k: r[k] for k in r.keys()})
-                else:
-                    members.append({'username': r[0], 'status': r[1], 'created_at': r[2], 'display_name': r[3], 'profile_picture': r[4]})
-            return jsonify({'success': True, 'members': members, 'community_id': community_id})
-    except Exception as e:
-        logger.error(f"Error listing group members: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/group_members/<int:group_id>/available', methods=['GET'])
-@login_required
-def api_group_members_available(group_id):
-    """List parent community members who are NOT yet in this group."""
-    username = session.get('username')
-    ph = get_sql_placeholder()
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            groups_table = '`groups`' if USE_MYSQL else 'groups'
-            c.execute(f"SELECT community_id FROM {groups_table} WHERE id = {ph}", (group_id,))
-            g = c.fetchone()
-            if not g:
-                return jsonify({'success': False, 'error': 'Group not found'}), 404
-            community_id = g['community_id'] if hasattr(g, 'keys') else g[0]
-
-            # Get parent community id (the group's community might be a sub-community)
-            c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (community_id,))
-            prow = c.fetchone()
-            parent_id = (prow['parent_community_id'] if hasattr(prow, 'keys') else prow[0]) if prow else None
-            source_community = parent_id if parent_id else community_id
-
-            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
-            c.execute(f"""
-                SELECT DISTINCT u.username,
-                       COALESCE(up.display_name, u.username) AS display_name,
-                       up.profile_picture
-                FROM users u
-                JOIN user_communities uc ON uc.user_id = u.id
-                LEFT JOIN user_profiles up ON up.username = u.username
-                WHERE uc.community_id = {ph}
-                  AND u.username NOT IN (SELECT gm.username FROM {gm_table} gm WHERE gm.group_id = {ph})
-                  AND LOWER(u.username) NOT IN ('admin', 'steve')
-                ORDER BY COALESCE(up.display_name, u.username)
-            """, (source_community, group_id))
-            available = []
-            for r in c.fetchall():
-                if hasattr(r, 'keys'):
-                    available.append({k: r[k] for k in r.keys()})
-                else:
-                    available.append({'username': r[0], 'display_name': r[1], 'profile_picture': r[2]})
-            return jsonify({'success': True, 'available': available})
-    except Exception as e:
-        logger.error(f"Error listing available members: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-@app.route('/api/group_members/<int:group_id>/add', methods=['POST'])
-@login_required
-def api_group_members_add(group_id):
-    """Add members to a community group."""
-    username = session.get('username')
-    data = request.get_json() or {}
-    usernames = data.get('usernames', [])
-    if not usernames:
-        return jsonify({'success': False, 'error': 'No usernames provided'}), 400
-    ph = get_sql_placeholder()
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
-            added = 0
-            for un in usernames:
-                try:
-                    if USE_MYSQL:
-                        c.execute(f"INSERT INTO {gm_table} (group_id, username, status) VALUES ({ph}, {ph}, 'member') ON DUPLICATE KEY UPDATE status='member'", (group_id, un))
-                    else:
-                        c.execute(f"INSERT OR IGNORE INTO {gm_table} (group_id, username, status) VALUES ({ph}, {ph}, 'member')", (group_id, un))
-                    added += 1
-                except Exception:
-                    pass
-            conn.commit()
-            return jsonify({'success': True, 'added': added})
-    except Exception as e:
-        logger.error(f"Error adding group members: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/gym_react')
 @login_required
