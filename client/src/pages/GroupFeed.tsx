@@ -511,21 +511,22 @@ export default function GroupFeed(){
           <div
             className="fixed inset-0 z-[130] bg-black flex flex-col"
             style={{
-              paddingTop: 'env(safe-area-inset-top, 0px)',
               paddingBottom: kbHeight > 0 ? `${kbHeight}px` : 'env(safe-area-inset-bottom, 0px)',
               transition: 'padding-bottom 0.15s ease-out',
             }}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
-              <button onClick={() => setShowInvite(false)} className="flex items-center gap-2 text-white/70 hover:text-white">
-                <i className="fa-solid fa-arrow-left text-sm" />
-                <span className="text-sm">Back</span>
+            {/* Safe area top spacer */}
+            <div className="flex-shrink-0" style={{ height: 'env(safe-area-inset-top, 0px)' }} />
+            {/* Header with close button */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10 flex-shrink-0">
+              <button
+                onClick={() => setShowInvite(false)}
+                className="w-9 h-9 rounded-full border border-white/15 flex items-center justify-center text-white/70 hover:bg-white/10 active:bg-white/20 flex-shrink-0"
+                style={{ touchAction: 'manipulation' }}
+              >
+                <i className="fa-solid fa-xmark text-base" />
               </button>
-              <div className="text-white font-semibold text-base">Add Members</div>
-              <button onClick={() => setShowInvite(false)} className="w-8 h-8 rounded-full border border-white/15 flex items-center justify-center text-white/60 hover:bg-white/10">
-                <i className="fa-solid fa-xmark text-sm" />
-              </button>
+              <div className="text-white font-semibold text-base flex-1">Add Members</div>
             </div>
             {/* Search */}
             <div className="relative px-4 py-3 flex-shrink-0">
