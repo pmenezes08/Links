@@ -1952,14 +1952,17 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             c = conn.cursor()
             ph = get_sql_placeholder()
             
-            # Get last 20 messages for conversation context
+            # Get messages from the last 7 days for conversation context
+            from datetime import timedelta
+            seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
             c.execute(f"""
                 SELECT sender_username, message_text, created_at
                 FROM group_chat_messages
                 WHERE group_id = {ph} AND message_text IS NOT NULL
+                  AND created_at >= {ph}
                 ORDER BY created_at DESC
-                LIMIT 20
-            """, (group_id,))
+                LIMIT 100
+            """, (group_id, seven_days_ago))
             
             recent_messages = []
             for row in c.fetchall():
@@ -1970,79 +1973,75 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
             
             recent_messages.reverse()  # Chronological order
             
-            # Build context - use more messages for better conversation understanding
+            # Build context from last 7 days of conversation
             context = f"Group chat: {group_name}\n"
-            context += "Recent conversation:\n" + "\n".join(recent_messages[-15:])
+            context += "Recent conversation (last 7 days):\n" + "\n".join(recent_messages)
             context += f"\n\n{sender_username} mentioned you (@Steve)."
             context += f"\n\n[Current date and time: {current_date}]"
             
-            # Try to collect images from recent messages
-            # This is non-critical: if it fails, Steve still responds with text only
+            # Only collect images if the user's message explicitly references them
+            image_keywords = ['image', 'photo', 'picture', 'pic', 'imagem', 'foto', 'see', 'look', 'show', 'what is this', 'what\'s this', 'o que é', 'vê', 'olha']
+            msg_lower = user_message.lower()
+            wants_images = any(kw in msg_lower for kw in image_keywords)
+            
             image_urls = []
-            
-            def _extract_http_images(val):
-                """Extract CDN image URLs from a value (string or JSON array)."""
-                urls = []
-                if not val:
+            if wants_images:
+                def _extract_http_images(val):
+                    urls = []
+                    if not val:
+                        return urls
+                    if isinstance(val, str) and val.startswith('http'):
+                        if not any(val.lower().endswith(e) for e in ['.mp4', '.mov', '.webm', '.m4v']):
+                            urls.append(val)
                     return urls
-                if isinstance(val, str) and val.startswith('http'):
-                    if not any(val.lower().endswith(e) for e in ['.mp4', '.mov', '.webm', '.m4v']):
-                        urls.append(val)
-                return urls
-            
-            def _extract_media_paths_images(raw):
-                """Extract CDN image URLs from media_paths JSON."""
-                urls = []
-                if not raw:
+                
+                def _extract_media_paths_images(raw):
+                    urls = []
+                    if not raw:
+                        return urls
+                    try:
+                        items = json.loads(raw) if isinstance(raw, str) else raw
+                        if isinstance(items, list):
+                            for item in items:
+                                path = item if isinstance(item, str) else ''
+                                if path.startswith('http') and not any(path.lower().endswith(e) for e in ['.mp4', '.mov', '.webm', '.m4v']):
+                                    urls.append(path)
+                    except Exception:
+                        pass
                     return urls
+                
                 try:
-                    items = json.loads(raw) if isinstance(raw, str) else raw
-                    if isinstance(items, list):
-                        for item in items:
-                            path = item if isinstance(item, str) else ''
-                            if path.startswith('http') and not any(path.lower().endswith(e) for e in ['.mp4', '.mov', '.webm', '.m4v']):
-                                urls.append(path)
-                except Exception:
-                    pass
-                return urls
-            
-            # Strategy: try media_paths first (where uploaded images actually go),
-            # fall back to image_path (legacy). Each in its own try/except.
-            
-            # 1) Try media_paths from recent messages (most images go here)
-            try:
-                c.execute(f"""
-                    SELECT media_paths FROM group_chat_messages
-                    WHERE group_id = {ph} AND media_paths IS NOT NULL AND media_paths != ''
-                    ORDER BY created_at DESC LIMIT 5
-                """, (group_id,))
-                for row in c.fetchall():
-                    raw = row["media_paths"] if hasattr(row, "keys") else row[0]
-                    for url in _extract_media_paths_images(raw):
-                        if url not in image_urls and len(image_urls) < 4:
-                            image_urls.append(url)
-            except Exception:
-                pass  # media_paths column might not exist
-            
-            # 2) Try image_path from recent messages (legacy single images)
-            try:
-                if len(image_urls) < 4:
                     c.execute(f"""
-                        SELECT image_path FROM group_chat_messages
-                        WHERE group_id = {ph} AND image_path IS NOT NULL AND image_path != ''
-                        ORDER BY created_at DESC LIMIT 5
+                        SELECT media_paths FROM group_chat_messages
+                        WHERE group_id = {ph} AND media_paths IS NOT NULL AND media_paths != ''
+                        ORDER BY created_at DESC LIMIT 3
                     """, (group_id,))
                     for row in c.fetchall():
-                        val = row["image_path"] if hasattr(row, "keys") else row[0]
-                        for url in _extract_http_images(val):
-                            if url not in image_urls and len(image_urls) < 4:
+                        raw = row["media_paths"] if hasattr(row, "keys") else row[0]
+                        for url in _extract_media_paths_images(raw):
+                            if url not in image_urls and len(image_urls) < 3:
                                 image_urls.append(url)
-            except Exception:
-                pass  # shouldn't fail but just in case
-            
-            if image_urls:
-                context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
-                logger.info(f"Steve vision: collected {len(image_urls)} images for group {group_id}")
+                except Exception:
+                    pass
+                
+                try:
+                    if len(image_urls) < 3:
+                        c.execute(f"""
+                            SELECT image_path FROM group_chat_messages
+                            WHERE group_id = {ph} AND image_path IS NOT NULL AND image_path != ''
+                            ORDER BY created_at DESC LIMIT 3
+                        """, (group_id,))
+                        for row in c.fetchall():
+                            val = row["image_path"] if hasattr(row, "keys") else row[0]
+                            for url in _extract_http_images(val):
+                                if url not in image_urls and len(image_urls) < 3:
+                                    image_urls.append(url)
+                except Exception:
+                    pass
+                
+                if image_urls:
+                    context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
+                    logger.info(f"Steve vision: collected {len(image_urls)} images for group {group_id}")
         
         from openai import OpenAI
         
@@ -2064,7 +2063,7 @@ Read the full conversation context carefully. Adapt your response based on what'
 3. If a problem or challenge is being discussed and NO solution has been proposed — proactively suggest practical, actionable solutions with brief reasoning.
 4. If a solution IS already being discussed — briefly analyze it: what's good about it, any risks or blind spots, and suggest improvements or alternatives if relevant.
 5. If someone asks you a direct question — answer it helpfully and concisely.
-6. If images are attached, you CAN see them. Analyze, describe, or comment on them when relevant or asked.
+6. If images are attached, you CAN see them. Only analyze or describe images when explicitly asked about them. Do NOT proactively reference or describe images unless the user specifically asks.
 
 RESPONSE STYLE:
 - Keep responses concise (2-5 sentences). Don't lecture or over-explain.
