@@ -207,8 +207,13 @@ export default function Communities(){
     const qs = new URLSearchParams(location.search)
     return qs.get('parent_id') ? 'timeline' : 'management'
   })
-  const [myGroups, setMyGroups] = useState<Array<{ group_id: number; name: string; community_id: number; status: string }>>([])
+  const [joinedGroups, setJoinedGroups] = useState<Array<{ group_id: number; name: string; community_id: number; status: string; community_name: string }>>([])
+  const [availableGroups, setAvailableGroups] = useState<Array<{ group_id: number; name: string; community_id: number; approval_required: boolean; community_name: string }>>([])
+  const [groupCommunities, setGroupCommunities] = useState<Array<{ id: number; name: string }>>([])
   const [myGroupsLoading, setMyGroupsLoading] = useState(false)
+  const [joinedFilter, setJoinedFilter] = useState<string>('all')
+  const [availableFilter, setAvailableFilter] = useState<string>('all')
+  const [joiningGroupId, setJoiningGroupId] = useState<number | null>(null)
   
   // Update activeTab when URL changes (e.g., navigating from sub-community feed)
   useEffect(() => {
@@ -465,14 +470,18 @@ export default function Communities(){
               className={`text-sm font-medium ${activeTab==='groups' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
               onClick={()=> {
                 setActiveTab('groups')
-                if (myGroups.length === 0) {
-                  setMyGroupsLoading(true)
-                  fetch('/api/groups/my', { credentials: 'include' })
-                    .then(r => r.json())
-                    .then(j => { if (j?.success) setMyGroups(j.groups || []) })
-                    .catch(() => {})
-                    .finally(() => setMyGroupsLoading(false))
-                }
+                setMyGroupsLoading(true)
+                fetch('/api/groups/my', { credentials: 'include' })
+                  .then(r => r.json())
+                  .then(j => {
+                    if (j?.success) {
+                      setJoinedGroups(j.joined || [])
+                      setAvailableGroups(j.available || [])
+                      setGroupCommunities(j.communities || [])
+                    }
+                  })
+                  .catch(() => {})
+                  .finally(() => setMyGroupsLoading(false))
               }}
             >
               <div className="pt-2 whitespace-nowrap text-center">Groups</div>
@@ -538,30 +547,123 @@ export default function Communities(){
                 return (
                   <>
                     {activeTab === 'groups' ? (
-                      <div className="space-y-3">
+                      <div className="space-y-5">
                         {myGroupsLoading ? (
                           <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading…</div>
-                        ) : myGroups.length === 0 ? (
-                          <div className="text-[#9fb0b5] text-sm py-8 text-center">
-                            <i className="fa-solid fa-users text-2xl mb-2 opacity-40 block" />
-                            You haven't joined any groups yet.
-                          </div>
-                        ) : myGroups.map(g => (
-                          <div
-                            key={g.group_id}
-                            className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-white/5 transition-colors"
-                            onClick={() => navigate(`/group_feed_react/${g.group_id}`)}
-                          >
-                            <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
-                              <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
+                        ) : (
+                          <>
+                            {/* Joined Groups */}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8ca0a8]">Joined Groups</div>
+                                <select
+                                  value={joinedFilter}
+                                  onChange={e => setJoinedFilter(e.target.value)}
+                                  className="rounded-lg border border-white/15 bg-transparent px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
+                                >
+                                  <option value="all" className="bg-black">All Communities</option>
+                                  {groupCommunities.map(c => (
+                                    <option key={c.id} value={String(c.id)} className="bg-black">{c.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              {(() => {
+                                const filtered = joinedFilter === 'all' ? joinedGroups : joinedGroups.filter(g => String(g.community_id) === joinedFilter)
+                                return filtered.length === 0 ? (
+                                  <div className="text-[#6f7c81] text-xs py-4 text-center">No joined groups{joinedFilter !== 'all' ? ' in this community' : ''}.</div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {filtered.map(g => (
+                                      <div
+                                        key={g.group_id}
+                                        className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-white/5 transition-colors"
+                                        onClick={() => navigate(`/group_feed_react/${g.group_id}`)}
+                                      >
+                                        <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                                          <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-sm font-medium text-white truncate">{g.name}</div>
+                                          <div className="text-[11px] text-[#6f7c81]">{g.community_name}</div>
+                                        </div>
+                                        <i className="fa-solid fa-chevron-right text-xs text-white/30" />
+                                      </div>
+                                    ))}
+                                  </div>
+                                )
+                              })()}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium text-white truncate">{g.name}</div>
-                              <div className="text-[11px] text-[#6f7c81]">{g.status === 'member' ? 'Member' : g.status}</div>
+
+                            {/* Available Groups */}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8ca0a8]">Available Groups</div>
+                                <select
+                                  value={availableFilter}
+                                  onChange={e => setAvailableFilter(e.target.value)}
+                                  className="rounded-lg border border-white/15 bg-transparent px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
+                                >
+                                  <option value="all" className="bg-black">All Communities</option>
+                                  {groupCommunities.map(c => (
+                                    <option key={c.id} value={String(c.id)} className="bg-black">{c.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              {(() => {
+                                const filtered = availableFilter === 'all' ? availableGroups : availableGroups.filter(g => String(g.community_id) === availableFilter)
+                                return filtered.length === 0 ? (
+                                  <div className="text-[#6f7c81] text-xs py-4 text-center">No available groups{availableFilter !== 'all' ? ' in this community' : ''}.</div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {filtered.map(g => (
+                                      <div
+                                        key={g.group_id}
+                                        className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 flex items-center gap-3"
+                                      >
+                                        <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
+                                          <i className="fa-solid fa-users text-white/40 text-sm" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-sm font-medium text-white truncate">{g.name}</div>
+                                          <div className="text-[11px] text-[#6f7c81]">
+                                            {g.community_name}
+                                            {g.approval_required && <span className="ml-1.5 text-[#4db6ac]">· Approval required</span>}
+                                          </div>
+                                        </div>
+                                        <button
+                                          disabled={joiningGroupId === g.group_id}
+                                          className="px-3 py-1.5 rounded-lg border border-[#4db6ac]/40 text-[#4db6ac] text-xs font-medium hover:bg-[#4db6ac]/10 disabled:opacity-50 flex-shrink-0"
+                                          onClick={async () => {
+                                            setJoiningGroupId(g.group_id)
+                                            try {
+                                              const fd = new URLSearchParams({ group_id: String(g.group_id) })
+                                              const r = await fetch('/api/groups/join', { method: 'POST', credentials: 'include', body: fd })
+                                              const j = await r.json()
+                                              if (j?.success) {
+                                                // Refresh the lists
+                                                const r2 = await fetch('/api/groups/my', { credentials: 'include' })
+                                                const j2 = await r2.json()
+                                                if (j2?.success) {
+                                                  setJoinedGroups(j2.joined || [])
+                                                  setAvailableGroups(j2.available || [])
+                                                }
+                                              } else {
+                                                alert(j?.error || 'Failed to join')
+                                              }
+                                            } catch { alert('Failed to join group') }
+                                            setJoiningGroupId(null)
+                                          }}
+                                        >
+                                          {joiningGroupId === g.group_id ? <i className="fa-solid fa-spinner fa-spin" /> : 'Join'}
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )
+                              })()}
                             </div>
-                            <i className="fa-solid fa-chevron-right text-xs text-white/30" />
-                          </div>
-                        ))}
+                          </>
+                        )}
                       </div>
                     ) : activeTab === 'training' && showTrainingTab ? (
                       <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">

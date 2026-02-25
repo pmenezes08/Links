@@ -27949,31 +27949,84 @@ def api_groups_available_count():
 @app.route('/api/groups/my', methods=['GET'])
 @login_required
 def api_groups_my():
-    """List user's group memberships across communities with status."""
+    """List user's joined groups and available groups across all sub-communities."""
     username = session.get('username')
+    ph = get_sql_placeholder()
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("""
-                SELECT g.id as group_id, g.name, g.community_id, gm.status
-                FROM group_members gm
-                JOIN groups g ON gm.group_id = g.id
-                WHERE gm.username = ?
-                ORDER BY g.community_id, g.name
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
+            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+
+            # Get all communities the user belongs to
+            c.execute(f"""
+                SELECT c.id, c.name FROM communities c
+                JOIN user_communities uc ON uc.community_id = c.id
+                JOIN users u ON u.id = uc.user_id
+                WHERE u.username = {ph}
+                ORDER BY c.name
             """, (username,))
-            rows = c.fetchall()
-            items = [
-                {
-                    'group_id': r['group_id'],
-                    'name': r['name'],
-                    'community_id': r['community_id'],
-                    'status': r['status']
-                } for r in rows
-            ]
-            return jsonify({'success': True, 'groups': items})
+            communities = []
+            comm_ids = []
+            for r in c.fetchall():
+                cid = r['id'] if hasattr(r, 'keys') else r[0]
+                cname = r['name'] if hasattr(r, 'keys') else r[1]
+                communities.append({'id': cid, 'name': cname})
+                comm_ids.append(cid)
+
+            if not comm_ids:
+                return jsonify({'success': True, 'joined': [], 'available': [], 'communities': []})
+
+            # Joined groups
+            c.execute(f"""
+                SELECT g.id as group_id, g.name, g.community_id, gm.status,
+                       c.name as community_name
+                FROM {gm_table} gm
+                JOIN {groups_table} g ON gm.group_id = g.id
+                JOIN communities c ON c.id = g.community_id
+                WHERE gm.username = {ph} AND gm.status = 'member'
+                ORDER BY c.name, g.name
+            """, (username,))
+            joined = []
+            joined_ids = set()
+            for r in c.fetchall():
+                gid = r['group_id'] if hasattr(r, 'keys') else r[0]
+                joined_ids.add(gid)
+                joined.append({
+                    'group_id': gid,
+                    'name': r['name'] if hasattr(r, 'keys') else r[1],
+                    'community_id': r['community_id'] if hasattr(r, 'keys') else r[2],
+                    'status': r['status'] if hasattr(r, 'keys') else r[3],
+                    'community_name': r['community_name'] if hasattr(r, 'keys') else r[4],
+                })
+
+            # Available groups (in user's communities, not yet joined)
+            placeholders = ','.join([ph] * len(comm_ids))
+            c.execute(f"""
+                SELECT g.id as group_id, g.name, g.community_id, g.approval_required,
+                       c.name as community_name
+                FROM {groups_table} g
+                JOIN communities c ON c.id = g.community_id
+                WHERE g.community_id IN ({placeholders})
+                ORDER BY c.name, g.name
+            """, tuple(comm_ids))
+            available = []
+            for r in c.fetchall():
+                gid = r['group_id'] if hasattr(r, 'keys') else r[0]
+                if gid in joined_ids:
+                    continue
+                available.append({
+                    'group_id': gid,
+                    'name': r['name'] if hasattr(r, 'keys') else r[1],
+                    'community_id': r['community_id'] if hasattr(r, 'keys') else r[2],
+                    'approval_required': bool(r['approval_required'] if hasattr(r, 'keys') else r[3]),
+                    'community_name': r['community_name'] if hasattr(r, 'keys') else r[4],
+                })
+
+            return jsonify({'success': True, 'joined': joined, 'available': available, 'communities': communities})
     except Exception as e:
         logger.error(f"api_groups_my error: {e}")
-        return jsonify({'success': False, 'error': 'Failed to load memberships'})
+        return jsonify({'success': False, 'error': 'Failed to load groups'})
 
 # Group feed API: returns posts scoped to group membership
 @app.route('/api/group_feed')
