@@ -57,6 +57,7 @@ import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
+import EditGroup from './pages/EditGroup'
 import EncryptionSettings from './pages/EncryptionSettings'
 import CommentReply from './pages/CommentReply'
 
@@ -711,6 +712,7 @@ function AppRoutes(){
                 <Route path="/reply/:reply_id" element={<CommentReply />} />
                 <Route path="/compose" element={<CreatePost />} />
                 <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
+                <Route path="/group/:group_id/edit" element={<EditGroup />} />
                 <Route path="/encryption_settings" element={<EncryptionSettings />} />
                 <Route path="*" element={<PremiumDashboard />} />
               </Routes>

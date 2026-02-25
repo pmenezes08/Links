@@ -16,7 +16,7 @@ type Post = { id:number; username:string; content:string; image_path?:string|nul
 function ManageGroupButton({ groupId, onClose }:{ groupId: string, onClose: ()=>void }){
   const navigate = useNavigate()
   return (
-    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { onClose(); alert('Group management coming soon') }}>
+    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { onClose(); navigate(`/group/${groupId}/edit`) }}>
       Manage Group
     </button>
   )

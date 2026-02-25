@@ -203,10 +203,12 @@ export default function Communities(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
-  const [activeTab, setActiveTab] = useState<'timeline'|'management'|'training'>(() => {
+  const [activeTab, setActiveTab] = useState<'timeline'|'management'|'groups'|'training'>(() => {
     const qs = new URLSearchParams(location.search)
     return qs.get('parent_id') ? 'timeline' : 'management'
   })
+  const [myGroups, setMyGroups] = useState<Array<{ group_id: number; name: string; community_id: number; status: string }>>([])
+  const [myGroupsLoading, setMyGroupsLoading] = useState(false)
   
   // Update activeTab when URL changes (e.g., navigating from sub-community feed)
   useEffect(() => {
@@ -455,8 +457,26 @@ export default function Communities(){
               className={`text-sm font-medium ${activeTab==='management' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
               onClick={()=> setActiveTab('management')}
             >
-              <div className="pt-2 whitespace-nowrap text-center">Community Management</div>
+              <div className="pt-2 whitespace-nowrap text-center">Communities</div>
               <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+            </button>
+            <button 
+              type="button" 
+              className={`text-sm font-medium ${activeTab==='groups' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+              onClick={()=> {
+                setActiveTab('groups')
+                if (myGroups.length === 0) {
+                  setMyGroupsLoading(true)
+                  fetch('/api/groups/my', { credentials: 'include' })
+                    .then(r => r.json())
+                    .then(j => { if (j?.success) setMyGroups(j.groups || []) })
+                    .catch(() => {})
+                    .finally(() => setMyGroupsLoading(false))
+                }
+              }}
+            >
+              <div className="pt-2 whitespace-nowrap text-center">Groups</div>
+              <div className={`h-0.5 ${activeTab==='groups' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
             {showTrainingTab && (
               <button 
@@ -517,7 +537,33 @@ export default function Communities(){
                }
                 return (
                   <>
-                    {activeTab === 'training' && showTrainingTab ? (
+                    {activeTab === 'groups' ? (
+                      <div className="space-y-3">
+                        {myGroupsLoading ? (
+                          <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading…</div>
+                        ) : myGroups.length === 0 ? (
+                          <div className="text-[#9fb0b5] text-sm py-8 text-center">
+                            <i className="fa-solid fa-users text-2xl mb-2 opacity-40 block" />
+                            You haven't joined any groups yet.
+                          </div>
+                        ) : myGroups.map(g => (
+                          <div
+                            key={g.group_id}
+                            className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-white/5 transition-colors"
+                            onClick={() => navigate(`/group_feed_react/${g.group_id}`)}
+                          >
+                            <div className="w-10 h-10 rounded-full bg-[#4db6ac]/20 flex items-center justify-center flex-shrink-0">
+                              <i className="fa-solid fa-users text-[#4db6ac] text-sm" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-white truncate">{g.name}</div>
+                              <div className="text-[11px] text-[#6f7c81]">{g.status === 'member' ? 'Member' : g.status}</div>
+                            </div>
+                            <i className="fa-solid fa-chevron-right text-xs text-white/30" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : activeTab === 'training' && showTrainingTab ? (
                       <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
                         <button
                           className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm hover:brightness-110"

@@ -28514,7 +28514,101 @@ def group_feed_react(group_id):
         return send_from_directory(dist_dir, 'index.html')
     except Exception as e:
         logger.error(f"Error serving group feed react: {str(e)}")
+
+
+@app.route('/group/<int:group_id>/edit')
+@login_required
+def group_edit_react(group_id):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        dist_dir = os.path.join(base_dir, 'client', 'dist')
+        return send_from_directory(dist_dir, 'index.html')
+    except Exception as e:
+        logger.error(f"Error serving group edit react: {str(e)}")
         abort(500)
+
+@app.route('/api/group_settings/<int:group_id>', methods=['GET'])
+@login_required
+def api_group_settings_get(group_id):
+    """Get group settings for the edit page."""
+    username = session.get('username')
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
+            c.execute(f"SELECT id, name, community_id, approval_required, created_by FROM {groups_table} WHERE id = {ph}", (group_id,))
+            g = c.fetchone()
+            if not g:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            owner = g['created_by'] if hasattr(g, 'keys') else g[4]
+            is_owner = (username == owner) or is_app_admin(username)
+            is_admin_role = False
+            if not is_owner:
+                gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+                try:
+                    c.execute(f"SELECT role FROM {gm_table} WHERE group_id = {ph} AND username = {ph}", (group_id, username))
+                    rr = c.fetchone()
+                    is_admin_role = rr and ((rr['role'] if hasattr(rr, 'keys') else rr[0]) == 'admin')
+                except Exception:
+                    pass
+            can_edit = is_owner or is_admin_role
+            return jsonify({
+                'success': True,
+                'group': {
+                    'id': g['id'] if hasattr(g, 'keys') else g[0],
+                    'name': g['name'] if hasattr(g, 'keys') else g[1],
+                    'community_id': g['community_id'] if hasattr(g, 'keys') else g[2],
+                    'approval_required': bool(g['approval_required'] if hasattr(g, 'keys') else g[3]),
+                    'created_by': owner,
+                },
+                'can_edit': can_edit,
+                'is_owner': is_owner,
+            })
+    except Exception as e:
+        logger.error(f"Error getting group settings: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/group_settings/<int:group_id>', methods=['POST'])
+@login_required
+def api_group_settings_update(group_id):
+    """Update group settings."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
+            c.execute(f"SELECT created_by FROM {groups_table} WHERE id = {ph}", (group_id,))
+            g = c.fetchone()
+            if not g:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            owner = g['created_by'] if hasattr(g, 'keys') else g[0]
+            is_owner = (username == owner) or is_app_admin(username)
+            is_admin_role = False
+            if not is_owner:
+                gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+                try:
+                    c.execute(f"SELECT role FROM {gm_table} WHERE group_id = {ph} AND username = {ph}", (group_id, username))
+                    rr = c.fetchone()
+                    is_admin_role = rr and ((rr['role'] if hasattr(rr, 'keys') else rr[0]) == 'admin')
+                except Exception:
+                    pass
+            if not is_owner and not is_admin_role:
+                return jsonify({'success': False, 'error': 'Permission denied'}), 403
+            new_name = data.get('name', '').strip()
+            approval = data.get('approval_required', False)
+            if not new_name:
+                return jsonify({'success': False, 'error': 'Group name is required'}), 400
+            c.execute(f"UPDATE {groups_table} SET name = {ph}, approval_required = {ph} WHERE id = {ph}", (new_name, 1 if approval else 0, group_id))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error updating group settings: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/group_members/<int:group_id>', methods=['GET'])
 @login_required
