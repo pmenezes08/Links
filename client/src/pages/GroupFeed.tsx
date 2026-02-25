@@ -1,5 +1,9 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
+import { Keyboard } from '@capacitor/keyboard'
+import type { KeyboardInfo } from '@capacitor/keyboard'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
@@ -66,6 +70,11 @@ export default function GroupFeed(){
   const [inviteSearch, setInviteSearch] = useState('')
   const [selectedInvites, setSelectedInvites] = useState<Set<string>>(new Set())
   const [inviteSending, setInviteSending] = useState(false)
+
+  // Keyboard lift for modals
+  const [kbHeight, setKbHeight] = useState(0)
+  const kbRef = useRef(0)
+  const vvBaseRef = useRef<number | null>(null)
 
   const communityId = communityMeta?.id ? String(communityMeta.id) : ''
   const communityTypeLower = (communityMeta?.type || '').toLowerCase()
@@ -151,6 +160,42 @@ export default function GroupFeed(){
     check()
     return () => { mounted = false }
   }, [communityId, group_id])
+
+  // Web visual viewport keyboard detection
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'web') return
+    const vv = window.visualViewport
+    if (!vv) return
+    const onResize = () => {
+      const h = vv.height
+      if (vvBaseRef.current === null || h > (vvBaseRef.current ?? h) - 4) vvBaseRef.current = h
+      const offset = Math.max(0, (vvBaseRef.current ?? h) - h)
+      const val = offset < 50 ? 0 : offset
+      if (Math.abs(kbRef.current - val) < 5) return
+      kbRef.current = val
+      setKbHeight(val)
+    }
+    vv.addEventListener('resize', onResize)
+    onResize()
+    return () => vv.removeEventListener('resize', onResize)
+  }, [])
+
+  // Native Capacitor keyboard events
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+    let showSub: PluginListenerHandle | undefined
+    let hideSub: PluginListenerHandle | undefined
+    const onShow = (info: KeyboardInfo) => {
+      const h = info?.keyboardHeight ?? 0
+      if (h < 60) return
+      kbRef.current = h
+      setKbHeight(h)
+    }
+    const onHide = () => { kbRef.current = 0; setKbHeight(0) }
+    Keyboard.addListener('keyboardWillShow', onShow).then(s => { showSub = s })
+    Keyboard.addListener('keyboardWillHide', onHide).then(s => { hideSub = s })
+    return () => { showSub?.remove(); hideSub?.remove() }
+  }, [])
 
   const openMembers = async () => {
     setShowMembers(true)
@@ -456,88 +501,90 @@ export default function GroupFeed(){
         </div>
       )}
 
-      {/* Invite modal -- positioned from top so iOS keyboard doesn't push it off */}
+      {/* Invite modal -- fullscreen, lifts above keyboard */}
       {showInvite && (() => {
         const q = inviteSearch.trim().toLowerCase()
         const filteredAvailable = q
           ? availableMembers.filter(m => (m.display_name || '').toLowerCase().includes(q) || m.username.toLowerCase().includes(q))
           : availableMembers
         return (
-          <div className="fixed inset-0 z-[130] bg-black/70" onClick={(e) => e.currentTarget === e.target && setShowInvite(false)}>
-            <div
-              className="absolute left-0 right-0 bg-black border-b border-white/10 flex flex-col"
-              style={{
-                top: 'env(safe-area-inset-top, 0px)',
-                bottom: 0,
-                maxHeight: '100%',
-              }}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
-                <div className="text-white font-semibold text-base">Add Members</div>
-                <button onClick={() => setShowInvite(false)} className="px-2 py-1 rounded-full border border-white/10 text-white/60 text-sm hover:bg-white/5">
-                  <i className="fa-solid fa-xmark" />
+          <div
+            className="fixed inset-0 z-[130] bg-black flex flex-col"
+            style={{
+              paddingTop: 'env(safe-area-inset-top, 0px)',
+              paddingBottom: kbHeight > 0 ? `${kbHeight}px` : 'env(safe-area-inset-bottom, 0px)',
+              transition: 'padding-bottom 0.15s ease-out',
+            }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
+              <button onClick={() => setShowInvite(false)} className="flex items-center gap-2 text-white/70 hover:text-white">
+                <i className="fa-solid fa-arrow-left text-sm" />
+                <span className="text-sm">Back</span>
+              </button>
+              <div className="text-white font-semibold text-base">Add Members</div>
+              <button onClick={() => setShowInvite(false)} className="w-8 h-8 rounded-full border border-white/15 flex items-center justify-center text-white/60 hover:bg-white/10">
+                <i className="fa-solid fa-xmark text-sm" />
+              </button>
+            </div>
+            {/* Search */}
+            <div className="relative px-4 py-3 flex-shrink-0">
+              <i className="fa-solid fa-magnifying-glass absolute left-7 top-1/2 -translate-y-1/2 text-xs text-[#6f7c81]" />
+              <input
+                value={inviteSearch}
+                onChange={e => setInviteSearch(e.target.value)}
+                placeholder="Search by name…"
+                className="w-full rounded-lg border border-white/15 bg-transparent pl-9 pr-3 py-2 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
+                autoFocus
+              />
+            </div>
+            {/* Selected count + add button */}
+            {selectedInvites.size > 0 && (
+              <div className="flex items-center justify-between px-4 pb-2 flex-shrink-0">
+                <span className="text-xs text-[#9fb0b5]">{selectedInvites.size} selected</span>
+                <button onClick={sendInvites} disabled={inviteSending} className="px-4 py-1.5 rounded-lg bg-[#4db6ac] text-black text-xs font-medium hover:brightness-110 disabled:opacity-50">
+                  {inviteSending ? <i className="fa-solid fa-spinner fa-spin" /> : 'Add to Group'}
                 </button>
               </div>
-              {/* Search */}
-              <div className="relative px-4 py-3 flex-shrink-0">
-                <i className="fa-solid fa-magnifying-glass absolute left-7 top-1/2 -translate-y-1/2 text-xs text-[#6f7c81]" />
-                <input
-                  value={inviteSearch}
-                  onChange={e => setInviteSearch(e.target.value)}
-                  placeholder="Search by name…"
-                  className="w-full rounded-lg border border-white/15 bg-transparent pl-9 pr-3 py-2 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
-                  autoFocus
-                />
-              </div>
-              {/* Selected count + add button */}
-              {selectedInvites.size > 0 && (
-                <div className="flex items-center justify-between px-4 pb-2 flex-shrink-0">
-                  <span className="text-xs text-[#9fb0b5]">{selectedInvites.size} selected</span>
-                  <button onClick={sendInvites} disabled={inviteSending} className="px-4 py-1.5 rounded-lg bg-[#4db6ac] text-black text-xs font-medium hover:brightness-110 disabled:opacity-50">
-                    {inviteSending ? <i className="fa-solid fa-spinner fa-spin" /> : 'Add to Group'}
-                  </button>
+            )}
+            {/* Available members list */}
+            <div className="flex-1 overflow-y-auto px-4 pb-4" style={{ minHeight: 0 }}>
+              {inviteLoading ? (
+                <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading…</div>
+              ) : filteredAvailable.length === 0 ? (
+                <div className="text-[#9fb0b5] text-sm py-4 text-center">{q ? 'No matches found.' : 'All community members are already in this group.'}</div>
+              ) : (
+                <div className="space-y-1">
+                  {filteredAvailable.map(m => {
+                    const isSelected = selectedInvites.has(m.username)
+                    return (
+                      <button
+                        key={m.username}
+                        className={`w-full flex items-center gap-3 py-2 px-2 rounded-lg transition-colors text-left ${isSelected ? 'bg-[#4db6ac]/15 border border-[#4db6ac]/30' : 'hover:bg-white/5 border border-transparent'}`}
+                        onClick={() => setSelectedInvites(prev => {
+                          const next = new Set(prev)
+                          if (next.has(m.username)) next.delete(m.username)
+                          else next.add(m.username)
+                          return next
+                        })}
+                      >
+                        <div className="relative">
+                          <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
+                          {isSelected && (
+                            <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-[#4db6ac] rounded-full flex items-center justify-center">
+                              <i className="fa-solid fa-check text-[8px] text-black" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-white truncate">{m.display_name || m.username}</div>
+                          <div className="text-[11px] text-[#6f7c81]">@{m.username}</div>
+                        </div>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
-              {/* Available members list -- scrollable, fills remaining space */}
-              <div className="flex-1 overflow-y-auto px-4 pb-4" style={{ minHeight: 0 }}>
-                {inviteLoading ? (
-                  <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading…</div>
-                ) : filteredAvailable.length === 0 ? (
-                  <div className="text-[#9fb0b5] text-sm py-4 text-center">{q ? 'No matches found.' : 'All community members are already in this group.'}</div>
-                ) : (
-                  <div className="space-y-1">
-                    {filteredAvailable.map(m => {
-                      const isSelected = selectedInvites.has(m.username)
-                      return (
-                        <button
-                          key={m.username}
-                          className={`w-full flex items-center gap-3 py-2 px-2 rounded-lg transition-colors text-left ${isSelected ? 'bg-[#4db6ac]/15 border border-[#4db6ac]/30' : 'hover:bg-white/5 border border-transparent'}`}
-                          onClick={() => setSelectedInvites(prev => {
-                            const next = new Set(prev)
-                            if (next.has(m.username)) next.delete(m.username)
-                            else next.add(m.username)
-                            return next
-                          })}
-                        >
-                          <div className="relative">
-                            <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
-                            {isSelected && (
-                              <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-[#4db6ac] rounded-full flex items-center justify-center">
-                                <i className="fa-solid fa-check text-[8px] text-black" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-white truncate">{m.display_name || m.username}</div>
-                            <div className="text-[11px] text-[#6f7c81]">@{m.username}</div>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         )
