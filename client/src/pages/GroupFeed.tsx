@@ -103,13 +103,13 @@ export default function GroupFeed(){
     let mounted = true
     async function check(){
       try{
-        const r = await fetch(`/get_links?community_id=${communityId}`, { credentials: 'include' })
+        const r = await fetch(`/get_links?community_id=${communityId}&group_id=${group_id}`, { credentials: 'include' })
         const j = await r.json()
         if (!mounted) return
         if (j?.success){
           const docs = j.docs || []
           if (docs.length === 0) { setHasUnseenDocs(false); return }
-          const key = `docs_last_seen_${communityId}`
+          const key = `docs_last_seen_group_${group_id}`
           const lastSeenStr = localStorage.getItem(key)
           const lastSeen = lastSeenStr ? Date.parse(lastSeenStr) : 0
           setHasUnseenDocs(docs.some((d:any) => Date.parse(d.created_at) > lastSeen))
@@ -118,7 +118,7 @@ export default function GroupFeed(){
     }
     check()
     return () => { mounted = false }
-  }, [communityId])
+  }, [communityId, group_id])
 
   // Check for pending RSVPs
   useEffect(() => {
@@ -126,7 +126,7 @@ export default function GroupFeed(){
     let mounted = true
     async function check(){
       try{
-        const r = await fetch(`/api/calendar_events/${communityId}`, { credentials: 'include' })
+        const r = await fetch(`/api/calendar_events/${communityId}?group_id=${group_id}`, { credentials: 'include' })
         const j = await r.json()
         if (!mounted) return
         if (j?.success){
@@ -138,14 +138,25 @@ export default function GroupFeed(){
     }
     check()
     return () => { mounted = false }
-  }, [communityId])
+  }, [communityId, group_id])
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
 
   return (
-    <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
-      <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-28 px-3" style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: '12px' }}>
+    <div className="min-h-screen bg-black text-white pb-safe">
+      {/* Scrollable content area */}
+      <div
+        ref={scrollRef}
+        className="max-w-2xl mx-auto no-scrollbar pb-24 px-3"
+        style={{
+          WebkitOverflowScrolling: 'touch' as any,
+          overflowY: 'auto',
+          overscrollBehaviorY: 'auto',
+          touchAction: 'pan-y',
+          paddingTop: '12px',
+        }}
+      >
         <div className="space-y-3">
           {/* Back to communities (parent) */}
           <div className="flex items-center gap-2">
@@ -301,7 +312,7 @@ export default function GroupFeed(){
             <button className="p-3 rounded-full bg-white/10 transition-colors" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
               <i className="fa-solid fa-house text-lg text-[#4db6ac]" />
             </button>
-            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Members" onClick={()=> communityId ? navigate(`/community/${communityId}/members`) : null}>
+            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Members" onClick={()=> navigate(`/community/${communityId}/members?group_id=${group_id}`)}>
               <i className="fa-solid fa-users text-lg" />
             </button>
             <button
@@ -328,26 +339,26 @@ export default function GroupFeed(){
         </div>
       </div>
 
-      {/* More bottom sheet - identical to CommunityFeed (minus Stories & Forum) */}
+      {/* More bottom sheet */}
       {moreOpen && (
         <div className="fixed inset-0 z-[110] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
           <div className="w-[75%] max-w-sm mr-2 bg-black/95 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0" style={{ marginBottom: 'calc(70px + env(safe-area-inset-bottom))' }}>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/key_posts`) }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/key_posts?group_id=${group_id}`) }}>
               Key Posts
             </button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/polls_react`) }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/polls_react?group_id=${group_id}`) }}>
               Polls
               {hasUnansweredPolls && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/calendar_react`) }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/calendar_react?group_id=${group_id}`) }}>
               Calendar
               {hasPendingRsvps && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
             {showTasks && (
-              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/tasks_react`) }}>Tasks</button>
+              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/tasks_react?group_id=${group_id}`) }}>Tasks</button>
             )}
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/photos_react`) }}>Photos</button>
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/useful_links_react`) }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/photos_react?group_id=${group_id}`) }}>Photos</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/useful_links_react?group_id=${group_id}`) }}>
               Useful Links & Docs
               {hasUnseenDocs && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
