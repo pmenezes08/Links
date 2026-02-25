@@ -28516,6 +28516,229 @@ def group_feed_react(group_id):
         logger.error(f"Error serving group feed react: {str(e)}")
         abort(500)
 
+@app.route('/api/group_members/<int:group_id>', methods=['GET'])
+@login_required
+def api_group_members_list(group_id):
+    """List members of a community group with profile info and roles."""
+    username = session.get('username')
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
+            c.execute(f"SELECT community_id, created_by FROM {groups_table} WHERE id = {ph}", (group_id,))
+            g = c.fetchone()
+            if not g:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            community_id = g['community_id'] if hasattr(g, 'keys') else g[0]
+            group_owner = g['created_by'] if hasattr(g, 'keys') else g[1]
+
+            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+            # Ensure role column exists
+            try:
+                if USE_MYSQL:
+                    c.execute(f"SHOW COLUMNS FROM {gm_table} LIKE 'role'")
+                    if not c.fetchone():
+                        c.execute(f"ALTER TABLE {gm_table} ADD COLUMN role VARCHAR(20) DEFAULT 'member'")
+                else:
+                    c.execute(f"PRAGMA table_info(group_members)")
+                    cols = [r[1] if not hasattr(r, 'keys') else r['name'] for r in c.fetchall()]
+                    if 'role' not in cols:
+                        c.execute("ALTER TABLE group_members ADD COLUMN role TEXT DEFAULT 'member'")
+                conn.commit()
+            except Exception:
+                pass
+
+            c.execute(f"""
+                SELECT gm.username, gm.status, gm.created_at,
+                       COALESCE(up.display_name, u.username) AS display_name,
+                       up.profile_picture,
+                       COALESCE(gm.role, 'member') as role
+                FROM {gm_table} gm
+                JOIN users u ON u.username = gm.username
+                LEFT JOIN user_profiles up ON up.username = gm.username
+                WHERE gm.group_id = {ph} AND gm.status = 'member'
+                  AND LOWER(gm.username) NOT IN ('admin', 'steve')
+                ORDER BY gm.created_at ASC
+            """, (group_id,))
+            members = []
+            for r in c.fetchall():
+                if hasattr(r, 'keys'):
+                    m = {k: r[k] for k in r.keys()}
+                else:
+                    m = {'username': r[0], 'status': r[1], 'created_at': r[2], 'display_name': r[3], 'profile_picture': r[4], 'role': r[5]}
+                # Override role for group owner
+                if m['username'] == group_owner:
+                    m['role'] = 'owner'
+                members.append(m)
+            # Current user's role
+            current_role = 'member'
+            if username == group_owner or is_app_admin(username):
+                current_role = 'owner'
+            else:
+                for m in members:
+                    if m['username'] == username and m.get('role') == 'admin':
+                        current_role = 'admin'
+                        break
+            return jsonify({'success': True, 'members': members, 'community_id': community_id, 'current_user_role': current_role, 'group_owner': group_owner})
+    except Exception as e:
+        logger.error(f"Error listing group members: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/group_members/<int:group_id>/available', methods=['GET'])
+@login_required
+def api_group_members_available(group_id):
+    """List parent community members NOT yet in this group."""
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
+            c.execute(f"SELECT community_id FROM {groups_table} WHERE id = {ph}", (group_id,))
+            g = c.fetchone()
+            if not g:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            community_id = g['community_id'] if hasattr(g, 'keys') else g[0]
+            c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (community_id,))
+            prow = c.fetchone()
+            parent_id = (prow['parent_community_id'] if hasattr(prow, 'keys') else prow[0]) if prow else None
+            source_community = parent_id if parent_id else community_id
+            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+            c.execute(f"""
+                SELECT DISTINCT u.username, COALESCE(up.display_name, u.username) AS display_name, up.profile_picture
+                FROM users u JOIN user_communities uc ON uc.user_id = u.id
+                LEFT JOIN user_profiles up ON up.username = u.username
+                WHERE uc.community_id = {ph}
+                  AND u.username NOT IN (SELECT gm.username FROM {gm_table} gm WHERE gm.group_id = {ph})
+                  AND LOWER(u.username) NOT IN ('admin', 'steve')
+                ORDER BY COALESCE(up.display_name, u.username)
+            """, (source_community, group_id))
+            available = []
+            for r in c.fetchall():
+                if hasattr(r, 'keys'):
+                    available.append({k: r[k] for k in r.keys()})
+                else:
+                    available.append({'username': r[0], 'display_name': r[1], 'profile_picture': r[2]})
+            return jsonify({'success': True, 'available': available})
+    except Exception as e:
+        logger.error(f"Error listing available members: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/group_members/<int:group_id>/add', methods=['POST'])
+@login_required
+def api_group_members_add(group_id):
+    """Add members to a community group."""
+    data = request.get_json() or {}
+    usernames = data.get('usernames', [])
+    if not usernames:
+        return jsonify({'success': False, 'error': 'No usernames provided'}), 400
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+            added = 0
+            for un in usernames:
+                try:
+                    if USE_MYSQL:
+                        c.execute(f"INSERT INTO {gm_table} (group_id, username, status) VALUES ({ph}, {ph}, 'member') ON DUPLICATE KEY UPDATE status='member'", (group_id, un))
+                    else:
+                        c.execute(f"INSERT OR IGNORE INTO {gm_table} (group_id, username, status) VALUES ({ph}, {ph}, 'member')", (group_id, un))
+                    added += 1
+                except Exception:
+                    pass
+            conn.commit()
+            return jsonify({'success': True, 'added': added})
+    except Exception as e:
+        logger.error(f"Error adding group members: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/group_members/<int:group_id>/remove', methods=['POST'])
+@login_required
+def api_group_members_remove(group_id):
+    """Remove a member from the group. Only owner/admin can do this."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    target = data.get('username', '').strip()
+    if not target:
+        return jsonify({'success': False, 'error': 'username required'}), 400
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
+            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+            c.execute(f"SELECT created_by FROM {groups_table} WHERE id = {ph}", (group_id,))
+            g = c.fetchone()
+            if not g:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            owner = g['created_by'] if hasattr(g, 'keys') else g[0]
+            is_owner = (username == owner) or is_app_admin(username)
+            is_admin_role = False
+            if not is_owner:
+                c.execute(f"SELECT role FROM {gm_table} WHERE group_id = {ph} AND username = {ph}", (group_id, username))
+                rr = c.fetchone()
+                is_admin_role = rr and ((rr['role'] if hasattr(rr, 'keys') else rr[0]) == 'admin')
+            if not is_owner and not is_admin_role:
+                return jsonify({'success': False, 'error': 'Only group owners or admins can remove members'}), 403
+            if target == owner:
+                return jsonify({'success': False, 'error': 'Cannot remove the group owner'}), 400
+            c.execute(f"DELETE FROM {gm_table} WHERE group_id = {ph} AND username = {ph}", (group_id, target))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error removing group member: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/group_members/<int:group_id>/set_role', methods=['POST'])
+@login_required
+def api_group_members_set_role(group_id):
+    """Set a member's role (admin/member). Only group owner can do this."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    target = data.get('username', '').strip()
+    role = data.get('role', 'member').strip()
+    if not target or role not in ('admin', 'member'):
+        return jsonify({'success': False, 'error': 'username and valid role required'}), 400
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            groups_table = '`groups`' if USE_MYSQL else 'groups'
+            gm_table = '`group_members`' if USE_MYSQL else 'group_members'
+            c.execute(f"SELECT created_by FROM {groups_table} WHERE id = {ph}", (group_id,))
+            g = c.fetchone()
+            if not g:
+                return jsonify({'success': False, 'error': 'Group not found'}), 404
+            owner = g['created_by'] if hasattr(g, 'keys') else g[0]
+            if username != owner and not is_app_admin(username):
+                return jsonify({'success': False, 'error': 'Only the group owner can set roles'}), 403
+            # Ensure role column
+            try:
+                if USE_MYSQL:
+                    c.execute(f"SHOW COLUMNS FROM {gm_table} LIKE 'role'")
+                    if not c.fetchone():
+                        c.execute(f"ALTER TABLE {gm_table} ADD COLUMN role VARCHAR(20) DEFAULT 'member'")
+                else:
+                    c.execute("PRAGMA table_info(group_members)")
+                    cols = [r[1] if not hasattr(r, 'keys') else r['name'] for r in c.fetchall()]
+                    if 'role' not in cols:
+                        c.execute("ALTER TABLE group_members ADD COLUMN role TEXT DEFAULT 'member'")
+                conn.commit()
+            except Exception:
+                pass
+            c.execute(f"UPDATE {gm_table} SET role = {ph} WHERE group_id = {ph} AND username = {ph}", (role, group_id, target))
+            conn.commit()
+            return jsonify({'success': True, 'role': role})
+    except Exception as e:
+        logger.error(f"Error setting group member role: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/gym_react')
 @login_required
 def gym_react():

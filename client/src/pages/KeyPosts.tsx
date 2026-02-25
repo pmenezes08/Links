@@ -84,10 +84,7 @@ export default function KeyPosts(){
         } as CSSProperties}
       >
         <div className="mb-3 flex items-center">
-          <button className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10" onClick={goBack}>
-            ← Back
-          </button>
-          <div className="ml-auto font-semibold">Key Posts</div>
+          <div className="font-semibold">Key Posts</div>
         </div>
         {activeTab === 'community' ? (
           communityPosts.length === 0 ? (

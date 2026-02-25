@@ -13,27 +13,10 @@ import { renderTextWithLinks, detectLinks, replaceLinkInText } from '../utils/li
 type Reply = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null }
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[], can_edit?: boolean, can_delete?: boolean }
 
-function ManageGroupButton({ communityId, onClose }:{ communityId: string, onClose: ()=>void }){
+function ManageGroupButton({ groupId, onClose }:{ groupId: string, onClose: ()=>void }){
   const navigate = useNavigate()
-  const [allowed, setAllowed] = useState(false)
-  useEffect(() => {
-    let mounted = true
-    async function check(){
-      try{
-        const fd = new URLSearchParams({ community_id: String(communityId) })
-        const r = await fetch('/get_community_members', { method:'POST', credentials:'include', body: fd })
-        const j = await r.json()
-        if (!mounted) return
-        const role = (j?.current_user_role || '').toLowerCase()
-        setAllowed(role === 'app_admin' || role === 'owner' || role === 'admin')
-      }catch{ setAllowed(false) }
-    }
-    check()
-    return () => { mounted = false }
-  }, [communityId])
-  if (!allowed) return null
   return (
-    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { onClose(); navigate(`/community/${communityId}/edit`) }}>
+    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { onClose(); alert('Group management coming soon') }}>
       Manage Group
     </button>
   )
@@ -60,10 +43,12 @@ export default function GroupFeed(){
   const [hasPendingRsvps, setHasPendingRsvps] = useState(false)
 
   // Members + invite
-  type MemberInfo = { username: string; display_name: string; profile_picture?: string | null; status?: string }
+  type MemberInfo = { username: string; display_name: string; profile_picture?: string | null; status?: string; role?: string }
   const [showMembers, setShowMembers] = useState(false)
   const [groupMembers, setGroupMembers] = useState<MemberInfo[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
+  const [currentUserRole, setCurrentUserRole] = useState('')
+  const [groupOwner, setGroupOwner] = useState('')
   const [showInvite, setShowInvite] = useState(false)
   const [availableMembers, setAvailableMembers] = useState<MemberInfo[]>([])
   const [inviteLoading, setInviteLoading] = useState(false)
@@ -203,9 +188,52 @@ export default function GroupFeed(){
     try {
       const r = await fetch(`/api/group_members/${group_id}`, { credentials: 'include' })
       const j = await r.json()
-      if (j?.success) setGroupMembers(j.members || [])
+      if (j?.success) {
+        setGroupMembers(j.members || [])
+        setCurrentUserRole(j.current_user_role || '')
+        setGroupOwner(j.group_owner || '')
+      }
     } catch {}
     setMembersLoading(false)
+  }
+
+  const leaveGroup = async () => {
+    if (!confirm('Are you sure you want to leave this group?')) return
+    try {
+      const fd = new URLSearchParams({ group_id: String(group_id) })
+      const r = await fetch('/api/groups/leave', { method: 'POST', credentials: 'include', body: fd })
+      const j = await r.json()
+      if (j?.success) { setShowMembers(false); navigate(-1) }
+      else alert(j?.error || 'Failed to leave')
+    } catch { alert('Failed to leave group') }
+  }
+
+  const removeMember = async (target: string) => {
+    if (!confirm(`Remove @${target} from this group?`)) return
+    try {
+      const r = await fetch(`/api/group_members/${group_id}/remove`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: target }),
+      })
+      const j = await r.json()
+      if (j?.success) openMembers()
+      else alert(j?.error || 'Failed to remove')
+    } catch { alert('Failed to remove member') }
+  }
+
+  const toggleAdmin = async (target: string, currentRole: string) => {
+    const newRole = currentRole === 'admin' ? 'member' : 'admin'
+    try {
+      const r = await fetch(`/api/group_members/${group_id}/set_role`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: target, role: newRole }),
+      })
+      const j = await r.json()
+      if (j?.success) openMembers()
+      else alert(j?.error || 'Failed to update role')
+    } catch { alert('Failed to update role') }
   }
 
   const openInvite = async () => {
@@ -462,7 +490,7 @@ export default function GroupFeed(){
               Useful Links & Docs
               {hasUnseenDocs && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
             </button>
-            {communityId && <ManageGroupButton communityId={communityId} onClose={()=> setMoreOpen(false)} />}
+            {group_id && <ManageGroupButton groupId={group_id} onClose={()=> setMoreOpen(false)} />}
           </div>
         </div>
       )}
@@ -488,15 +516,49 @@ export default function GroupFeed(){
               ) : groupMembers.length === 0 ? (
                 <div className="text-[#9fb0b5] text-sm py-4 text-center">No members yet. Invite people to this group!</div>
               ) : groupMembers.map(m => (
-                <div key={m.username} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-white/5 cursor-pointer" onClick={() => { setShowMembers(false); navigate(`/profile/${m.username}`) }}>
-                  <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-white truncate">{m.display_name || m.username}</div>
+                <div key={m.username} className="flex items-center gap-3 py-2 px-2 rounded-lg hover:bg-white/5">
+                  <div className="cursor-pointer" onClick={() => { setShowMembers(false); navigate(`/profile/${m.username}`) }}>
+                    <Avatar username={m.username} url={m.profile_picture || undefined} size={36} />
+                  </div>
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => { setShowMembers(false); navigate(`/profile/${m.username}`) }}>
+                    <div className="text-sm font-medium text-white truncate flex items-center gap-1.5">
+                      {m.display_name || m.username}
+                      {m.role === 'owner' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#4db6ac]/20 text-[#4db6ac] font-semibold">Owner</span>}
+                      {m.role === 'admin' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/10 text-white/60 font-semibold">Admin</span>}
+                    </div>
                     <div className="text-[11px] text-[#6f7c81]">@{m.username}</div>
                   </div>
+                  {/* Actions: owner can set admins + remove; admins can remove non-admins */}
+                  {(currentUserRole === 'owner' || currentUserRole === 'admin') && m.role !== 'owner' && (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {currentUserRole === 'owner' && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleAdmin(m.username, m.role || 'member') }}
+                          className="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-white/40 hover:bg-white/10 hover:text-white/70"
+                          title={m.role === 'admin' ? 'Remove admin' : 'Make admin'}
+                        >
+                          <i className={`fa-solid ${m.role === 'admin' ? 'fa-user-shield' : 'fa-shield-halved'} text-[10px]`} />
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeMember(m.username) }}
+                        className="w-7 h-7 rounded-full border border-white/10 flex items-center justify-center text-red-400/50 hover:bg-red-500/10 hover:text-red-400"
+                        title="Remove from group"
+                      >
+                        <i className="fa-solid fa-user-minus text-[10px]" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
+            {/* Leave group button */}
+            <button
+              onClick={leaveGroup}
+              className="mt-3 w-full py-2.5 rounded-lg border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/10 transition-colors"
+            >
+              <i className="fa-solid fa-right-from-bracket mr-2" />Leave Group
+            </button>
           </div>
         </div>
       )}
