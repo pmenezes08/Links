@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
 type EventItem = {
@@ -24,6 +24,8 @@ type RSVPDetails = {
 
 export default function CommunityCalendar(){
   const { community_id } = useParams()
+  const [searchParams] = useSearchParams()
+  const groupId = searchParams.get('group_id')
   const navigate = useNavigate()
   const { setTitle } = useHeader()
   const [events, setEvents] = useState<EventItem[]>([])
@@ -82,10 +84,15 @@ export default function CommunityCalendar(){
 
   async function reloadEvents(){
     try{
-      const r = await fetch('/get_calendar_events', { credentials:'include' })
+      const url = groupId
+        ? `/api/group_calendar/${groupId}`
+        : '/get_calendar_events'
+      const r = await fetch(url, { credentials:'include' })
       const j = await r.json()
       if (j?.success && Array.isArray(j.events)){
-        const filtered = (j.events as any[]).filter(e => `${e.community_id||''}` === `${community_id}`)
+        const filtered = groupId
+          ? (j.events as any[])
+          : (j.events as any[]).filter(e => `${e.community_id||''}` === `${community_id}`)
         
         // Split events into upcoming and archived (past events)
         const now = new Date()
@@ -185,7 +192,10 @@ export default function CommunityCalendar(){
     reloadEvents().finally(()=> mounted && setLoading(false))
     ;(async () => {
       try{
-        const r = await fetch(`/community/${community_id}/members/list`, { credentials:'include' })
+        const membersUrl = groupId
+          ? `/api/group_members/${groupId}`
+          : `/community/${community_id}/members/list`
+        const r = await fetch(membersUrl, { credentials:'include' })
         const j = await r.json()
         if (j?.success && Array.isArray(j.members)){
           setMembers(j.members)
@@ -274,6 +284,7 @@ export default function CommunityCalendar(){
     }
     
     if (community_id) params.append('community_id', String(community_id))
+    if (groupId) params.append('group_id', groupId)
     params.append('invite_all', inviteAll ? 'true' : 'false')
     if (!inviteAll){
       Object.keys(selected).filter(u => selected[u]).forEach(u => params.append('invited_members[]', u))

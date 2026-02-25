@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -14,6 +14,8 @@ type PhotoItem = {
 
 export default function CommunityPhotos(){
   const { community_id } = useParams()
+  const [searchParams] = useSearchParams()
+  const groupId = searchParams.get('group_id')
   const navigate = useNavigate()
   const { setTitle } = useHeader()
   const [items, setItems] = useState<PhotoItem[]>([])
@@ -27,7 +29,10 @@ export default function CommunityPhotos(){
     async function load(){
       setLoading(true)
       try{
-        const r = await fetch(`/api/community_photos?community_id=${community_id}`, { credentials:'include' })
+        const url = groupId
+          ? `/api/group_photos/${groupId}`
+          : `/api/community_photos?community_id=${community_id}`
+        const r = await fetch(url, { credentials:'include' })
         const j = await r.json()
         if (!mounted) return
         if (j?.success){ setItems(j.photos || []); setError(null) }
@@ -40,7 +45,7 @@ export default function CommunityPhotos(){
     }
     load()
     return () => { mounted = false }
-  }, [community_id])
+  }, [community_id, groupId])
 
   // Group by date and format dates nicely
   const groups = useMemo(() => {

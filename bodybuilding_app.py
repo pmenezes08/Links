@@ -3815,7 +3815,8 @@ def init_db():
                 'created_at': 'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP',
                 'community_id': 'INTEGER',
                 'timezone': 'VARCHAR(100)',
-                'notification_preferences': "VARCHAR(50) DEFAULT 'all'"
+                'notification_preferences': "VARCHAR(50) DEFAULT 'all'",
+                'group_id': 'INTEGER',
             }
             
             for col_name, col_def in required_columns.items():
@@ -5728,6 +5729,102 @@ def api_community_photos():
     except Exception as e:
         logger.error(f"Error in community_photos: {e}")
         return jsonify({'success': False, 'error': 'Failed to load photos'}), 500
+
+@app.route('/api/group_photos/<int:group_id>')
+@login_required
+def api_group_photos(group_id):
+    """Get all photos from group_posts for a specific group."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            gp_table = '`group_posts`' if USE_MYSQL else 'group_posts'
+            c.execute(f"""
+                SELECT gp.id, gp.username, gp.content, gp.image_path, gp.created_at, up.profile_picture
+                FROM {gp_table} gp
+                LEFT JOIN user_profiles up ON gp.username = up.username
+                WHERE gp.group_id = {ph} AND gp.image_path IS NOT NULL AND gp.image_path != ''
+                ORDER BY gp.created_at DESC
+            """, (group_id,))
+            photos = []
+            for row in c.fetchall():
+                if hasattr(row, 'keys'):
+                    post_id, uname, content, image_path, ts, pp = row['id'], row['username'], row['content'], row['image_path'], row['created_at'], row['profile_picture']
+                else:
+                    post_id, uname, content, image_path, ts, pp = row[0], row[1], row[2], row[3], row[4], row[5]
+                if not image_path:
+                    continue
+                if image_path.startswith('http'):
+                    image_url = image_path
+                elif image_path.startswith('/static') or image_path.startswith('/uploads'):
+                    image_url = image_path
+                elif image_path.startswith('uploads/'):
+                    image_url = '/' + image_path
+                else:
+                    image_url = f"/uploads/{image_path}"
+                photos.append({
+                    'id': str(post_id),
+                    'post_id': post_id,
+                    'reply_id': None,
+                    'username': uname,
+                    'image_url': image_url,
+                    'created_at': ts or '',
+                    'profile_picture': pp,
+                })
+            return jsonify({'success': True, 'photos': photos})
+    except Exception as e:
+        logger.error(f"Error in group_photos: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to load photos'}), 500
+
+
+@app.route('/api/group_calendar/<int:group_id>', methods=['GET'])
+@login_required
+def api_group_calendar_list(group_id):
+    """List calendar events for a specific group."""
+    username = session.get('username')
+    ph = get_sql_placeholder()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"""
+                SELECT ce.id, ce.username, ce.title, ce.date,
+                       COALESCE(ce.end_date, ce.date) as end_date,
+                       COALESCE(ce.start_time, ce.time) as start_time,
+                       ce.end_time, ce.time, ce.description, ce.created_at, ce.community_id, ce.timezone
+                FROM calendar_events ce
+                WHERE ce.group_id = {ph}
+                ORDER BY ce.date ASC, COALESCE(ce.start_time, ce.time) ASC
+            """, (group_id,))
+            events = []
+            for event in c.fetchall():
+                event_id = event['id'] if hasattr(event, 'keys') else event[0]
+                c.execute(f"SELECT response, COUNT(*) as count FROM event_rsvps WHERE event_id = {ph} GROUP BY response", (event_id,))
+                rsvp_counts = {'going': 0, 'maybe': 0, 'not_going': 0}
+                for row in c.fetchall():
+                    resp = row['response'] if hasattr(row, 'keys') else row[0]
+                    cnt = row['count'] if hasattr(row, 'keys') else row[1]
+                    rsvp_counts[resp] = cnt
+                c.execute(f"SELECT response FROM event_rsvps WHERE event_id = {ph} AND username = {ph}", (event_id, username))
+                rsvp_row = c.fetchone()
+                user_rsvp = (rsvp_row['response'] if hasattr(rsvp_row, 'keys') else rsvp_row[0]) if rsvp_row else None
+                ev = {
+                    'id': event_id,
+                    'title': event['title'] if hasattr(event, 'keys') else event[2],
+                    'date': event['date'] if hasattr(event, 'keys') else event[3],
+                    'end_date': event['end_date'] if hasattr(event, 'keys') else event[4],
+                    'start_time': event['start_time'] if hasattr(event, 'keys') else event[5],
+                    'end_time': event['end_time'] if hasattr(event, 'keys') else event[6],
+                    'timezone': event['timezone'] if hasattr(event, 'keys') else event[11],
+                    'description': event['description'] if hasattr(event, 'keys') else event[8],
+                    'user_rsvp': user_rsvp,
+                    'rsvp_counts': rsvp_counts,
+                }
+                events.append(ev)
+            return jsonify({'success': True, 'events': events})
+    except Exception as e:
+        logger.error(f"Error listing group calendar: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/community_posts_search')
 @login_required
@@ -17946,8 +18043,9 @@ def add_calendar_event():
             start_time = request.form.get('time', '').strip()
         description = request.form.get('description', '').strip()
         
-        # Get community_id and invited members
+        # Get community_id, group_id and invited members
         community_id = request.form.get('community_id', type=int)
+        group_id_val = request.form.get('group_id', type=int)
         invited_members = request.form.getlist('invited_members[]')
         invite_all = request.form.get('invite_all') == 'true'
         
@@ -18021,8 +18119,8 @@ def add_calendar_event():
             created_at_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
             logger.info(f"📅 Creating event (UTC): created_at={created_at_utc}, start_time='{start_time}', end_time='{end_time}', end_date={end_date}, timezone={timezone}, notifications={notification_preferences}")
             c.execute(f"""
-                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, notification_preferences)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                INSERT INTO calendar_events (username, title, date, end_date, time, start_time, end_time, description, created_at, community_id, timezone, notification_preferences, group_id)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
             """, (username, title, date, end_date, 
                   start_time_original,  # Keep time field as HH:MM for backward compatibility
                   start_time,           # start_time as DATETIME
@@ -18031,7 +18129,8 @@ def add_calendar_event():
                   created_at_utc,       # created_at in UTC
                   community_id,
                   timezone,
-                  notification_preferences))
+                  notification_preferences,
+                  group_id_val))
             
             event_id = c.lastrowid
             
