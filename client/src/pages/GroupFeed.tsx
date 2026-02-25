@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
@@ -9,10 +9,37 @@ import { renderTextWithLinks, detectLinks, replaceLinkInText } from '../utils/li
 type Reply = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null }
 type Post = { id:number; username:string; content:string; image_path?:string|null; timestamp:string; profile_picture?:string|null; reactions: Record<string, number>; user_reaction: string|null, replies: Reply[], can_edit?: boolean, can_delete?: boolean }
 
+function ManageGroupButton({ communityId, onClose }:{ communityId: string, onClose: ()=>void }){
+  const navigate = useNavigate()
+  const [allowed, setAllowed] = useState(false)
+  useEffect(() => {
+    let mounted = true
+    async function check(){
+      try{
+        const fd = new URLSearchParams({ community_id: String(communityId) })
+        const r = await fetch('/get_community_members', { method:'POST', credentials:'include', body: fd })
+        const j = await r.json()
+        if (!mounted) return
+        const role = (j?.current_user_role || '').toLowerCase()
+        setAllowed(role === 'app_admin' || role === 'owner' || role === 'admin')
+      }catch{ setAllowed(false) }
+    }
+    check()
+    return () => { mounted = false }
+  }, [communityId])
+  if (!allowed) return null
+  return (
+    <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { onClose(); navigate(`/community/${communityId}/edit`) }}>
+      Manage Group
+    </button>
+  )
+}
+
 export default function GroupFeed(){
   const { group_id } = useParams()
   const navigate = useNavigate()
   const { setTitle } = useHeader()
+  const scrollRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string| null>(null)
   const [groupName, setGroupName] = useState('Group')
@@ -22,8 +49,19 @@ export default function GroupFeed(){
   const [editText, setEditText] = useState<string>('')
   const [detectedLinks, setDetectedLinks] = useState<ReturnType<typeof detectLinks>>([])
 
+  // More menu + badges
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [hasUnansweredPolls, setHasUnansweredPolls] = useState(false)
+  const [hasUnseenDocs, setHasUnseenDocs] = useState(false)
+  const [hasPendingRsvps, setHasPendingRsvps] = useState(false)
+
+  const communityId = communityMeta?.id ? String(communityMeta.id) : ''
+  const communityTypeLower = (communityMeta?.type || '').toLowerCase()
+  const communityNameLower = (communityMeta?.name || '').toLowerCase()
+  const showTasks = communityTypeLower === 'general' || communityTypeLower.includes('university') || communityNameLower.includes('university')
+
   useEffect(() => {
-    const communityName = (communityMeta && (communityMeta as any).name) ? (communityMeta as any).name : ''
+    const communityName = communityMeta?.name || ''
     const title = communityName ? `${groupName} · ${communityName}` : (groupName || 'Group')
     setTitle(title)
   }, [groupName, communityMeta, setTitle])
@@ -51,19 +89,70 @@ export default function GroupFeed(){
     load(); return ()=> { ok = false }
   }, [group_id])
 
+  // Check for unanswered polls
+  useEffect(() => {
+    try{
+      const hasUnanswered = posts.some((p:any) => p?.poll && (p.poll.user_vote == null))
+      setHasUnansweredPolls(hasUnanswered)
+    }catch{ setHasUnansweredPolls(false) }
+  }, [posts])
+
+  // Check for unseen docs
+  useEffect(() => {
+    if (!communityId) return
+    let mounted = true
+    async function check(){
+      try{
+        const r = await fetch(`/get_links?community_id=${communityId}`, { credentials: 'include' })
+        const j = await r.json()
+        if (!mounted) return
+        if (j?.success){
+          const docs = j.docs || []
+          if (docs.length === 0) { setHasUnseenDocs(false); return }
+          const key = `docs_last_seen_${communityId}`
+          const lastSeenStr = localStorage.getItem(key)
+          const lastSeen = lastSeenStr ? Date.parse(lastSeenStr) : 0
+          setHasUnseenDocs(docs.some((d:any) => Date.parse(d.created_at) > lastSeen))
+        }
+      }catch{ setHasUnseenDocs(false) }
+    }
+    check()
+    return () => { mounted = false }
+  }, [communityId])
+
+  // Check for pending RSVPs
+  useEffect(() => {
+    if (!communityId) return
+    let mounted = true
+    async function check(){
+      try{
+        const r = await fetch(`/api/calendar_events/${communityId}`, { credentials: 'include' })
+        const j = await r.json()
+        if (!mounted) return
+        if (j?.success){
+          const events = j.events || []
+          const now = new Date()
+          setHasPendingRsvps(events.some((e:any) => new Date(e.date) >= now && !e.user_rsvp))
+        }
+      }catch{ setHasPendingRsvps(false) }
+    }
+    check()
+    return () => { mounted = false }
+  }, [communityId])
+
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error) return <div className="p-4 text-red-400">{error}</div>
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 bg-black text-white">
-      <div className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-28 px-3" style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: '12px' }}>
+      <div ref={scrollRef} className="h-full max-w-2xl mx-auto overflow-y-auto no-scrollbar pb-28 px-3" style={{ WebkitOverflowScrolling: 'touch' as any, paddingTop: '12px' }}>
         <div className="space-y-3">
           {/* Back to communities (parent) */}
           <div className="flex items-center gap-2">
             <button
               className="px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-sm hover:bg-white/10"
               onClick={()=> {
-                const cid = (communityMeta as any)?.id
+                const cid = communityMeta?.id
                 if (cid) navigate(`/communities?parent_id=${cid}`)
                 else navigate('/communities')
               }}
@@ -71,7 +160,6 @@ export default function GroupFeed(){
               ← Back to Communities
             </button>
           </div>
-          {/* Header removed; composer removed (use dedicated compose page) */}
           {posts.length === 0 ? (
             <div className="text-sm text-[#9fb0b5]">No posts yet.</div>
           ) : (
@@ -183,7 +271,7 @@ export default function GroupFeed(){
                           const form = new URLSearchParams({ post_id: String(p.id), reaction: rname })
                           const r = await fetch('/api/group_posts/react', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: form })
                           const j = await r.json().catch(()=>null)
-                          if (j?.success){ setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: j.user_reaction, reactions: (()=>{ const nr = { ...(it.reactions||{}) }; Object.keys(nr).forEach(k=>{ if(k===rname) return; }); // adjust counts optimistically below
+                          if (j?.success){ setPosts(list => list.map(it => it.id===p.id ? ({ ...it, user_reaction: j.user_reaction, reactions: (()=>{
                             const prev = it.user_reaction; const out = { ...(it.reactions||{}) };
                             if (prev){ out[prev] = Math.max(0, (out[prev]||0)-1) }
                             if (j.user_reaction){ out[j.user_reaction] = (out[j.user_reaction]||0)+1 }
@@ -196,41 +284,77 @@ export default function GroupFeed(){
                       </button>
                     ))}
                   </div>
-                  {/* Replies removed in feed; tap post card to open detail page to reply */}
                 </div>
               </div>
             ))
           )}
         </div>
       </div>
-      {/* Bottom navigation bar like community feed (General) */}
-      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-[94%] max-w-[1200px] rounded-2xl border border-white/10 bg-black/80 backdrop-blur shadow-lg">
-        <div className="h-14 px-6 flex items-center justify-between text-[#cfd8dc]">
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Home" onClick={()=> { try{ (document.scrollingElement || document.documentElement)?.scrollTo({ top: 0, behavior: 'smooth' }) }catch{} }}>
-            <i className="fa-solid fa-house" />
-          </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="Members" onClick={()=> communityMeta?.id ? navigate(`/community/${communityMeta.id}/members`) : navigate(-1)}>
-            <i className="fa-solid fa-users" />
-          </button>
-          <button 
-            className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center`}
-            aria-label="New Post" 
-            onClick={()=> { navigate(`/compose?group_id=${group_id}`) }}
-          >
-            <i className="fa-solid fa-plus" />
-          </button>
-          <button className="relative p-2 rounded-full hover:bg-white/5" aria-label="Announcements" onClick={()=> alert('No announcements for groups yet')}>
-            <span className="relative inline-block">
-              <i className="fa-solid fa-bullhorn" />
-            </span>
-          </button>
-          <button className="p-2 rounded-full hover:bg-white/5" aria-label="More" onClick={()=> alert('More coming soon') }>
-            <i className="fa-solid fa-ellipsis" />
-          </button>
+
+      {/* Bottom navigation bar - identical to CommunityFeed */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-[100] px-3 sm:px-6"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', touchAction: 'manipulation' }}
+      >
+        <div className="liquid-glass-surface border border-white/10 rounded-2xl shadow-[0_-10px_40px_rgba(0,0,0,0.45)] max-w-2xl mx-auto mb-2">
+          <div className="h-14 px-2 sm:px-6 flex items-center justify-between text-[#cfd8dc]">
+            <button className="p-3 rounded-full bg-white/10 transition-colors" aria-label="Home" onClick={()=> scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
+              <i className="fa-solid fa-house text-lg text-[#4db6ac]" />
+            </button>
+            <button className="p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Members" onClick={()=> communityId ? navigate(`/community/${communityId}/members`) : null}>
+              <i className="fa-solid fa-users text-lg" />
+            </button>
+            <button
+              className="w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all"
+              aria-label="New Post"
+              onClick={()=> navigate(`/compose?group_id=${group_id}`)}
+            >
+              <i className="fa-solid fa-plus" />
+            </button>
+            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="Announcements" onClick={()=> alert('No announcements for groups yet')}>
+              <span className="relative inline-block">
+                <i className="fa-solid fa-bullhorn text-lg" />
+              </span>
+            </button>
+            <button className="relative p-3 rounded-full hover:bg-white/10 active:bg-white/15 transition-colors" aria-label="More" onClick={()=> setMoreOpen(true)}>
+              <span className="relative inline-block">
+                <i className="fa-solid fa-ellipsis text-lg" />
+                {(hasUnansweredPolls || hasUnseenDocs || hasPendingRsvps) && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-[#4db6ac] rounded-full" />
+                )}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* More bottom sheet - identical to CommunityFeed (minus Stories & Forum) */}
+      {moreOpen && (
+        <div className="fixed inset-0 z-[110] bg-black/30 flex items-end justify-end" onClick={(e)=> e.currentTarget===e.target && setMoreOpen(false)}>
+          <div className="w-[75%] max-w-sm mr-2 bg-black/95 backdrop-blur border border-white/10 rounded-2xl p-2 space-y-2 transition-transform duration-200 ease-out translate-y-0" style={{ marginBottom: 'calc(70px + env(safe-area-inset-bottom))' }}>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/key_posts`) }}>
+              Key Posts
+            </button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/polls_react`) }}>
+              Polls
+              {hasUnansweredPolls && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
+            </button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/calendar_react`) }}>
+              Calendar
+              {hasPendingRsvps && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
+            </button>
+            {showTasks && (
+              <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/tasks_react`) }}>Tasks</button>
+            )}
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/photos_react`) }}>Photos</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={()=> { setMoreOpen(false); navigate(`/community/${communityId}/useful_links_react`) }}>
+              Useful Links & Docs
+              {hasUnseenDocs && <span className="w-2 h-2 bg-[#4db6ac] rounded-full" />}
+            </button>
+            {communityId && <ManageGroupButton communityId={communityId} onClose={()=> setMoreOpen(false)} />}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
-
-// no-op
