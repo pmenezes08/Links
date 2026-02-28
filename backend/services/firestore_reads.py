@@ -38,32 +38,68 @@ def _ts_to_str(val):
     return str(val)
 
 
-def get_dm_messages(username: str, peer: str, since_id: int = None):
+def _find_dm_conv_id(fs, username: str, peer: str):
+    """Find the Firestore conversation document ID, trying canonical + legacy formats."""
+    a, b = sorted([username.lower(), peer.lower()])
+    conv_id = f"{a}_{b}"
+    conv_doc = fs.collection('dm_conversations').document(conv_id).get()
+    if conv_doc.exists:
+        return conv_id
+    user1_ci, user2_ci = sorted([username, peer], key=str.lower)
+    legacy_id = f"{user1_ci}_{user2_ci}"
+    if legacy_id != conv_id:
+        conv_doc = fs.collection('dm_conversations').document(legacy_id).get()
+        if conv_doc.exists:
+            return legacy_id
+    return None
+
+
+def _format_dm_message(doc, username: str) -> dict:
+    """Convert a Firestore message doc to the /get_messages response format."""
+    d = doc.to_dict()
+    mid = int(doc.id) if doc.id.isdigit() else d.get('mysql_id', 0)
+    return {
+        'id': mid,
+        'text': d.get('text') or '',
+        'image_path': d.get('image_path'),
+        'video_path': d.get('video_path'),
+        'audio_path': d.get('audio_path'),
+        'audio_duration_seconds': d.get('audio_duration_seconds'),
+        'audio_mime': d.get('audio_mime'),
+        'audio_summary': d.get('audio_summary'),
+        'sent': d.get('sender') == username,
+        'time': _ts_to_str(d.get('created_at')),
+        'edited_at': _ts_to_str(d.get('edited_at')),
+        'reaction': d.get('reaction'),
+        'reaction_by': d.get('reaction_by'),
+        'is_encrypted': d.get('is_encrypted', False),
+        'encrypted_body': d.get('encrypted_body'),
+        'encrypted_body_for_sender': d.get('encrypted_body_for_sender'),
+    }
+
+
+# Default page size for DM messages
+DM_PAGE_SIZE = 50
+
+
+def get_dm_messages(username: str, peer: str, since_id: int = None, before_id: int = None, limit: int = DM_PAGE_SIZE):
     """
-    Read DM messages from Firestore.
-    Returns (messages_list, is_delta) matching /get_messages response format.
+    Read DM messages from Firestore with pagination.
+    
+    - Initial load: returns the most recent `limit` messages
+    - Delta fetch (since_id): returns messages newer than since_id
+    - Backward pagination (before_id): returns messages older than before_id
+    
+    Returns (messages_list, is_delta, has_more)
     """
     try:
         fs = _get_client()
-        # Canonical format: lowercase sorted
-        a, b = sorted([username.lower(), peer.lower()])
-        conv_id = f"{a}_{b}"
-
-        conv_doc = fs.collection('dm_conversations').document(conv_id).get()
-        if not conv_doc.exists:
-            # Legacy: try original-case sorted
-            user1_ci, user2_ci = sorted([username, peer], key=str.lower)
-            legacy_id = f"{user1_ci}_{user2_ci}"
-            if legacy_id != conv_id:
-                conv_doc = fs.collection('dm_conversations').document(legacy_id).get()
-                if conv_doc.exists:
-                    conv_id = legacy_id
-            if not conv_doc.exists:
-                logger.info(f"Firestore DM: no conversation found for {username}<->{peer}")
-                return [], False
+        conv_id = _find_dm_conv_id(fs, username, peer)
+        if not conv_id:
+            logger.info(f"Firestore DM: no conversation found for {username}<->{peer}")
+            return [], False, False
 
         msgs_ref = fs.collection('dm_conversations').document(conv_id).collection('messages')
-        query = msgs_ref.order_by('created_at')
 
         if since_id:
             since_doc = msgs_ref.document(str(since_id)).get()
@@ -71,34 +107,31 @@ def get_dm_messages(username: str, peer: str, since_id: int = None):
                 since_ts = since_doc.to_dict().get('created_at')
                 if since_ts:
                     query = msgs_ref.where('created_at', '>', since_ts).order_by('created_at')
+                    docs = list(query.stream())
+                    messages = [_format_dm_message(d, username) for d in docs]
+                    return messages, True, False
+            return [], True, False
 
-        docs = query.stream()
-        messages = []
-        for doc in docs:
-            d = doc.to_dict()
-            mid = int(doc.id) if doc.id.isdigit() else d.get('mysql_id', 0)
-            if since_id and mid <= since_id:
-                continue
-            messages.append({
-                'id': mid,
-                'text': d.get('text') or '',
-                'image_path': d.get('image_path'),
-                'video_path': d.get('video_path'),
-                'audio_path': d.get('audio_path'),
-                'audio_duration_seconds': d.get('audio_duration_seconds'),
-                'audio_mime': d.get('audio_mime'),
-                'audio_summary': d.get('audio_summary'),
-                'sent': d.get('sender') == username,
-                'time': _ts_to_str(d.get('created_at')),
-                'edited_at': _ts_to_str(d.get('edited_at')),
-                'reaction': d.get('reaction'),
-                'reaction_by': d.get('reaction_by'),
-                'is_encrypted': d.get('is_encrypted', False),
-                'encrypted_body': d.get('encrypted_body'),
-                'encrypted_body_for_sender': d.get('encrypted_body_for_sender'),
-            })
+        if before_id:
+            before_doc = msgs_ref.document(str(before_id)).get()
+            if before_doc.exists:
+                before_ts = before_doc.to_dict().get('created_at')
+                if before_ts:
+                    query = msgs_ref.where('created_at', '<', before_ts).order_by('created_at', direction='DESCENDING').limit(limit)
+                    docs = list(query.stream())
+                    docs.reverse()
+                    messages = [_format_dm_message(d, username) for d in docs]
+                    return messages, False, len(docs) == limit
+            return [], False, False
 
-        return messages, bool(since_id)
+        # Initial load: most recent messages
+        query = msgs_ref.order_by('created_at', direction='DESCENDING').limit(limit)
+        docs = list(query.stream())
+        docs.reverse()
+        messages = [_format_dm_message(d, username) for d in docs]
+        has_more = len(docs) == limit
+        return messages, False, has_more
+
     except Exception as e:
         logger.error(f"Firestore get_dm_messages failed: {e}", exc_info=True)
         raise
