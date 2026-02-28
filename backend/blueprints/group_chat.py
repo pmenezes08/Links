@@ -1958,105 +1958,81 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
     current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
     
     try:
-        # Get recent messages for context
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
+        # Load full conversation context from Firestore (fall back to MySQL)
+        recent_messages = []
+        image_urls = []
+        
+        try:
+            import os
+            FIRESTORE_DATABASE = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
+            from google.cloud import firestore as _firestore
+            project = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GCP_PROJECT')
+            fs = _firestore.Client(project=project, database=FIRESTORE_DATABASE) if project else _firestore.Client(database=FIRESTORE_DATABASE)
             
-            # Get messages from the last 7 days for conversation context
-            from datetime import timedelta
-            seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
-            c.execute(f"""
-                SELECT sender_username, message_text, created_at
-                FROM group_chat_messages
-                WHERE group_id = {ph} AND message_text IS NOT NULL
-                  AND created_at >= {ph}
-                ORDER BY created_at DESC
-                LIMIT 100
-            """, (group_id, seven_days_ago))
-            
-            recent_messages = []
-            for row in c.fetchall():
-                sender = row["sender_username"] if hasattr(row, "keys") else row[0]
-                text = row["message_text"] if hasattr(row, "keys") else row[1]
-                if text:
+            msgs_ref = fs.collection('group_chats').document(str(group_id)).collection('messages')
+            docs = msgs_ref.order_by('created_at').stream()
+            for doc in docs:
+                d = doc.to_dict()
+                sender = d.get('sender', '')
+                text = d.get('text', '')
+                if text and sender:
                     recent_messages.append(f"{sender}: {text}")
-            
-            recent_messages.reverse()  # Chronological order
-            
-            # Build context from last 7 days of conversation
-            context = f"Group chat: {group_name}\n"
-            context += "Recent conversation (last 7 days):\n" + "\n".join(recent_messages)
-            context += f"\n\n{sender_username} mentioned you (@Steve)."
-            context += f"\n\n[Current date and time: {current_date}]"
-            
-            # Only collect images if the user's message explicitly references them
-            image_keywords = ['image', 'photo', 'picture', 'pic', 'imagem', 'foto', 'see', 'look', 'show', 'what is this', 'what\'s this', 'o que é', 'vê', 'olha']
-            msg_lower = user_message.lower()
-            wants_images = any(kw in msg_lower for kw in image_keywords)
-            
-            image_urls = []
-            if wants_images:
-                def _extract_http_images(val):
-                    urls = []
-                    if not val:
-                        return urls
-                    if isinstance(val, str) and val.startswith('http'):
-                        if not any(val.lower().endswith(e) for e in ['.mp4', '.mov', '.webm', '.m4v']):
-                            urls.append(val)
-                    return urls
-                
-                def _extract_media_paths_images(raw):
-                    urls = []
-                    if not raw:
-                        return urls
-                    try:
-                        items = json.loads(raw) if isinstance(raw, str) else raw
-                        if isinstance(items, list):
-                            for item in items:
-                                path = item if isinstance(item, str) else ''
-                                if path.startswith('http') and not any(path.lower().endswith(e) for e in ['.mp4', '.mov', '.webm', '.m4v']):
-                                    urls.append(path)
-                    except Exception:
-                        pass
-                    return urls
-                
-                try:
+            logger.info(f"Steve context from Firestore: {len(recent_messages)} messages for group {group_id}")
+        except Exception as fs_err:
+            logger.warning(f"Steve Firestore context failed, falling back to MySQL: {fs_err}")
+            recent_messages = []
+        
+        if not recent_messages:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(f"""
+                    SELECT sender_username, message_text, created_at
+                    FROM group_chat_messages
+                    WHERE group_id = {ph} AND message_text IS NOT NULL
+                    ORDER BY created_at ASC
+                """, (group_id,))
+                for row in c.fetchall():
+                    sender = row["sender_username"] if hasattr(row, "keys") else row[0]
+                    text = row["message_text"] if hasattr(row, "keys") else row[1]
+                    if text:
+                        recent_messages.append(f"{sender}: {text}")
+        
+        # Use last 200 messages max to stay within token limits
+        context_messages = recent_messages[-200:]
+        
+        context = f"Group chat: {group_name}\n"
+        context += f"Full conversation history ({len(context_messages)} messages):\n" + "\n".join(context_messages)
+        context += f"\n\n{sender_username} mentioned you (@Steve)."
+        context += f"\n\n[Current date and time: {current_date}]"
+        
+        # Only collect images if the user's message explicitly references them
+        image_keywords = ['image', 'photo', 'picture', 'pic', 'imagem', 'foto', 'see', 'look', 'show', 'what is this', 'what\'s this', 'o que é', 'vê', 'olha']
+        msg_lower = user_message.lower()
+        wants_images = any(kw in msg_lower for kw in image_keywords)
+        
+        if wants_images:
+            try:
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    ph = get_sql_placeholder()
                     c.execute(f"""
-                        SELECT media_paths FROM group_chat_messages
-                        WHERE group_id = {ph} AND media_paths IS NOT NULL AND media_paths != ''
+                        SELECT image_path FROM group_chat_messages
+                        WHERE group_id = {ph} AND image_path IS NOT NULL AND image_path != ''
                         ORDER BY created_at DESC LIMIT 3
                     """, (group_id,))
                     for row in c.fetchall():
-                        raw = row["media_paths"] if hasattr(row, "keys") else row[0]
-                        for url in _extract_media_paths_images(raw):
-                            if url not in image_urls and len(image_urls) < 3:
-                                image_urls.append(url)
-                except Exception:
-                    pass
-                
-                try:
-                    if len(image_urls) < 3:
-                        c.execute(f"""
-                            SELECT image_path FROM group_chat_messages
-                            WHERE group_id = {ph} AND image_path IS NOT NULL AND image_path != ''
-                            ORDER BY created_at DESC LIMIT 3
-                        """, (group_id,))
-                        for row in c.fetchall():
-                            val = row["image_path"] if hasattr(row, "keys") else row[0]
-                            for url in _extract_http_images(val):
-                                if url not in image_urls and len(image_urls) < 3:
-                                    image_urls.append(url)
-                except Exception:
-                    pass
-                
-                if image_urls:
-                    context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
-                    logger.info(f"Steve vision: collected {len(image_urls)} images for group {group_id}")
+                        val = row["image_path"] if hasattr(row, "keys") else row[0]
+                        if val and val.startswith('http') and len(image_urls) < 3:
+                            image_urls.append(val)
+            except Exception:
+                pass
+            if image_urls:
+                context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
         
         from openai import OpenAI
         
-        system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a group chat with real-time knowledge and web search capabilities.
+        system_prompt = f"""You are Steve, a highly capable AI assistant in a group chat with real-time knowledge and web search capabilities. You have access to the FULL conversation history of this group.
 
 CURRENT DATE AND TIME: {current_date}
 
@@ -2067,20 +2043,44 @@ LANGUAGE RULES:
 - If user writes in Spanish, respond in Spanish.
 - Match the user's language exactly.
 
-CONVERSATION INTELLIGENCE:
-Read the full conversation context carefully. Adapt your response based on what's happening:
-1. If someone is asking about news, weather, sports, or current events — search the web and provide real, up-to-date information with source links.
-2. If the group is having casual banter or fun — join in naturally. Be witty, use emojis, keep it light.
-3. If a problem or challenge is being discussed and NO solution has been proposed — proactively suggest practical, actionable solutions with brief reasoning.
-4. If a solution IS already being discussed — briefly analyze it: what's good about it, any risks or blind spots, and suggest improvements or alternatives if relevant.
-5. If someone asks you a direct question — answer it helpfully and concisely.
-6. If images are attached, you CAN see them. Only analyze or describe images when explicitly asked about them. Do NOT proactively reference or describe images unless the user specifically asks.
+TONE ADAPTATION (critical — read the conversation carefully):
+Detect the nature of the conversation and adapt your tone accordingly:
 
-RESPONSE STYLE:
-- Keep responses concise (2-5 sentences). Don't lecture or over-explain.
-- Be conversational, not robotic. This is a casual group chat.
-- Use emojis occasionally.
-- When citing sources, include the URL — it will be auto-formatted as a readable clickable link."""
+CASUAL/BANTER: If the group is joking, chatting casually, or having fun:
+- Be witty, use emojis, keep it light and conversational
+- Short responses (2-4 sentences)
+- Match the group's energy
+
+SERIOUS/PROFESSIONAL: If the topic is business, work, strategy, health, finance, legal, career, or any substantive discussion:
+- Drop the banter. Be professional, structured, and thorough
+- Provide detailed analysis with clear reasoning
+- Use bullet points or numbered lists when helpful
+- No emojis unless the group is mixing tones
+
+NEWS/CURRENT EVENTS: When someone asks about news, weather, sports, politics, markets, or current events:
+- ALWAYS use web search to get the latest real-time information
+- Be DETAILED — provide a comprehensive briefing, not a one-liner
+- Include key facts, numbers, dates, context, and implications
+- Structure the response: what happened, why it matters, what's next
+- Include 2-3 source URLs
+- Professional tone always for news
+
+PROBLEM-SOLVING: If a challenge or problem is being discussed:
+- If NO solution proposed yet — suggest practical, actionable solutions with reasoning
+- If a solution IS being discussed — analyze it: strengths, risks, blind spots, alternatives
+- Be thorough and specific
+
+CONVERSATION INTELLIGENCE:
+- You have the FULL conversation history. Reference previous discussions when relevant.
+- Remember what users said earlier — connect dots across the conversation.
+- If someone asks a direct question, answer it fully.
+- If images are attached, only describe them when explicitly asked. Do NOT proactively reference images.
+
+RESPONSE FORMAT:
+- For casual chat: 2-4 sentences, conversational
+- For serious topics: as long as needed to be thorough (paragraphs, lists, structure)
+- For news: comprehensive briefing with sources
+- When citing sources, include the URL — it will be auto-formatted as a clickable link."""
         
         ai_response = None
         
@@ -2111,7 +2111,7 @@ RESPONSE STYLE:
                     {"type": "web_search"},
                     {"type": "x_search"}
                 ],
-                max_output_tokens=600
+                max_output_tokens=1500
             )
             
             ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
