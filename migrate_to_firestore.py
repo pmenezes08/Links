@@ -294,7 +294,7 @@ def migrate_posts(mysql_conn, fs_client, dry_run=False):
     logger.info("Migrating community posts...")
     cursor.execute("""
         SELECT id, username, content, image_path, video_path, audio_path,
-               audio_summary, timestamp, community_id, view_count
+               audio_summary, timestamp, community_id
         FROM posts ORDER BY id ASC
     """)
     posts = cursor.fetchall()
@@ -318,7 +318,6 @@ def migrate_posts(mysql_conn, fs_client, dry_run=False):
             'community_id': post.get('community_id'),
             'group_id': None,
             'created_at': parse_timestamp(post['timestamp']),
-            'view_count': post.get('view_count') or 0,
         }
         batch.set(post_ref, doc)
         batch_count += 1
