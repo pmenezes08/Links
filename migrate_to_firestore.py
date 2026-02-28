@@ -85,9 +85,9 @@ def migrate_dm_messages(mysql_conn, fs_client, dry_run=False):
     if dry_run:
         return total
 
-    # Get all unique conversations
+    # Get all unique conversations (use lowercase sorted for consistent IDs)
     cursor.execute("""
-        SELECT DISTINCT LEAST(sender, receiver) as user1, GREATEST(sender, receiver) as user2
+        SELECT DISTINCT LOWER(LEAST(sender, receiver)) as user1, LOWER(GREATEST(sender, receiver)) as user2
         FROM messages
     """)
     conversations = cursor.fetchall()
@@ -98,13 +98,13 @@ def migrate_dm_messages(mysql_conn, fs_client, dry_run=False):
         user1, user2 = conv['user1'], conv['user2']
         conv_id = f"{user1}_{user2}"
 
-        # Get messages for this conversation
+        # Get messages for this conversation (case-insensitive match)
         cursor.execute("""
             SELECT id, sender, receiver, message, image_path, video_path,
                    audio_path, audio_duration_seconds, audio_mime, audio_summary,
                    is_encrypted, timestamp, edited_at, reaction, reaction_by
             FROM messages
-            WHERE (sender = %s AND receiver = %s) OR (sender = %s AND receiver = %s)
+            WHERE (LOWER(sender) = %s AND LOWER(receiver) = %s) OR (LOWER(sender) = %s AND LOWER(receiver) = %s)
             ORDER BY timestamp ASC
         """, (user1, user2, user2, user1))
         messages = cursor.fetchall()

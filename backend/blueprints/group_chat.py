@@ -1236,7 +1236,18 @@ def send_group_message(group_id: int):
                 """, (group_id, username, message_id, now, message_id, now))
             
             conn.commit()
-            
+
+            # Dual-write to Firestore
+            try:
+                from backend.services.firestore_writes import write_group_chat_message
+                write_group_chat_message(
+                    group_id=group_id, message_id=message_id, sender=username,
+                    text=message_text, image_path=image_path, voice_path=voice_path,
+                    video_path=video_path, audio_summary=audio_summary,
+                )
+            except Exception as fs_err:
+                logger.warning(f"Firestore group chat dual-write failed (non-fatal): {fs_err}")
+
             # Get sender's profile picture
             c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
             pp_row = c.fetchone()

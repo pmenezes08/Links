@@ -10584,6 +10584,18 @@ def send_message():
                 except Exception as steve_err:
                     logger.warning(f"Failed to trigger Steve DM reply: {steve_err}")
             
+            # Dual-write to Firestore
+            try:
+                from backend.services.firestore_writes import write_dm_message
+                write_dm_message(
+                    sender=username, receiver=recipient_username, message_id=inserted_id,
+                    text=message if not is_encrypted else '',
+                    is_encrypted=is_encrypted,
+                    timestamp=datetime.strptime(str(inserted_time), '%Y-%m-%d %H:%M:%S') if inserted_time else None,
+                )
+            except Exception as fs_err:
+                logger.warning(f"Firestore DM dual-write failed (non-fatal): {fs_err}")
+
             return jsonify({'success': True, 'message': 'Message sent successfully', 'message_id': inserted_id, 'time': inserted_time})
             
     except Exception as e:
