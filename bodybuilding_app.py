@@ -10197,6 +10197,22 @@ def get_messages():
                     from backend.services.firestore_reads import get_dm_messages as fs_get_dm
                     messages, is_delta = fs_get_dm(username, peer_username, since_id=since_id_int)
                     logger.info(f"Firestore DM read: {len(messages)} messages for {username}<->{peer_username}")
+                    # Mark messages as read in MySQL (badges/unread counts come from MySQL)
+                    try:
+                        with get_db_connection() as _mr_conn:
+                            _mr_c = _mr_conn.cursor()
+                            _mr_c.execute("UPDATE messages SET is_read=1 WHERE sender=%s AND receiver=%s AND is_read=0" if USE_MYSQL else "UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (peer_username, username))
+                            marked = _mr_c.rowcount
+                            _mr_conn.commit()
+                            if marked > 0:
+                                try:
+                                    from backend.services.firebase_notifications import send_fcm_to_user_badge_only, get_total_badge_count
+                                    badge_count = get_total_badge_count(username)
+                                    send_fcm_to_user_badge_only(username, badge_count=badge_count)
+                                except Exception:
+                                    pass
+                    except Exception as mr_err:
+                        logger.warning(f"Failed to mark DM messages as read: {mr_err}")
                     return jsonify({'success': True, 'messages': messages, 'is_delta': is_delta})
     except Exception as fs_err:
         logger.warning(f"Firestore DM read failed, falling back to MySQL: {fs_err}")
