@@ -709,7 +709,7 @@ def get_group_messages(group_id: int):
             from backend.services.firestore_reads import get_group_chat_messages as fs_get_gcm
             messages = fs_get_gcm(group_id, username, before_id=before_id, limit=limit)
             logger.info(f"Firestore group chat read: {len(messages)} messages for group {group_id}")
-            return jsonify({"success": True, "messages": messages})
+            return jsonify({"success": True, "messages": messages, "has_more": len(messages) == limit})
     except Exception as fs_err:
         logger.warning(f"Firestore group chat read failed, falling back to MySQL: {fs_err}")
 
@@ -853,7 +853,8 @@ def get_group_messages(group_id: int):
             return jsonify({
                 "success": True, 
                 "messages": messages,
-                "steve_is_typing": steve_is_typing
+                "steve_is_typing": steve_is_typing,
+                "has_more": len(messages) == limit
             })
             
     except Exception as e:

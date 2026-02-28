@@ -181,6 +181,9 @@ export default function GroupChatThread() {
   const lastMessageIdRef = useRef<number>(0)
   const previewAudioRef = useRef<HTMLAudioElement | null>(null)
   const headerMenuRef = useRef<HTMLDivElement>(null)
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const loadingOlderRef = useRef(false)
 
   // Voice recording
   const { 
@@ -467,7 +470,7 @@ export default function GroupChatThread() {
   const loadMessages = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const response = await fetch(`/api/group_chat/${group_id}/messages`, { credentials: 'include' })
+      const response = await fetch(`/api/group_chat/${group_id}/messages?limit=50`, { credentials: 'include' })
       const data = await response.json()
       if (data.success) {
         const newServerMessages = (data.messages as Message[]).filter(
@@ -475,10 +478,15 @@ export default function GroupChatThread() {
         )
         const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
 
+        if (!silent) setHasMoreMessages(!!data.has_more)
+
         // Set server messages, but preserve any optimistic messages (negative IDs)
+        // On poll (silent), merge older messages that were loaded via pagination
         setServerMessages(prev => {
           const optimistic = prev.filter(m => m.id < 0)
-          return optimistic.length > 0 ? [...newServerMessages, ...optimistic] : newServerMessages
+          const olderMessages = silent ? prev.filter(m => m.id > 0 && !newServerMessages.some(n => n.id === m.id) && m.id < (newServerMessages.length > 0 ? Math.min(...newServerMessages.map(n => n.id)) : Infinity)) : []
+          const combined = [...olderMessages, ...newServerMessages, ...optimistic]
+          return combined
         })
         
         // Populate reactions from server data
@@ -513,6 +521,37 @@ export default function GroupChatThread() {
       if (!silent) setLoading(false)
     }
   }, [group_id, scrollToBottom])
+
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlderRef.current || !hasMoreMessages) return
+    loadingOlderRef.current = true
+    setLoadingOlder(true)
+    try {
+      const currentMsgs = serverMessages.filter(m => m.id > 0)
+      const oldestId = currentMsgs.length > 0 ? Math.min(...currentMsgs.map(m => m.id)) : 0
+      if (oldestId <= 0) { loadingOlderRef.current = false; setLoadingOlder(false); return }
+      const r = await fetch(`/api/group_chat/${group_id}/messages?before_id=${oldestId}&limit=50`, { credentials: 'include' })
+      const j = await r.json()
+      if (j?.success && Array.isArray(j.messages) && j.messages.length > 0) {
+        const el = listRef.current
+        const prevHeight = el?.scrollHeight || 0
+        setServerMessages(prev => {
+          const older = (j.messages as Message[]).filter(m => !prev.some(p => p.id === m.id))
+          return [...older, ...prev]
+        })
+        setHasMoreMessages(!!j.has_more)
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop = el.scrollHeight - prevHeight
+        })
+      } else {
+        setHasMoreMessages(false)
+      }
+    } catch (err) {
+      console.error('Failed to load older group messages:', err)
+    }
+    loadingOlderRef.current = false
+    setLoadingOlder(false)
+  }, [hasMoreMessages, group_id, serverMessages])
 
   // Update active presence (so push notifications are suppressed while viewing)
   const updatePresence = useCallback(() => {
@@ -1587,7 +1626,26 @@ export default function GroupChatThread() {
               paddingBottom: listPaddingBottom,
               minHeight: 0,
             } as CSSProperties}
+            onScroll={(e) => {
+              const el = e.currentTarget
+              if (el.scrollTop < 100 && !loadingOlderRef.current && hasMoreMessages) {
+                loadOlderMessages()
+              }
+            }}
           >
+            {/* Load older messages */}
+            {loadingOlder && (
+              <div className="flex justify-center py-3">
+                <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-sm" />
+              </div>
+            )}
+            {hasMoreMessages && !loadingOlder && (
+              <div className="flex justify-center py-2">
+                <button onClick={loadOlderMessages} className="text-xs text-[#4db6ac] hover:text-[#4db6ac]/80">
+                  Load older messages
+                </button>
+              </div>
+            )}
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
                 <i className="fa-solid fa-comments text-4xl mb-3 opacity-50" />
