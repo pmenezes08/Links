@@ -225,7 +225,7 @@ def migrate_group_chat_messages(mysql_conn, fs_client, dry_run=False):
         # Messages
         cursor.execute("""
             SELECT id, sender_username, message_text, image_path, voice_path,
-                   video_path, audio_summary, created_at, reply_to_message_id
+                   video_path, audio_summary, created_at
             FROM group_chat_messages
             WHERE group_id = %s
             ORDER BY created_at ASC
@@ -246,7 +246,6 @@ def migrate_group_chat_messages(mysql_conn, fs_client, dry_run=False):
                 'video_path': msg.get('video_path'),
                 'audio_summary': msg.get('audio_summary'),
                 'created_at': parse_timestamp(msg['created_at']),
-                'reply_to_message_id': msg.get('reply_to_message_id'),
             }
             batch.set(msg_ref, doc)
             batch_count += 1
