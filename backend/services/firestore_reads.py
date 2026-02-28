@@ -139,10 +139,53 @@ def get_dm_messages(username: str, peer: str, since_id: int = None, before_id: i
 
 def get_group_chat_messages(group_id: int, username: str, before_id: int = None, limit: int = 50):
     """
-    Group chat reads use MySQL — Firestore is kept in sync via dual-write
-    for Steve context and future real-time features.
+    Read group chat messages from Firestore with pagination.
+    Returns messages list matching /api/group_chat/{id}/messages response format.
     """
-    raise NotImplementedError("Group chat reads use MySQL")
+    try:
+        fs = _get_client()
+        msgs_ref = fs.collection('group_chats').document(str(group_id)).collection('messages')
+
+        if before_id:
+            before_doc = msgs_ref.document(str(before_id)).get()
+            if before_doc.exists:
+                before_ts = before_doc.to_dict().get('created_at')
+                if before_ts:
+                    query = msgs_ref.where('created_at', '<', before_ts).order_by('created_at', direction='DESCENDING').limit(limit)
+                    docs = list(query.stream())
+                    docs.reverse()
+                else:
+                    return []
+            else:
+                return []
+        else:
+            query = msgs_ref.order_by('created_at', direction='DESCENDING').limit(limit)
+            docs = list(query.stream())
+            docs.reverse()
+
+        messages = []
+        for doc in docs:
+            d = doc.to_dict()
+            mid = int(doc.id) if doc.id.isdigit() else d.get('mysql_id', 0)
+            messages.append({
+                'id': mid,
+                'sender': d.get('sender', ''),
+                'text': d.get('text'),
+                'image': d.get('image_path'),
+                'voice': d.get('voice_path'),
+                'video': d.get('video_path'),
+                'media_paths': None,
+                'created_at': _ts_to_str(d.get('created_at')),
+                'profile_picture': None,
+                'is_edited': False,
+                'audio_summary': d.get('audio_summary'),
+                'audio_duration_seconds': None,
+                'reaction': None,
+            })
+        return messages
+    except Exception as e:
+        logger.error(f"Firestore get_group_chat_messages failed: {e}", exc_info=True)
+        raise
 
 
 def get_post_detail(post_id: int, username: str):
