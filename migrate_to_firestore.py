@@ -52,9 +52,10 @@ def get_mysql_connection():
 def get_firestore_client():
     from google.cloud import firestore
     project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT")
+    database = os.environ.get("FIRESTORE_DATABASE", "cpoint")
     if project:
-        return firestore.Client(project=project)
-    return firestore.Client()
+        return firestore.Client(project=project, database=database)
+    return firestore.Client(database=database)
 
 
 def parse_timestamp(val):
