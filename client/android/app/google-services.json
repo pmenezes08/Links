@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "739552904126",
+    "project_id": "cpoint-127c2",
+    "storage_bucket": "cpoint-127c2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:739552904126:android:539129f2fe4e54f963efef",
+        "android_client_info": {
+          "package_name": "co.cpoint.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCyo-MwvsOOP_Qa2jpzSJxxJVhs9ICOzL0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
