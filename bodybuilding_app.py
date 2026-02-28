@@ -10183,6 +10183,24 @@ def get_messages():
                         msg['signal_protocol'] = True
                 return jsonify({'success': True, 'messages': cached_messages})
     
+    # --- Firestore dual-read (feature flag) ---
+    try:
+        from backend.services.firestore_reads import USE_FIRESTORE_READS
+        if USE_FIRESTORE_READS:
+            # Resolve other_user_id to username first (still need MySQL for user lookup)
+            with get_db_connection() as _fconn:
+                _fc = _fconn.cursor()
+                _fc.execute("SELECT username FROM users WHERE id = ?", (other_user_id,))
+                _frow = _fc.fetchone()
+                if _frow:
+                    peer_username = _frow['username'] if hasattr(_frow, 'keys') else _frow[0]
+                    from backend.services.firestore_reads import get_dm_messages as fs_get_dm
+                    messages, is_delta = fs_get_dm(username, peer_username, since_id=since_id_int)
+                    logger.info(f"Firestore DM read: {len(messages)} messages for {username}<->{peer_username}")
+                    return jsonify({'success': True, 'messages': messages, 'is_delta': is_delta})
+    except Exception as fs_err:
+        logger.warning(f"Firestore DM read failed, falling back to MySQL: {fs_err}")
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -21192,6 +21210,18 @@ def get_post():
     if not post_id:
         return jsonify({'success': False, 'error': 'Post ID is required'}), 400
     
+    # --- Firestore dual-read ---
+    try:
+        from backend.services.firestore_reads import USE_FIRESTORE_READS
+        if USE_FIRESTORE_READS:
+            from backend.services.firestore_reads import get_post_detail as fs_get_post
+            post = fs_get_post(post_id, username)
+            if post:
+                logger.info(f"Firestore post read: post {post_id}")
+                return jsonify({'success': True, 'post': post})
+    except Exception as fs_err:
+        logger.warning(f"Firestore post read failed, falling back to MySQL: {fs_err}")
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -28156,6 +28186,19 @@ def api_group_post():
         post_id = int(request.args.get('post_id', '0'))
     except Exception:
         return jsonify({'success': False, 'error': 'Invalid post_id'})
+
+    # --- Firestore dual-read ---
+    try:
+        from backend.services.firestore_reads import USE_FIRESTORE_READS
+        if USE_FIRESTORE_READS:
+            from backend.services.firestore_reads import get_group_post_detail as fs_get_gp
+            post = fs_get_gp(post_id, username)
+            if post:
+                logger.info(f"Firestore group post read: post {post_id}")
+                return jsonify({'success': True, 'post': post, 'group': {'id': post.get('group_id'), 'name': ''}, 'community_id': None})
+    except Exception as fs_err:
+        logger.warning(f"Firestore group post read failed, falling back to MySQL: {fs_err}")
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()

@@ -702,6 +702,17 @@ def get_group_messages(group_id: int):
     before_id = request.args.get("before_id", type=int)
     limit = min(request.args.get("limit", 50, type=int), 100)
     
+    # --- Firestore dual-read ---
+    try:
+        from backend.services.firestore_reads import USE_FIRESTORE_READS
+        if USE_FIRESTORE_READS:
+            from backend.services.firestore_reads import get_group_chat_messages as fs_get_gcm
+            messages = fs_get_gcm(group_id, username, before_id=before_id, limit=limit)
+            logger.info(f"Firestore group chat read: {len(messages)} messages for group {group_id}")
+            return jsonify({"success": True, "messages": messages})
+    except Exception as fs_err:
+        logger.warning(f"Firestore group chat read failed, falling back to MySQL: {fs_err}")
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
