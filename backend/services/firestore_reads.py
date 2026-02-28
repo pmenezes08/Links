@@ -45,8 +45,27 @@ def get_dm_messages(username: str, peer: str, since_id: int = None):
     """
     try:
         fs = _get_client()
-        user1, user2 = sorted([username, peer])
-        conv_id = f"{user1}_{user2}"
+        # Try multiple ID formats since migration used MySQL LEAST/GREATEST
+        # which is case-insensitive, while Python sorted() is case-sensitive
+        user1_py, user2_py = sorted([username, peer])
+        user1_ci, user2_ci = sorted([username, peer], key=str.lower)
+        candidates = list(dict.fromkeys([
+            f"{user1_py}_{user2_py}",
+            f"{user1_ci}_{user2_ci}",
+            f"{user2_py}_{user1_py}",
+            f"{user2_ci}_{user1_ci}",
+        ]))
+
+        conv_id = None
+        for cid in candidates:
+            doc = fs.collection('dm_conversations').document(cid).get()
+            if doc.exists:
+                conv_id = cid
+                break
+
+        if not conv_id:
+            logger.info(f"Firestore DM: no conversation found for {username}<->{peer} (tried {candidates})")
+            return [], False
 
         msgs_ref = fs.collection('dm_conversations').document(conv_id).collection('messages')
         query = msgs_ref.order_by('created_at')
