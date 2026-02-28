@@ -1101,7 +1101,14 @@ def send_group_media(group_id: int):
                 """, (group_id, username, message_id, now, message_id, now))
             
             conn.commit()
-            
+
+            # Dual-write media to Firestore
+            try:
+                from backend.services.firestore_writes import write_group_chat_message
+                write_group_chat_message(group_id=group_id, message_id=message_id, sender=username, image_path=image_path, video_path=video_path)
+            except Exception as fs_err:
+                logger.warning(f"Firestore group media dual-write failed (non-fatal): {fs_err}")
+
             # Get sender's profile picture
             c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
             pp_row = c.fetchone()
@@ -2161,7 +2168,14 @@ RESPONSE FORMAT:
             c.execute(f"UPDATE group_chats SET updated_at = {ph} WHERE id = {ph}", (now, group_id))
             
             conn.commit()
-            
+
+            # Dual-write Steve reply to Firestore
+            try:
+                from backend.services.firestore_writes import write_group_chat_message
+                write_group_chat_message(group_id=group_id, message_id=steve_message_id, sender=AI_USERNAME, text=ai_response)
+            except Exception:
+                pass
+
             # Clear typing indicator now that Steve has posted
             if group_id in _steve_typing_status:
                 del _steve_typing_status[group_id]

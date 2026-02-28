@@ -10726,7 +10726,15 @@ RESPONSE STYLE:
                     VALUES (?, ?, ?, ?)
                 """, ('steve', reply_receiver, ai_response, _ts))
             conn.commit()
+            steve_msg_id = getattr(c, 'lastrowid', None)
             
+            # Dual-write Steve reply to Firestore
+            try:
+                from backend.services.firestore_writes import write_dm_message
+                write_dm_message(sender='steve', receiver=reply_receiver, message_id=steve_msg_id, text=ai_response)
+            except Exception:
+                pass
+
             # Invalidate caches so the reply appears on next poll
             try:
                 invalidate_message_cache(sender_username, 'steve')
@@ -11015,7 +11023,14 @@ def send_photo_message():
                         inserted_time = row['timestamp'] if hasattr(row, 'keys') else row[0]
                 except Exception:
                     inserted_time = None
-            
+
+            # Dual-write photo to Firestore
+            try:
+                from backend.services.firestore_writes import write_dm_message
+                write_dm_message(sender=username, receiver=recipient_username, message_id=inserted_id, text=message, image_path=relative_path)
+            except Exception:
+                pass
+
             invalidate_message_cache(username, recipient_username)
             
             # Create or update notification for the recipient (truly atomic)
@@ -11129,7 +11144,14 @@ def send_video_message():
                         inserted_time = row['timestamp'] if hasattr(row, 'keys') else row[0]
                 except Exception:
                     inserted_time = None
-            
+
+            # Dual-write video to Firestore
+            try:
+                from backend.services.firestore_writes import write_dm_message
+                write_dm_message(sender=username, receiver=recipient_username, message_id=inserted_id, text=message, video_path=relative_path)
+            except Exception:
+                pass
+
             invalidate_message_cache(username, recipient_username)
             
             try:
@@ -11282,6 +11304,15 @@ def send_audio_message():
             
             # Get the inserted message ID
             message_id = c.lastrowid
+
+            # Dual-write audio to Firestore
+            try:
+                from backend.services.firestore_writes import write_dm_message
+                write_dm_message(sender=username, receiver=recipient_username, message_id=message_id,
+                                audio_path=rel_path, audio_duration_seconds=duration_seconds,
+                                audio_mime=mime, audio_summary=audio_summary)
+            except Exception:
+                pass
 
             # Invalidate caches
             invalidate_message_cache(username, recipient_username)
@@ -13511,6 +13542,14 @@ def add_reaction():
                 c.execute("INSERT INTO reactions (post_id, username, reaction_type) VALUES (?, ?, ?)",
                           (post_id, username, reaction_type))
 
+            # Dual-write reaction to Firestore
+            try:
+                from backend.services.firestore_writes import write_reaction
+                final_reaction = None if (existing and existing['reaction_type'] == reaction_type) else reaction_type
+                write_reaction(post_id=post_id, username=username, reaction_type=final_reaction)
+            except Exception:
+                pass
+
             # Create notification for post owner and other engaged users (only if adding/changing reaction, not removing)
             if post_data and (existing is None or (existing and existing['reaction_type'] != reaction_type)):
                 logger.info(f"Reaction notification check - Post owner: {post_data['username'] if post_data else 'None'}, Reactor: {username}")
@@ -14668,7 +14707,15 @@ def post_status():
             conn.commit()
             post_id = c.lastrowid
             logger.info(f"Post added successfully for {username} with ID: {post_id} in community: {community_id}")
-            
+
+            # Dual-write post to Firestore
+            try:
+                from backend.services.firestore_writes import write_post
+                write_post(post_id=post_id, username=username, content=content, community_id=community_id,
+                          image_path=image_path, video_path=video_path, audio_path=audio_path, audio_summary=audio_summary)
+            except Exception:
+                pass
+
             # Auto-flag content if it contains objectionable material (Apple App Store requirement)
             try:
                 auto_flag_content_if_needed(post_id, content, username, community_id)
@@ -14973,6 +15020,14 @@ def post_reply():
             c.execute("INSERT INTO replies (post_id, username, content, image_path, audio_path, timestamp, community_id, parent_reply_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                       (post_id, username, content, image_path, audio_path, timestamp_db, community_id, parent_reply_id))
             reply_id = c.lastrowid
+
+            # Dual-write reply to Firestore
+            try:
+                from backend.services.firestore_writes import write_reply
+                write_reply(post_id=post_id, reply_id=reply_id, username=username, content=content,
+                           parent_reply_id=parent_reply_id, image_path=image_path)
+            except Exception:
+                pass
 
             # Record token
             try:

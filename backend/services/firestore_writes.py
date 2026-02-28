@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 _fs_client = None
 FIRESTORE_DATABASE = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
-USE_FIRESTORE_WRITES = os.environ.get('USE_FIRESTORE_WRITES', 'false').lower() == 'true'
+USE_FIRESTORE_WRITES = os.environ.get('USE_FIRESTORE_WRITES', 'true').lower() == 'true'
 
 
 def _get_client():
@@ -118,3 +118,71 @@ def write_group_chat_message(group_id: int, message_id: int, sender: str,
         logger.debug(f"Firestore group chat write: msg {message_id} in group {group_id}")
     except Exception as e:
         logger.warning(f"Firestore group chat write failed (non-fatal): {e}")
+
+
+def write_post(post_id: int, username: str, content: str = '', community_id=None,
+               group_id=None, image_path: str = None, video_path: str = None,
+               audio_path: str = None, audio_summary: str = None,
+               post_type: str = 'community', timestamp=None):
+    """Write a post to Firestore after MySQL insert."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        doc_id = f"gp_{post_id}" if post_type == 'group' else str(post_id)
+        ts = timestamp if isinstance(timestamp, datetime) else datetime.utcnow()
+        fs.collection('posts').document(doc_id).set({
+            'mysql_id': post_id,
+            'type': post_type,
+            'username': username,
+            'content': content or '',
+            'community_id': community_id,
+            'group_id': group_id,
+            'image_path': image_path,
+            'video_path': video_path,
+            'audio_path': audio_path,
+            'audio_summary': audio_summary,
+            'created_at': ts,
+        })
+    except Exception as e:
+        logger.warning(f"Firestore post write failed (non-fatal): {e}")
+
+
+def write_reply(post_id: int, reply_id: int, username: str, content: str = '',
+                parent_reply_id: int = None, image_path: str = None,
+                post_type: str = 'community', timestamp=None):
+    """Write a reply to Firestore after MySQL insert."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        doc_id = f"gp_{post_id}" if post_type == 'group' else str(post_id)
+        ts = timestamp if isinstance(timestamp, datetime) else datetime.utcnow()
+        fs.collection('posts').document(doc_id).collection('replies').document(str(reply_id)).set({
+            'mysql_id': reply_id,
+            'username': username,
+            'content': content or '',
+            'parent_reply_id': parent_reply_id,
+            'image_path': image_path,
+            'created_at': ts,
+        })
+    except Exception as e:
+        logger.warning(f"Firestore reply write failed (non-fatal): {e}")
+
+
+def write_reaction(post_id: int, username: str, reaction_type: str,
+                   post_type: str = 'community'):
+    """Write/update a reaction in Firestore."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        doc_id = f"gp_{post_id}" if post_type == 'group' else str(post_id)
+        if reaction_type:
+            fs.collection('posts').document(doc_id).collection('reactions').document(username).set({
+                'type': reaction_type, 'username': username
+            })
+        else:
+            fs.collection('posts').document(doc_id).collection('reactions').document(username).delete()
+    except Exception as e:
+        logger.warning(f"Firestore reaction write failed (non-fatal): {e}")

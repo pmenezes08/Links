@@ -14,7 +14,9 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-USE_FIRESTORE_READS = os.environ.get('USE_FIRESTORE_READS', 'false').lower() == 'true'
+# Reads always go to MySQL (source of truth). Firestore is kept in sync
+# via dual-writes for Steve AI context and future real-time migration.
+USE_FIRESTORE_READS = False
 
 _fs_client = None
 FIRESTORE_DATABASE = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
@@ -40,113 +42,18 @@ def _ts_to_str(val):
 
 def get_dm_messages(username: str, peer: str, since_id: int = None):
     """
-    Read DM messages from Firestore.
-    Returns (messages_list, is_delta) matching /get_messages response format.
+    Read DM messages — always from MySQL (source of truth).
+    Firestore is kept in sync via dual-write for Steve context and future use.
     """
-    try:
-        fs = _get_client()
-        # Canonical format: lowercase sorted
-        a, b = sorted([username.lower(), peer.lower()])
-        conv_id = f"{a}_{b}"
-
-        conv_doc = fs.collection('dm_conversations').document(conv_id).get()
-        if not conv_doc.exists:
-            # Legacy: try the MySQL LEAST/GREATEST format (case-insensitive sort with original case)
-            user1_ci, user2_ci = sorted([username, peer], key=str.lower)
-            legacy_id = f"{user1_ci}_{user2_ci}"
-            if legacy_id != conv_id:
-                conv_doc = fs.collection('dm_conversations').document(legacy_id).get()
-                if conv_doc.exists:
-                    conv_id = legacy_id
-            if not conv_doc.exists:
-                logger.info(f"Firestore DM: no conversation found for {username}<->{peer}")
-                return [], False
-
-        msgs_ref = fs.collection('dm_conversations').document(conv_id).collection('messages')
-        query = msgs_ref.order_by('created_at')
-
-        if since_id:
-            since_doc = msgs_ref.document(str(since_id)).get()
-            if since_doc.exists:
-                since_ts = since_doc.to_dict().get('created_at')
-                if since_ts:
-                    query = msgs_ref.where('created_at', '>', since_ts).order_by('created_at')
-
-        docs = query.stream()
-        messages = []
-        for doc in docs:
-            d = doc.to_dict()
-            mid = int(doc.id) if doc.id.isdigit() else d.get('mysql_id', 0)
-            if since_id and mid <= since_id:
-                continue
-            messages.append({
-                'id': mid,
-                'text': d.get('text') or '',
-                'image_path': d.get('image_path'),
-                'video_path': d.get('video_path'),
-                'audio_path': d.get('audio_path'),
-                'audio_duration_seconds': d.get('audio_duration_seconds'),
-                'audio_mime': d.get('audio_mime'),
-                'audio_summary': d.get('audio_summary'),
-                'sent': d.get('sender') == username,
-                'time': _ts_to_str(d.get('created_at')),
-                'edited_at': _ts_to_str(d.get('edited_at')),
-                'reaction': d.get('reaction'),
-                'reaction_by': d.get('reaction_by'),
-                'is_encrypted': d.get('is_encrypted', False),
-                'encrypted_body': d.get('encrypted_body'),
-                'encrypted_body_for_sender': d.get('encrypted_body_for_sender'),
-            })
-
-        return messages, bool(since_id)
-    except Exception as e:
-        logger.error(f"Firestore get_dm_messages failed: {e}", exc_info=True)
-        raise
+    raise NotImplementedError("DM reads use MySQL — Firestore sync is write-side only")
 
 
 def get_group_chat_messages(group_id: int, username: str, before_id: int = None, limit: int = 50):
     """
-    Read group chat messages from Firestore.
-    Returns messages list matching /api/group_chat/{id}/messages response format.
+    Group chat reads use MySQL — Firestore is kept in sync via dual-write
+    for Steve context and future real-time features.
     """
-    try:
-        fs = _get_client()
-        msgs_ref = fs.collection('group_chats').document(str(group_id)).collection('messages')
-
-        query = msgs_ref.order_by('created_at', direction='DESCENDING').limit(limit)
-
-        if before_id:
-            before_doc = msgs_ref.document(str(before_id)).get()
-            if before_doc.exists:
-                before_ts = before_doc.to_dict().get('created_at')
-                if before_ts:
-                    query = msgs_ref.where('created_at', '<', before_ts).order_by('created_at', direction='DESCENDING').limit(limit)
-
-        docs = list(query.stream())
-        messages = []
-        for doc in docs:
-            d = doc.to_dict()
-            mid = int(doc.id) if doc.id.isdigit() else d.get('mysql_id', 0)
-            messages.append({
-                'id': mid,
-                'sender': d.get('sender', ''),
-                'text': d.get('text'),
-                'image': d.get('image_path'),
-                'voice': d.get('voice_path'),
-                'video': d.get('video_path'),
-                'media_paths': None,
-                'created_at': _ts_to_str(d.get('created_at')),
-                'profile_picture': None,
-                'is_edited': False,
-                'audio_summary': d.get('audio_summary'),
-                'audio_duration_seconds': None,
-                'reaction': None,
-            })
-
-        return messages
-    except Exception as e:
-        logger.error(f"Firestore get_group_chat_messages failed: {e}", exc_info=True)
-        raise
+    raise NotImplementedError("Group chat reads use MySQL")
 
 
 def get_post_detail(post_id: int, username: str):
