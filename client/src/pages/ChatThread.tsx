@@ -130,6 +130,10 @@ export default function ChatThread(){
   const pollCountRef = useRef(0)
   // Track last known message ID for faster incremental polling
   const lastKnownMessageIdRef = useRef<number>(0)
+  // Backward pagination (load older messages on scroll up)
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const loadingOlderRef = useRef(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement|null>(null)
@@ -770,6 +774,7 @@ export default function ChatThread(){
         if (msgResponse?.success && Array.isArray(msgResponse.messages)) {
           const processedMessages = await processRawMessages(msgResponse.messages)
           setMessages(processedMessages)
+          setHasMoreMessages(!!msgResponse.has_more)
           lastFetchTime.current = Date.now()
           
           // Cache the messages for next time
@@ -950,7 +955,41 @@ export default function ChatThread(){
       observer.disconnect()
     }
   }, [username, scrollToBottom]) // Only re-run when chat changes, not on every message update
-  
+
+  // Load older messages when user scrolls to top
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlderRef.current || !hasMoreMessages || !otherUserId) return
+    loadingOlderRef.current = true
+    setLoadingOlder(true)
+    try {
+      const oldestId = messages.length > 0 ? Math.min(...messages.map(m => typeof m.id === 'number' ? m.id : 0)) : 0
+      if (oldestId <= 0) { loadingOlderRef.current = false; setLoadingOlder(false); return }
+      const fd = new URLSearchParams({ other_user_id: String(otherUserId), before_id: String(oldestId) })
+      const r = await fetch('/get_messages', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
+      const j = await r.json()
+      if (j?.success && Array.isArray(j.messages) && j.messages.length > 0) {
+        const el = listRef.current
+        const prevHeight = el?.scrollHeight || 0
+        const processed = await processRawMessages(j.messages)
+        setMessages(prev => [...processed, ...prev])
+        setHasMoreMessages(!!j.has_more)
+        // Restore scroll position so it doesn't jump to top
+        requestAnimationFrame(() => {
+          if (el) {
+            const newHeight = el.scrollHeight
+            el.scrollTop = newHeight - prevHeight
+          }
+        })
+      } else {
+        setHasMoreMessages(false)
+      }
+    } catch (err) {
+      console.error('Failed to load older messages:', err)
+    }
+    loadingOlderRef.current = false
+    setLoadingOlder(false)
+  }, [hasMoreMessages, otherUserId, messages])
+
   // Track user scroll to detect manual scrolling
   useEffect(() => {
     const el = listRef.current
@@ -969,6 +1008,11 @@ export default function ChatThread(){
       const currentScrollTop = el.scrollTop
       const isAtBottom = (el.scrollHeight - currentScrollTop - el.clientHeight) < 50
       
+      // Load older messages when scrolled near the top
+      if (currentScrollTop < 100 && !loadingOlderRef.current && hasMoreMessages && otherUserId) {
+        loadOlderMessages()
+      }
+
       // If user scrolled up significantly, mark as manual scroll
       if (currentScrollTop < lastScrollTop - 20 && !isAtBottom) {
         userHasScrolledRef.current = true
@@ -2357,6 +2401,19 @@ export default function ChatThread(){
           if (near) setShowScrollDown(false)
         }}
       >
+        {/* Load older messages indicator */}
+        {loadingOlder && (
+          <div className="flex justify-center py-3">
+            <i className="fa-solid fa-spinner fa-spin text-[#4db6ac] text-sm" />
+          </div>
+        )}
+        {hasMoreMessages && !loadingOlder && (
+          <div className="flex justify-center py-2">
+            <button onClick={loadOlderMessages} className="text-xs text-[#4db6ac] hover:text-[#4db6ac]/80">
+              Load older messages
+            </button>
+          </div>
+        )}
         {messages.map((m, index) => {
           const messageDate = getDateKey(m.time)
           const prevMessageDate = index > 0 ? getDateKey(messages[index - 1].time) : null
