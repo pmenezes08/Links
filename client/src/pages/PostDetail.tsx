@@ -537,6 +537,36 @@ export default function PostDetail(){
     return () => { cancelled = true }
   }, [post_id])
 
+  // Fetch accurate view count + reaction counts from MySQL after post loads
+  useEffect(() => {
+    if (!post) return
+    let cancelled = false
+    async function fetchCounts(){
+      try {
+        const r = await fetch(`/get_post_reactors/${post.id}`, { credentials: 'include' })
+        const j = await r.json().catch(() => null)
+        if (cancelled || !j?.success) return
+        const viewCount = typeof j.view_count === 'number' ? j.view_count : (Array.isArray(j.viewers) ? j.viewers.length : undefined)
+        const reactionCounts: Record<string, number> = {}
+        if (Array.isArray(j.groups)) {
+          for (const g of j.groups) {
+            if (g.reaction_type && Array.isArray(g.users)) reactionCounts[g.reaction_type] = g.users.length
+          }
+        }
+        setPost(prev => {
+          if (!prev || prev.id !== post.id) return prev
+          return {
+            ...prev,
+            view_count: viewCount ?? prev.view_count,
+            reactions: Object.keys(reactionCounts).length > 0 ? reactionCounts : prev.reactions,
+          }
+        })
+      } catch {}
+    }
+    fetchCounts()
+    return () => { cancelled = true }
+  }, [post?.id])
+
   async function compressImageFile(input: File, maxEdge = 1600, quality = 0.82): Promise<File> {
     try {
       const isImage = typeof input.type === 'string' && input.type.startsWith('image/')
