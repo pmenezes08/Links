@@ -1,57 +1,62 @@
-import { Button } from "@/components/ui/button";
-import { Apple, Play } from "lucide-react";
-import heroImage from "@/assets/hero-community.jpg";
+import { Apple, ArrowRight } from "lucide-react";
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/cpoint/id6755534074";
 
 export const Hero = () => {
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* Background Image with Overlay */}
-      <div className="absolute inset-0 z-0">
-        <img
-          src={heroImage}
-          alt="People connecting through ideas"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-hero" />
-      </div>
+    <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
+      {/* Subtle teal glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/[0.04] rounded-full blur-3xl pointer-events-none" />
 
-      {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 py-20 text-center">
-        <div className="max-w-4xl mx-auto animate-fade-in">
-          <h1 className="text-5xl md:text-7xl font-bold text-primary-foreground mb-6 leading-tight">
-            Enter the network where ideas connect people
-          </h1>
-          <p className="text-xl md:text-2xl text-primary-foreground/90 mb-8 max-w-2xl mx-auto">
-            C-Point brings together your communities, interests, and conversations in one place. Share ideas, spark discussions, and grow together.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button 
-              variant="hero" 
-              size="lg" 
-              className="text-lg"
-              asChild
-            >
-              <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer">
-                <Apple className="mr-2" size={24} />
-                Download App
-              </a>
-            </Button>
-            <Button variant="secondary" size="lg" className="text-lg" asChild>
-              <a href="https://app.c-point.co/signup">
-                Open Web App
-                <Play className="mr-2" size={24} />
-              </a>
-            </Button>
+      <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
+        <div className="fade-in-up" style={{ animationDelay: "0.1s" }}>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-primary/20 bg-primary/[0.04] text-primary text-sm font-medium mb-8">
+            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+            AI-Powered Networking Platform
           </div>
         </div>
+
+        <h1 className="heading-xl text-foreground mb-6 fade-in-up" style={{ animationDelay: "0.2s" }}>
+          Beyond the Feed.{" "}
+          <span className="bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
+            Inside the Network.
+          </span>
+        </h1>
+
+        <p className="body-lg max-w-2xl mx-auto mb-10 fade-in-up" style={{ animationDelay: "0.35s" }}>
+          A high-signal networking platform designed for private communities to connect,
+          collaborate, and grow. No noise, no ads — just meaningful professional relationships.
+        </p>
+
+        <div className="flex flex-col sm:flex-row gap-4 justify-center fade-in-up" style={{ animationDelay: "0.5s" }}>
+          <a
+            href={APP_STORE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity shadow-lg"
+          >
+            <Apple size={18} />
+            Download for iOS
+          </a>
+          <a
+            href="https://app.c-point.co/signup"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full border border-black/10 text-foreground text-sm font-medium hover:bg-muted transition-colors"
+          >
+            Launch Your Community
+            <ArrowRight size={16} />
+          </a>
+        </div>
+
+        {/* Social proof / tagline */}
+        <p className="mt-16 text-sm text-muted-foreground fade-in-up" style={{ animationDelay: "0.65s" }}>
+          Trusted by founders, alumni networks, and professional communities.
+        </p>
       </div>
 
-      {/* Scroll Indicator */}
-      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10 animate-bounce">
-        <div className="w-6 h-10 border-2 border-primary-foreground/50 rounded-full flex items-start justify-center p-2">
-          <div className="w-1.5 h-3 bg-primary-foreground/50 rounded-full" />
+      {/* Scroll indicator */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
+        <div className="w-5 h-8 border-2 border-muted-foreground/30 rounded-full flex items-start justify-center p-1.5">
+          <div className="w-1 h-2 bg-muted-foreground/30 rounded-full" />
         </div>
       </div>
     </section>
