@@ -2838,21 +2838,13 @@ export default function ChatThread(){
             {/* Attachment button */}
             <button 
               className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 transition-all cursor-pointer select-none"
-              onPointerDown={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setShowAttachMenu(!showAttachMenu)
-              }}
               onClick={(e) => {
-                e.preventDefault()
                 e.stopPropagation()
                 setShowAttachMenu(!showAttachMenu)
               }}
               style={{
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent',
-                WebkitUserSelect: 'none',
-                userSelect: 'none',
               }}
             >
               <i className={`fa-solid text-white text-base sm:text-lg transition-transform duration-200 pointer-events-none ${
