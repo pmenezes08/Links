@@ -38,7 +38,7 @@ export const Tools = () => {
             </span>
           </h2>
           <p className="body-lg">
-            Stop juggling multiple apps. C.Point includes integrated event RSVPs, document sharing,
+            Stop juggling multiple apps. C-Point includes integrated event RSVPs, document sharing,
             and community-wide polls to keep your network active and engaged.
           </p>
         </div>

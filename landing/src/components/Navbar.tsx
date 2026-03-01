@@ -27,7 +27,7 @@ export const Navbar = () => {
     }`}>
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <a href="/" className={`text-xl font-bold tracking-tight transition-colors ${scrolled ? "text-foreground" : "text-white"}`}>
-          C<span className={scrolled ? "text-primary" : "text-white/80"}>.</span>Point
+          C<span className={scrolled ? "text-primary" : "text-white/80"}>-</span>Point
         </a>
 
         {/* Desktop links */}

@@ -50,7 +50,7 @@ export const MeetSteve = () => {
             </span>
           </h2>
           <p className="body-lg">
-            Most platforms give you a directory. C.Point gives you Steve — an advanced AI that lives
+            Most platforms give you a directory. C-Point gives you Steve — an advanced AI that lives
             inside your community to bridge gaps, summarize insights, and drive engagement.
           </p>
         </div>

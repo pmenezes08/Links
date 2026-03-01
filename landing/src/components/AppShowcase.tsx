@@ -25,7 +25,7 @@ export const AppShowcase = () => {
             <div className="rounded-[24px] overflow-hidden shadow-2xl border border-black/10">
               <img
                 src="/screenshots/Dashboard.png"
-                alt="C.Point Dashboard - Your Communities"
+                alt="C-Point Dashboard - Your Communities"
                 className="w-full h-auto"
               />
             </div>
@@ -37,7 +37,7 @@ export const AppShowcase = () => {
             <div className="rounded-[24px] overflow-hidden shadow-2xl border border-black/10">
               <img
                 src="/screenshots/profile.png"
-                alt="C.Point Professional Profile"
+                alt="C-Point Professional Profile"
                 className="w-full h-auto"
               />
             </div>
@@ -49,7 +49,7 @@ export const AppShowcase = () => {
             <div className="rounded-[24px] overflow-hidden shadow-2xl border border-black/10">
               <img
                 src="/screenshots/chat.jpg"
-                alt="C.Point Direct Messages"
+                alt="C-Point Direct Messages"
                 className="w-full h-auto"
               />
             </div>
