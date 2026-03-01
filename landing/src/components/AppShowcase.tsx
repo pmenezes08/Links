@@ -24,7 +24,7 @@ export const AppShowcase = () => {
           <div className="w-[160px] sm:w-[200px] md:w-[240px] flex-shrink-0 transform -rotate-3 hover:rotate-0 transition-transform duration-500">
             <div className="rounded-[24px] overflow-hidden shadow-2xl border border-black/10">
               <img
-                src="/screenshots/dashboard.png"
+                src="/screenshots/Dashboard.png"
                 alt="C.Point Dashboard - Your Communities"
                 className="w-full h-auto"
               />
@@ -48,7 +48,7 @@ export const AppShowcase = () => {
           <div className="w-[160px] sm:w-[200px] md:w-[240px] flex-shrink-0 transform rotate-3 hover:rotate-0 transition-transform duration-500">
             <div className="rounded-[24px] overflow-hidden shadow-2xl border border-black/10">
               <img
-                src="/screenshots/chat.png"
+                src="/screenshots/chat.jpg"
                 alt="C.Point Direct Messages"
                 className="w-full h-auto"
               />
