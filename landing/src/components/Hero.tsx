@@ -1,4 +1,4 @@
-import { Apple, ArrowRight } from "lucide-react";
+import { Apple, Smartphone } from "lucide-react";
 import heroBg from "@/assets/hero-community.jpg";
 
 const APP_STORE_URL = "https://apps.apple.com/us/app/cpoint/id6755534074";
@@ -45,13 +45,13 @@ export const Hero = () => {
             <Apple size={18} />
             Download for iOS
           </a>
-          <a
-            href="https://app.c-point.co/signup"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full border-2 border-white/40 text-white text-sm font-semibold hover:bg-white/10 transition-colors backdrop-blur-sm"
+          <button
+            onClick={() => alert('Coming soon!')}
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full border-2 border-white/40 text-white text-sm font-semibold hover:bg-white/10 transition-colors backdrop-blur-sm cursor-pointer"
           >
-            Launch Your Community
-            <ArrowRight size={16} />
-          </a>
+            <Smartphone size={18} />
+            Download for Android
+          </button>
         </div>
 
         <p className="mt-16 text-sm text-white/60 fade-in-up" style={{ animationDelay: "0.65s" }}>

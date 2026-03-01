@@ -47,14 +47,6 @@ export const Navbar = () => {
 
         <div className="hidden md:flex items-center gap-3">
           <a
-            href="https://app.c-point.co/signup"
-            className={`text-sm transition-colors ${
-              scrolled ? "text-muted-foreground hover:text-foreground" : "text-white/75 hover:text-white"
-            }`}
-          >
-            Sign In
-          </a>
-          <a
             href={APP_STORE_URL}
             target="_blank"
             rel="noopener noreferrer"
