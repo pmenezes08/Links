@@ -16,19 +16,10 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    signingConfigs {
-        release {
-            storeFile file('cpoint-release.keystore')
-            storePassword System.getenv('KEYSTORE_PASSWORD') ?: 'CPoint2026Release'
-            keyAlias 'cpoint'
-            keyPassword System.getenv('KEY_PASSWORD') ?: 'CPoint2026Release'
-        }
-    }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
