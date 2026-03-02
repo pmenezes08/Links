@@ -9,6 +9,7 @@ RUN npm ci 2>/dev/null || npm install
 COPY client/ ./
 RUN npm run build
 
+# Stage 2: Python app with built client
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -31,7 +32,7 @@ COPY backend/ ./backend/
 COPY templates/ ./templates/
 COPY static/ ./static/
 # Copy built React client from builder stage
-COPY --from=client-builder /client/dist ./client/dist
+COPY --from=client-builder /client/dist ./client/dist/
 
 # Cloud Run sets PORT; default 8080
 ENV PORT=8080
