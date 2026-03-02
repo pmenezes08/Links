@@ -32,13 +32,9 @@ env/
 *.swp
 *.swo
 
-# Ignore client source (we only need client/dist)
-client/src/
+# Client source is needed for Dockerfile build (builds client in image)
+# Only ignore node_modules to speed upload (reinstalled in container)
 client/node_modules/
-client/package*.json
-client/tsconfig*.json
-client/vite.config.ts
-client/*.html
 client/.env*
 
 # Ignore landing source (we only need landing/dist)
