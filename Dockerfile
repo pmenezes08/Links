@@ -4,8 +4,13 @@
 
 FROM node:20-slim AS client-builder
 WORKDIR /client
+# Install build deps for any native modules (e.g. stay-liquid from GitHub)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
 COPY client/package.json client/package-lock.json ./
-RUN npm ci 2>/dev/null || npm install
+# Use npm install (more forgiving than npm ci in Cloud Build)
+RUN npm install --legacy-peer-deps
 COPY client/ ./
 RUN npm run build
 

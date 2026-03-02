@@ -1,0 +1,23 @@
+# Cloud Build config for cpoint-app-staging
+# Use: gcloud builds submit --config=cloudbuild.yaml .
+# More reliable than gcloud run deploy --source (avoids gcloud streaming crash)
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/cpoint-app-staging:latest', '.']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/cpoint-app-staging:latest']
+  - name: 'gcr.io/google.com/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'cpoint-app-staging'
+      - '--image=gcr.io/$PROJECT_ID/cpoint-app-staging:latest'
+      - '--region=europe-west1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+
+options:
+  # More CPU/memory for npm install (default can OOM)
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
