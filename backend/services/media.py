@@ -167,21 +167,9 @@ def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions
         return None
     
     original_filename = file.filename
-    allowed_by_mimetype = False
     if not allowed_file(original_filename, allowed_extensions):
-        # Fallback for video subfolders: allow by mimetype when extension check fails
-        # (e.g. mobile cameras may send video with unusual or missing extensions)
-        if subfolder == "message_videos":
-            mime = getattr(file, "mimetype", "") or ""
-            if mime.lower().startswith("video/"):
-                logger.info(f"save_uploaded_file: Allowing video by mimetype {mime} (filename={original_filename})")
-                allowed_by_mimetype = True
-            else:
-                logger.warning(f"save_uploaded_file: File not allowed - filename={original_filename}, mimetype={mime}")
-                return None
-        else:
-            logger.warning(f"save_uploaded_file: File not allowed - filename={original_filename}, allowed={allowed_extensions}")
-            return None
+        logger.warning(f"save_uploaded_file: File not allowed - filename={original_filename}, allowed={allowed_extensions}")
+        return None
 
     filename = secure_filename(original_filename)
     
@@ -191,19 +179,18 @@ def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions
         if ext_from_original and len(ext_from_original) <= 5:  # sanity check
             filename = f"{filename or 'file'}.{ext_from_original}"
     
-    # Handle case where filename becomes empty or has no extension after secure_filename
-    if not filename or ('.' not in filename and allowed_by_mimetype):
+    # Handle case where filename becomes empty after secure_filename
+    if not filename:
         # Try to infer extension from mimetype
         ext_map = {
             'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3',
             'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/aac': 'aac',
             'audio/wav': 'wav', 'video/webm': 'webm', 'video/mp4': 'mp4',
-            'video/quicktime': 'mov', 'video/x-m4v': 'm4v', 'video/x-msvideo': 'avi',
             'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
         }
         mime = getattr(file, 'mimetype', '') or ''
-        ext = ext_map.get(mime.lower(), 'mp4' if allowed_by_mimetype else 'bin')
-        filename = f"{filename or 'video'}.{ext}"
+        ext = ext_map.get(mime.lower(), 'bin')
+        filename = f"file.{ext}"
         logger.info(f"save_uploaded_file: Generated filename from mimetype: {filename}")
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

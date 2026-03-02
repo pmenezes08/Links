@@ -246,11 +246,10 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
     finalizeOptimisticEntry(recentOptimisticRef, tempId)
   } catch (error) {
     console.error('Video upload failed', error)
-    const errMsg = error instanceof Error ? error.message : 'Failed to send video'
-    onProgress?.({ stage: 'error', progress: 0, message: errMsg })
+    onProgress?.({ stage: 'error', progress: 0, message: 'Failed to send' })
     setMessages((prev: ChatMessage[]) => prev.filter((message: ChatMessage) => (message.clientKey || message.id) !== tempId))
     recentOptimisticRef.current.delete(tempId)
-    notifyError(errMsg.includes('Failed') ? `${errMsg} Please try again.` : errMsg)
+    notifyError('Failed to send video. Please try again.')
   } finally {
     try {
       URL.revokeObjectURL(previewUrl)
