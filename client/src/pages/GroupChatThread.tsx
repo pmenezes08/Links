@@ -2416,6 +2416,7 @@ export default function GroupChatThread() {
             {/* Android: single combined mic/send button to avoid wrong-element hit detection (taps near edge can hit mic instead of send) */}
             {Capacitor.getPlatform() === 'android' && MIC_ENABLED && !recording && !recordingPreview && (
               <button
+                type="button"
                 className={`w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] ${
                   sending
                     ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
@@ -2423,20 +2424,22 @@ export default function GroupChatThread() {
                       ? 'bg-[#4db6ac] text-black'
                       : 'bg-white/12 text-white/80 hover:bg-white/22 active:bg-white/28'
                 } ${!sending ? 'active:scale-95' : ''} transition-all cursor-pointer select-none`}
-                onPointerDown={(e) => {
+                onPointerDownCapture={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
+                  e.stopImmediatePropagation()
                   if (sending) return
-                  const text = (textareaRef.current?.value ?? draftRef.current ?? '').trim()
-                  if (text) handleSend()
+                  // Prefer draftDisplay (React state) - more reliable on Android than refs
+                  const hasText = draftDisplay.trim().length > 0 || (textareaRef.current?.value ?? draftRef.current ?? '').trim().length > 0
+                  if (hasText) handleSend()
                   else checkMicrophonePermission()
                 }}
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
                   if (sending) return
-                  const text = (textareaRef.current?.value ?? draftRef.current ?? '').trim()
-                  if (text) handleSend()
+                  const hasText = draftDisplay.trim().length > 0 || (textareaRef.current?.value ?? draftRef.current ?? '').trim().length > 0
+                  if (hasText) handleSend()
                   else checkMicrophonePermission()
                 }}
                 disabled={sending}
@@ -2444,7 +2447,9 @@ export default function GroupChatThread() {
                 style={{
                   touchAction: 'manipulation',
                   WebkitTapHighlightColor: 'transparent',
-                }}
+                  position: 'relative',
+                  zIndex: 10,
+                } as CSSProperties}
               >
                 {sending ? (
                   <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
