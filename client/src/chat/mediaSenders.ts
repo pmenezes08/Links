@@ -178,46 +178,92 @@ export async function sendVideoMessage(options: VideoMediaOptions) {
   setTimeout(scrollToBottom, 50)
 
   try {
-    // Upload video directly without compression (preserves audio and is faster)
-    onProgress?.({ stage: 'uploading', progress: 0, message: 'Uploading...' })
-    
-    const formData = new FormData()
-    formData.append('video', file)
-    formData.append('recipient_id', String(otherUserId))
-    formData.append('message', '')
+    // Cloud Run has 32MB request limit - use direct R2 upload for videos > 25MB
+    const LARGE_VIDEO_THRESHOLD = 25 * 1024 * 1024 // 25MB
+    const useDirectUpload = file.size > LARGE_VIDEO_THRESHOLD
 
-    // Use XMLHttpRequest for upload progress
-    const payload = await new Promise<{ success: boolean; id?: number; video_path?: string; time?: string; error?: string }>((resolve, reject) => {
-      const xhr = new XMLHttpRequest()
-      
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const uploadProgress = (e.loaded / e.total) * 95
-          onProgress?.({ 
-            stage: 'uploading', 
-            progress: uploadProgress,
-            message: `Uploading... ${Math.round((e.loaded / e.total) * 100)}%`
-          })
-        }
+    let payload: { success: boolean; id?: number; video_path?: string; time?: string; error?: string }
+
+    if (useDirectUpload) {
+      // Step 1: Get presigned URL
+      onProgress?.({ stage: 'uploading', progress: 0, message: 'Preparing upload...' })
+      const urlRes = await fetch('/api/video_upload_url', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipient_id: String(otherUserId),
+          filename: file.name,
+          content_type: file.type || 'video/mp4',
+        }),
+      })
+      const urlData = await urlRes.json().catch(() => null)
+      if (!urlData?.success || !urlData.upload_url || !urlData.public_url) {
+        throw new Error(urlData?.error || 'Failed to get upload URL')
       }
-      
-      xhr.onload = () => {
-        try {
-          const response = JSON.parse(xhr.responseText)
-          resolve(response)
-        } catch {
-          reject(new Error('Invalid response'))
+
+      // Step 2: Upload directly to R2
+      onProgress?.({ stage: 'uploading', progress: 5, message: 'Uploading...' })
+      const putOk = await new Promise<boolean>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = 5 + (e.loaded / e.total) * 90
+            onProgress?.({ stage: 'uploading', progress: pct, message: `Uploading... ${Math.round((e.loaded / e.total) * 100)}%` })
+          }
         }
+        xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
+        xhr.onerror = () => reject(new Error('Upload failed'))
+        xhr.ontimeout = () => reject(new Error('Upload timeout'))
+        xhr.open('PUT', urlData.upload_url)
+        xhr.setRequestHeader('Content-Type', file.type || 'video/mp4')
+        xhr.timeout = 600000 // 10 min for large files
+        xhr.send(file)
+      })
+
+      if (!putOk) {
+        throw new Error('Failed to upload video')
       }
-      
-      xhr.onerror = () => reject(new Error('Network error'))
-      xhr.ontimeout = () => reject(new Error('Upload timeout'))
-      
-      xhr.open('POST', '/send_video_message')
-      xhr.withCredentials = true
-      xhr.timeout = 300000 // 5 minute timeout for large videos
-      xhr.send(formData)
-    })
+
+      // Step 3: Notify backend to create message
+      onProgress?.({ stage: 'uploading', progress: 98, message: 'Sending...' })
+      const fd = new FormData()
+      fd.append('recipient_id', String(otherUserId))
+      fd.append('message', '')
+      fd.append('video_url', urlData.public_url)
+      const msgRes = await fetch('/send_video_message', { method: 'POST', credentials: 'include', body: fd })
+      payload = await msgRes.json().catch(() => null) || {}
+    } else {
+      // Traditional form upload (smaller videos)
+      onProgress?.({ stage: 'uploading', progress: 0, message: 'Uploading...' })
+      const formData = new FormData()
+      formData.append('video', file)
+      formData.append('recipient_id', String(otherUserId))
+      formData.append('message', '')
+
+      payload = await new Promise<{ success: boolean; id?: number; video_path?: string; time?: string; error?: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const uploadProgress = (e.loaded / e.total) * 95
+            onProgress?.({ stage: 'uploading', progress: uploadProgress, message: `Uploading... ${Math.round((e.loaded / e.total) * 100)}%` })
+          }
+        }
+        xhr.onload = () => {
+          try {
+            resolve(JSON.parse(xhr.responseText))
+          } catch {
+            reject(new Error('Invalid response'))
+          }
+        }
+        xhr.onerror = () => reject(new Error('Network error'))
+        xhr.ontimeout = () => reject(new Error('Upload timeout'))
+        xhr.open('POST', '/send_video_message')
+        xhr.withCredentials = true
+        xhr.timeout = 300000 // 5 minute timeout
+        xhr.send(formData)
+      })
+    }
 
     if (!payload?.success) {
       throw new Error(payload?.error || 'Failed to send video')

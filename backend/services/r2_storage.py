@@ -211,3 +211,41 @@ def is_r2_url(url: str) -> bool:
     if not url or not R2_PUBLIC_URL:
         return False
     return url.startswith(R2_PUBLIC_URL)
+
+
+def generate_presigned_upload_url(
+    key: str,
+    content_type: str,
+    expires_in: int = 3600
+) -> Optional[str]:
+    """
+    Generate a presigned PUT URL for direct client upload to R2.
+    Bypasses Cloud Run's 32MB request limit for large videos.
+    
+    Args:
+        key: Object key (path) in the bucket, e.g. message_videos/video_20250102_123456.mp4
+        content_type: MIME type (e.g. video/mp4)
+        expires_in: URL validity in seconds (default 1 hour)
+    
+    Returns:
+        Presigned PUT URL, or None if R2 not configured
+    """
+    if not R2_ENABLED:
+        return None
+    client = get_s3_client()
+    if not client:
+        return None
+    try:
+        url = client.generate_presigned_url(
+            'put_object',
+            Params={
+                'Bucket': R2_BUCKET,
+                'Key': key,
+                'ContentType': content_type,
+            },
+            ExpiresIn=expires_in
+        )
+        return url
+    except Exception as e:
+        logger.error(f"Failed to generate presigned URL for {key}: {e}")
+        return None

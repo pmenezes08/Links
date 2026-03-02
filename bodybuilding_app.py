@@ -11118,22 +11118,81 @@ def send_photo_message():
 
 # Message videos served via /uploads/message_videos mapping
 
+@app.route('/api/video_upload_url', methods=['POST'])
+@login_required
+def api_video_upload_url():
+    """Get a presigned URL for direct video upload to R2. Bypasses Cloud Run 32MB limit."""
+    from backend.services.r2_storage import (
+        R2_ENABLED,
+        R2_PUBLIC_URL,
+        generate_presigned_upload_url,
+        get_content_type,
+    )
+    if not R2_ENABLED or not R2_PUBLIC_URL:
+        return jsonify({'success': False, 'error': 'Direct upload not available'}), 503
+    data = request.get_json() or {}
+    recipient_id = data.get('recipient_id')
+    filename = (data.get('filename') or 'video.mp4').strip()
+    content_type = (data.get('content_type') or get_content_type(filename)).strip()
+    if not recipient_id:
+        return jsonify({'success': False, 'error': 'recipient_id required'}), 400
+    # Validate video content type
+    if not content_type.startswith('video/'):
+        return jsonify({'success': False, 'error': 'Invalid video type'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT username FROM users WHERE id = ?", (recipient_id,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Recipient not found'}), 404
+    except Exception as e:
+        logger.error(f"video_upload_url recipient check: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+    from datetime import datetime
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'mp4'
+    if ext not in ('mp4', 'webm', 'mov', 'm4v', 'avi'):
+        ext = 'mp4'
+    name = (filename.rsplit('.', 1)[0] if '.' in filename else 'video')[:50]
+    key = f"message_videos/{name}_{ts}.{ext}"
+    upload_url = generate_presigned_upload_url(key, content_type)
+    if not upload_url:
+        return jsonify({'success': False, 'error': 'Failed to generate upload URL'}), 500
+    public_url = f"{R2_PUBLIC_URL.rstrip('/')}/{key}"
+    return jsonify({
+        'success': True,
+        'upload_url': upload_url,
+        'key': key,
+        'public_url': public_url,
+    })
+
+
 @app.route('/send_video_message', methods=['POST'])
 @login_required
 def send_video_message():
-    """Send a video message to another user"""
+    """Send a video message to another user. Accepts either video file or video_url (from direct R2 upload)."""
     username = session.get('username')
     recipient_id = request.form.get('recipient_id')
     message = request.form.get('message', '')
+    video_url = request.form.get('video_url', '').strip()
     
     if not recipient_id:
         return jsonify({'success': False, 'error': 'Recipient required'})
-    if 'video' not in request.files:
-        return jsonify({'success': False, 'error': 'No video uploaded'})
     
-    video = request.files['video']
-    if video.filename == '':
-        return jsonify({'success': False, 'error': 'No video selected'})
+    # Path 1: Direct upload - client uploaded to R2 and sends the public URL
+    if video_url and video_url.startswith('http'):
+        relative_path = video_url
+    # Path 2: Traditional upload - video file in form (subject to Cloud Run 32MB limit)
+    elif 'video' in request.files:
+        video = request.files['video']
+        if video.filename == '':
+            return jsonify({'success': False, 'error': 'No video selected'})
+        stored_path = save_uploaded_file(video, subfolder='message_videos')
+        if not stored_path:
+            return jsonify({'success': False, 'error': 'Invalid video type'})
+        relative_path = stored_path[7:] if stored_path.startswith('uploads/') else stored_path
+    else:
+        return jsonify({'success': False, 'error': 'No video uploaded'})
     
     try:
         with get_db_connection() as conn:
@@ -11144,11 +11203,6 @@ def send_video_message():
             if not recipient:
                 return jsonify({'success': False, 'error': 'Recipient not found'})
             recipient_username = recipient['username'] if hasattr(recipient, 'keys') else recipient[0]
-            
-            stored_path = save_uploaded_file(video, subfolder='message_videos')
-            if not stored_path:
-                return jsonify({'success': False, 'error': 'Invalid video type'})
-            relative_path = stored_path[7:] if stored_path.startswith('uploads/') else stored_path
             
             c.execute("""
                 INSERT INTO messages (sender, receiver, message, video_path, timestamp)
