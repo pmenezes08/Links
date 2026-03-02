@@ -2424,8 +2424,51 @@ export default function GroupChatThread() {
               )}
             </div>
 
-            {/* Mic button - shown when not recording, no preview, no text, and not sending */}
-            {MIC_ENABLED && !recording && !recordingPreview && !draftDisplay.trim() && !sending && (
+            {/* Android: single combined mic/send button to avoid wrong-element hit detection (taps near edge can hit mic instead of send) */}
+            {Capacitor.getPlatform() === 'android' && MIC_ENABLED && !recording && !recordingPreview && (
+              <button
+                className={`w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] ${
+                  sending
+                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                    : draftDisplay.trim()
+                      ? 'bg-[#4db6ac] text-black'
+                      : 'bg-white/12 text-white/80 hover:bg-white/22 active:bg-white/28'
+                } ${!sending ? 'active:scale-95' : ''} transition-all cursor-pointer select-none`}
+                onPointerDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (sending) return
+                  const text = (textareaRef.current?.value ?? draftRef.current ?? '').trim()
+                  if (text) handleSend()
+                  else checkMicrophonePermission()
+                }}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (sending) return
+                  const text = (textareaRef.current?.value ?? draftRef.current ?? '').trim()
+                  if (text) handleSend()
+                  else checkMicrophonePermission()
+                }}
+                disabled={sending}
+                aria-label={draftDisplay.trim() ? 'Send' : 'Start voice message'}
+                style={{
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                {sending ? (
+                  <i className="fa-solid fa-spinner fa-spin text-base pointer-events-none" />
+                ) : draftDisplay.trim() ? (
+                  <i className="fa-solid fa-paper-plane text-base pointer-events-none" />
+                ) : (
+                  <i className="fa-solid fa-microphone text-base pointer-events-none" />
+                )}
+              </button>
+            )}
+
+            {/* iOS/Web: Mic button - shown when not recording, no preview, no text, and not sending */}
+            {Capacitor.getPlatform() !== 'android' && MIC_ENABLED && !recording && !recordingPreview && !draftDisplay.trim() && !sending && (
               <button
                 className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
                 onPointerDown={(e) => {
@@ -2525,8 +2568,8 @@ export default function GroupChatThread() {
               </button>
             )}
 
-            {/* Normal send button - show when there's text OR when sending */}
-            {!(MIC_ENABLED && (recording || recordingPreview)) && (draftDisplay.trim() || sending || !MIC_ENABLED) && (
+            {/* Normal send button - show when there's text OR when sending (iOS/Web only; Android uses combined button above) */}
+            {Capacitor.getPlatform() !== 'android' && !(MIC_ENABLED && (recording || recordingPreview)) && (draftDisplay.trim() || sending || !MIC_ENABLED) && (
               <button
                 className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
                   sending
