@@ -541,9 +541,10 @@ export default function PostDetail(){
   useEffect(() => {
     if (!post) return
     let cancelled = false
+    const postId = post.id
     async function fetchCounts(){
       try {
-        const r = await fetch(`/get_post_reactors/${post.id}`, { credentials: 'include' })
+        const r = await fetch(`/get_post_reactors/${postId}`, { credentials: 'include' })
         const j = await r.json().catch(() => null)
         if (cancelled || !j?.success) return
         const viewCount = typeof j.view_count === 'number' ? j.view_count : (Array.isArray(j.viewers) ? j.viewers.length : undefined)
@@ -554,7 +555,7 @@ export default function PostDetail(){
           }
         }
         setPost(prev => {
-          if (!prev || prev.id !== post.id) return prev
+          if (!prev || prev.id !== postId) return prev
           return {
             ...prev,
             view_count: viewCount ?? prev.view_count,

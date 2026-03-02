@@ -488,8 +488,6 @@ export default function GroupChatThread() {
 
           // Quick check: if same message IDs in same order, skip update
           if (silent) {
-            const prevIds = prevServer.map(m => m.id).join(',')
-            const newIds = newServerMessages.map(m => m.id).join(',')
             // If the new messages are a subset (just the recent page), merge with older
             const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
             const olderFromPrev = prevServer.filter(m => m.id < minNewId)
