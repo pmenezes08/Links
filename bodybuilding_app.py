@@ -11223,14 +11223,22 @@ def send_video_message():
             except Exception as _e:
                 logger.warning(f"push send_video_message warn: {_e}")
             
+            # Serialize timestamp for JSON (MySQL/SQLite may return datetime objects)
+            time_str = None
+            if inserted_time is not None:
+                if hasattr(inserted_time, 'strftime'):
+                    time_str = inserted_time.strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    time_str = str(inserted_time)
+
             return jsonify({
                 'success': True,
                 'video_path': relative_path,
                 'id': inserted_id,
-                'time': inserted_time
+                'time': time_str
             })
     except Exception as e:
-        logger.error(f"Error sending video message: {str(e)}")
+        logger.error(f"Error sending video message: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'error': 'Failed to send video'})
 
 # Message photos served by web server static mapping (/uploads/message_photos -> uploads/message_photos)
