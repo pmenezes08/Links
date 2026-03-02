@@ -10,7 +10,6 @@ export default function EditGroup(){
   const [approvalRequired, setApprovalRequired] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
-  const [allowed, setAllowed] = useState(false)
   const [isOwner, setIsOwner] = useState(false)
   const [saving, setSaving] = useState(false)
   const [successMsg, setSuccessMsg] = useState<string|null>(null)
@@ -27,7 +26,6 @@ export default function EditGroup(){
         if (j?.success) {
           setName(j.group.name || '')
           setApprovalRequired(!!j.group.approval_required)
-          setAllowed(j.can_edit)
           setIsOwner(j.is_owner)
           if (!j.can_edit) setError('You do not have permission to manage this group.')
         } else {

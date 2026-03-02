@@ -2427,7 +2427,7 @@ export default function GroupChatThread() {
                 onPointerDownCapture={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  e.stopImmediatePropagation()
+                  ;(e.nativeEvent as Event).stopImmediatePropagation()
                   if (sending) return
                   // Prefer draftDisplay (React state) - more reliable on Android than refs
                   const hasText = draftDisplay.trim().length > 0 || (textareaRef.current?.value ?? draftRef.current ?? '').trim().length > 0

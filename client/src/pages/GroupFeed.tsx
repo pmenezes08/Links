@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
@@ -48,7 +48,7 @@ export default function GroupFeed(){
   const [groupMembers, setGroupMembers] = useState<MemberInfo[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
   const [currentUserRole, setCurrentUserRole] = useState('')
-  const [groupOwner, setGroupOwner] = useState('')
+  const [, setGroupOwner] = useState('')
   const [showInvite, setShowInvite] = useState(false)
   const [availableMembers, setAvailableMembers] = useState<MemberInfo[]>([])
   const [inviteLoading, setInviteLoading] = useState(false)
