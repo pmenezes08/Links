@@ -709,7 +709,15 @@ def get_group_messages(group_id: int):
             from backend.services.firestore_reads import get_group_chat_messages as fs_get_gcm
             messages = fs_get_gcm(group_id, username, before_id=before_id, limit=limit)
             logger.info(f"Firestore group chat read: {len(messages)} messages for group {group_id}")
-            return jsonify({"success": True, "messages": messages, "has_more": len(messages) == limit})
+            # Steve typing status (stored in-memory, not Firestore)
+            import time as _time
+            _steve_typing = False
+            if group_id in _steve_typing_status:
+                if _time.time() - _steve_typing_status[group_id] < 30:
+                    _steve_typing = True
+                else:
+                    del _steve_typing_status[group_id]
+            return jsonify({"success": True, "messages": messages, "has_more": len(messages) == limit, "steve_is_typing": _steve_typing})
     except Exception as fs_err:
         logger.warning(f"Firestore group chat read failed, falling back to MySQL: {fs_err}")
 
@@ -1106,7 +1114,9 @@ def send_group_media(group_id: int):
             # Dual-write media to Firestore
             try:
                 from backend.services.firestore_writes import write_group_chat_message
-                write_group_chat_message(group_id=group_id, message_id=message_id, sender=username, image_path=image_path, video_path=video_path)
+                import json as _json
+                mp = _json.loads(media_paths_json) if media_paths_json else None
+                write_group_chat_message(group_id=group_id, message_id=message_id, sender=username, image_path=image_path, video_path=video_path, media_paths=mp)
             except Exception as fs_err:
                 logger.warning(f"Firestore group media dual-write failed (non-fatal): {fs_err}")
 

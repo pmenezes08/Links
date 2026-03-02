@@ -481,10 +481,17 @@ export default function GroupChatThread() {
         if (!silent) setHasMoreMessages(!!data.has_more)
 
         // Set server messages, but preserve any optimistic messages (negative IDs)
-        // On poll (silent), merge older messages that were loaded via pagination
+        // On poll (silent): skip update if no new messages to prevent flicker
         setServerMessages(prev => {
           const optimistic = prev.filter(m => m.id < 0)
-          const olderMessages = silent ? prev.filter(m => m.id > 0 && !newServerMessages.some(n => n.id === m.id) && m.id < (newServerMessages.length > 0 ? Math.min(...newServerMessages.map(n => n.id)) : Infinity)) : []
+          const prevServer = prev.filter(m => m.id > 0)
+          const prevMaxId = prevServer.length > 0 ? Math.max(...prevServer.map(m => m.id)) : 0
+
+          if (silent && newMaxId === prevMaxId && newServerMessages.length === prevServer.filter(m => m.id >= (newServerMessages.length > 0 ? Math.min(...newServerMessages.map(n => n.id)) : 0)).length) {
+            return prev
+          }
+
+          const olderMessages = silent ? prevServer.filter(m => !newServerMessages.some(n => n.id === m.id) && m.id < (newServerMessages.length > 0 ? Math.min(...newServerMessages.map(n => n.id)) : Infinity)) : []
           const combined = [...olderMessages, ...newServerMessages, ...optimistic]
           return combined
         })
