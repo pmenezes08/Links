@@ -76,7 +76,7 @@ export const CTA = () => {
 
         {/* Trust signal */}
         <p className="mt-12 text-xs text-muted-foreground">
-          Available on iOS, Android, and Web. Secure, encrypted messaging with real-time push notifications.
+          Available on iOS, Android, and Web. Secure messaging with real-time push notifications.
         </p>
       </div>
 
