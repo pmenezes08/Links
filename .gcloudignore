@@ -32,13 +32,9 @@ env/
 *.swp
 *.swo
 
-# Ignore client source (we only need client/dist)
-client/src/
+# Client source is needed for multi-stage Docker build (builds client in container)
+# Only exclude node_modules to reduce upload size (npm install runs in Docker)
 client/node_modules/
-client/package*.json
-client/tsconfig*.json
-client/vite.config.ts
-client/*.html
 client/.env*
 
 # Ignore landing source (we only need landing/dist)

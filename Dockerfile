@@ -1,6 +1,16 @@
 # Dockerfile for C-Point Main App (app.c-point.co)
 # Deploys to Google Cloud Run
+# Multi-stage: build client in Node stage, then serve from Python
 
+# Stage 1: Build the React client
+FROM node:20-slim AS client-builder
+WORKDIR /client
+COPY client/package*.json ./
+RUN npm ci || npm install
+COPY client/ ./
+RUN npm run build
+
+# Stage 2: Python app with built client
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -22,7 +32,7 @@ COPY signal_endpoints.py .
 COPY backend/ ./backend/
 COPY templates/ ./templates/
 COPY static/ ./static/
-COPY client/dist/ ./client/dist/
+COPY --from=client-builder /client/dist ./client/dist/
 
 # Expose port
 EXPOSE 8080
