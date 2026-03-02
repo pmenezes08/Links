@@ -481,19 +481,33 @@ export default function GroupChatThread() {
         if (!silent) setHasMoreMessages(!!data.has_more)
 
         // Set server messages, but preserve any optimistic messages (negative IDs)
-        // On poll (silent): skip update if no new messages to prevent flicker
+        // On poll (silent): compare message IDs to avoid unnecessary re-renders (flicker)
         setServerMessages(prev => {
           const optimistic = prev.filter(m => m.id < 0)
           const prevServer = prev.filter(m => m.id > 0)
-          const prevMaxId = prevServer.length > 0 ? Math.max(...prevServer.map(m => m.id)) : 0
 
-          if (silent && newMaxId === prevMaxId && newServerMessages.length === prevServer.filter(m => m.id >= (newServerMessages.length > 0 ? Math.min(...newServerMessages.map(n => n.id)) : 0)).length) {
-            return prev
+          // Quick check: if same message IDs in same order, skip update
+          if (silent) {
+            const prevIds = prevServer.map(m => m.id).join(',')
+            const newIds = newServerMessages.map(m => m.id).join(',')
+            // If the new messages are a subset (just the recent page), merge with older
+            const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
+            const olderFromPrev = prevServer.filter(m => m.id < minNewId)
+            const mergedIds = [...olderFromPrev, ...newServerMessages].map(m => m.id).join(',')
+            const currentIds = prevServer.map(m => m.id).join(',')
+            if (mergedIds === currentIds) {
+              // Check if any text/edit changed
+              const changed = newServerMessages.some(nm => {
+                const pm = prevServer.find(p => p.id === nm.id)
+                return pm && (pm.text !== nm.text || pm.is_edited !== nm.is_edited)
+              })
+              if (!changed) return prev
+            }
           }
 
-          const olderMessages = silent ? prevServer.filter(m => !newServerMessages.some(n => n.id === m.id) && m.id < (newServerMessages.length > 0 ? Math.min(...newServerMessages.map(n => n.id)) : Infinity)) : []
-          const combined = [...olderMessages, ...newServerMessages, ...optimistic]
-          return combined
+          const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
+          const olderMessages = silent ? prevServer.filter(m => m.id < minNewId && !newServerMessages.some(n => n.id === m.id)) : []
+          return [...olderMessages, ...newServerMessages, ...optimistic]
         })
         
         // Populate reactions from server data

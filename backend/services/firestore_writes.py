@@ -121,6 +121,54 @@ def write_group_chat_message(group_id: int, message_id: int, sender: str,
         logger.warning(f"Firestore group chat write failed (non-fatal): {e}")
 
 
+def delete_group_chat_message(group_id: int, message_id: int):
+    """Delete a group chat message from Firestore."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        fs.collection('group_chats').document(str(group_id)).collection('messages').document(str(message_id)).delete()
+    except Exception as e:
+        logger.warning(f"Firestore group chat delete failed (non-fatal): {e}")
+
+
+def edit_group_chat_message(group_id: int, message_id: int, new_text: str):
+    """Update a group chat message text in Firestore."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        fs.collection('group_chats').document(str(group_id)).collection('messages').document(str(message_id)).update({
+            'text': new_text,
+        })
+    except Exception as e:
+        logger.warning(f"Firestore group chat edit failed (non-fatal): {e}")
+
+
+def delete_group_chat_message(group_id: int, message_id: int):
+    """Delete a group chat message from Firestore."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        fs.collection('group_chats').document(str(group_id)).collection('messages').document(str(message_id)).delete()
+    except Exception as e:
+        logger.warning(f"Firestore group msg delete failed (non-fatal): {e}")
+
+
+def edit_group_chat_message(group_id: int, message_id: int, new_text: str):
+    """Update a group chat message text in Firestore."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        fs.collection('group_chats').document(str(group_id)).collection('messages').document(str(message_id)).update({
+            'text': new_text,
+        })
+    except Exception as e:
+        logger.warning(f"Firestore group msg edit failed (non-fatal): {e}")
+
+
 def write_post(post_id: int, username: str, content: str = '', community_id=None,
                group_id=None, image_path: str = None, video_path: str = None,
                audio_path: str = None, audio_summary: str = None,

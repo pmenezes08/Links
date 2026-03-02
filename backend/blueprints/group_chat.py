@@ -1557,7 +1557,14 @@ def delete_group_message(group_id: int, message_id: int):
             c.execute(f"UPDATE group_chat_messages SET is_deleted = 1 WHERE id = {ph}", (message_id,))
             
             conn.commit()
-            
+
+            # Delete from Firestore too
+            try:
+                from backend.services.firestore_writes import delete_group_chat_message
+                delete_group_chat_message(group_id, message_id)
+            except Exception:
+                pass
+
             return jsonify({"success": True})
             
     except Exception as e:
@@ -1648,7 +1655,15 @@ def bulk_delete_group_messages(group_id: int):
                         deleted_ids.append(msg_id)
             
             conn.commit()
-            
+
+            # Bulk delete from Firestore
+            try:
+                from backend.services.firestore_writes import delete_group_chat_message
+                for did in deleted_ids:
+                    delete_group_chat_message(group_id, did)
+            except Exception:
+                pass
+
             return jsonify({
                 "success": True,
                 "deleted_count": len(deleted_ids),
@@ -1700,7 +1715,14 @@ def edit_group_message(group_id: int, message_id: int):
             c.execute(f"UPDATE group_chat_messages SET message_text = {ph}, is_edited = 1 WHERE id = {ph}", (new_text, message_id))
             
             conn.commit()
-            
+
+            # Update in Firestore too
+            try:
+                from backend.services.firestore_writes import edit_group_chat_message
+                edit_group_chat_message(group_id, message_id, new_text)
+            except Exception:
+                pass
+
             return jsonify({"success": True, "text": new_text, "is_edited": True})
             
     except Exception as e:
