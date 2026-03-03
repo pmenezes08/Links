@@ -48,7 +48,6 @@ export default function GroupFeed(){
   const [groupMembers, setGroupMembers] = useState<MemberInfo[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
   const [currentUserRole, setCurrentUserRole] = useState('')
-  const [_groupOwner, setGroupOwner] = useState('')
   const [showInvite, setShowInvite] = useState(false)
   const [availableMembers, setAvailableMembers] = useState<MemberInfo[]>([])
   const [inviteLoading, setInviteLoading] = useState(false)
