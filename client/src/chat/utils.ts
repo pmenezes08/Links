@@ -111,11 +111,15 @@ export function normalizeMediaPath(path?: string | null): string {
   if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
     return path
   }
-  // Already has /uploads/ prefix
+  // Already has /uploads/ or /static/ prefix with leading slash
   if (path.startsWith('/uploads/') || path.startsWith('/static/')) {
     return path
   }
-  // Add /uploads/ prefix for relative paths
+  // Has uploads/ prefix without leading slash (backend returns "uploads/..." paths)
+  if (path.startsWith('uploads/')) {
+    return `/${path}`
+  }
+  // Add /uploads/ prefix for bare relative paths
   return `/uploads/${path}`
 }
 

@@ -11,9 +11,10 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import LongPressActionable from '../chat/LongPressActionable'
-import { formatDateLabel, getDateKey } from '../chat'
+import { formatDateLabel, getDateKey, normalizeMediaPath } from '../chat'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import ZoomableImage from '../components/ZoomableImage'
+import MessageImage from '../components/MessageImage'
 import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
@@ -1852,14 +1853,14 @@ export default function GroupChatThread() {
                                     className="relative cursor-pointer"
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      setViewingMedia({ urls: msg.media_paths!, index: 0 })
+                                      setViewingMedia({ urls: msg.media_paths!.map(normalizeMediaPath), index: 0 })
                                     }}
                                   >
                                     {/* Show first item as preview */}
                                     {msg.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
                                       <div className="relative">
                                         <video
-                                          src={msg.media_paths[0] + '#t=0.1'}
+                                          src={normalizeMediaPath(msg.media_paths[0]) + '#t=0.1'}
                                           className="w-full rounded-lg"
                                           style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
                                           muted
@@ -1873,11 +1874,10 @@ export default function GroupChatThread() {
                                         </div>
                                       </div>
                                     ) : (
-                                      <img
-                                        src={msg.media_paths[0]}
+                                      <MessageImage
+                                        src={normalizeMediaPath(msg.media_paths[0])}
                                         alt="Media"
                                         className="w-full rounded-lg"
-                                        style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
                                       />
                                     )}
                                     {/* Overlay with count */}
@@ -1893,27 +1893,30 @@ export default function GroupChatThread() {
                               ) : (
                                 <>
                                   {msg.image && (
-                                    <img
-                                      src={msg.image.startsWith('http') ? msg.image : msg.image}
-                                      alt="Shared image"
-                                      className="mt-1 max-w-[280px] rounded-lg cursor-pointer"
-                                      style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
+                                    <div
+                                      className="mt-1 max-w-[280px] cursor-pointer"
                                       onClick={(e) => {
                                         e.stopPropagation()
-                                        setViewingMedia({ urls: [msg.image!], index: 0 })
+                                        setViewingMedia({ urls: [normalizeMediaPath(msg.image)], index: 0 })
                                       }}
-                                    />
+                                    >
+                                      <MessageImage
+                                        src={normalizeMediaPath(msg.image)}
+                                        alt="Shared image"
+                                        className="w-full rounded-lg"
+                                      />
+                                    </div>
                                   )}
                                   {msg.video && (
                                     <div 
                                       className="relative mt-1 max-w-[280px] cursor-pointer"
                                       onClick={(e) => {
                                         e.stopPropagation()
-                                        setViewingMedia({ urls: [msg.video!], index: 0 })
+                                        setViewingMedia({ urls: [normalizeMediaPath(msg.video)], index: 0 })
                                       }}
                                     >
                                       <video
-                                        src={msg.video + '#t=0.1'}
+                                        src={normalizeMediaPath(msg.video) + '#t=0.1'}
                                         preload="metadata"
                                         playsInline
                                         muted
@@ -1932,7 +1935,7 @@ export default function GroupChatThread() {
                               {msg.voice && (
                                 <>
                                   <VoiceNotePlayer 
-                                    audioPath={msg.voice}
+                                    audioPath={normalizeMediaPath(msg.voice)}
                                     durationSeconds={msg.audio_duration_seconds}
                                   />
                                   {msg.audio_summary ? (
@@ -2155,7 +2158,7 @@ export default function GroupChatThread() {
                 {replyTo.image && (
                   <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
                     <img 
-                      src={replyTo.image.startsWith('http') ? replyTo.image : replyTo.image} 
+                      src={normalizeMediaPath(replyTo.image)} 
                       alt="Photo" 
                       className="w-full h-full object-cover"
                     />

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 import ZoomableImage from '../components/ZoomableImage'
+import { normalizeMediaPath } from '../chat'
 
 type MediaItem = {
   id: number
@@ -166,12 +167,12 @@ export default function GroupChatMedia() {
                       <div 
                         key={m.id} 
                         className="relative group aspect-square cursor-pointer"
-                        onClick={() => setViewingMedia({ url: m.url, type: m.type })}
+                        onClick={() => setViewingMedia({ url: normalizeMediaPath(m.url), type: m.type })}
                       >
                         {m.type === 'video' ? (
                           <>
                             <video
-                              src={m.url}
+                              src={normalizeMediaPath(m.url)}
                               className="w-full h-full object-cover rounded-lg border border-white/10"
                               muted
                             />
@@ -183,7 +184,7 @@ export default function GroupChatMedia() {
                           </>
                         ) : (
                           <img
-                            src={m.url}
+                            src={normalizeMediaPath(m.url)}
                             alt="Shared media"
                             className="w-full h-full object-cover rounded-lg border border-white/10 hover:border-white/20 transition-colors"
                           />
