@@ -148,8 +148,9 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
     // Remove from pending, server message will come via loadMessages
     setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
     
-    // Refresh messages to get the confirmed message
+    // Refresh messages — immediate + delayed to catch Firestore sync
     loadMessages(true)
+    setTimeout(() => loadMessages(true), 2000)
     
     return true
   } catch (error) {
@@ -220,8 +221,9 @@ export async function sendGroupVideoMessage(options: VideoMediaOptions): Promise
     // Remove from pending, server message will come via loadMessages
     setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
     
-    // Refresh messages to get the confirmed message
+    // Refresh messages — immediate + delayed to catch Firestore sync
     loadMessages(true)
+    setTimeout(() => loadMessages(true), 2000)
     
     return true
   } catch (error) {
@@ -316,8 +318,9 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
     // Remove from pending, server message will come via loadMessages
     setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
     
-    // Refresh messages to get the confirmed message
+    // Refresh messages — immediate + delayed to catch Firestore sync
     loadMessages(true)
+    setTimeout(() => loadMessages(true), 2000)
     
     return true
   } catch (error) {
