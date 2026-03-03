@@ -1048,6 +1048,7 @@ def send_group_media(group_id: int):
             
             # Upload all files
             uploaded_paths = []
+            upload_errors = []
             for media_type, file in files_to_upload:
                 if media_type == 'photo':
                     allowed_ext = IMAGE_EXTENSIONS
@@ -1056,18 +1057,27 @@ def send_group_media(group_id: int):
                     allowed_ext = VIDEO_EXTENSIONS
                     subfolder = 'message_videos'
                 
-                stored_path = save_uploaded_file(
-                    file,
-                    subfolder=subfolder,
-                    allowed_extensions=allowed_ext
-                )
-                
-                if stored_path:
-                    uploaded_paths.append(stored_path)
-                    logger.info(f"Uploaded group {media_type}: {stored_path} by {username}")
+                try:
+                    stored_path = save_uploaded_file(
+                        file,
+                        subfolder=subfolder,
+                        allowed_extensions=allowed_ext
+                    )
+                    
+                    if stored_path:
+                        uploaded_paths.append(stored_path)
+                        logger.info(f"Uploaded group {media_type}: {stored_path} by {username}")
+                    else:
+                        upload_errors.append(f"{media_type} rejected: {getattr(file, 'filename', 'unknown')}")
+                        logger.warning(f"save_uploaded_file returned None for {media_type}: filename={getattr(file, 'filename', 'unknown')}, mimetype={getattr(file, 'mimetype', 'unknown')}")
+                except Exception as upload_err:
+                    upload_errors.append(f"{media_type} failed: {upload_err}")
+                    logger.error(f"Exception uploading {media_type} to group {group_id}: {upload_err}", exc_info=True)
             
             if not uploaded_paths:
-                return jsonify({"success": False, "error": "Failed to upload files"}), 400
+                error_detail = "; ".join(upload_errors) if upload_errors else "No files could be saved"
+                logger.error(f"All uploads failed for group {group_id}: {error_detail}")
+                return jsonify({"success": False, "error": f"Failed to upload files: {error_detail}"}), 400
             
             # Insert message with grouped media
             now = datetime.now().isoformat()
@@ -1120,12 +1130,15 @@ def send_group_media(group_id: int):
             except Exception as fs_err:
                 logger.warning(f"Firestore group media dual-write failed (non-fatal): {fs_err}")
 
-            # Get sender's profile picture
-            c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
-            pp_row = c.fetchone()
+            # Get sender's profile picture (non-fatal if fails)
             profile_picture = None
-            if pp_row:
-                profile_picture = pp_row["profile_picture"] if hasattr(pp_row, "keys") else pp_row[0]
+            try:
+                c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
+                pp_row = c.fetchone()
+                if pp_row:
+                    profile_picture = pp_row["profile_picture"] if hasattr(pp_row, "keys") else pp_row[0]
+            except Exception as pp_err:
+                logger.warning(f"Could not fetch profile picture for {username}: {pp_err}")
             
             # Send notifications to other members
             try:
@@ -1139,7 +1152,7 @@ def send_group_media(group_id: int):
                 # Determine preview text based on content
                 if len(uploaded_paths) > 1:
                     preview = f"📷 {len(uploaded_paths)} media files"
-                elif video_path:
+                elif any(p.lower().endswith(('.mp4', '.mov', '.webm', '.m4v')) for p in uploaded_paths):
                     preview = "🎬 Video"
                 else:
                     preview = "📷 Photo"
@@ -1170,8 +1183,8 @@ def send_group_media(group_id: int):
             })
             
     except Exception as e:
-        logger.error(f"Error sending media to group {group_id}: {e}")
-        return jsonify({"success": False, "error": "Failed to send media"}), 500
+        logger.error(f"Error sending media to group {group_id}: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Failed to send media: {e}"}), 500
 
 
 @group_chat_bp.route("/api/group_chat/<int:group_id>/send", methods=["POST"])
