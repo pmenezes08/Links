@@ -2274,6 +2274,22 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
     current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
     
     try:
+        # Load group settings (personality, context reset)
+        steve_personality = None
+        context_reset_at = None
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                _ensure_group_chat_tables(c)
+                c.execute(f"SELECT steve_personality, steve_context_reset_at FROM group_chats WHERE id = {ph}", (group_id,))
+                settings_row = c.fetchone()
+                if settings_row:
+                    steve_personality = (settings_row["steve_personality"] if hasattr(settings_row, "keys") else settings_row[0]) or None
+                    context_reset_at = (settings_row["steve_context_reset_at"] if hasattr(settings_row, "keys") else settings_row[1]) or None
+        except Exception as settings_err:
+            logger.warning(f"Could not load Steve settings for group {group_id}: {settings_err}")
+        
         # Load full conversation context from Firestore (fall back to MySQL)
         recent_messages = []
         image_urls = []
@@ -2293,7 +2309,18 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                 text = d.get('text', '')
                 if text and sender:
                     recent_messages.append(f"{sender}: {text}")
-            logger.info(f"Steve context from Firestore: {len(recent_messages)} messages for group {group_id}")
+                
+                # Collect image URLs from Firestore (image_path and media_paths)
+                img = d.get('image_path')
+                if img and isinstance(img, str) and img.startswith('http'):
+                    image_urls.append(img)
+                media_paths = d.get('media_paths')
+                if isinstance(media_paths, list):
+                    for mp in media_paths:
+                        if isinstance(mp, str) and mp.startswith('http') and not any(mp.lower().endswith(ext) for ext in ('.mp4', '.mov', '.webm', '.m4v')):
+                            image_urls.append(mp)
+            
+            logger.info(f"Steve context from Firestore: {len(recent_messages)} messages, {len(image_urls)} images for group {group_id}")
         except Exception as fs_err:
             logger.warning(f"Steve Firestore context failed, falling back to MySQL: {fs_err}")
             recent_messages = []
@@ -2303,9 +2330,9 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                 c = conn.cursor()
                 ph = get_sql_placeholder()
                 c.execute(f"""
-                    SELECT sender_username, message_text, created_at
+                    SELECT sender_username, message_text, image_path, media_paths, created_at
                     FROM group_chat_messages
-                    WHERE group_id = {ph} AND message_text IS NOT NULL
+                    WHERE group_id = {ph} AND is_deleted = 0
                     ORDER BY created_at ASC
                 """, (group_id,))
                 for row in c.fetchall():
@@ -2313,42 +2340,63 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                     text = row["message_text"] if hasattr(row, "keys") else row[1]
                     if text:
                         recent_messages.append(f"{sender}: {text}")
+                    img = row["image_path"] if hasattr(row, "keys") else row[2]
+                    if img and isinstance(img, str) and img.startswith('http'):
+                        image_urls.append(img)
+                    mp_raw = row["media_paths"] if hasattr(row, "keys") else row[3]
+                    if mp_raw:
+                        try:
+                            for mp in (json.loads(mp_raw) if isinstance(mp_raw, str) else mp_raw):
+                                if isinstance(mp, str) and mp.startswith('http') and not any(mp.lower().endswith(ext) for ext in ('.mp4', '.mov', '.webm', '.m4v')):
+                                    image_urls.append(mp)
+                        except Exception:
+                            pass
         
         # Use last 200 messages max to stay within token limits
         context_messages = recent_messages[-200:]
+        
+        # Apply context reset: Steve sees full history but is instructed to focus on recent
+        context_reset_note = ""
+        if context_reset_at:
+            context_reset_note = f"\n\nIMPORTANT: Your conversation context was reset on {context_reset_at}. While you can see the full chat history above for reference, treat messages before the reset as old context. Do NOT reference or bring up topics from before the reset unless the user explicitly asks about them. Focus on the current conversation after the reset."
         
         context = f"Group chat: {group_name}\n"
         context += f"Full conversation history ({len(context_messages)} messages):\n" + "\n".join(context_messages)
         context += f"\n\n{sender_username} mentioned you (@Steve)."
         context += f"\n\n[Current date and time: {current_date}]"
+        context += context_reset_note
         
-        # Only collect images if the user's message explicitly references them
+        # Only attach images if the user's message explicitly references them
         image_keywords = ['image', 'photo', 'picture', 'pic', 'imagem', 'foto', 'see', 'look', 'show', 'what is this', 'what\'s this', 'o que é', 'vê', 'olha']
         msg_lower = user_message.lower()
         wants_images = any(kw in msg_lower for kw in image_keywords)
         
-        if wants_images:
-            try:
-                with get_db_connection() as conn:
-                    c = conn.cursor()
-                    ph = get_sql_placeholder()
-                    c.execute(f"""
-                        SELECT image_path FROM group_chat_messages
-                        WHERE group_id = {ph} AND image_path IS NOT NULL AND image_path != ''
-                        ORDER BY created_at DESC LIMIT 3
-                    """, (group_id,))
-                    for row in c.fetchall():
-                        val = row["image_path"] if hasattr(row, "keys") else row[0]
-                        if val and val.startswith('http') and len(image_urls) < 3:
-                            image_urls.append(val)
-            except Exception:
-                pass
-            if image_urls:
-                context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
+        # Keep only last 5 unique image URLs for API call
+        seen_urls = set()
+        unique_image_urls = []
+        for url in reversed(image_urls):
+            if url not in seen_urls and len(unique_image_urls) < 5:
+                seen_urls.add(url)
+                unique_image_urls.append(url)
+        unique_image_urls.reverse()
+        image_urls = unique_image_urls if wants_images else []
+        
+        if image_urls:
+            context += f"\n\n[{len(image_urls)} image(s) from the conversation are attached for you to see.]"
         
         from openai import OpenAI
         
-        system_prompt = f"""You are Steve, a highly capable AI assistant in a group chat with real-time knowledge and web search capabilities. You have access to the FULL conversation history of this group.
+        # Apply personality modifier if set
+        personality_modifier = ""
+        if steve_personality and steve_personality != "default":
+            try:
+                from bodybuilding_app import AI_PERSONALITIES
+                if steve_personality in AI_PERSONALITIES:
+                    personality_modifier = f"\n\nPERSONALITY: {AI_PERSONALITIES[steve_personality]['description']}\n{AI_PERSONALITIES[steve_personality].get('rules', '')}"
+            except Exception:
+                pass
+        
+        system_prompt = f"""You are Steve, a highly capable AI assistant in a group chat with real-time knowledge and web search capabilities. You have access to the FULL conversation history of this group.{personality_modifier}
 
 CURRENT DATE AND TIME: {current_date}
 

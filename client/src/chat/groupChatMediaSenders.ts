@@ -289,16 +289,79 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
   setPendingMessages(prev => [...prev, optimisticMessage])
 
   try {
-    onProgress?.({ stage: 'uploading', progress: 10, message: `Uploading ${files.length} items...` })
+    onProgress?.({ stage: 'uploading', progress: 5, message: `Uploading ${files.length} items...` })
     
-    // Create FormData with all files
+    const LARGE_VIDEO_THRESHOLD = 25 * 1024 * 1024 // 25MB - Cloud Run limit is 32MB
+    
+    // Separate large videos that need R2 direct upload
+    const directUploadFiles: Array<{ file: File; type: 'image' | 'video' }> = []
+    const formUploadFiles: Array<{ file: File; type: 'image' | 'video' }> = []
+    
+    for (const item of files) {
+      if (item.type === 'video' && item.file.size > LARGE_VIDEO_THRESHOLD) {
+        directUploadFiles.push(item)
+      } else {
+        formUploadFiles.push(item)
+      }
+    }
+    
+    // Step 1: Upload large videos directly to R2 via presigned URLs
+    const preUploadedUrls: string[] = []
+    for (let i = 0; i < directUploadFiles.length; i++) {
+      const item = directUploadFiles[i]
+      console.log(`[GroupMedia] Direct R2 upload for large video: ${item.file.name} (${(item.file.size / 1024 / 1024).toFixed(1)}MB)`)
+      
+      onProgress?.({ stage: 'uploading', progress: 5 + (i / files.length) * 40, message: `Uploading video ${i + 1}...` })
+      
+      // Get presigned URL
+      const urlRes = await fetch(`/api/group_chat/${groupId}/video_upload_url`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: item.file.name, content_type: item.file.type || 'video/mp4' }),
+      })
+      const urlData = await urlRes.json().catch(() => null)
+      if (!urlData?.success || !urlData.upload_url || !urlData.public_url) {
+        throw new Error(urlData?.error || 'Failed to get upload URL for video')
+      }
+      
+      // Upload directly to R2
+      const putOk = await new Promise<boolean>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const base = 5 + (i / files.length) * 40
+            const pct = base + (e.loaded / e.total) * (40 / files.length)
+            onProgress?.({ stage: 'uploading', progress: pct, message: `Uploading video... ${Math.round((e.loaded / e.total) * 100)}%` })
+          }
+        }
+        xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
+        xhr.onerror = () => reject(new Error('Video upload failed'))
+        xhr.ontimeout = () => reject(new Error('Video upload timeout'))
+        xhr.open('PUT', urlData.upload_url)
+        xhr.setRequestHeader('Content-Type', item.file.type || 'video/mp4')
+        xhr.timeout = 600000 // 10 min
+        xhr.send(item.file)
+      })
+      
+      if (!putOk) throw new Error('Failed to upload video to storage')
+      preUploadedUrls.push(urlData.public_url)
+    }
+    
+    // Step 2: Send remaining files + pre-uploaded URLs to backend
+    onProgress?.({ stage: 'uploading', progress: 50, message: 'Sending...' })
+    
     const formData = new FormData()
-    files.forEach((item, index) => {
+    formUploadFiles.forEach((item, index) => {
       console.log(`[GroupMedia] Adding file ${index}: ${item.file.name}, type: ${item.type}, size: ${item.file.size}`)
       formData.append('media', item.file)
     })
     
-    console.log('[GroupMedia] Sending', files.length, 'files to group', groupId, 'via /api/group_chat/${groupId}/send_media')
+    if (preUploadedUrls.length > 0) {
+      formData.append('media_urls', JSON.stringify(preUploadedUrls))
+    }
+    
+    console.log('[GroupMedia] Sending', formUploadFiles.length, 'files +', preUploadedUrls.length, 'pre-uploaded URLs to group', groupId)
     
     const response = await fetch(`/api/group_chat/${groupId}/send_media`, {
       method: 'POST',

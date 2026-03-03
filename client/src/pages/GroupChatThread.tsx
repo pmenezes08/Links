@@ -111,7 +111,6 @@ export default function GroupChatThread() {
   const [renameText, setRenameText] = useState('')
   const [renaming, setRenaming] = useState(false)
   const [stevePersonality, setStevePersonality] = useState('default')
-  const [loadingStevePersonality, setLoadingStevePersonality] = useState(false)
   const [removingMember, setRemovingMember] = useState<string | null>(null)
   const [deletingMedia, setDeletingMedia] = useState(false)
   const [reactions, setReactions] = useState<Record<number, string>>({})
@@ -1619,12 +1618,12 @@ export default function GroupChatThread() {
                   <i className="fa-solid fa-user-plus text-xs text-[#4db6ac]" />
                   <span>Add Members</span>
                 </button>
-                {group.members.find(m => m.username === currentUsername)?.is_admin && (
+                {group?.members.find(m => m.username === currentUsername)?.is_admin && (
                   <button
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
                     onClick={() => {
                       setHeaderMenuOpen(false)
-                      setRenameText(group.name)
+                      setRenameText(group?.name || '')
                       setShowManageGroup(true)
                       // Load Steve personality
                       fetch(`/api/group_chat/${group_id}/steve_personality`, { credentials: 'include' })
