@@ -179,6 +179,30 @@ def _ensure_community_id_column(cursor):
             logger.warning(f"Could not add community_id column: {e}")
 
 
+def _ensure_steve_personality_column(cursor):
+    """Ensure steve_personality and steve_context_reset_at columns exist."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT steve_personality FROM group_chats LIMIT 1")
+    except Exception:
+        try:
+            cursor.execute("ALTER TABLE group_chats ADD COLUMN steve_personality VARCHAR(50) DEFAULT NULL")
+            logger.info("Added steve_personality column to group_chats")
+        except Exception as e:
+            logger.warning(f"Could not add steve_personality column: {e}")
+    try:
+        cursor.execute("SELECT steve_context_reset_at FROM group_chats LIMIT 1")
+    except Exception:
+        try:
+            if USE_MYSQL:
+                cursor.execute("ALTER TABLE group_chats ADD COLUMN steve_context_reset_at DATETIME DEFAULT NULL")
+            else:
+                cursor.execute("ALTER TABLE group_chats ADD COLUMN steve_context_reset_at TEXT DEFAULT NULL")
+            logger.info("Added steve_context_reset_at column to group_chats")
+        except Exception as e:
+            logger.warning(f"Could not add steve_context_reset_at column: {e}")
+
+
 def _ensure_group_chat_tables(cursor):
     """Ensure group chat tables exist."""
     from backend.services.database import USE_MYSQL
@@ -193,6 +217,7 @@ def _ensure_group_chat_tables(cursor):
         _ensure_is_edited_column(cursor)  # Ensure is_edited column exists
         _ensure_audio_summary_column(cursor)  # Ensure audio_summary column exists for voice transcriptions
         _ensure_group_message_reactions_table(cursor)  # Ensure reactions table exists
+        _ensure_steve_personality_column(cursor)  # Ensure steve_personality columns exist
         return  # Table exists, no need to create
     except Exception:
         pass  # Table doesn't exist, create it
@@ -1027,7 +1052,18 @@ def send_group_media(group_id: int):
             else:
                 files_to_upload.append(('photo', media))
     
-    if not files_to_upload:
+    # Also accept pre-uploaded R2 URLs (from direct video upload)
+    media_urls = []
+    try:
+        urls_json = request.form.get('media_urls', '')
+        if urls_json:
+            media_urls = json.loads(urls_json)
+            if not isinstance(media_urls, list):
+                media_urls = []
+    except (json.JSONDecodeError, TypeError):
+        media_urls = []
+    
+    if not files_to_upload and not media_urls:
         return jsonify({"success": False, "error": "No photo or video provided"}), 400
     
     try:
@@ -1073,6 +1109,12 @@ def send_group_media(group_id: int):
                 except Exception as upload_err:
                     upload_errors.append(f"{media_type} failed: {upload_err}")
                     logger.error(f"Exception uploading {media_type} to group {group_id}: {upload_err}", exc_info=True)
+            
+            # Add pre-uploaded R2 URLs (from direct video upload)
+            for url in media_urls:
+                if isinstance(url, str) and url.startswith('http'):
+                    uploaded_paths.append(url)
+                    logger.info(f"Added pre-uploaded media URL: {url}")
             
             if not uploaded_paths:
                 error_detail = "; ".join(upload_errors) if upload_errors else "No files could be saved"
@@ -1535,6 +1577,212 @@ def delete_group_chat(group_id: int):
         return jsonify({"success": False, "error": "Failed to delete group"}), 500
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/remove_member", methods=["POST"])
+@_login_required
+def remove_group_member(group_id: int):
+    """Remove a member from a group chat. Only admins can remove members."""
+    username = session["username"]
+    data = request.get_json() or {}
+    target_username = (data.get("username") or "").strip()
+    
+    if not target_username:
+        return jsonify({"success": False, "error": "Username required"}), 400
+    
+    if target_username == username:
+        return jsonify({"success": False, "error": "Use leave endpoint to leave the group"}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            _ensure_group_chat_tables(c)
+            
+            # Check if requester is admin
+            c.execute(f"""
+                SELECT is_admin FROM group_chat_members
+                WHERE group_id = {ph} AND username = {ph}
+            """, (group_id, username))
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Not a member"}), 403
+            is_admin = bool(row["is_admin"] if hasattr(row, "keys") else row[0])
+            if not is_admin:
+                return jsonify({"success": False, "error": "Only admins can remove members"}), 403
+            
+            # Check target is a member
+            c.execute(f"""
+                SELECT username FROM group_chat_members
+                WHERE group_id = {ph} AND username = {ph}
+            """, (group_id, target_username))
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "User is not a member"}), 404
+            
+            # Remove the member
+            c.execute(f"DELETE FROM group_chat_members WHERE group_id = {ph} AND username = {ph}", (group_id, target_username))
+            conn.commit()
+            
+            return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error removing member from group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to remove member"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/rename", methods=["POST"])
+@_login_required
+def rename_group_chat(group_id: int):
+    """Rename a group chat. Only admins can rename."""
+    username = session["username"]
+    data = request.get_json() or {}
+    new_name = (data.get("name") or "").strip()
+    
+    if not new_name or len(new_name) > 100:
+        return jsonify({"success": False, "error": "Name required (max 100 chars)"}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            _ensure_group_chat_tables(c)
+            
+            c.execute(f"""
+                SELECT is_admin FROM group_chat_members
+                WHERE group_id = {ph} AND username = {ph}
+            """, (group_id, username))
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Not a member"}), 403
+            is_admin = bool(row["is_admin"] if hasattr(row, "keys") else row[0])
+            if not is_admin:
+                return jsonify({"success": False, "error": "Only admins can rename the group"}), 403
+            
+            c.execute(f"UPDATE group_chats SET name = {ph} WHERE id = {ph}", (new_name, group_id))
+            conn.commit()
+            
+            return jsonify({"success": True, "name": new_name})
+    except Exception as e:
+        logger.error(f"Error renaming group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to rename group"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/video_upload_url", methods=["POST"])
+@_login_required
+def group_video_upload_url(group_id: int):
+    """Get a presigned URL for direct video upload to R2. Bypasses Cloud Run 32MB limit."""
+    username = session["username"]
+    
+    try:
+        from backend.services.r2_storage import R2_ENABLED, R2_PUBLIC_URL, generate_presigned_upload_url, get_content_type
+    except ImportError:
+        return jsonify({"success": False, "error": "Direct upload not available"}), 503
+    
+    if not R2_ENABLED or not R2_PUBLIC_URL:
+        return jsonify({"success": False, "error": "Direct upload not available"}), 503
+    
+    data = request.get_json() or {}
+    filename = (data.get("filename") or "video.mp4").strip()
+    content_type = (data.get("content_type") or get_content_type(filename)).strip()
+    
+    if not content_type.startswith("video/"):
+        return jsonify({"success": False, "error": "Invalid video type"}), 400
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT 1 FROM group_chat_members WHERE group_id = {ph} AND username = {ph}", (group_id, username))
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Access denied"}), 403
+    except Exception as e:
+        logger.error(f"group_video_upload_url membership check: {e}")
+        return jsonify({"success": False, "error": "Server error"}), 500
+    
+    from datetime import datetime as _dt
+    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "mp4"
+    if ext not in ("mp4", "webm", "mov", "m4v", "avi"):
+        ext = "mp4"
+    name = (filename.rsplit(".", 1)[0] if "." in filename else "video")[:50]
+    key = f"message_videos/{name}_{ts}.{ext}"
+    
+    upload_url = generate_presigned_upload_url(key, content_type)
+    if not upload_url:
+        return jsonify({"success": False, "error": "Failed to generate upload URL"}), 500
+    
+    public_url = f"{R2_PUBLIC_URL.rstrip('/')}/{key}"
+    return jsonify({"success": True, "upload_url": upload_url, "key": key, "public_url": public_url})
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/steve_personality", methods=["GET", "POST"])
+@_login_required
+def group_steve_personality(group_id: int):
+    """Get or set Steve's personality for a group chat."""
+    username = session["username"]
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            _ensure_group_chat_tables(c)
+            
+            # Check membership
+            c.execute(f"SELECT is_admin FROM group_chat_members WHERE group_id = {ph} AND username = {ph}", (group_id, username))
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Not a member"}), 403
+            
+            if request.method == "GET":
+                c.execute(f"SELECT steve_personality FROM group_chats WHERE id = {ph}", (group_id,))
+                g_row = c.fetchone()
+                personality = (g_row["steve_personality"] if hasattr(g_row, "keys") else g_row[0]) if g_row else None
+                return jsonify({"success": True, "personality": personality or "default"})
+            
+            # POST - only admin can change
+            is_admin = bool(row["is_admin"] if hasattr(row, "keys") else row[0])
+            if not is_admin:
+                return jsonify({"success": False, "error": "Only admins can change Steve's personality"}), 403
+            
+            data = request.get_json() or {}
+            personality = (data.get("personality") or "default").strip()
+            
+            c.execute(f"UPDATE group_chats SET steve_personality = {ph} WHERE id = {ph}", (personality if personality != "default" else None, group_id))
+            conn.commit()
+            
+            return jsonify({"success": True, "personality": personality})
+    except Exception as e:
+        logger.error(f"Error managing Steve personality for group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to update personality"}), 500
+
+
+@group_chat_bp.route("/api/group_chat/<int:group_id>/steve_reset_context", methods=["POST"])
+@_login_required
+def reset_steve_context(group_id: int):
+    """Reset Steve's conversation context for this group. Admin only."""
+    username = session["username"]
+    
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            _ensure_group_chat_tables(c)
+            
+            c.execute(f"SELECT is_admin FROM group_chat_members WHERE group_id = {ph} AND username = {ph}", (group_id, username))
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "Not a member"}), 403
+            is_admin = bool(row["is_admin"] if hasattr(row, "keys") else row[0])
+            if not is_admin:
+                return jsonify({"success": False, "error": "Only admins can reset Steve's context"}), 403
+            
+            now = datetime.now().isoformat()
+            c.execute(f"UPDATE group_chats SET steve_context_reset_at = {ph} WHERE id = {ph}", (now, group_id))
+            conn.commit()
+            
+            return jsonify({"success": True, "reset_at": now})
+    except Exception as e:
+        logger.error(f"Error resetting Steve context for group {group_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to reset context"}), 500
+
+
 @group_chat_bp.route("/api/group_chat/<int:group_id>/message/<int:message_id>/delete", methods=["POST"])
 @_login_required
 def delete_group_message(group_id: int, message_id: int):
@@ -1562,9 +1810,13 @@ def delete_group_message(group_id: int, message_id: int):
             
             sender = row["sender_username"] if hasattr(row, "keys") else row[0]
             
-            # Only allow sender to delete their own messages
+            # Allow sender to delete their own messages, or admin to delete any
             if sender != username:
-                return jsonify({"success": False, "error": "You can only delete your own messages"}), 403
+                c.execute(f"SELECT is_admin FROM group_chat_members WHERE group_id = {ph} AND username = {ph}", (group_id, username))
+                admin_row = c.fetchone()
+                is_admin = bool((admin_row["is_admin"] if hasattr(admin_row, "keys") else admin_row[0]) if admin_row else False)
+                if not is_admin:
+                    return jsonify({"success": False, "error": "You can only delete your own messages"}), 403
             
             # Soft delete the message (mark as deleted)
             c.execute(f"UPDATE group_chat_messages SET is_deleted = 1 WHERE id = {ph}", (message_id,))
