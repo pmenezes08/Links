@@ -100,13 +100,20 @@ export default function GroupChatThread() {
   // Multi-media preview state
   const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' }>>([])
   const [previewIndex, setPreviewIndex] = useState(0)
-  const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number } | null>(null) // For viewing sent media groups
+  const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number; messageId?: number; senderUsername?: string } | null>(null) // For viewing sent media groups
   const videoInputRef = useRef<HTMLInputElement>(null)
   const [previewPlaying, setPreviewPlaying] = useState(false)
   // Paste from clipboard state
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const [pastedImagePreview, setPastedImagePreview] = useState<string | null>(null)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const [showManageGroup, setShowManageGroup] = useState(false)
+  const [renameText, setRenameText] = useState('')
+  const [renaming, setRenaming] = useState(false)
+  const [stevePersonality, setStevePersonality] = useState('default')
+  const [loadingStevePersonality, setLoadingStevePersonality] = useState(false)
+  const [removingMember, setRemovingMember] = useState<string | null>(null)
+  const [deletingMedia, setDeletingMedia] = useState(false)
   const [reactions, setReactions] = useState<Record<number, string>>({})
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
@@ -1612,6 +1619,24 @@ export default function GroupChatThread() {
                   <i className="fa-solid fa-user-plus text-xs text-[#4db6ac]" />
                   <span>Add Members</span>
                 </button>
+                {group.members.find(m => m.username === currentUsername)?.is_admin && (
+                  <button
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                    onClick={() => {
+                      setHeaderMenuOpen(false)
+                      setRenameText(group.name)
+                      setShowManageGroup(true)
+                      // Load Steve personality
+                      fetch(`/api/group_chat/${group_id}/steve_personality`, { credentials: 'include' })
+                        .then(r => r.json())
+                        .then(d => { if (d?.success) setStevePersonality(d.personality || 'default') })
+                        .catch(() => {})
+                    }}
+                  >
+                    <i className="fa-solid fa-gear text-xs text-[#4db6ac]" />
+                    <span>Manage Group</span>
+                  </button>
+                )}
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10 transition-colors"
                   onClick={() => {
@@ -1853,7 +1878,7 @@ export default function GroupChatThread() {
                                     className="relative cursor-pointer"
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      setViewingMedia({ urls: msg.media_paths!.map(normalizeMediaPath), index: 0 })
+                                      setViewingMedia({ urls: msg.media_paths!.map(normalizeMediaPath), index: 0, messageId: msg.id, senderUsername: msg.sender })
                                     }}
                                   >
                                     {/* Show first item as preview */}
@@ -1897,7 +1922,7 @@ export default function GroupChatThread() {
                                       className="mt-1 max-w-[280px] cursor-pointer"
                                       onClick={(e) => {
                                         e.stopPropagation()
-                                        setViewingMedia({ urls: [normalizeMediaPath(msg.image)], index: 0 })
+                                        setViewingMedia({ urls: [normalizeMediaPath(msg.image)], index: 0, messageId: msg.id, senderUsername: msg.sender })
                                       }}
                                     >
                                       <MessageImage
@@ -1912,7 +1937,7 @@ export default function GroupChatThread() {
                                       className="relative mt-1 max-w-[280px] cursor-pointer"
                                       onClick={(e) => {
                                         e.stopPropagation()
-                                        setViewingMedia({ urls: [normalizeMediaPath(msg.video)], index: 0 })
+                                        setViewingMedia({ urls: [normalizeMediaPath(msg.video)], index: 0, messageId: msg.id, senderUsername: msg.sender })
                                       }}
                                     >
                                       <video
@@ -2631,6 +2656,33 @@ export default function GroupChatThread() {
                         <div className="text-xs text-[#4db6ac]">Admin</div>
                       )}
                     </div>
+                    {group.members.find(m => m.username === currentUsername)?.is_admin && 
+                     member.username !== currentUsername && !member.is_admin && (
+                      <button
+                        onClick={async () => {
+                          if (removingMember) return
+                          if (!confirm(`Remove ${member.username} from the group?`)) return
+                          setRemovingMember(member.username)
+                          try {
+                            const r = await fetch(`/api/group_chat/${group_id}/remove_member`, {
+                              method: 'POST', credentials: 'include',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ username: member.username })
+                            })
+                            const d = await r.json().catch(() => null)
+                            if (d?.success) {
+                              setGroup(prev => prev ? { ...prev, members: prev.members.filter(m => m.username !== member.username) } : prev)
+                            } else { alert(d?.error || 'Failed to remove') }
+                          } catch { alert('Failed to remove member') }
+                          finally { setRemovingMember(null) }
+                        }}
+                        disabled={removingMember === member.username}
+                        className="p-2 rounded-full hover:bg-red-500/20 text-red-400/60 hover:text-red-400 transition"
+                        title="Remove member"
+                      >
+                        <i className={`fa-solid ${removingMember === member.username ? 'fa-spinner fa-spin' : 'fa-user-minus'} text-xs`} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2644,6 +2696,139 @@ export default function GroupChatThread() {
                 <i className="fa-solid fa-arrow-right-from-bracket mr-2" />
                 Leave Group
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Group Modal */}
+      {showManageGroup && group && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          onClick={() => setShowManageGroup(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-[#1a1a1a] rounded-2xl border border-white/10 max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-white/10 flex items-center justify-between">
+              <div className="font-semibold">Manage Group</div>
+              <button onClick={() => setShowManageGroup(false)} className="p-2 rounded-full hover:bg-white/5">
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-5 max-h-[60vh] overflow-y-auto">
+              {/* Rename Group */}
+              <div>
+                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">Group Name</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={renameText}
+                    onChange={(e) => setRenameText(e.target.value)}
+                    maxLength={100}
+                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#4db6ac]"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!renameText.trim() || renaming) return
+                      setRenaming(true)
+                      try {
+                        const r = await fetch(`/api/group_chat/${group_id}/rename`, {
+                          method: 'POST', credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ name: renameText.trim() })
+                        })
+                        const d = await r.json().catch(() => null)
+                        if (d?.success) {
+                          setGroup(prev => prev ? { ...prev, name: d.name } : prev)
+                        } else { alert(d?.error || 'Failed to rename') }
+                      } catch { alert('Failed to rename') }
+                      finally { setRenaming(false) }
+                    }}
+                    disabled={renaming || renameText.trim() === group.name}
+                    className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg font-medium text-sm hover:bg-[#5cc4ba] transition disabled:opacity-40"
+                  >
+                    {renaming ? '...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Steve Personality */}
+              <div>
+                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">Steve AI Personality</label>
+                <select
+                  value={stevePersonality}
+                  onChange={async (e) => {
+                    const val = e.target.value
+                    setStevePersonality(val)
+                    try {
+                      await fetch(`/api/group_chat/${group_id}/steve_personality`, {
+                        method: 'POST', credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ personality: val })
+                      })
+                    } catch {}
+                  }}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#4db6ac] appearance-none"
+                >
+                  <option value="default">Default</option>
+                  <option value="professional">Professional</option>
+                  <option value="friendly">Friendly</option>
+                  <option value="sarcastic">Sarcastic</option>
+                  <option value="humorous">Humorous</option>
+                  <option value="sage">Sage</option>
+                  <option value="empathetic">Empathetic</option>
+                  <option value="cynic">Cynic</option>
+                  <option value="quirky">Quirky</option>
+                  <option value="unhinged">Unhinged</option>
+                </select>
+              </div>
+
+              {/* Reset Steve Context */}
+              <div>
+                <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">Steve Context</label>
+                <button
+                  onClick={async () => {
+                    if (!confirm('Reset Steve\'s conversation context? Steve will still have the full chat history but will stop referencing older discussions.')) return
+                    try {
+                      const r = await fetch(`/api/group_chat/${group_id}/steve_reset_context`, {
+                        method: 'POST', credentials: 'include'
+                      })
+                      const d = await r.json().catch(() => null)
+                      if (d?.success) { alert('Steve\'s context has been reset.') }
+                      else { alert(d?.error || 'Failed to reset') }
+                    } catch { alert('Failed to reset context') }
+                  }}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 text-white/80 rounded-lg text-sm hover:bg-white/10 transition flex items-center justify-center gap-2"
+                >
+                  <i className="fa-solid fa-rotate text-[#4db6ac]" />
+                  Reset Steve's Context
+                </button>
+                <p className="text-[10px] text-white/40 mt-1">Steve keeps the full chat history but stops referencing older discussions.</p>
+              </div>
+
+              {/* Delete Group */}
+              <div className="pt-3 border-t border-white/10">
+                <button
+                  onClick={async () => {
+                    if (!confirm('Are you sure you want to delete this group? This cannot be undone.')) return
+                    try {
+                      const r = await fetch(`/api/group_chat/${group_id}/delete`, {
+                        method: 'POST', credentials: 'include'
+                      })
+                      const d = await r.json().catch(() => null)
+                      if (d?.success) { navigate('/messages') }
+                      else { alert(d?.error || 'Failed to delete group') }
+                    } catch { alert('Failed to delete group') }
+                  }}
+                  className="w-full px-4 py-3 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition text-sm font-medium"
+                >
+                  <i className="fa-solid fa-trash-can mr-2" />
+                  Delete Group
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3243,9 +3428,38 @@ export default function GroupChatThread() {
 
           {/* Footer */}
           <div 
-            className="flex items-center justify-center px-4 py-4 bg-black/80"
+            className="flex items-center justify-center gap-4 px-4 py-4 bg-black/80"
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
           >
+            {viewingMedia.messageId && (
+              (viewingMedia.senderUsername === currentUsername || group?.members.find(m => m.username === currentUsername)?.is_admin) ? (
+                <button
+                  onClick={async () => {
+                    if (!viewingMedia.messageId || deletingMedia) return
+                    if (!confirm('Delete this media message?')) return
+                    setDeletingMedia(true)
+                    try {
+                      const r = await fetch(`/api/group_chat/${group_id}/message/${viewingMedia.messageId}/delete`, {
+                        method: 'POST', credentials: 'include'
+                      })
+                      const d = await r.json().catch(() => null)
+                      if (d?.success) {
+                        setViewingMedia(null)
+                        loadMessages(true)
+                      } else {
+                        alert(d?.error || 'Failed to delete')
+                      }
+                    } catch { alert('Failed to delete') }
+                    finally { setDeletingMedia(false) }
+                  }}
+                  disabled={deletingMedia}
+                  className="px-6 py-3 bg-red-500/20 text-red-400 rounded-full font-medium hover:bg-red-500/30 transition disabled:opacity-50"
+                >
+                  <i className="fa-solid fa-trash-can mr-2" />
+                  {deletingMedia ? 'Deleting...' : 'Delete'}
+                </button>
+              ) : null
+            )}
             <button
               onClick={() => setViewingMedia(null)}
               className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
