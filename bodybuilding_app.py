@@ -721,6 +721,21 @@ def ensure_community_invitations_table(c):
     except Exception as e:
         logger.warning(f"Could not ensure community_invitations table: {e}")
 
+def _ensure_invite_single_use_column(cursor):
+    """Ensure invite_single_use column exists on communities table."""
+    try:
+        cursor.execute("SELECT invite_single_use FROM communities LIMIT 1")
+    except Exception:
+        try:
+            from backend.services.database import USE_MYSQL
+            if USE_MYSQL:
+                cursor.execute("ALTER TABLE communities ADD COLUMN invite_single_use TINYINT DEFAULT 0")
+            else:
+                cursor.execute("ALTER TABLE communities ADD COLUMN invite_single_use INTEGER DEFAULT 0")
+            logger.info("Added invite_single_use column to communities")
+        except Exception as e:
+            logger.warning(f"Could not add invite_single_use column: {e}")
+
 def ensure_post_views_table(c):
     """Ensure the post_views table exists for tracking unique post views."""
     try:
@@ -23186,18 +23201,17 @@ def get_invite_logo_url():
 
 @app.route('/invite/<token>')
 def invite_landing(token):
-    """Smart invite landing page - redirects iOS users to App Store, others to web"""
+    """Invite landing page - always directs users to the app"""
     user_agent = request.headers.get('User-Agent', '').lower()
     is_ios = 'iphone' in user_agent or 'ipad' in user_agent or 'ipod' in user_agent
+    is_android = 'android' in user_agent
     
-    # Get the logo URL (from database or default)
     logo_url = get_invite_logo_url()
-    
-    # Build the web invite URL
     base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-    web_url = f"{base_url}/login?invite={token}"
     
     # Verify the invitation exists
+    community_name = "a community"
+    invited_by = "a member"
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -23208,261 +23222,72 @@ def invite_landing(token):
                 WHERE ci.token = ?
             """, (token,))
             invitation = c.fetchone()
-            
-            if not invitation:
-                return redirect(web_url)  # Let the web app handle invalid tokens
-            
-            community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[0]
-            invited_by = invitation['invited_by_username'] if hasattr(invitation, 'keys') else invitation[1]
-            used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
-            
-            if used:
-                return redirect(web_url)  # Let the web app handle used invitations
-                
+            if invitation:
+                community_name = invitation['community_name'] if hasattr(invitation, 'keys') else invitation[0]
+                invited_by = invitation['invited_by_username'] if hasattr(invitation, 'keys') else invitation[1]
+                used = invitation['used'] if hasattr(invitation, 'keys') else invitation[2]
     except Exception as e:
         logger.error(f"Error in invite_landing: {e}")
-        return redirect(web_url)
     
-    # For iOS users, show a landing page with options
+    app_url = f"cpoint://invite/{token}"
+    app_store_url = APP_STORE_URL if 'APP_STORE_URL' in dir() else "https://apps.apple.com/app/id6755534074"
+    play_store_url = f"https://play.google.com/store/apps/details?id=co.cpoint.app"
+    
+    store_btn = ""
     if is_ios:
-        return f'''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta name="apple-itunes-app" content="app-id=6755534074, app-argument=https://app.c-point.co/invite/{token}">
-            <title>Join {community_name} on CPoint</title>
-            <style>
-                * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-                body {{
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    background: #000;
-                    color: #fff;
-                    min-height: 100vh;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    padding: 20px;
-                }}
-                .container {{
-                    max-width: 400px;
-                    text-align: center;
-                }}
-                .logo {{
-                    width: 100px;
-                    height: 100px;
-                    margin: 0 auto 24px;
-                }}
-                .logo img {{
-                    width: 100%;
-                    height: 100%;
-                    object-fit: contain;
-                }}
-                h1 {{
-                    font-size: 24px;
-                    margin-bottom: 12px;
-                }}
-                .invite-info {{
-                    color: #4db6ac;
-                    font-size: 18px;
-                    margin-bottom: 8px;
-                }}
-                .invited-by {{
-                    color: #888;
-                    font-size: 14px;
-                    margin-bottom: 32px;
-                }}
-                .btn {{
-                    display: block;
-                    width: 100%;
-                    padding: 16px 24px;
-                    border-radius: 12px;
-                    text-decoration: none;
-                    font-weight: 600;
-                    font-size: 16px;
-                    margin-bottom: 12px;
-                    transition: opacity 0.2s;
-                    border: none;
-                    cursor: pointer;
-                }}
-                .btn:active {{ opacity: 0.8; }}
-                .btn-primary {{
-                    background: #4db6ac;
-                    color: #000;
-                }}
-                .btn-secondary {{
-                    background: #1a1a1a;
-                    color: #fff;
-                    border: 1px solid #333;
-                }}
-                .link-subtle {{
-                    color: #555;
-                    font-size: 12px;
-                    text-decoration: underline;
-                    margin-top: 20px;
-                    display: inline-block;
-                }}
-                .step {{
-                    background: #111;
-                    border-radius: 12px;
-                    padding: 16px;
-                    margin-bottom: 16px;
-                    text-align: left;
-                }}
-                .step-number {{
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 24px;
-                    height: 24px;
-                    background: #4db6ac;
-                    color: #000;
-                    border-radius: 50%;
-                    font-size: 12px;
-                    font-weight: bold;
-                    margin-right: 10px;
-                }}
-                .step-text {{
-                    color: #ccc;
-                    font-size: 14px;
-                }}
-                .divider {{
-                    color: #444;
-                    font-size: 12px;
-                    margin: 20px 0 16px;
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="logo"><img src="{logo_url}" alt="CPoint" /></div>
-                <h1>You're Invited!</h1>
-                <p class="invite-info">Join <strong>{community_name}</strong></p>
-                <p class="invited-by">Invited by {invited_by}</p>
-                
-                <a href="cpoint://invite/{token}" class="btn btn-primary" id="openAppBtn">
-                    Open in CPoint App
-                </a>
-                
-                <p class="divider">Don't have the app yet?</p>
-                
-                <a href="{APP_STORE_URL}" class="btn btn-secondary">
-                    Download from App Store
-                </a>
-                
-                <a href="{web_url}" class="link-subtle">
-                    Use browser version
-                </a>
-                
-                <script>
-                    // Try to open the app, if it fails after a timeout, show app store
-                    document.getElementById('openAppBtn').addEventListener('click', function(e) {{
-                        var start = Date.now();
-                        var timeout = setTimeout(function() {{
-                            // If we're still here after 1.5s, app probably isn't installed
-                            if (Date.now() - start < 2000) {{
-                                // Show a message or redirect to app store
-                                if (confirm('CPoint app not found. Would you like to download it?')) {{
-                                    window.location.href = '{APP_STORE_URL}';
-                                }}
-                            }}
-                        }}, 1500);
-                        
-                        // If app opens, this page will be hidden/backgrounded
-                        window.addEventListener('pagehide', function() {{
-                            clearTimeout(timeout);
-                        }});
-                        window.addEventListener('blur', function() {{
-                            clearTimeout(timeout);
-                        }});
-                    }});
-                </script>
-            </div>
-        </body>
-        </html>
-        '''
+        store_btn = f'<a href="{app_store_url}" class="btn btn-secondary">Download from App Store</a>'
+    elif is_android:
+        store_btn = f'<a href="{play_store_url}" class="btn btn-secondary">Download from Google Play</a>'
+    else:
+        store_btn = f'<a href="{app_store_url}" class="btn btn-secondary">Download the App</a>'
     
-    # For non-iOS users, show page with browser as primary option
-    return f'''
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Join {community_name} on CPoint</title>
-        <style>
-            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-            body {{
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: #000;
-                color: #fff;
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 20px;
-            }}
-            .container {{
-                max-width: 400px;
-                text-align: center;
-            }}
-            .logo {{
-                width: 100px;
-                height: 100px;
-                margin: 0 auto 24px;
-            }}
-            .logo img {{
-                width: 100%;
-                height: 100%;
-                object-fit: contain;
-            }}
-            h1 {{
-                font-size: 24px;
-                margin-bottom: 12px;
-            }}
-            .invite-info {{
-                color: #4db6ac;
-                font-size: 18px;
-                margin-bottom: 8px;
-            }}
-            .invited-by {{
-                color: #888;
-                font-size: 14px;
-                margin-bottom: 32px;
-            }}
-            .btn {{
-                display: block;
-                width: 100%;
-                padding: 16px 24px;
-                border-radius: 12px;
-                text-decoration: none;
-                font-weight: 600;
-                font-size: 16px;
-                margin-bottom: 12px;
-                transition: opacity 0.2s;
-            }}
-            .btn:active {{ opacity: 0.8; }}
-            .btn-primary {{
-                background: #4db6ac;
-                color: #000;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="logo"><img src="{logo_url}" alt="CPoint" /></div>
-            <h1>You're Invited!</h1>
-            <p class="invite-info">Join <strong>{community_name}</strong></p>
-            <p class="invited-by">Invited by {invited_by}</p>
-            
-            <a href="{web_url}" class="btn btn-primary">
-                Join Community
-            </a>
-        </div>
-    </body>
-    </html>
-    '''
+    return f"""<!DOCTYPE html>
+<html><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-itunes-app" content="app-id=6755534074, app-argument=https://app.c-point.co/invite/{token}">
+    <title>Join {community_name} on C.Point</title>
+    <style>
+        * {{ margin:0; padding:0; box-sizing:border-box; }}
+        body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#000; color:#fff; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }}
+        .container {{ max-width:400px; text-align:center; }}
+        .logo {{ width:80px; height:80px; margin:0 auto 20px; }}
+        .logo img {{ width:100%; height:100%; object-fit:contain; border-radius:16px; }}
+        h1 {{ font-size:22px; margin-bottom:10px; }}
+        .invite-info {{ color:#4db6ac; font-size:17px; margin-bottom:6px; }}
+        .invited-by {{ color:#888; font-size:13px; margin-bottom:28px; }}
+        .btn {{ display:block; width:100%; padding:14px 24px; border-radius:12px; text-decoration:none; font-weight:600; font-size:15px; margin-bottom:10px; border:none; cursor:pointer; }}
+        .btn:active {{ opacity:0.8; }}
+        .btn-primary {{ background:#4db6ac; color:#000; }}
+        .btn-secondary {{ background:#1a1a1a; color:#fff; border:1px solid #333; }}
+        .hint {{ color:#666; font-size:12px; margin-top:16px; line-height:1.5; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo"><img src="{logo_url}" alt="C.Point" /></div>
+        <h1>You're Invited!</h1>
+        <p class="invite-info">Join <strong>{community_name}</strong></p>
+        <p class="invited-by">Invited by {invited_by}</p>
+        <a href="{app_url}" class="btn btn-primary" id="openAppBtn">Open in C.Point App</a>
+        <p style="color:#555; font-size:12px; margin:14px 0 10px;">Don't have the app yet?</p>
+        {store_btn}
+        <p class="hint">C.Point is a mobile app. Please download it to join this community.</p>
+    </div>
+    <script>
+        document.getElementById('openAppBtn').addEventListener('click', function(e) {{
+            var start = Date.now();
+            setTimeout(function() {{
+                if (Date.now() - start < 2000) {{
+                    if (confirm('C.Point app not found. Would you like to download it?')) {{
+                        window.location.href = '{"" + app_store_url if is_ios else play_store_url if is_android else app_store_url}';
+                    }}
+                }}
+            }}, 1500);
+            window.addEventListener('pagehide', function() {{ clearTimeout(0); }});
+        }});
+    </script>
+</body></html>"""
 
 @app.route('/api/invitation/verify', methods=['GET'])
 def verify_invitation():
@@ -23502,6 +23327,36 @@ def verify_invitation():
             
     except Exception as e:
         logger.error(f"Error verifying invitation: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/community/<int:community_id>/invite_settings', methods=['GET', 'POST'])
+@login_required
+def community_invite_settings(community_id):
+    """Get or set invite link settings for a community."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            _ensure_invite_single_use_column(c)
+            
+            if request.method == 'GET':
+                c.execute("SELECT invite_single_use FROM communities WHERE id = ?", (community_id,))
+                row = c.fetchone()
+                if not row:
+                    return jsonify({'success': False, 'error': 'Community not found'}), 404
+                val = row['invite_single_use'] if hasattr(row, 'keys') else row[0]
+                return jsonify({'success': True, 'invite_single_use': bool(val)})
+            
+            # POST - admin only
+            if not is_community_admin(username, community_id):
+                return jsonify({'success': False, 'error': 'Admin access required'}), 403
+            data = request.get_json() or {}
+            single_use = bool(data.get('invite_single_use', False))
+            c.execute("UPDATE communities SET invite_single_use = ? WHERE id = ?", (1 if single_use else 0, community_id))
+            conn.commit()
+            return jsonify({'success': True, 'invite_single_use': single_use})
+    except Exception as e:
+        logger.error(f"Error in community_invite_settings: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/api/community/invite_link', methods=['POST'])
@@ -23746,12 +23601,19 @@ def join_with_invite():
                         conn.rollback()
                         return jsonify({'success': False, 'error': str(limit_err)}), 403
             
-            # Mark invitation as used
-            c.execute("""
-                UPDATE community_invitations 
-                SET used = 1, used_at = ?
-                WHERE id = ?
-            """, (datetime.now().isoformat(), invitation_id))
+            # Check if community uses single-use invites
+            _ensure_invite_single_use_column(c)
+            c.execute(f"SELECT invite_single_use FROM communities WHERE id = {ph}", (community_id,))
+            su_row = c.fetchone()
+            is_single_use = bool((su_row['invite_single_use'] if hasattr(su_row, 'keys') else su_row[0]) if su_row else False)
+            
+            if is_single_use:
+                # Mark invitation as used
+                c.execute("""
+                    UPDATE community_invitations 
+                    SET used = 1, used_at = ?
+                    WHERE id = ?
+                """, (datetime.now().isoformat(), invitation_id))
             
             # Send notifications to community admins/owners
             notify_community_new_member(community_id, username, conn)
