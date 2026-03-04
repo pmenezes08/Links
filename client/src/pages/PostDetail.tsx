@@ -1499,7 +1499,7 @@ export default function PostDetail(){
                       <div className="px-3">
                         <video
                           className="w-full max-h-[420px] rounded border border-white/10 bg-black"
-                          src={normalizePath(parsedMediaPaths[mediaCarouselIndex].path)}
+                          src={normalizePath(parsedMediaPaths[mediaCarouselIndex].path) + '#t=0.1'}
                           controls
                           playsInline
                           preload="metadata"
@@ -1558,9 +1558,10 @@ export default function PostDetail(){
                   <div className="px-3">
                     <video
                       className="w-full max-h-[420px] rounded border border-white/10 bg-black"
-                      src={normalizePath(post.video_path)}
+                      src={normalizePath(post.video_path) + '#t=0.1'}
                       controls
                       playsInline
+                      preload="metadata"
                     />
                   </div>
                 ) : null}

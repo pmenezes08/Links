@@ -45,6 +45,8 @@ DEFAULT_ALLOWED_EXTENSIONS = {
     "jpeg",
     "gif",
     "webp",
+    "heic",
+    "heif",
     "mp4",
     "webm",
     "mov",

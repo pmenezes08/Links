@@ -14845,7 +14845,8 @@ def post_status():
             try:
                 from backend.services.firestore_writes import write_post
                 write_post(post_id=post_id, username=username, content=content, community_id=community_id,
-                          image_path=image_path, video_path=video_path, audio_path=audio_path, audio_summary=audio_summary)
+                          image_path=image_path, video_path=video_path, audio_path=audio_path, audio_summary=audio_summary,
+                          media_paths=media_paths if media_paths else None)
             except Exception:
                 pass
 
@@ -15010,8 +15011,13 @@ def post_status():
             except Exception as cache_err:
                 logger.warning(f"Failed to invalidate cache after post for community {community_id}: {cache_err}")
         
-        # Check if this is an AJAX request
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        # Detect if caller expects JSON (fetch API, XHR, or Accept header)
+        wants_json = (
+            request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+            or 'application/json' in (request.headers.get('Accept') or '')
+            or request.content_type and 'multipart/form-data' in request.content_type
+        )
+        if wants_json:
             return jsonify({
                 'success': True,
                 'message': 'Post added!',
@@ -15021,19 +15027,24 @@ def post_status():
                     'content': content, 
                     'image_path': image_path,
                     'video_path': video_path,
+                    'media_paths': media_paths if media_paths else None,
                     'timestamp': timestamp,
                     'community_id': community_id
                 }
             }), 200
         else:
-            # Regular form submission - redirect back to the appropriate page
             if community_id:
                 return redirect(url_for('community_feed', community_id=community_id))
             else:
                 return redirect(url_for('feed'))
     except Exception as e:
         logger.error(f"Error posting status for {username}: {str(e)}", exc_info=True)
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        wants_json = (
+            request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+            or 'application/json' in (request.headers.get('Accept') or '')
+            or request.content_type and 'multipart/form-data' in request.content_type
+        )
+        if wants_json:
             return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
         else:
             # For regular form submissions, redirect with error

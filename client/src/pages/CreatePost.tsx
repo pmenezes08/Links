@@ -255,15 +255,21 @@ export default function CreatePost(){
       if (preview?.blob) fd.append('audio', preview.blob, (preview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
       fd.append('dedupe_token', tokenRef.current)
       
+      let postResult: { success?: boolean; error?: string } | null = null
       if (groupId){
         fd.append('group_id', groupId)
         const r = await fetch('/api/group_posts', { method: 'POST', credentials: 'include', body: fd })
-        await r.json().catch(()=>null)
+        postResult = await r.json().catch(() => null)
       } else {
         if (communityId) fd.append('community_id', communityId)
         const r = await fetch('/post_status', { method: 'POST', credentials: 'include', body: fd })
-        // Try reading JSON when available, otherwise ignore redirects
-        await r.json().catch(()=>null)
+        postResult = await r.json().catch(() => null)
+      }
+      
+      if (postResult && postResult.success === false) {
+        alert(postResult.error || 'Failed to create post')
+        setSubmitting(false)
+        return
       }
       
       // Clear the feed cache so the new post shows immediately on return

@@ -72,7 +72,7 @@ export default function LazyVideo({
         autoPlay={autoPlay}
         muted={muted}
         loop={loop}
-        src={shouldLoad ? src : undefined}
+        src={shouldLoad ? (src.includes('#') ? src : `${src}#t=0.1`) : undefined}
         onError={() => { setHasError(true); setIsLoading(false) }}
         onLoadedData={() => { setHasError(false); setIsLoading(false) }}
         onLoadedMetadata={() => setIsLoading(false)}

@@ -172,7 +172,7 @@ def edit_group_chat_message(group_id: int, message_id: int, new_text: str):
 def write_post(post_id: int, username: str, content: str = '', community_id=None,
                group_id=None, image_path: str = None, video_path: str = None,
                audio_path: str = None, audio_summary: str = None,
-               post_type: str = 'community', timestamp=None):
+               post_type: str = 'community', timestamp=None, media_paths=None):
     """Write a post to Firestore after MySQL insert."""
     if not USE_FIRESTORE_WRITES:
         return
@@ -191,6 +191,7 @@ def write_post(post_id: int, username: str, content: str = '', community_id=None
             'video_path': video_path,
             'audio_path': audio_path,
             'audio_summary': audio_summary,
+            'media_paths': media_paths,
             'created_at': ts,
         })
     except Exception as e:

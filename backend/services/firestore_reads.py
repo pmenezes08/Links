@@ -252,6 +252,7 @@ def get_post_detail(post_id: int, username: str):
             'video_path': d.get('video_path'),
             'audio_path': d.get('audio_path'),
             'audio_summary': d.get('audio_summary'),
+            'media_paths': d.get('media_paths'),
             'timestamp': _ts_to_str(d.get('created_at')),
             'community_id': d.get('community_id'),
             'reactions': reactions,
