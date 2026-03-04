@@ -158,9 +158,10 @@ export default function CommunityPhotos(){
                         {p.type === 'video' || p.image_url?.match(/\.(mp4|mov|webm|m4v)$/i) ? (
                           <>
                             <video
-                              src={p.image_url}
+                              src={p.image_url.includes('#') ? p.image_url : `${p.image_url}#t=0.1`}
                               className="w-full h-full object-cover rounded-lg border border-white/10 cursor-pointer hover:border-white/20 transition-colors"
                               muted
+                              playsInline
                               preload="metadata"
                               onClick={() => navigate(`/post/${p.post_id}`)}
                             />

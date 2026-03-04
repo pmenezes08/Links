@@ -5644,6 +5644,7 @@ def api_community_photos():
                     return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
             # Get all posts and replies with images/videos from this community
+            # Exclude posts hidden by the current user
             c.execute("""
                 SELECT
                     p.id as post_id,
@@ -5657,7 +5658,9 @@ def api_community_photos():
                     up.profile_picture
                 FROM posts p
                 LEFT JOIN user_profiles up ON p.username = up.username
-                WHERE p.community_id = ? AND (p.image_path IS NOT NULL AND p.image_path != '' OR p.video_path IS NOT NULL AND p.video_path != '' OR p.media_paths IS NOT NULL AND p.media_paths != '')
+                LEFT JOIN hidden_posts hp ON p.id = hp.post_id AND hp.username = ?
+                WHERE p.community_id = ? AND hp.id IS NULL
+                  AND (p.image_path IS NOT NULL AND p.image_path != '' OR p.video_path IS NOT NULL AND p.video_path != '' OR p.media_paths IS NOT NULL AND p.media_paths != '')
 
                 UNION ALL
 
@@ -5674,9 +5677,11 @@ def api_community_photos():
                 FROM posts p
                 JOIN replies r ON p.id = r.post_id
                 LEFT JOIN user_profiles up ON r.username = up.username
-                WHERE p.community_id = ? AND r.image_path IS NOT NULL AND r.image_path != ''
+                LEFT JOIN hidden_posts hp ON p.id = hp.post_id AND hp.username = ?
+                WHERE p.community_id = ? AND hp.id IS NULL
+                  AND r.image_path IS NOT NULL AND r.image_path != ''
                 ORDER BY timestamp DESC
-            """, (community_id, community_id))
+            """, (username, community_id, username, community_id))
 
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]
@@ -11203,6 +11208,35 @@ def api_video_upload_url():
     })
 
 
+@app.route('/api/post_video_upload_url', methods=['POST'])
+@login_required
+def api_post_video_upload_url():
+    """Get a presigned URL for direct video upload to R2 for community/group posts."""
+    try:
+        from backend.services.r2_storage import R2_ENABLED, R2_PUBLIC_URL, generate_presigned_upload_url, get_content_type
+    except ImportError:
+        return jsonify({'success': False, 'error': 'Direct upload not available'}), 503
+    if not R2_ENABLED or not R2_PUBLIC_URL:
+        return jsonify({'success': False, 'error': 'Direct upload not available'}), 503
+    data = request.get_json() or {}
+    filename = (data.get('filename') or 'video.mp4').strip()
+    content_type = (data.get('content_type') or get_content_type(filename)).strip()
+    if not content_type.startswith('video/'):
+        return jsonify({'success': False, 'error': 'Invalid video type'}), 400
+    from datetime import datetime as _dt
+    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'mp4'
+    if ext not in ('mp4', 'webm', 'mov', 'm4v', 'avi'):
+        ext = 'mp4'
+    name = (filename.rsplit('.', 1)[0] if '.' in filename else 'video')[:50]
+    key = f"post_videos/{name}_{ts}.{ext}"
+    upload_url = generate_presigned_upload_url(key, content_type)
+    if not upload_url:
+        return jsonify({'success': False, 'error': 'Failed to generate upload URL'}), 500
+    public_url = f"{R2_PUBLIC_URL.rstrip('/')}/{key}"
+    return jsonify({'success': True, 'upload_url': upload_url, 'key': key, 'public_url': public_url})
+
+
 @app.route('/send_video_message', methods=['POST'])
 @login_required
 def send_video_message():
@@ -14676,7 +14710,7 @@ def post_status():
                 if saved_path:
                     media_paths.append({'type': 'image', 'path': saved_path})
     
-    # Handle multiple videos (new format)
+    # Handle multiple videos (new format) - form upload for small videos
     if 'videos' in files:
         video_files = files.getlist('videos')
         for vid_file in video_files:
@@ -14684,6 +14718,18 @@ def post_status():
                 saved_path = save_uploaded_file(vid_file, subfolder='video')
                 if saved_path:
                     media_paths.append({'type': 'video', 'path': saved_path})
+    
+    # Handle pre-uploaded video URLs (R2 direct upload for large videos)
+    video_urls_raw = request.form.get('video_urls', '')
+    if video_urls_raw:
+        try:
+            video_urls = json.loads(video_urls_raw)
+            if isinstance(video_urls, list):
+                for vurl in video_urls:
+                    if isinstance(vurl, str) and vurl.startswith('http'):
+                        media_paths.append({'type': 'video', 'path': vurl})
+        except (json.JSONDecodeError, TypeError):
+            pass
     
     # Handle legacy single image upload
     if not media_paths and 'image' in files and files['image'].filename:

@@ -242,14 +242,47 @@ export default function CreatePost(){
       if (gifFile) {
         fd.append('image', gifFile)
       } else if (mediaFiles.length > 0) {
-        // Append all media files
-        mediaFiles.forEach(file => {
-          if (file.type.startsWith('video/')) {
+        const LARGE_VIDEO_THRESHOLD = 25 * 1024 * 1024 // 25MB
+        const preUploadedVideoUrls: string[] = []
+        
+        for (const file of mediaFiles) {
+          if (file.type.startsWith('video/') && file.size > LARGE_VIDEO_THRESHOLD) {
+            // Large video - upload directly to R2 via presigned URL
+            try {
+              const urlRes = await fetch('/api/post_video_upload_url', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: file.name, content_type: file.type || 'video/mp4' }),
+              })
+              const urlData = await urlRes.json().catch(() => null)
+              if (urlData?.success && urlData.upload_url && urlData.public_url) {
+                const putOk = await new Promise<boolean>((resolve, reject) => {
+                  const xhr = new XMLHttpRequest()
+                  xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300)
+                  xhr.onerror = () => reject(new Error('Upload failed'))
+                  xhr.ontimeout = () => reject(new Error('Upload timeout'))
+                  xhr.open('PUT', urlData.upload_url)
+                  xhr.setRequestHeader('Content-Type', file.type || 'video/mp4')
+                  xhr.timeout = 600000
+                  xhr.send(file)
+                })
+                if (putOk) preUploadedVideoUrls.push(urlData.public_url)
+              } else {
+                fd.append('videos', file)
+              }
+            } catch {
+              fd.append('videos', file)
+            }
+          } else if (file.type.startsWith('video/')) {
             fd.append('videos', file)
           } else {
             fd.append('images', file)
           }
-        })
+        }
+        
+        if (preUploadedVideoUrls.length > 0) {
+          fd.append('video_urls', JSON.stringify(preUploadedVideoUrls))
+        }
       }
       
       if (preview?.blob) fd.append('audio', preview.blob, (preview.blob.type.includes('mp4') ? 'audio.mp4' : 'audio.webm'))
