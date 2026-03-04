@@ -734,6 +734,36 @@ def get_group_messages(group_id: int):
             from backend.services.firestore_reads import get_group_chat_messages as fs_get_gcm
             messages = fs_get_gcm(group_id, username, before_id=before_id, limit=limit)
             logger.info(f"Firestore group chat read: {len(messages)} messages for group {group_id}")
+            # Update read receipt even when using Firestore reads
+            if messages:
+                try:
+                    max_id = max(m["id"] for m in messages if m.get("id", 0) > 0)
+                    if max_id > 0:
+                        now_str = datetime.now().isoformat()
+                        with get_db_connection() as _conn:
+                            _c = _conn.cursor()
+                            _ph = get_sql_placeholder()
+                            from backend.services.database import USE_MYSQL as _USE_MYSQL
+                            if _USE_MYSQL:
+                                _c.execute(f"""
+                                    INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at)
+                                    VALUES ({_ph}, {_ph}, {_ph}, {_ph})
+                                    ON DUPLICATE KEY UPDATE
+                                        last_read_message_id = GREATEST(last_read_message_id, VALUES(last_read_message_id)),
+                                        last_read_at = VALUES(last_read_at)
+                                """, (group_id, username, max_id, now_str))
+                            else:
+                                _c.execute(f"""
+                                    INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id, last_read_at)
+                                    VALUES ({_ph}, {_ph}, {_ph}, {_ph})
+                                    ON CONFLICT(group_id, username) DO UPDATE SET
+                                        last_read_message_id = MAX(last_read_message_id, {_ph}),
+                                        last_read_at = {_ph}
+                                """, (group_id, username, max_id, now_str, max_id, now_str))
+                            _conn.commit()
+                except Exception as rr_err:
+                    logger.warning(f"Failed to update read receipt on Firestore path: {rr_err}")
+            
             # Steve typing status (stored in-memory, not Firestore)
             import time as _time
             _steve_typing = False

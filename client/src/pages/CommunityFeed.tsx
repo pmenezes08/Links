@@ -1667,13 +1667,13 @@ export default function CommunityFeed() {
     const originalPost = postsOnly.find((p: Post) => p.id === postId)
     if (!originalPost) return
 
-    // Optimistically remove poll from post
+    // Optimistically remove the entire post (backend deletes both poll and post)
     setData((prev: any) => {
       if (!prev) return prev
       const posts = Array.isArray(prev.posts) ? prev.posts : []
       return {
         ...prev,
-        posts: posts.map((p: any) => p.id === postId ? { ...p, poll: null } : p)
+        posts: posts.filter((p: any) => p.id !== postId)
       }
     })
 
@@ -1686,14 +1686,11 @@ export default function CommunityFeed() {
       })
       const j = await res.json().catch(() => null)
       if (!j?.success) {
-        // Restore poll
+        // Restore the entire post
         setData((prev: any) => {
           if (!prev) return prev
           const posts = Array.isArray(prev.posts) ? prev.posts : []
-          return {
-            ...prev,
-            posts: posts.map((p: any) => p.id === postId ? { ...p, poll: originalPost.poll } : p)
-          }
+          return { ...prev, posts: [...posts, originalPost].sort((a: any, b: any) => b.id - a.id) }
         })
         alert(j?.error || 'Failed to delete poll')
       }
@@ -1702,10 +1699,7 @@ export default function CommunityFeed() {
       setData((prev: any) => {
         if (!prev) return prev
         const posts = Array.isArray(prev.posts) ? prev.posts : []
-        return {
-          ...prev,
-          posts: posts.map((p: any) => p.id === postId ? { ...p, poll: originalPost.poll } : p)
-        }
+        return { ...prev, posts: [...posts, originalPost].sort((a: any, b: any) => b.id - a.id) }
       })
       alert('Error deleting poll')
     }
@@ -3029,7 +3023,7 @@ export default function CommunityFeed() {
             {showTasks && (
               <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/tasks_react`) }}>Tasks</button>
             )}
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/photos_react`) }}>Photos</button>
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={()=> { setMoreOpen(false); navigate(`/community/${community_id}/photos_react`) }}>Media</button>
             {/* Forum/Useful Links visibility */}
             {showResourcesSection && (
               <>

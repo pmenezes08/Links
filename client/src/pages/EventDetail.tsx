@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 
@@ -144,25 +145,30 @@ export default function EventDetail(){
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="fixed left-0 right-0 top-0 h-14 border-b border-white/10 bg-black/70 backdrop-blur flex items-center justify-between px-3 z-40">
-        <div className="flex items-center">
-          <button className="px-3 py-2 rounded-full text-[#cfd8dc] hover:text-[#4db6ac]" onClick={()=> navigate(-1)}>
-            <i className="fa-solid fa-arrow-left" />
-          </button>
-          <div className="ml-2 font-semibold">Event Details</div>
+      <div
+        className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40 border-b border-white/10"
+        style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))' } as CSSProperties}
+      >
+        <div className="max-w-2xl mx-auto h-full flex items-center justify-between px-2">
+          <div className="flex items-center gap-2">
+            <button className="p-2 rounded-full hover:bg-white/5" onClick={() => navigate(-1)} aria-label="Back">
+              <i className="fa-solid fa-arrow-left" />
+            </button>
+            <div className="font-medium text-sm">Event Details</div>
+          </div>
+          {canDelete && (
+            <button 
+              className="p-2 rounded-full text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+              onClick={() => setShowDeleteConfirm(true)}
+              title="Delete Event"
+            >
+              <i className="fa-solid fa-trash text-sm" />
+            </button>
+          )}
         </div>
-        {canDelete && (
-          <button 
-            className="px-3 py-2 rounded-full text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
-            onClick={() => setShowDeleteConfirm(true)}
-            title="Delete Event"
-          >
-            <i className="fa-solid fa-trash" />
-          </button>
-        )}
       </div>
 
-      <div className="max-w-2xl mx-auto pt-16 px-3 pb-24">
+      <div className="app-subnav-offset max-w-2xl mx-auto px-3 pb-24" style={{ '--app-subnav-height': '40px' } as CSSProperties}>
         {/* Event Info Card */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.035] overflow-hidden mb-4">
           <div className="px-4 py-3 bg-[#4db6ac]">

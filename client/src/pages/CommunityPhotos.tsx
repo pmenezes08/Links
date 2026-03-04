@@ -3,12 +3,13 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import { useHeader } from '../contexts/HeaderContext'
 
-type PhotoItem = {
+type MediaItem = {
   id: string
   post_id: number
   reply_id: number | null
   username: string
   image_url: string
+  type?: 'image' | 'video'
   created_at: string | number | Date
 }
 
@@ -18,11 +19,11 @@ export default function CommunityPhotos(){
   const groupId = searchParams.get('group_id')
   const navigate = useNavigate()
   const { setTitle } = useHeader()
-  const [items, setItems] = useState<PhotoItem[]>([])
+  const [items, setItems] = useState<MediaItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => { setTitle('Photos') }, [setTitle])
+  useEffect(() => { setTitle('Media') }, [setTitle])
 
   useEffect(() => {
     let mounted = true
@@ -35,10 +36,10 @@ export default function CommunityPhotos(){
         const r = await fetch(url, { credentials:'include' })
         const j = await r.json()
         if (!mounted) return
-        if (j?.success){ setItems(j.photos || []); setError(null) }
-        else setError(j?.error || 'Failed to load photos')
+        if (j?.success){ setItems(j.photos || j.media || []); setError(null) }
+        else setError(j?.error || 'Failed to load media')
       }catch{
-        if (mounted) setError('Failed to load photos')
+        if (mounted) setError('Failed to load media')
       } finally {
         if (mounted) setLoading(false)
       }
@@ -47,9 +48,8 @@ export default function CommunityPhotos(){
     return () => { mounted = false }
   }, [community_id, groupId])
 
-  // Group by date and format dates nicely
   const groups = useMemo(() => {
-    const map: Record<string, PhotoItem[]> = {}
+    const map: Record<string, MediaItem[]> = {}
     for (const it of items){
       const parsedDate = parseFlexibleDate(it.created_at)
       let dateKey = 'Unknown Date'
@@ -122,7 +122,7 @@ export default function CommunityPhotos(){
           <button className="p-2 rounded-full hover:bg-white/5" onClick={()=> navigate(groupId ? `/group_feed_react/${groupId}` : `/community_feed_react/${community_id}`)} aria-label="Back">
             <i className="fa-solid fa-arrow-left" />
           </button>
-          <div className="flex-1 font-medium">Photos</div>
+          <div className="flex-1 font-medium">Media</div>
         </div>
       </div>
       <div
@@ -136,9 +136,9 @@ export default function CommunityPhotos(){
         {items.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-[#9fb0b5] mb-4">
-              <i className="fa-solid fa-camera text-4xl mb-3 block opacity-50"></i>
-              <p className="text-lg font-medium">No photos yet</p>
-              <p className="text-sm">Photos from community posts will appear here</p>
+              <i className="fa-solid fa-photo-film text-4xl mb-3 block opacity-50"></i>
+              <p className="text-lg font-medium">No media yet</p>
+              <p className="text-sm">Photos and videos from community posts will appear here</p>
             </div>
           </div>
         ) : (
@@ -150,17 +150,34 @@ export default function CommunityPhotos(){
               return (
                 <div key={formattedDateKey} className="space-y-3">
                   <div className="text-sm text-[#9fb0b5] font-medium border-b border-white/10 pb-2">
-                    {formattedDateKey} ({photosForDate.length} photo{photosForDate.length !== 1 ? 's' : ''})
+                    {formattedDateKey} ({photosForDate.length} item{photosForDate.length !== 1 ? 's' : ''})
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {photosForDate.map(p => (
                       <div key={p.id} className="relative group aspect-square">
-                        <img
-                          src={p.image_url}
-                          alt="Community photo"
-                          className="w-full h-full object-cover rounded-lg border border-white/10 cursor-pointer hover:border-white/20 transition-colors"
-                          onClick={() => navigate(`/post/${p.post_id}`)}
-                        />
+                        {p.type === 'video' || p.image_url?.match(/\.(mp4|mov|webm|m4v)$/i) ? (
+                          <>
+                            <video
+                              src={p.image_url}
+                              className="w-full h-full object-cover rounded-lg border border-white/10 cursor-pointer hover:border-white/20 transition-colors"
+                              muted
+                              preload="metadata"
+                              onClick={() => navigate(`/post/${p.post_id}`)}
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div className="w-10 h-10 rounded-full bg-black/60 flex items-center justify-center">
+                                <i className="fa-solid fa-play text-white text-sm ml-0.5" />
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <img
+                            src={p.image_url}
+                            alt="Community media"
+                            className="w-full h-full object-cover rounded-lg border border-white/10 cursor-pointer hover:border-white/20 transition-colors"
+                            onClick={() => navigate(`/post/${p.post_id}`)}
+                          />
+                        )}
                         <div className="absolute bottom-2 left-2 text-xs px-2 py-1 rounded bg-black/70 border border-white/10 text-white">
                           {formatSmartTime(p.created_at)}
                         </div>

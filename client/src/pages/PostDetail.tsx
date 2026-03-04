@@ -183,19 +183,23 @@ export default function PostDetail(){
     }
   }
   
-  // Parse media_paths for multi-media support
   const parsedMediaPaths = useMemo((): MediaItem[] => {
     if (!post?.media_paths) return []
-    if (Array.isArray(post.media_paths)) return post.media_paths
-    if (typeof post.media_paths === 'string') {
-      try {
-        const parsed = JSON.parse(post.media_paths)
-        return Array.isArray(parsed) ? parsed : []
-      } catch {
-        return []
-      }
+    let raw: unknown[] = []
+    if (Array.isArray(post.media_paths)) {
+      raw = post.media_paths
+    } else if (typeof post.media_paths === 'string') {
+      try { raw = JSON.parse(post.media_paths) } catch { return [] }
+      if (!Array.isArray(raw)) return []
     }
-    return []
+    return raw.map((item: unknown) => {
+      if (typeof item === 'string') {
+        const isVideo = /\.(mp4|mov|webm|m4v)$/i.test(item)
+        return { type: isVideo ? 'video' : 'image', path: item } as MediaItem
+      }
+      if (item && typeof item === 'object' && 'path' in item) return item as MediaItem
+      return null
+    }).filter((x): x is MediaItem => x !== null)
   }, [post?.media_paths])
   
   const hasMultipleMedia = parsedMediaPaths.length > 1

@@ -2757,32 +2757,41 @@ export default function GroupChatThread() {
               {/* Steve Personality */}
               <div>
                 <label className="text-xs text-[#9fb0b5] uppercase tracking-wide mb-2 block">Steve AI Personality</label>
-                <select
-                  value={stevePersonality}
-                  onChange={async (e) => {
-                    const val = e.target.value
-                    setStevePersonality(val)
-                    try {
-                      await fetch(`/api/group_chat/${group_id}/steve_personality`, {
-                        method: 'POST', credentials: 'include',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ personality: val })
-                      })
-                    } catch {}
-                  }}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#4db6ac] appearance-none"
-                >
-                  <option value="default">Default</option>
-                  <option value="professional">Professional</option>
-                  <option value="friendly">Friendly</option>
-                  <option value="sarcastic">Sarcastic</option>
-                  <option value="humorous">Humorous</option>
-                  <option value="sage">Sage</option>
-                  <option value="empathetic">Empathetic</option>
-                  <option value="cynic">Cynic</option>
-                  <option value="quirky">Quirky</option>
-                  <option value="unhinged">Unhinged</option>
-                </select>
+                <div className="flex gap-2">
+                  <select
+                    value={stevePersonality}
+                    onChange={(e) => setStevePersonality(e.target.value)}
+                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#4db6ac] appearance-none"
+                  >
+                    <option value="default">Default</option>
+                    <option value="professional">Professional</option>
+                    <option value="friendly">Friendly</option>
+                    <option value="sarcastic">Sarcastic</option>
+                    <option value="humorous">Humorous</option>
+                    <option value="sage">Sage</option>
+                    <option value="empathetic">Empathetic</option>
+                    <option value="cynic">Cynic</option>
+                    <option value="quirky">Quirky</option>
+                    <option value="unhinged">Unhinged</option>
+                  </select>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const r = await fetch(`/api/group_chat/${group_id}/steve_personality`, {
+                          method: 'POST', credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ personality: stevePersonality })
+                        })
+                        const d = await r.json().catch(() => null)
+                        if (d?.success) { alert('Personality saved!') }
+                        else { alert(d?.error || 'Failed to save') }
+                      } catch { alert('Failed to save') }
+                    }}
+                    className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg font-medium text-sm hover:bg-[#5cc4ba] transition"
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
 
               {/* Reset Steve Context */}

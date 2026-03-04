@@ -5643,7 +5643,7 @@ def api_community_photos():
                 if not c.fetchone():
                     return jsonify({'success': False, 'error': 'Forbidden'}), 403
 
-            # Get all posts and replies with images from this community
+            # Get all posts and replies with images/videos from this community
             c.execute("""
                 SELECT
                     p.id as post_id,
@@ -5651,11 +5651,13 @@ def api_community_photos():
                     p.username,
                     p.content,
                     p.image_path,
+                    p.video_path,
+                    p.media_paths,
                     p.timestamp,
                     up.profile_picture
                 FROM posts p
                 LEFT JOIN user_profiles up ON p.username = up.username
-                WHERE p.community_id = ? AND p.image_path IS NOT NULL AND p.image_path != ''
+                WHERE p.community_id = ? AND (p.image_path IS NOT NULL AND p.image_path != '' OR p.video_path IS NOT NULL AND p.video_path != '' OR p.media_paths IS NOT NULL AND p.media_paths != '')
 
                 UNION ALL
 
@@ -5665,6 +5667,8 @@ def api_community_photos():
                     r.username,
                     r.content,
                     r.image_path,
+                    NULL as video_path,
+                    NULL as media_paths,
                     r.timestamp,
                     up.profile_picture
                 FROM posts p
@@ -5677,50 +5681,82 @@ def api_community_photos():
             posts_raw = c.fetchall()
             posts = [dict(row) for row in posts_raw]
 
-            # Format posts as photos
+            def _normalize_media_url(path):
+                if not path: return None
+                if path.startswith('http'): return path
+                if path.startswith('/static') or path.startswith('/uploads'): return path
+                if path.startswith('uploads/'): return '/' + path
+                return f"/uploads/{path}"
+
             photos = []
+            media_id = 0
             for post in posts:
-                # Handle different database cursor types
                 if hasattr(post, 'keys'):
                     post_id = post['post_id']
                     username_val = post['username']
-                    content = post['content'] or ''
                     image_path = post['image_path']
+                    video_path = post.get('video_path')
+                    media_paths_raw = post.get('media_paths')
                     timestamp = post['timestamp'] or ''
-                    profile_picture = post['profile_picture']
                 else:
                     post_id = post[0]
-                    username_val = post[1]
-                    content = post[2] or ''
-                    image_path = post[3]
-                    timestamp = post[4] or ''
-                    profile_picture = post[5]
+                    username_val = post[2]
+                    image_path = post[4]
+                    video_path = post[5] if len(post) > 5 else None
+                    media_paths_raw = post[6] if len(post) > 6 else None
+                    timestamp = post[7] if len(post) > 7 else (post[5] if len(post) == 7 else '')
 
-                # Skip if no image
-                if not image_path:
-                    continue
+                # Process media_paths (grouped media)
+                if media_paths_raw:
+                    try:
+                        import json as _json
+                        paths = _json.loads(media_paths_raw) if isinstance(media_paths_raw, str) else media_paths_raw
+                        if isinstance(paths, list):
+                            for mp in paths:
+                                url = _normalize_media_url(mp)
+                                if url:
+                                    media_id += 1
+                                    is_video = any(mp.lower().endswith(ext) for ext in ('.mp4', '.mov', '.webm', '.m4v'))
+                                    photos.append({
+                                        'id': f"{post_id}_mp_{media_id}",
+                                        'post_id': post_id,
+                                        'reply_id': None,
+                                        'username': username_val,
+                                        'image_url': url,
+                                        'type': 'video' if is_video else 'image',
+                                        'created_at': timestamp,
+                                    })
+                    except Exception:
+                        pass
 
-                # Format image URL
-                if image_path.startswith('http'):
-                    image_url = image_path
-                elif image_path.startswith('/static') or image_path.startswith('/uploads'):
-                    image_url = image_path
-                elif image_path.startswith('uploads/'):
-                    image_url = '/' + image_path
-                else:
-                    image_url = f"/uploads/{image_path}"
+                if image_path:
+                    url = _normalize_media_url(image_path)
+                    if url:
+                        media_id += 1
+                        photos.append({
+                            'id': f"{post_id}_img_{media_id}",
+                            'post_id': post_id,
+                            'reply_id': None,
+                            'username': username_val,
+                            'image_url': url,
+                            'type': 'image',
+                            'created_at': timestamp,
+                        })
 
-                photos.append({
-                    'id': str(post_id),
-                    'post_id': post_id,
-                    'reply_id': None,
-                    'username': username_val,
-                    'image_url': image_url,
-                    'created_at': timestamp,
-                    'profile_picture': profile_picture
-                })
+                if video_path:
+                    url = _normalize_media_url(video_path)
+                    if url:
+                        media_id += 1
+                        photos.append({
+                            'id': f"{post_id}_vid_{media_id}",
+                            'post_id': post_id,
+                            'reply_id': None,
+                            'username': username_val,
+                            'image_url': url,
+                            'type': 'video',
+                            'created_at': timestamp,
+                        })
 
-            # Sort photos by creation date (newest first)
             photos.sort(key=lambda x: x['created_at'] or '', reverse=True)
 
             return jsonify({'success': True, 'photos': photos})
@@ -15309,6 +15345,18 @@ def create_poll():
             # Notify all community members about the new poll (after commit)
             if member_usernames:
                 try:
+                    community_name_for_push = ""
+                    if community_id:
+                        try:
+                            with get_db_connection() as conn2:
+                                c2 = conn2.cursor()
+                                c2.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                                cn_row = c2.fetchone()
+                                if cn_row:
+                                    community_name_for_push = cn_row["name"] if hasattr(cn_row, "keys") else cn_row[0]
+                        except Exception:
+                            pass
+                    
                     for member_username in member_usernames:
                         create_notification(
                             user_id=member_username,
@@ -15318,7 +15366,19 @@ def create_poll():
                             community_id=community_id,
                             message=f'New poll: {question}'
                         )
-                    logger.info(f"✅ Created {len(member_usernames)} poll notifications for post {post_id}")
+                        try:
+                            send_push_to_user(
+                                member_username,
+                                {
+                                    "title": f"{community_name_for_push} - New Poll" if community_name_for_push else "New Poll",
+                                    "body": f"{username} created a poll: {question[:80]}",
+                                    "url": f"/community/{community_id}/polls_react" if community_id else "/polls",
+                                    "tag": f"poll-new-{poll_id}",
+                                },
+                            )
+                        except Exception:
+                            pass
+                    logger.info(f"✅ Created {len(member_usernames)} poll notifications with push for post {post_id}")
                 except Exception as e:
                     logger.error(f"❌ Error creating poll notifications: {str(e)}")
                     import traceback
