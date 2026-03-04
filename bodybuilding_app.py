@@ -14282,7 +14282,7 @@ def api_create_task():
                             logger.warning(f"task assign notify (community) error to {m}: {ne}")
                         try:
                             send_push_to_user(m, {
-                                'title': 'New community task',
+                                'title': f'{community_name} - New Task' if community_name else 'New community task',
                                 'body': title[:100],
                                 'url': link,
                                 'tag': f'task-{community_id}-{m}'
@@ -14315,7 +14315,16 @@ def api_create_task():
                         created_ids.append(task_id)
                         # Notify assignee (skip self-notification)
                         link = f"/community/{community_id}/tasks_react"
-                        message = f"{username} assigned you a task: {title}"
+                        # Get community name for notification
+                        task_comm_name = None
+                        try:
+                            c.execute("SELECT name FROM communities WHERE id = ?", (community_id,))
+                            tcn = c.fetchone()
+                            if tcn:
+                                task_comm_name = tcn['name'] if hasattr(tcn, 'keys') else tcn[0]
+                        except Exception:
+                            pass
+                        message = f"{username} assigned you a task in {task_comm_name}: {title}" if task_comm_name else f"{username} assigned you a task: {title}"
                         if assignee != username:
                             try:
                                 if 'USE_MYSQL' in globals() and USE_MYSQL:
@@ -14341,7 +14350,7 @@ def api_create_task():
                                 logger.warning(f"task assign notify error to {assignee}: {ne}")
                             try:
                                 send_push_to_user(assignee, {
-                                    'title': 'New task assigned',
+                                    'title': f'{task_comm_name} - New Task' if task_comm_name else 'New task assigned',
                                     'body': title[:100],
                                     'url': link,
                                     'tag': f'task-{community_id}-{assignee}'
@@ -15358,13 +15367,14 @@ def create_poll():
                             pass
                     
                     for member_username in member_usernames:
+                        poll_notif_msg = f'New poll in {community_name_for_push}: {question}' if community_name_for_push else f'New poll: {question}'
                         create_notification(
                             user_id=member_username,
                             from_user=username,
                             notification_type='poll',
                             post_id=post_id,
                             community_id=community_id,
-                            message=f'New poll: {question}'
+                            message=poll_notif_msg
                         )
                         try:
                             send_push_to_user(
@@ -18288,6 +18298,17 @@ def add_calendar_event():
                     # Use selected members
                     invited_users = invited_members
                 
+                # Get community name for notification messages
+                event_comm_name = ""
+                if community_id:
+                    try:
+                        c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
+                        cn_row = c.fetchone()
+                        if cn_row:
+                            event_comm_name = cn_row["name"] if hasattr(cn_row, "keys") else cn_row[0]
+                    except Exception:
+                        pass
+                
                 # Insert invitations and create notifications
                 for invited_user in invited_users:
                     try:
@@ -18296,8 +18317,7 @@ def add_calendar_event():
                             VALUES ({ph}, {ph}, {ph}, {ph})
                         """, (event_id, invited_user, username, datetime.now().isoformat()))
                         
-                        # Create notification for the invited user
-                        notification_message = f"{username} invited you to the event: {title}"
+                        notification_message = f"{username} invited you to an event in {event_comm_name}: {title}" if event_comm_name else f"{username} invited you to the event: {title}"
                         notification_link = f"/event/{event_id}"
                         
                         c.execute(f"""
@@ -18305,10 +18325,9 @@ def add_calendar_event():
                             VALUES ({ph}, {ph}, {ph}, {ph}, 0, {ph}, 'event_invitation', {ph})
                         """, (invited_user, username, notification_message, datetime.now().isoformat(), notification_link, community_id))
                         
-                        # Send push notification to the invited user
                         try:
                             send_push_to_user(invited_user, {
-                                'title': 'Event Invitation',
+                                'title': f'{event_comm_name} - Event Invitation' if event_comm_name else 'Event Invitation',
                                 'body': f'{username} invited you to: {title}',
                                 'url': notification_link,
                                 'tag': f'event-invite-{event_id}-{invited_user}'
