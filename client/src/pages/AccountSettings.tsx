@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { useHeader } from '../contexts/HeaderContext'
 import { useNavigate } from 'react-router-dom'
 
@@ -24,8 +25,46 @@ export default function AccountSettings(){
   // Removed saving state since only email updates are handled here now
   const [message, setMessage] = useState<{type: 'success'|'error', text: string}|null>(null)
   const [showVerifyModal, setShowVerifyModal] = useState(false)
+  const [notifStatus, setNotifStatus] = useState<'granted' | 'denied' | 'default' | 'loading'>('loading')
+
+  const checkNotifPermission = useCallback(async () => {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const { PushNotifications } = await import('@capacitor/push-notifications')
+        const result = await PushNotifications.checkPermissions()
+        setNotifStatus(result.receive === 'granted' ? 'granted' : result.receive === 'denied' ? 'denied' : 'default')
+      } else if ('Notification' in window) {
+        setNotifStatus(Notification.permission as 'granted' | 'denied' | 'default')
+      } else {
+        setNotifStatus('denied')
+      }
+    } catch {
+      setNotifStatus('denied')
+    }
+  }, [])
+
+  const openDeviceSettings = useCallback(async () => {
+    try {
+      if (Capacitor.getPlatform() === 'ios') {
+        const { App: CapApp } = await import('@capacitor/app')
+        // @ts-ignore - openUrl may not be in types but works at runtime
+        if (CapApp.openUrl) await CapApp.openUrl({ url: 'app-settings:' })
+        else window.open('app-settings:', '_system')
+      } else if (Capacitor.getPlatform() === 'android') {
+        const { App: CapApp } = await import('@capacitor/app')
+        // @ts-ignore
+        if (CapApp.openUrl) await CapApp.openUrl({ url: 'android.settings.APP_NOTIFICATION_SETTINGS' })
+        else alert('Please open your device Settings > Apps > C.Point > Notifications to enable them.')
+      } else {
+        alert('Please enable notifications in your browser settings for this site.')
+      }
+    } catch {
+      alert('Please open your device Settings and enable notifications for C.Point.')
+    }
+  }, [])
 
   useEffect(() => { setTitle('Account Settings') }, [setTitle])
+  useEffect(() => { checkNotifPermission() }, [checkNotifPermission])
 
   useEffect(() => {
     loadProfile()
@@ -222,6 +261,48 @@ export default function AccountSettings(){
                 Manage your subscription
               </button>
             </div>
+          </div>
+
+          {/* Notifications */}
+          <div className="glass-section space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold">Notifications</h2>
+              <p className="text-sm text-white/60">Manage push notification settings.</p>
+            </div>
+            {notifStatus === 'loading' ? (
+              <div className="text-sm text-white/40">Checking...</div>
+            ) : notifStatus === 'granted' ? (
+              <div className="flex items-center gap-3 rounded-lg bg-green-500/10 border border-green-500/20 px-4 py-3">
+                <i className="fa-solid fa-bell text-green-400" />
+                <div>
+                  <div className="text-sm font-medium text-green-400">Notifications Enabled</div>
+                  <div className="text-xs text-white/50">You'll receive push notifications for messages, events, and updates.</div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3">
+                  <i className="fa-solid fa-bell-slash text-amber-400" />
+                  <div>
+                    <div className="text-sm font-medium text-amber-400">Notifications Disabled</div>
+                    <div className="text-xs text-white/50">You're missing messages, event reminders, and community updates.</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={openDeviceSettings}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:bg-[#3da398]"
+                >
+                  <i className="fa-solid fa-gear" />
+                  Open Notification Settings
+                </button>
+                <p className="text-xs text-white/40 text-center">
+                  {Capacitor.isNativePlatform()
+                    ? "This will open your device settings where you can enable notifications for C.Point."
+                    : "Please allow notifications when your browser prompts you."}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Danger Zone */}

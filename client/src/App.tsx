@@ -14,6 +14,7 @@ import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
 import { UserProfileContext, type UserProfile } from './contexts/UserProfileContext'
 import PushInit from './components/PushInit'
+import NotificationPrompt from './components/NotificationPrompt'
 // import NativePushInit from './components/NativePushInit' // Disabled - conflicts with PushInit
 import BrandAssetsInit from './components/BrandAssetsInit'
 import { encryptionService } from './services/simpleEncryption'
@@ -757,6 +758,7 @@ export default function App() {
       <BrowserRouter>
         <BrandAssetsInit />
         <PushInit />
+        <NotificationPrompt />
         <AppRoutes />
       </BrowserRouter>
     </QueryClientProvider>

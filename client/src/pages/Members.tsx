@@ -43,6 +43,7 @@ export default function Members(){
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [showQRCode, setShowQRCode] = useState(false)
   const [qrCodeUrl, setQRCodeUrl] = useState('')
+  const [inviteSingleUse, setInviteSingleUse] = useState(false)
   const numericCommunityId = community_id ? Number(community_id) : null
   const [inviteCommunityId, setInviteCommunityId] = useState<number | null>(numericCommunityId)
   const [inviteScope, setInviteScope] = useState<'parent-only' | 'all-nested' | 'selected-nested'>('parent-only')
@@ -284,6 +285,12 @@ export default function Members(){
     }))
     setInviteParentOptions(parentOptions)
     setInviteSelectedParentIds(parentOptions.map(option => option.id))
+
+    // Load invite settings
+    fetch(`/api/community/${numericCommunityId}/invite_settings`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d?.success) setInviteSingleUse(d.invite_single_use) })
+      .catch(() => {})
 
     setShowInviteModal(true)
   }
@@ -700,6 +707,33 @@ export default function Members(){
                   <span className="px-2 bg-[#1a1a1a] text-white/40">OR</span>
                 </div>
               </div>
+
+              {/* Invite Link Settings */}
+              {(currentUserRole === 'admin' || currentUserRole === 'owner' || currentUserRole === 'app_admin') && (
+                <div className="flex items-center justify-between rounded-lg bg-white/5 border border-white/10 px-3 py-2.5">
+                  <div>
+                    <div className="text-sm font-medium">Single-use invite link</div>
+                    <div className="text-[11px] text-white/40">When enabled, each QR/link can only be used once</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const newVal = !inviteSingleUse
+                      setInviteSingleUse(newVal)
+                      try {
+                        await fetch(`/api/community/${inviteCommunityId}/invite_settings`, {
+                          method: 'POST', credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ invite_single_use: newVal })
+                        })
+                      } catch {}
+                    }}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${inviteSingleUse ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${inviteSingleUse ? 'translate-x-5' : ''}`} />
+                  </button>
+                </div>
+              )}
 
               {/* QR Code */}
               <div>
