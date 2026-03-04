@@ -8978,7 +8978,7 @@ def verify_email():
                 except Exception:
                     pass
                 conn.commit()
-            return render_template('verification_result.html', success=True, message='Your email has been verified! You can now sign in.')
+            return render_template('verification_result.html', success=True, message='Your email has been verified successfully.')
         except Exception as e:
             logger.error(f"verify_email finalize error: {e}")
             return render_template('verification_result.html', success=False, message='Server error while finalizing registration')
@@ -9048,7 +9048,7 @@ def verify_email():
                     logger.warning(f"Error auto-joining user to invited communities: {auto_join_err}")
             
             conn.commit()
-        return render_template('verification_result.html', success=True, message='Your email has been verified! You can close this tab.')
+        return render_template('verification_result.html', success=True, message='Your email has been verified successfully.')
     except Exception as e:
         logger.error(f"verify_email error: {e}")
         return render_template('verification_result.html', success=False, message='Server error while verifying email')

@@ -10,32 +10,32 @@
     <style>
         body { margin:0; background:#0b0b0b; color:#fff; font-family: Inter, system-ui, Arial, sans-serif; }
         .wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
-        .card { width:100%; max-width:520px; background:#0f0f0f; border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:24px; }
-        .title { font-size:18px; font-weight:600; margin:0 0 8px; }
-        .msg { color:#cbd5e1; font-size:14px; line-height:1.6; }
-        .ok { margin-top:16px; display:inline-block; padding:10px 14px; background:#4db6ac; color:#111; border:none; border-radius:10px; font-weight:600; cursor:pointer; }
+        .card { width:100%; max-width:520px; background:#0f0f0f; border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:32px; text-align:center; }
+        .icon { font-size:48px; margin-bottom:16px; }
+        .title { font-size:20px; font-weight:600; margin:0 0 12px; }
+        .msg { color:#cbd5e1; font-size:14px; line-height:1.6; margin-bottom:8px; }
+        .hint { color:#9fb0b5; font-size:13px; line-height:1.5; margin-top:16px; padding:12px 16px; background:rgba(77,182,172,0.08); border:1px solid rgba(77,182,172,0.15); border-radius:10px; }
+        .btn { margin-top:20px; display:inline-block; padding:12px 24px; background:#4db6ac; color:#111; border:none; border-radius:10px; font-weight:600; font-size:15px; cursor:pointer; }
         .err { color:#f87171; }
     </style>
-    <script>
-        function closeTab(){ window.close(); }
-        
-        // Auto-redirect to login after successful verification
-        // Don't auto-redirect - let user click the button to go to login
-        // This prevents issues with double page loads
-    </script>
- </head>
+</head>
 <body>
     <div class="wrap">
         <div class="card">
             {% if success %}
-                <div class="title">Email verified ✓</div>
-                <div class="msg">{{ message or 'Your email has been verified successfully.' }}</div>
-                <div style="margin-top:16px; display:flex; gap:12px; flex-wrap:wrap;">
-                    <a href="/login" class="ok" style="text-decoration:none;">Sign In</a>
-                    <button class="ok" style="background:#333; color:#fff;" onclick="closeTab()">Close</button>
+                <div class="icon">✅</div>
+                <div class="title">Email Verified</div>
+                <div class="msg">Your email has been successfully verified.</div>
+                <div class="hint">
+                    Please close this page and return to the <strong>C.Point app</strong> to sign in.
+                </div>
+                <button class="btn" onclick="window.close()">Close This Page</button>
+                <div style="margin-top:12px; color:#6b7280; font-size:11px;">
+                    If this page doesn't close, you can safely close it manually.
                 </div>
             {% else %}
-                <div class="title err">Verification failed</div>
+                <div class="icon">⚠️</div>
+                <div class="title err">Verification Failed</div>
                 <div class="msg">{{ message or 'The verification link is invalid or has expired.' }}</div>
             {% endif %}
         </div>
