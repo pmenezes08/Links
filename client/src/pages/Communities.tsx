@@ -64,16 +64,21 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
   
   const mediaPaths = useMemo((): MediaItem[] => {
     if (!post.media_paths) return []
-    if (Array.isArray(post.media_paths)) return post.media_paths
-    if (typeof post.media_paths === 'string') {
-      try {
-        const parsed = JSON.parse(post.media_paths)
-        return Array.isArray(parsed) ? parsed : []
-      } catch {
-        return []
-      }
+    let raw: unknown[] = []
+    if (Array.isArray(post.media_paths)) {
+      raw = post.media_paths
+    } else if (typeof post.media_paths === 'string') {
+      try { raw = JSON.parse(post.media_paths) } catch { return [] }
+      if (!Array.isArray(raw)) return []
     }
-    return []
+    return raw.map((item: unknown) => {
+      if (typeof item === 'string') {
+        const isVideo = /\.(mp4|mov|webm|m4v)$/i.test(item)
+        return { type: isVideo ? 'video' : 'image', path: item } as MediaItem
+      }
+      if (item && typeof item === 'object' && 'path' in item) return item as MediaItem
+      return null
+    }).filter((x): x is MediaItem => x !== null)
   }, [post.media_paths])
   
   // If no media_paths OR it's empty, fall back to legacy single media
@@ -92,7 +97,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
         <div onClick={(e) => e.stopPropagation()}>
           <video
             className="w-full max-h-[360px] rounded border border-white/10 bg-black"
-            src={normalizeMediaPath(post.video_path)}
+            src={normalizeMediaPath(post.video_path) + '#t=0.1'}
             controls
             playsInline
             preload="metadata"
@@ -136,7 +141,7 @@ function PostMediaCarousel({ post }: { post: { image_path?: string | null; video
       {current?.type === 'video' ? (
         <video
           className="w-full max-h-[360px] rounded border border-white/10 bg-black"
-          src={normalizeMediaPath(current.path)}
+          src={normalizeMediaPath(current.path) + '#t=0.1'}
           controls
           playsInline
           preload="metadata"
@@ -462,7 +467,7 @@ export default function Communities(){
               className={`text-sm font-medium ${activeTab==='management' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
               onClick={()=> setActiveTab('management')}
             >
-              <div className="pt-2 whitespace-nowrap text-center">Communities</div>
+              <div className="pt-2 whitespace-nowrap text-center">Sub-communities</div>
               <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
             <button 

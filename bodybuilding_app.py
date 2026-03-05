@@ -10960,6 +10960,14 @@ def react_to_message():
                          (message_id, username))
             conn.commit()
             
+            # Dual-write reaction to Firestore
+            try:
+                from backend.services.firestore_writes import write_dm_reaction
+                write_dm_reaction(sender=sender, receiver=receiver, message_id=int(message_id),
+                                  reaction=emoji if emoji else None, reaction_by=username if emoji else None)
+            except Exception as fs_err:
+                logger.warning(f"Firestore DM reaction write failed (non-fatal): {fs_err}")
+            
             # Determine who to notify (the other person in the chat)
             if str(sender) == str(username):
                 # User is reacting to their own message - notify the receiver

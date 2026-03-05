@@ -47,7 +47,7 @@ export default function NotificationPrompt() {
   }
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-end justify-center p-4 sm:items-center">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <div
         className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] p-5 text-white shadow-2xl"
