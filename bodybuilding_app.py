@@ -12431,15 +12431,26 @@ def delete_message():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            if not user or user['subscription'] != 'premium':
-                return jsonify({'success': False, 'error': 'Premium subscription required!'})
-            c.execute("DELETE FROM messages WHERE id=? AND (sender=? OR receiver=?)",
+            c.execute("SELECT sender, receiver FROM messages WHERE id=? AND (sender=? OR receiver=?)",
                       (message_id, username, username))
-            if c.rowcount == 0:
+            row = c.fetchone()
+            if not row:
                 return jsonify({'success': False, 'error': 'Message not found or not yours'})
+            sender = row['sender'] if hasattr(row, 'keys') else row[0]
+            receiver = row['receiver'] if hasattr(row, 'keys') else row[1]
+            c.execute("DELETE FROM messages WHERE id=?", (message_id,))
             conn.commit()
+            
+            # Delete from Firestore too
+            try:
+                from backend.services.firestore_writes import _get_client, _dm_conv_id, USE_FIRESTORE_WRITES
+                if USE_FIRESTORE_WRITES:
+                    fs = _get_client()
+                    conv_id = _dm_conv_id(sender, receiver)
+                    fs.collection('dm_conversations').document(conv_id).collection('messages').document(str(message_id)).delete()
+            except Exception as fs_err:
+                logger.warning(f"Firestore DM message delete failed (non-fatal): {fs_err}")
+            
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error deleting message for {username}: {str(e)}")
@@ -21387,6 +21398,55 @@ def ai_steve_reply():
             current_datetime = datetime.utcnow()
             context_parts.append(f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]")
             context_parts.append("\nNote: If the user asks you to respond to or help another user, look through the comments above to find that user's question or message and address it directly.")
+            
+            # Add community inner pages context (links, events, polls)
+            if community_id:
+                try:
+                    # Useful links and documents
+                    c.execute(f"SELECT title, url, description FROM useful_links WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT 10", (community_id,))
+                    links = c.fetchall()
+                    if links:
+                        context_parts.append("\n--- Community Links & Documents ---")
+                        for lnk in links:
+                            title = lnk['title'] if hasattr(lnk, 'keys') else lnk[0]
+                            url = lnk['url'] if hasattr(lnk, 'keys') else lnk[1]
+                            desc = (lnk['description'] if hasattr(lnk, 'keys') else lnk[2]) or ''
+                            context_parts.append(f"- {title}: {url}" + (f" ({desc})" if desc else ""))
+                        context_parts.append("--- End of links ---")
+                except Exception:
+                    pass
+                
+                try:
+                    # Calendar events (upcoming and recent)
+                    c.execute(f"SELECT title, date, start_time, description FROM calendar_events WHERE community_id = {placeholder} ORDER BY date DESC LIMIT 10", (community_id,))
+                    events = c.fetchall()
+                    if events:
+                        context_parts.append("\n--- Community Calendar Events ---")
+                        for evt in events:
+                            title = evt['title'] if hasattr(evt, 'keys') else evt[0]
+                            date = evt['date'] if hasattr(evt, 'keys') else evt[1]
+                            time = evt['start_time'] if hasattr(evt, 'keys') else evt[2]
+                            desc = (evt['description'] if hasattr(evt, 'keys') else evt[3]) or ''
+                            context_parts.append(f"- {title} on {date}" + (f" at {time}" if time else "") + (f": {desc[:100]}" if desc else ""))
+                        context_parts.append("--- End of events ---")
+                except Exception:
+                    pass
+                
+                try:
+                    # Active polls
+                    c.execute(f"SELECT p.question, p.created_at, p.is_active FROM polls p JOIN posts pt ON p.post_id = pt.id WHERE pt.community_id = {placeholder} ORDER BY p.created_at DESC LIMIT 10", (community_id,))
+                    polls = c.fetchall()
+                    if polls:
+                        context_parts.append("\n--- Community Polls ---")
+                        for poll in polls:
+                            question = poll['question'] if hasattr(poll, 'keys') else poll[0]
+                            created = poll['created_at'] if hasattr(poll, 'keys') else poll[1]
+                            active = poll['is_active'] if hasattr(poll, 'keys') else poll[2]
+                            status = "Active" if active else "Archived"
+                            context_parts.append(f"- [{status}] {question} (created {created})")
+                        context_parts.append("--- End of polls ---")
+                except Exception:
+                    pass
             
             context = "\n\n".join(context_parts)
             

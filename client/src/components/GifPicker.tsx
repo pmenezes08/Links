@@ -33,6 +33,8 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [keyLoading, setKeyLoading] = useState(false)
 
+  const [useProxy] = useState(true)
+  
   const envKey = useMemo(() => {
     const raw = (import.meta as any)?.env?.VITE_GIPHY_API_KEY
     return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : null
@@ -67,22 +69,21 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
   }, [query, isOpen])
 
   const loadGifs = useCallback(async (searchTerm: string, signal: AbortSignal) => {
-    if (!apiKey){
-      setError('GIF search requires a valid GIPHY API key. Ask an admin to configure it in the server environment.')
-      return
-    }
     setLoading(true)
     setError(null)
     const endpoint = searchTerm ? 'search' : 'trending'
-    const params = new URLSearchParams({
-      api_key: apiKey,
-      limit: '24',
-      rating: 'pg-13',
-    })
-    if (searchTerm) params.set('q', searchTerm)
 
     try{
-      const res = await fetch(`https://api.giphy.com/v1/gifs/${endpoint}?${params.toString()}`, { signal })
+      let res: Response
+      if (useProxy || !apiKey) {
+        const params = new URLSearchParams({ endpoint, limit: '24', rating: 'pg-13' })
+        if (searchTerm) params.set('q', searchTerm)
+        res = await fetch(`/api/giphy/search?${params.toString()}`, { signal, credentials: 'include' })
+      } else {
+        const params = new URLSearchParams({ api_key: apiKey, limit: '24', rating: 'pg-13' })
+        if (searchTerm) params.set('q', searchTerm)
+        res = await fetch(`https://api.giphy.com/v1/gifs/${endpoint}?${params.toString()}`, { signal })
+      }
       if (!res.ok){
         if (res.status === 403){
           throw new Error('GIPHY API key rejected (HTTP 403)')
@@ -112,7 +113,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     }finally{
       setLoading(false)
     }
-  }, [apiKey])
+  }, [apiKey, useProxy])
 
   useEffect(() => {
     if (!isOpen) return
@@ -123,7 +124,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
 
   useEffect(() => {
     if (!isOpen) return
-    if (apiKey) return
+    if (apiKey || useProxy) { setKeyLoading(false); return }
     let cancelled = false
     setKeyLoading(true)
     setError(null)
