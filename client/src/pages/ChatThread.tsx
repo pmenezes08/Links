@@ -1350,9 +1350,14 @@ export default function ChatThread(){
               const allMessages = Array.from(messagesByKey.values())
               
               return allMessages.sort((a, b) => {
-                const aTs = getMessageTimestamp(a.time) ?? 0
-                const bTs = getMessageTimestamp(b.time) ?? 0
-                return aTs - bTs
+                const aTs = getMessageTimestamp(a.time)
+                const bTs = getMessageTimestamp(b.time)
+                if (aTs !== null && bTs !== null) return aTs - bTs
+                if (aTs !== null) return -1
+                if (bTs !== null) return 1
+                const aId = typeof a.id === 'number' ? a.id : parseInt(String(a.id)) || 0
+                const bId = typeof b.id === 'number' ? b.id : parseInt(String(b.id)) || 0
+                return aId - bId
               })
             })
           }
@@ -2089,9 +2094,14 @@ export default function ChatThread(){
           // Re-add the message in the correct position
           const newMessages = [...prev, messageData]
           return newMessages.sort((a, b) => {
-            const aTs = getMessageTimestamp(a.time) ?? 0
-            const bTs = getMessageTimestamp(b.time) ?? 0
-            return aTs - bTs
+            const aTs = getMessageTimestamp(a.time)
+            const bTs = getMessageTimestamp(b.time)
+            if (aTs !== null && bTs !== null) return aTs - bTs
+            if (aTs !== null) return -1
+            if (bTs !== null) return 1
+            const aId = typeof a.id === 'number' ? a.id : parseInt(String(a.id)) || 0
+            const bId = typeof b.id === 'number' ? b.id : parseInt(String(b.id)) || 0
+            return aId - bId
           })
         })
         

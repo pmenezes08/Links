@@ -42,6 +42,12 @@ export default function LongPressActionable({
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({})
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const menuOpenTimeRef = useRef(0)
+
+  const safeAction = (fn: () => void) => {
+    if (Date.now() - menuOpenTimeRef.current < 300) return
+    fn()
+  }
   
   // Calculate menu position when showing - uses fixed positioning for reliability
   const calculateMenuStyle = useCallback((): React.CSSProperties => {
@@ -113,9 +119,10 @@ export default function LongPressActionable({
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
       setMenuStyle(calculateMenuStyle())
+      menuOpenTimeRef.current = Date.now()
       setShowMenu(true)
       setIsPressed(false)
-    }, 500) // 500ms for better UX
+    }, 500)
   }
   
   function handleEnd() {
@@ -129,6 +136,7 @@ export default function LongPressActionable({
     if (disabled) return
     e.preventDefault()
     setMenuStyle(calculateMenuStyle())
+    menuOpenTimeRef.current = Date.now()
     setShowMenu(true)
   }
   
@@ -166,15 +174,14 @@ export default function LongPressActionable({
                 <button 
                   key={e} 
                   className="text-lg hover:scale-110 transition-transform" 
-                  onClick={() => { setShowMenu(false); setShowEmojiPicker(false); onReact(e) }}
+                  onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onReact(e) })}
                 >
                   {e}
                 </button>
               ))}
-              {/* More emoji button */}
               <button 
                 className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-full transition-colors"
-                onClick={() => setShowEmojiPicker(true)}
+                onClick={() => safeAction(() => setShowEmojiPicker(true))}
                 title="More reactions"
               >
                 <i className="fa-solid fa-plus text-xs" />
@@ -183,14 +190,14 @@ export default function LongPressActionable({
             <div className="pt-2 flex flex-col">
               <button 
                 className="text-left px-2 py-1 text-sm hover:bg-white/5 rounded" 
-                onClick={() => { setShowMenu(false); setShowEmojiPicker(false); onReply() }}
+                onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onReply() })}
               >
                 <i className="fa-solid fa-reply mr-2 text-xs opacity-60" />
                 Reply
               </button>
               <button 
                 className="text-left px-2 py-1 text-sm hover:bg-white/5 rounded" 
-                onClick={() => { setShowMenu(false); setShowEmojiPicker(false); onCopy() }}
+                onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onCopy() })}
               >
                 <i className="fa-regular fa-copy mr-2 text-xs opacity-60" />
                 Copy
@@ -198,7 +205,7 @@ export default function LongPressActionable({
               {onEdit && (
                 <button 
                   className="text-left px-2 py-1 text-sm hover:bg-white/5 rounded" 
-                  onClick={() => { setShowMenu(false); setShowEmojiPicker(false); onEdit() }}
+                  onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onEdit() })}
                 >
                   <i className="fa-regular fa-pen-to-square mr-2 text-xs opacity-60" />
                   Edit
@@ -207,7 +214,7 @@ export default function LongPressActionable({
               {onSelect && (
                 <button 
                   className="text-left px-2 py-1 text-sm hover:bg-white/5 rounded" 
-                  onClick={() => { setShowMenu(false); setShowEmojiPicker(false); onSelect() }}
+                  onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onSelect() })}
                 >
                   <i className="fa-regular fa-square-check mr-2 text-xs opacity-60" />
                   Select
@@ -215,7 +222,7 @@ export default function LongPressActionable({
               )}
               <button 
                 className="text-left px-2 py-1 text-sm text-red-400 hover:bg-white/5 rounded" 
-                onClick={() => { setShowMenu(false); setShowEmojiPicker(false); onDelete() }}
+                onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onDelete() })}
               >
                 <i className="fa-regular fa-trash-can mr-2 text-xs" />
                 Delete

@@ -350,10 +350,10 @@ function MessageBubbleInner({
               className="w-[65vw] max-w-[320px]"
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
             >
               <textarea
                 className="w-full bg-black/30 border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#4db6ac] resize-none"
+                style={{ userSelect: 'text', WebkitUserSelect: 'text', touchAction: 'manipulation' } as React.CSSProperties}
                 value={editText}
                 onChange={(e) => onEditTextChange(e.target.value)}
                 rows={2}
