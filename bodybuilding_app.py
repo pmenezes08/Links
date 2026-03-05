@@ -12953,8 +12953,7 @@ def reset_password(token):
                 c.execute(f"UPDATE password_reset_tokens SET used = 1 WHERE token = {ph}", (token,))
                 conn.commit()
                 
-                flash('Your password has been successfully reset. You can now log in with your new password.', 'success')
-                return redirect(url_for('public.index'))
+                return render_template('verification_result.html', success=True, message='Your password has been reset successfully.')
                 
         except Exception as e:
             logger.error(f"Error resetting password: {e}")

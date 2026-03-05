@@ -1422,7 +1422,15 @@ export default function ChatThread(){
 
   async function send(){
     const messageText = draft.trim()
-    if (!otherUserId || !messageText || sendingLockRef.current) return
+    if (!messageText || sendingLockRef.current) return
+    let resolvedUserId = otherUserId
+    if (!resolvedUserId) {
+      try {
+        const r = await fetch('/api/get_user_id_by_username', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ username: username || '' }) })
+        const j = await r.json()
+        if (j?.success && j.user_id) { resolvedUserId = j.user_id; setOtherUserId(j.user_id) } else return
+      } catch { return }
+    }
     
     const replySnapshot = replyTo
     setDraft('')
@@ -1516,7 +1524,7 @@ export default function ChatThread(){
       }
       
       // Send to server
-      const fd = new URLSearchParams({ recipient_id: String(otherUserId) })
+      const fd = new URLSearchParams({ recipient_id: String(resolvedUserId || otherUserId) })
       
       if (isEncrypted) {
         fd.append('message', '') // NO plaintext stored!
@@ -3020,9 +3028,10 @@ export default function ChatThread(){
                   focusTextarea()
                 }}
                 onTouchEnd={(e) => {
-                  // iOS: ensure the first tap always focuses and opens keyboard
-                  e.preventDefault()
-                  focusTextarea()
+                  if (Capacitor.getPlatform() === 'ios') {
+                    e.preventDefault()
+                    focusTextarea()
+                  }
                 }}
                 onChange={e=> {
                   setDraft(e.target.value)
