@@ -1352,17 +1352,16 @@ export default function ChatThread(){
               const allMessages = Array.from(messagesByKey.values())
               
               return allMessages.sort((a, b) => {
-                const aTs = getMessageTimestamp(a.time)
-                const bTs = getMessageTimestamp(b.time)
-                if (aTs !== null && bTs !== null) {
-                  const diff = aTs - bTs
-                  if (diff !== 0) return diff
-                }
-                if (aTs !== null && bTs === null) return -1
-                if (aTs === null && bTs !== null) return 1
                 const aId = typeof a.id === 'number' ? a.id : parseInt(String(a.id)) || 0
                 const bId = typeof b.id === 'number' ? b.id : parseInt(String(b.id)) || 0
-                return aId - bId
+                const aIsServer = aId > 0
+                const bIsServer = bId > 0
+                if (aIsServer && bIsServer) return aId - bId
+                if (aIsServer && !bIsServer) return -1
+                if (!aIsServer && bIsServer) return 1
+                const aTs = getMessageTimestamp(a.time) ?? Date.now()
+                const bTs = getMessageTimestamp(b.time) ?? Date.now()
+                return aTs - bTs
               })
             })
           }
@@ -1658,19 +1657,25 @@ export default function ChatThread(){
   }
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file || !otherUserId) return
-    handleImageFile(file, 'photo', () => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+    const cleanup = () => {
       if (fileInputRef.current) fileInputRef.current.value = ''
       if (cameraInputRef.current) cameraInputRef.current.value = ''
+    }
+    Array.from(files).forEach((file, i) => {
+      setTimeout(() => handleImageFile(file, 'photo', i === 0 ? cleanup : undefined), i * 200)
     })
   }
 
   function handleVideoFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    if (!file || !otherUserId) return
-    handleVideoFile(file, () => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+    const cleanup = () => {
       if (videoInputRef.current) videoInputRef.current.value = ''
+    }
+    Array.from(files).forEach((file, i) => {
+      setTimeout(() => handleVideoFile(file, i === 0 ? cleanup : undefined), i * 200)
     })
   }
 
@@ -2107,14 +2112,12 @@ export default function ChatThread(){
           // Re-add the message in the correct position
           const newMessages = [...prev, messageData]
           return newMessages.sort((a, b) => {
-            const aTs = getMessageTimestamp(a.time)
-            const bTs = getMessageTimestamp(b.time)
-            if (aTs !== null && bTs !== null) return aTs - bTs
-            if (aTs !== null) return -1
-            if (bTs !== null) return 1
             const aId = typeof a.id === 'number' ? a.id : parseInt(String(a.id)) || 0
             const bId = typeof b.id === 'number' ? b.id : parseInt(String(b.id)) || 0
-            return aId - bId
+            if (aId > 0 && bId > 0) return aId - bId
+            if (aId > 0) return -1
+            if (bId > 0) return 1
+            return (getMessageTimestamp(a.time) ?? Date.now()) - (getMessageTimestamp(b.time) ?? Date.now())
           })
         })
         
@@ -2144,14 +2147,12 @@ export default function ChatThread(){
         }
         const newMessages = [...prev, messageData]
         return newMessages.sort((a, b) => {
-          const aTs = getMessageTimestamp(a.time)
-          const bTs = getMessageTimestamp(b.time)
-          if (aTs !== null && bTs !== null) { const d = aTs - bTs; if (d !== 0) return d }
-          if (aTs !== null && bTs === null) return -1
-          if (aTs === null && bTs !== null) return 1
           const aId = typeof a.id === 'number' ? a.id : parseInt(String(a.id)) || 0
           const bId = typeof b.id === 'number' ? b.id : parseInt(String(b.id)) || 0
-          return aId - bId
+          if (aId > 0 && bId > 0) return aId - bId
+          if (aId > 0) return -1
+          if (bId > 0) return 1
+          return (getMessageTimestamp(a.time) ?? Date.now()) - (getMessageTimestamp(b.time) ?? Date.now())
         })
       })
       
@@ -2895,6 +2896,7 @@ export default function ChatThread(){
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             onChange={handleFileChange}
             className="hidden"
           />
@@ -2918,6 +2920,7 @@ export default function ChatThread(){
             ref={videoInputRef}
             type="file"
             accept="video/mp4,video/webm,video/quicktime,video/x-m4v,video/x-msvideo"
+            multiple
             onChange={handleVideoFileChange}
             className="hidden"
           />

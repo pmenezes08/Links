@@ -97,9 +97,9 @@ export function normalizeTimestamp(raw?: string): string | undefined {
 
   const hasOffset = /([+-]\d{2}:\d{2}|Z)$/i.test(trimmed)
   if (trimmed.includes('T')) {
-    return hasOffset ? trimmed : trimmed
+    return hasOffset ? trimmed : `${trimmed}Z`
   }
-  return trimmed.replace(' ', 'T')
+  return `${trimmed.replace(' ', 'T')}Z`
 }
 
 /**
