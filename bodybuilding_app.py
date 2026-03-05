@@ -10466,6 +10466,15 @@ def get_messages():
                         reaction_by_val = msg.get('reaction_by')
                     # For tuple results, reactions are at the end of the query
                 
+                # Format timestamp as UTC with Z suffix
+                raw_time = msg['timestamp']
+                if raw_time and isinstance(raw_time, str) and not raw_time.endswith('Z') and '+' not in raw_time[-6:]:
+                    utc_time = raw_time.replace(' ', 'T')
+                    if not utc_time.endswith('Z'):
+                        utc_time += 'Z'
+                else:
+                    utc_time = str(raw_time) if raw_time else None
+                
                 msg_dict = {
                     'id': msg['id'],
                     'text': msg['message'],
@@ -10476,7 +10485,7 @@ def get_messages():
                     'audio_mime': audio_mime_val,
                     'audio_summary': audio_summary_val,
                     'sent': msg['sender'] == username,
-                    'time': msg['timestamp'],
+                    'time': utc_time,
                     'edited_at': edited_at_val,
                     'reaction': reaction_val,
                     'reaction_by': reaction_by_val,

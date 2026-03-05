@@ -124,14 +124,38 @@ export function normalizeMediaPath(path?: string | null): string {
 }
 
 /**
- * Parse message timestamp to Date object
+ * True if the string has explicit timezone (Z or +/-HH:MM or RFC1123 GMT/UTC).
+ * Naive strings like "2025-03-05 14:30:00" must be normalized to UTC before parsing
+ * because on Android new Date(naive) is interpreted as local time, causing received
+ * messages to show sender/server timezone instead of recipient's.
+ */
+function hasExplicitTimezone(s: string): boolean {
+  if (/[+-]\d{2}:?\d{2}$|Z$/i.test(s)) return true
+  if (s.includes(',') && /\b(GMT|UTC)\b/i.test(s)) return true
+  return false
+}
+
+/**
+ * Parse message timestamp to Date object.
+ * Naive datetimes (no Z or offset) are always treated as UTC so that display
+ * uses the device's local timezone consistently on all platforms (fixes Android).
  */
 export function parseMessageTime(raw?: string): Date | null {
   if (!raw) return null
   const trimmed = raw.trim()
   if (!trimmed) return null
 
-  // First try direct parsing (supports RFC1123 / "Tue, 16 Dec 2025 09:32:13 GMT")
+  // For naive "YYYY-MM-DD HH:MM:SS" / "YYYY-MM-DDTHH:MM:SS": do NOT direct-parse.
+  // Android parses these as local time, so recipients see sender's time. Treat as UTC.
+  if (!hasExplicitTimezone(trimmed)) {
+    const normalized = normalizeTimestamp(trimmed)
+    if (normalized) {
+      const parsed = new Date(normalized)
+      if (!isNaN(parsed.getTime())) return parsed
+    }
+  }
+
+  // Explicit timezone (Z, +/-offset, or RFC1123 GMT): parse directly
   const direct = new Date(trimmed)
   if (!isNaN(direct.getTime())) return direct
 

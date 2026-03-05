@@ -30,12 +30,15 @@ def _get_client():
 
 
 def _ts_to_str(val):
-    """Convert Firestore timestamp to ISO string."""
+    """Convert Firestore timestamp to ISO 8601 UTC string with Z suffix."""
     if val is None:
         return None
     if isinstance(val, datetime):
-        return val.strftime('%Y-%m-%d %H:%M:%S')
-    return str(val)
+        return val.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+    s = str(val)
+    if s and not s.endswith('Z') and '+' not in s[-6:] and '-' not in s[-6:]:
+        return s.replace(' ', 'T') + 'Z'
+    return s
 
 
 def _find_dm_conv_id(fs, username: str, peer: str):
