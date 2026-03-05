@@ -503,10 +503,12 @@ export default function ChatThread(){
       requestAnimationFrame(scrollToBottom)
     }
   
-    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
+    const showEvent = Capacitor.getPlatform() === 'android' ? 'keyboardDidShow' : 'keyboardWillShow'
+    const hideEvent = Capacitor.getPlatform() === 'android' ? 'keyboardDidHide' : 'keyboardWillHide'
+    Keyboard.addListener(showEvent as 'keyboardWillShow', handleShow).then(handle => {
       showSub = handle
     })
-    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
+    Keyboard.addListener(hideEvent as 'keyboardWillHide', handleHide).then(handle => {
       hideSub = handle
     })
   
@@ -1352,9 +1354,12 @@ export default function ChatThread(){
               return allMessages.sort((a, b) => {
                 const aTs = getMessageTimestamp(a.time)
                 const bTs = getMessageTimestamp(b.time)
-                if (aTs !== null && bTs !== null) return aTs - bTs
-                if (aTs !== null) return -1
-                if (bTs !== null) return 1
+                if (aTs !== null && bTs !== null) {
+                  const diff = aTs - bTs
+                  if (diff !== 0) return diff
+                }
+                if (aTs !== null && bTs === null) return -1
+                if (aTs === null && bTs !== null) return 1
                 const aId = typeof a.id === 'number' ? a.id : parseInt(String(a.id)) || 0
                 const bId = typeof b.id === 'number' ? b.id : parseInt(String(b.id)) || 0
                 return aId - bId
@@ -2131,9 +2136,14 @@ export default function ChatThread(){
         }
         const newMessages = [...prev, messageData]
         return newMessages.sort((a, b) => {
-          const aTs = getMessageTimestamp(a.time) ?? 0
-          const bTs = getMessageTimestamp(b.time) ?? 0
-          return aTs - bTs
+          const aTs = getMessageTimestamp(a.time)
+          const bTs = getMessageTimestamp(b.time)
+          if (aTs !== null && bTs !== null) { const d = aTs - bTs; if (d !== 0) return d }
+          if (aTs !== null && bTs === null) return -1
+          if (aTs === null && bTs !== null) return 1
+          const aId = typeof a.id === 'number' ? a.id : parseInt(String(a.id)) || 0
+          const bId = typeof b.id === 'number' ? b.id : parseInt(String(b.id)) || 0
+          return aId - bId
         })
       })
       
@@ -2360,6 +2370,16 @@ export default function ChatThread(){
                   <i className="fa-solid fa-user text-xs text-[#4db6ac]" />
                   <span>View Profile</span>
                 </Link>
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
+                  onClick={() => {
+                    setHeaderMenuOpen(false)
+                    navigate(`/chat/${username}/media`)
+                  }}
+                >
+                  <i className="fa-solid fa-photo-film text-xs text-[#4db6ac]" />
+                  <span>View Media</span>
+                </button>
                 <button
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10 transition-colors"
                   onClick={() => {

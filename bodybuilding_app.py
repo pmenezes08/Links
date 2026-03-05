@@ -1646,12 +1646,9 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
     # Invalidate user's caches so they see the new community immediately
     _invalidate_user_community_caches(cursor, user_id, username)
     
-    # Create Steve's welcome post for new regular members
-    # Skip for: owners, admins, migrations, system setup
-    logger.info(f"[ADD_USER] Checking welcome post: skip={skip_welcome_post}, role={role}, username={username}")
-    if not skip_welcome_post and role not in ['owner', 'admin']:
+    # Steve welcome posts disabled - community admins prefer to manage welcome messaging themselves
+    if False and not skip_welcome_post and role not in ['owner', 'admin']:
         try:
-            # Get username if not provided
             member_username = username
             if not member_username:
                 ph = get_sql_placeholder()
@@ -1659,12 +1656,8 @@ def add_user_to_community(cursor, user_id: int, community_id: int, role: Optiona
                 row = cursor.fetchone()
                 if row:
                     member_username = row['username'] if hasattr(row, 'keys') else row[0]
-            
-            logger.info(f"[ADD_USER] Creating welcome post for member_username={member_username}")
             if member_username:
                 create_steve_welcome_post(cursor, community_id, member_username)
-            else:
-                logger.warning(f"[ADD_USER] Could not determine username for user_id={user_id}")
         except Exception as welcome_err:
             # Never fail the main operation due to welcome post issues
             logger.error(f"[ADD_USER] Failed to create Steve welcome post: {welcome_err}", exc_info=True)
@@ -10190,6 +10183,45 @@ def delete_chat():
     except Exception as e:
         logger.error(f"Error deleting chat for {username}: {str(e)}")
         abort(500)
+@app.route('/api/chat/media', methods=['GET'])
+@login_required
+def get_chat_media():
+    """Get all media (images/videos) from a DM conversation."""
+    username = session.get('username')
+    peer = request.args.get('peer', '').strip()
+    if not peer:
+        return jsonify({'success': False, 'error': 'peer required'}), 400
+    try:
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"""
+                SELECT id, sender, image_path, video_path, timestamp
+                FROM messages
+                WHERE ((sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph}))
+                  AND (image_path IS NOT NULL AND image_path != '' OR video_path IS NOT NULL AND video_path != '')
+                ORDER BY timestamp DESC
+            """, (username, peer, peer, username))
+            media = []
+            mid = 0
+            for row in c.fetchall():
+                msg_id = row['id'] if hasattr(row, 'keys') else row[0]
+                sender = row['sender'] if hasattr(row, 'keys') else row[1]
+                img = row['image_path'] if hasattr(row, 'keys') else row[2]
+                vid = row['video_path'] if hasattr(row, 'keys') else row[3]
+                ts = row['timestamp'] if hasattr(row, 'keys') else row[4]
+                if img:
+                    mid += 1
+                    media.append({'id': mid, 'message_id': msg_id, 'sender': sender, 'url': img, 'type': 'image', 'created_at': ts})
+                if vid:
+                    mid += 1
+                    media.append({'id': mid, 'message_id': msg_id, 'sender': sender, 'url': vid, 'type': 'video', 'created_at': ts})
+            return jsonify({'success': True, 'media': media})
+    except Exception as e:
+        logger.error(f"Error getting chat media: {e}")
+        return jsonify({'success': False, 'error': 'Failed to load media'}), 500
+
+
 @app.route('/get_messages', methods=['POST'])
 @login_required
 def get_messages():

@@ -521,9 +521,9 @@ export default function Members(){
 
       {/* Invite Modal */}
         {showInviteModal && !showQRCode && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#1a1a1a] shadow-xl shadow-black/40" style={{ maxHeight: 'calc(100vh - 32px)' }}>
-              <div className="overflow-y-auto px-6 py-5" style={{ maxHeight: 'calc(100vh - 40px)' }}>
+          <div className="fixed z-50" style={{ top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
+            <div style={{ width: '100%', maxWidth: 448, maxHeight: 'calc(100vh - 32px)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: '#1a1a1a', boxShadow: '0 20px 60px rgba(0,0,0,0.4)', overflow: 'hidden' }}>
+              <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 40px)', padding: '20px 24px' }}>
             <h2 className="text-lg font-semibold mb-2">Invite to {communityName || 'Community'}</h2>
             <p className="text-sm text-white/60 mb-4">Choose how you want to invite members</p>
 

@@ -14,8 +14,8 @@ export default function NotificationPrompt() {
         if (Capacitor.isNativePlatform()) {
           const { PushNotifications } = await import('@capacitor/push-notifications')
           const result = await PushNotifications.checkPermissions()
-          if (result.receive === 'denied') setShow(true)
-        } else if ('Notification' in window && Notification.permission === 'denied') {
+          if (result.receive !== 'granted') setShow(true)
+        } else if ('Notification' in window && Notification.permission !== 'granted') {
           setShow(true)
         }
       } catch {}

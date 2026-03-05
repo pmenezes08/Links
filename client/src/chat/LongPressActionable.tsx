@@ -147,7 +147,7 @@ export default function LongPressActionable({
       style={{ 
         userSelect: disabled ? 'text' : 'none', 
         WebkitUserSelect: disabled ? 'text' : 'none', 
-        WebkitTouchCallout: 'none' as never 
+        WebkitTouchCallout: disabled ? 'default' as never : 'none' as never,
       }}
     >
       <div

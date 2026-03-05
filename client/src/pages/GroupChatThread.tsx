@@ -412,10 +412,12 @@ export default function GroupChatThread() {
       requestAnimationFrame(scrollToBottom)
     }
 
-    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
+    const showEvent = Capacitor.getPlatform() === 'android' ? 'keyboardDidShow' : 'keyboardWillShow'
+    const hideEvent = Capacitor.getPlatform() === 'android' ? 'keyboardDidHide' : 'keyboardWillHide'
+    Keyboard.addListener(showEvent as 'keyboardWillShow', handleShow).then(handle => {
       showSub = handle
     })
-    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
+    Keyboard.addListener(hideEvent as 'keyboardWillHide', handleHide).then(handle => {
       hideSub = handle
     })
 
