@@ -452,18 +452,44 @@ app.config['SESSION_COOKIE_NAME'] = 'cpoint_session'  # Changed to avoid conflic
 app.config['PREFERRED_URL_SCHEME'] = 'https'
 
 
+@app.route('/api/giphy/search', methods=['GET'])
+def api_giphy_search():
+    """Server-side Giphy proxy - keeps API key server-only."""
+    import requests as _requests
+    key = os.environ.get('GIPHY_API_KEY') or os.environ.get('VITE_GIPHY_API_KEY')
+    if not key:
+        return jsonify({'success': False, 'error': 'Giphy not configured'}), 503
+    q = request.args.get('q', '').strip()
+    endpoint = request.args.get('endpoint', 'search')
+    limit = min(int(request.args.get('limit', '20')), 50)
+    offset = int(request.args.get('offset', '0'))
+    rating = request.args.get('rating', 'pg-13')
+    try:
+        if endpoint == 'trending':
+            url = f'https://api.giphy.com/v1/gifs/trending?api_key={key}&limit={limit}&offset={offset}&rating={rating}'
+        else:
+            if not q:
+                return jsonify({'data': []})
+            url = f'https://api.giphy.com/v1/gifs/search?api_key={key}&q={q}&limit={limit}&offset={offset}&rating={rating}'
+        resp = _requests.get(url, timeout=10)
+        return jsonify(resp.json())
+    except Exception as e:
+        logger.error(f"Giphy proxy error: {e}")
+        return jsonify({'data': [], 'error': 'Giphy request failed'}), 502
+
 @app.route('/api/config/giphy_key', methods=['GET'])
 def api_config_giphy_key():
-    """Expose the Giphy API key for the frontend if available."""
-    key = os.environ.get('GIPHY_API_KEY') or os.environ.get('VITE_GIPHY_API_KEY')
-    if key:
-        return jsonify({'success': True, 'key': key})
-    return jsonify({'success': False, 'key': None})
+    """Deprecated - use /api/giphy/search proxy instead. Returns empty to not expose key."""
+    return jsonify({'success': False, 'key': None, 'use_proxy': True})
 
 # Email (Resend)
 RESEND_API_KEY = os.getenv('RESEND_API_KEY')
 EMAIL_FROM = os.getenv('EMAIL_FROM', 'C-Point <no-reply@c-point.co>')
-VERIFICATION_TOKEN_SECRET = os.getenv('VERIFICATION_TOKEN_SECRET', app.secret_key or 'change-me')
+VERIFICATION_TOKEN_SECRET = os.getenv('VERIFICATION_TOKEN_SECRET') or app.secret_key
+if not VERIFICATION_TOKEN_SECRET or VERIFICATION_TOKEN_SECRET == 'change-me':
+    if os.environ.get('FLASK_ENV') == 'production' or os.environ.get('K_SERVICE'):
+        logger.critical("VERIFICATION_TOKEN_SECRET is not set in production!")
+    VERIFICATION_TOKEN_SECRET = app.secret_key or 'dev-fallback-secret'
 VERIFICATION_TOKEN_SALT = 'email-verify'
 VERIFICATION_TOKEN_MAX_AGE = int(os.getenv('VERIFICATION_TOKEN_MAX_AGE', '86400'))  # 24h default
 PENDING_SIGNUP_TOKEN_SALT = 'pending-signup'
@@ -5276,65 +5302,23 @@ def api_clear_stale_session():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/debug/login_test', methods=['POST'])
+@login_required
 def api_debug_login_test():
-    """
-    Debug endpoint to test login credentials without creating a session.
-    For diagnosing iOS login issues.
-    
-    POST body: {"username": "...", "password": "..."}
-    """
+    """Restricted debug endpoint - admin only, no password details exposed."""
+    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    data = request.get_json() or {}
+    username = data.get('username', '').strip()
+    if not username:
+        return jsonify({'success': False, 'error': 'Username required'})
     try:
-        data = request.get_json() or {}
-        username = data.get('username', '').strip()
-        password = data.get('password', '')
-        
-        if not username or not password:
-            return jsonify({'success': False, 'error': 'Username and password required'})
-        
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT password FROM users WHERE username=?", (username,))
+            c.execute("SELECT username FROM users WHERE username=?", (username,))
             row = c.fetchone()
-            
-            if not row:
-                return jsonify({
-                    'success': False, 
-                    'error': 'User not found',
-                    'debug': {
-                        'username_searched': username,
-                        'username_length': len(username),
-                        'username_repr': repr(username),
-                    }
-                })
-            
-            stored_password = row['password'] if hasattr(row, 'keys') else row[0]
-            
-            # Determine password type
-            password_type = 'unknown'
-            if stored_password is None:
-                password_type = 'null'
-                password_correct = False
-            elif stored_password.startswith('$') or stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
-                password_type = 'hashed'
-                password_correct = check_password_hash(stored_password, password)
-            else:
-                password_type = 'plain'
-                password_correct = stored_password == password
-            
-            return jsonify({
-                'success': True,
-                'password_correct': password_correct,
-                'debug': {
-                    'username': username,
-                    'password_type': password_type,
-                    'stored_password_preview': stored_password[:20] + '...' if stored_password and len(stored_password) > 20 else stored_password,
-                    'input_password_length': len(password),
-                    'user_agent': request.headers.get('User-Agent', 'unknown'),
-                }
-            })
+            return jsonify({'success': True, 'user_exists': row is not None})
     except Exception as e:
-        logger.error(f"Debug login test error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 # React hashed assets are served by web server static mapping (/assets -> client/dist/assets)
 @app.route('/api/community_group_feed/<int:parent_id>')
 @login_required
@@ -6322,10 +6306,25 @@ def delete_weight():
         return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
 # Admin helper functions
 def is_app_admin(username):
-    """Check if a user is an app admin"""
+    """Check if a user is an app admin (by role column or legacy username check)."""
     try:
-        # Only the 'admin' account is treated as app admin
-        return bool(username) and username.lower() == 'admin'
+        if not username:
+            return False
+        # Legacy: treat 'admin' username as admin
+        if username.lower() == 'admin':
+            return True
+        # Check role column if it exists
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                c.execute("SELECT is_admin FROM users WHERE username = ?", (username,))
+                row = c.fetchone()
+                if row:
+                    val = row['is_admin'] if hasattr(row, 'keys') else row[0]
+                    return bool(val)
+            except Exception:
+                pass
+        return False
     except Exception:
         return False
 
@@ -6654,6 +6653,8 @@ def test_endpoint():
 @app.route('/clear_sessions')
 def clear_sessions():
     """Clear all old session cookies"""
+    if os.environ.get('FLASK_ENV') != 'development' and not os.environ.get('DEBUG'):
+        abort(404)
     from flask import make_response
     resp = make_response("""
     <html>
@@ -6676,11 +6677,15 @@ def clear_sessions():
 @app.route('/test_login')
 def test_login_page():
     """Serve the test login page"""
+    if os.environ.get('FLASK_ENV') != 'development' and not os.environ.get('DEBUG'):
+        abort(404)
     return render_template('test_login.html')
 
 @app.route('/test_form', methods=['GET', 'POST'])
 def test_form():
     """Test form to debug POST requests"""
+    if os.environ.get('FLASK_ENV') != 'development' and not os.environ.get('DEBUG'):
+        abort(404)
     logger.info(f"Test form accessed: Method={request.method}")
     
     if request.method == 'POST':
@@ -7955,6 +7960,20 @@ def api_public_profile(username):
                 },
                 'professional': None
             }
+
+            # Restrict personal fields for non-public profiles
+            viewer = session.get('username')
+            if not profile['is_public'] and viewer != actual_username:
+                profile['personal'] = {
+                    'display_name': profile['personal']['display_name'],
+                    'first_name': None,
+                    'last_name': None,
+                    'gender': None,
+                    'country': None,
+                    'city': None,
+                    'date_of_birth': None,
+                    'age': None,
+                }
 
             # Include professional info if it's allowed to be public or scoped to a community, which public profile can render broadly
             if urow:
@@ -24344,6 +24363,9 @@ def serve_uploads(filename):
         normalized = filename
         if normalized.startswith('uploads/'):
             normalized = normalized.split('uploads/', 1)[1]
+        # Path traversal protection
+        if '..' in filename or filename.startswith('/'):
+            abort(404)
         basename = os.path.basename(normalized)
 
         candidates = [
