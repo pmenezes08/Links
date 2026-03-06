@@ -453,7 +453,7 @@ export default function MobileLogin() {
               <div className="flex-1 h-px bg-white/10" />
             </div>
 
-            {Capacitor.isNativePlatform() && (
+            {(
               <button
                 type="button"
                 disabled={googleLoading || isSubmitting}
