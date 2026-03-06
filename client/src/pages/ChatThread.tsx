@@ -775,7 +775,12 @@ export default function ChatThread(){
       .then(async (msgResponse) => {
         if (msgResponse?.success && Array.isArray(msgResponse.messages)) {
           const processedMessages = await processRawMessages(msgResponse.messages)
-          setMessages(processedMessages)
+          setMessages(prev => {
+            const serverIds = new Set(processedMessages.map(m => String(m.id)))
+            const keptOptimistic = prev.filter(m => m.isOptimistic && !serverIds.has(String(m.id)))
+            if (keptOptimistic.length === 0) return processedMessages
+            return [...processedMessages, ...keptOptimistic]
+          })
           setHasMoreMessages(!!msgResponse.has_more)
           lastFetchTime.current = Date.now()
           

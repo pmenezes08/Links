@@ -355,6 +355,16 @@ def signup():
                     user_row = c.fetchone()
                     user_id = user_row["id"] if hasattr(user_row, "keys") else user_row[0]
 
+                    # Set display name from first/last name
+                    display_name = f"{first_name} {last_name}".strip() or username
+                    try:
+                        c.execute("INSERT INTO user_profiles (username, display_name) VALUES (?, ?)", (username, display_name))
+                    except Exception:
+                        try:
+                            c.execute("UPDATE user_profiles SET display_name = ? WHERE username = ? AND (display_name IS NULL OR display_name = '')", (display_name, username))
+                        except Exception:
+                            pass
+
                     communities_to_join: List[int] = []
                     seen: Set[int] = set()
 
@@ -785,3 +795,161 @@ def login_back():
 def test_login_page():
     """Serve the static login test page."""
     return render_template("test_login.html")
+
+
+# --- Google Sign-In ---
+
+GOOGLE_CLIENT_ID_IOS = os.environ.get('GOOGLE_CLIENT_ID_IOS', '')
+GOOGLE_CLIENT_ID_ANDROID = os.environ.get('GOOGLE_CLIENT_ID_ANDROID', '')
+
+
+def _verify_google_id_token(id_token: str, platform: str = 'ios') -> dict | None:
+    """Verify a Google ID token and return the payload (sub, email, name, etc.)."""
+    try:
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport import requests as google_requests
+        client_id = GOOGLE_CLIENT_ID_ANDROID if platform == 'android' else GOOGLE_CLIENT_ID_IOS
+        if not client_id:
+            return None
+        payload = google_id_token.verify_oauth2_token(
+            id_token, google_requests.Request(), client_id
+        )
+        if payload.get('iss') not in ('accounts.google.com', 'https://accounts.google.com'):
+            return None
+        return payload
+    except Exception as e:
+        current_app.logger.warning(f"Google ID token verification failed: {e}")
+        return None
+
+
+def _ensure_google_id_column(cursor):
+    """Add google_id column to users table if missing."""
+    try:
+        cursor.execute("SELECT google_id FROM users LIMIT 1")
+    except Exception:
+        try:
+            from backend.services.database import USE_MYSQL
+            if USE_MYSQL:
+                cursor.execute("ALTER TABLE users ADD COLUMN google_id VARCHAR(191) UNIQUE DEFAULT NULL")
+            else:
+                cursor.execute("ALTER TABLE users ADD COLUMN google_id TEXT UNIQUE DEFAULT NULL")
+        except Exception:
+            pass
+
+
+@auth_bp.route("/api/auth/google", methods=["POST"])
+def google_sign_in():
+    """
+    Google Sign-In endpoint for iOS/Android.
+    Body: { id_token, platform: 'ios'|'android', invite_token? }
+    """
+    from bodybuilding_app import get_db_connection, get_sql_placeholder, add_user_to_community
+    logger = current_app.logger
+    data = request.get_json() or {}
+    id_token_str = (data.get('id_token') or '').strip()
+    platform = (data.get('platform') or 'ios').strip().lower()
+    invite_token = (data.get('invite_token') or '').strip() or None
+
+    if not id_token_str:
+        return jsonify({'success': False, 'error': 'ID token required'}), 400
+
+    payload = _verify_google_id_token(id_token_str, platform)
+    if not payload:
+        return jsonify({'success': False, 'error': 'Invalid Google token'}), 401
+
+    google_id = payload.get('sub')
+    email = (payload.get('email') or '').lower().strip()
+    first_name = payload.get('given_name') or ''
+    last_name = payload.get('family_name') or ''
+    email_verified = payload.get('email_verified', False)
+
+    if not google_id or not email:
+        return jsonify({'success': False, 'error': 'Incomplete Google profile'}), 400
+
+    try:
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            _ensure_google_id_column(c)
+
+            # 1. Look up by google_id (returning user)
+            c.execute(f"SELECT username, email FROM users WHERE google_id = {ph}", (google_id,))
+            row = c.fetchone()
+            if row:
+                username = row['username'] if hasattr(row, 'keys') else row[0]
+                session['username'] = username
+                session.permanent = True
+                logger.info(f"Google sign-in: returning user {username}")
+                return jsonify({'success': True, 'username': username, 'is_new': False})
+
+            # 2. Look up by email (link existing account)
+            c.execute(f"SELECT username FROM users WHERE LOWER(email) = LOWER({ph})", (email,))
+            row = c.fetchone()
+            if row:
+                username = row['username'] if hasattr(row, 'keys') else row[0]
+                c.execute(f"UPDATE users SET google_id = {ph} WHERE username = {ph}", (google_id, username))
+                if email_verified:
+                    c.execute(f"UPDATE users SET email_verified = 1 WHERE username = {ph}", (username,))
+                conn.commit()
+                session['username'] = username
+                session.permanent = True
+                # Set display name if not already set
+                try:
+                    c.execute(f"SELECT display_name FROM user_profiles WHERE username = {ph}", (username,))
+                    dp = c.fetchone()
+                    display_name_val = (dp['display_name'] if hasattr(dp, 'keys') else dp[0]) if dp else None
+                    if not display_name_val or display_name_val == username:
+                        full_name = f"{first_name} {last_name}".strip() or username
+                        c.execute(f"UPDATE user_profiles SET display_name = {ph} WHERE username = {ph}", (full_name, username))
+                        conn.commit()
+                except Exception:
+                    pass
+                logger.info(f"Google sign-in: linked {username} to Google ID")
+                return jsonify({'success': True, 'username': username, 'is_new': False})
+
+            # 3. Create new user
+            base_username = re.sub(r'[^a-z0-9_]', '', email.split('@')[0].lower()) or 'user'
+            username = base_username
+            suffix = 1
+            while True:
+                c.execute(f"SELECT 1 FROM users WHERE username = {ph}", (username,))
+                if not c.fetchone():
+                    break
+                suffix += 1
+                username = f"{base_username}{suffix}"
+
+            random_password = generate_password_hash(secrets.token_urlsafe(32))
+            now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            c.execute(f"""
+                INSERT INTO users (username, email, password, first_name, last_name, google_id, email_verified, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (username, email, random_password, first_name, last_name, google_id, 1 if email_verified else 0, now))
+            conn.commit()
+
+            # Create profile with display name
+            full_name = f"{first_name} {last_name}".strip() or username
+            try:
+                c.execute(f"INSERT INTO user_profiles (username, display_name) VALUES ({ph}, {ph})", (username, full_name))
+                conn.commit()
+            except Exception:
+                try:
+                    c.execute(f"UPDATE user_profiles SET display_name = {ph} WHERE username = {ph}", (full_name, username))
+                    conn.commit()
+                except Exception:
+                    pass
+
+            # Handle invite token
+            if invite_token:
+                try:
+                    session['pending_invite_token'] = invite_token
+                except Exception:
+                    pass
+
+            session['username'] = username
+            session.permanent = True
+            logger.info(f"Google sign-in: created new user {username}")
+            return jsonify({'success': True, 'username': username, 'is_new': True})
+
+    except Exception as e:
+        logger.error(f"Google sign-in error: {e}")
+        return jsonify({'success': False, 'error': 'Authentication failed'}), 500
