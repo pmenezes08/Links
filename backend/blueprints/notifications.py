@@ -248,10 +248,10 @@ def debug_notifications():
             })
     except Exception as exc:
         import traceback
+        current_app.logger.error("Debug notifications error: %s\n%s", exc, traceback.format_exc())
         return jsonify({
             "success": False,
-            "error": str(exc),
-            "traceback": traceback.format_exc()
+            "error": str(exc)
         }), 500
 
 
@@ -301,10 +301,10 @@ def test_create_notification():
             })
     except Exception as exc:
         import traceback
+        current_app.logger.error("Test create notification error: %s\n%s", exc, traceback.format_exc())
         return jsonify({
             "success": False,
-            "error": str(exc),
-            "traceback": traceback.format_exc()
+            "error": str(exc)
         }), 500
 
 
@@ -414,10 +414,10 @@ def fix_notifications_schema():
             })
     except Exception as exc:
         import traceback
+        current_app.logger.error("Fix schema error: %s\n%s", exc, traceback.format_exc())
         return jsonify({
             "success": False,
-            "error": str(exc),
-            "traceback": traceback.format_exc()
+            "error": str(exc)
         }), 500
 
 
@@ -771,10 +771,10 @@ def debug_badge_count():
             })
     except Exception as exc:
         import traceback
+        current_app.logger.error("Badge count error: %s\n%s", exc, traceback.format_exc())
         return jsonify({
             "success": False,
-            "error": str(exc),
-            "traceback": traceback.format_exc()
+            "error": str(exc)
         }), 500
 
 

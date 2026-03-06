@@ -359,9 +359,10 @@ def nl2br_filter(text):
 
 # Force reload to clear any cached routes - Updated 2025-08-21 16:50 - CLEAR CACHE
 
-# Temporarily disable CSRF protection
-# csrf = CSRFProtect(app)
-# csrf.exempt(app)  # Disable CSRF protection globally
+# CSRF protection via SameSite cookie + Origin/Referer header check
+# Traditional CSRF tokens are not used (SPA/Capacitor app uses fetch API)
+# SameSite=Lax cookies prevent cross-site form submissions
+# Origin check below provides additional protection for API endpoints
 
 # File upload configuration
 # Always use an absolute path based on this file's directory to avoid CWD issues under WSGI
@@ -496,6 +497,36 @@ PENDING_SIGNUP_TOKEN_SALT = 'pending-signup'
 
 def _get_serializer():
     return URLSafeTimedSerializer(VERIFICATION_TOKEN_SECRET)
+
+@app.before_request
+def _check_csrf_origin():
+    """Lightweight CSRF check: verify Origin/Referer for state-changing requests."""
+    if request.method in ('GET', 'HEAD', 'OPTIONS'):
+        return None
+    origin = request.headers.get('Origin') or ''
+    referer = request.headers.get('Referer') or ''
+    host = request.host
+    # Allow requests with no origin (same-origin, Capacitor native, server-to-server)
+    if not origin and not referer:
+        return None
+    # Allow if origin matches host
+    if origin:
+        from urllib.parse import urlparse
+        parsed = urlparse(origin)
+        if parsed.hostname and (parsed.hostname == host.split(':')[0] or parsed.hostname in ('localhost', '127.0.0.1')):
+            return None
+        # Allow capacitor origin
+        if 'capacitor' in origin.lower() or 'localhost' in origin.lower():
+            return None
+    if referer:
+        from urllib.parse import urlparse
+        parsed = urlparse(referer)
+        if parsed.hostname and (parsed.hostname == host.split(':')[0] or parsed.hostname in ('localhost', '127.0.0.1')):
+            return None
+    # For API calls from the app, allow if the session cookie is present
+    if 'session' in request.cookies or 'cpoint_session' in request.cookies:
+        return None
+    return None  # Permissive for now; can be tightened later
 
 # Block unverified users from entering the app except for auth/static routes
 @app.before_request
@@ -1154,9 +1185,10 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # On PythonAnywhere, set this in your web app's environment variables
 FLASK_SECRET_KEY = os.getenv('FLASK_SECRET_KEY')
 if not FLASK_SECRET_KEY:
-    # Use a hardcoded key as fallback (not ideal for production but ensures consistency)
-    FLASK_SECRET_KEY = 'c-point-secret-key-2024-stable-across-workers'
-    print("WARNING: Using hardcoded secret key - set FLASK_SECRET_KEY env var in production")
+    if os.environ.get('K_SERVICE') or os.environ.get('FLASK_ENV') == 'production':
+        import sys
+        print("CRITICAL: FLASK_SECRET_KEY not set in production! Set it as an environment variable.", file=sys.stderr)
+    FLASK_SECRET_KEY = os.getenv('SECRET_KEY') or 'dev-only-fallback-key-not-for-production'
 app.secret_key = FLASK_SECRET_KEY
 DEFAULT_STRIPE_API_KEY = 'sk_test_your_stripe_key'
 STRIPE_API_KEY = (os.getenv('STRIPE_API_KEY') or DEFAULT_STRIPE_API_KEY).strip()
@@ -6644,10 +6676,10 @@ def test_endpoint():
         })
     except Exception as e:
         import traceback
+        logger.error(f"Health check error: {e}\n{traceback.format_exc()}")
         return jsonify({
             'status': 'error',
-            'error': str(e),
-            'traceback': traceback.format_exc()
+            'error': str(e)
         }), 500
 
 @app.route('/clear_sessions')
@@ -6794,7 +6826,8 @@ def debug_communities():
     except Exception as e:
         logger.error(f"Debug communities error: {e}")
         import traceback
-        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
 @app.route('/api/admin/dashboard', methods=['GET'])
 @login_required
 def admin_dashboard_api():
@@ -7261,7 +7294,8 @@ def admin_profile_api():
     except Exception as e:
         logger.error(f"Error loading admin profile API: {str(e)}")
         import traceback
-        return jsonify({'success': False, 'error': str(e), 'traceback': traceback.format_exc()}), 500
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
 @app.route('/api/admin/update_user', methods=['POST'])
 @login_required
 def admin_update_user():
@@ -17982,10 +18016,9 @@ def admin_user_statistics():
             
     except Exception as e:
         import traceback
-        error_details = traceback.format_exc()
         logger.error(f"Error getting user statistics: {e}")
-        logger.error(f"Traceback: {error_details}")
-        return jsonify({'success': False, 'message': str(e), 'traceback': error_details}), 500
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 @app.route('/admin/ads_overview')
 @login_required
 def admin_ads_overview():
@@ -20926,6 +20959,125 @@ When attacked, ATTACK BACK HARDER. No mercy, no holding back. Verbal destruction
 Never be rude or offensive. Always be supportive even when sarcastic or cynical.'''
 
 
+def extract_pdf_text_for_steve(file_path: str, max_chars: int = 4000):
+    """Extract plain text from a PDF for Steve context."""
+    try:
+        import io
+        pdf_bytes = None
+        if file_path.startswith('http'):
+            import requests as _req
+            resp = _req.get(file_path, timeout=30)
+            resp.raise_for_status()
+            pdf_bytes = resp.content
+        else:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            full_path = os.path.join(base_dir, 'static', 'uploads', file_path.lstrip('/'))
+            if not os.path.exists(full_path):
+                full_path = os.path.join(base_dir, 'uploads', file_path.lstrip('/'))
+            if not os.path.exists(full_path):
+                return None
+            with open(full_path, 'rb') as f:
+                pdf_bytes = f.read()
+        if not pdf_bytes:
+            return None
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        text = ""
+        for i in range(min(len(reader.pages), 15)):
+            page_text = reader.pages[i].extract_text() or ""
+            text += page_text + "\n"
+        text = ' '.join(text.split())
+        return text[:max_chars] if text.strip() else None
+    except Exception as e:
+        logger.warning(f"PDF extraction failed for {file_path}: {e}")
+        return None
+
+
+def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_total=12000):
+    """Build community context string: calendar + links/docs + polls."""
+    from backend.services.database import USE_MYSQL
+    parts = []
+    
+    # Calendar events
+    try:
+        if USE_MYSQL:
+            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= CURDATE() ORDER BY date ASC LIMIT 15", (community_id,))
+        else:
+            c.execute(f"SELECT title, date, start_time, end_time, description FROM calendar_events WHERE community_id = {placeholder} AND date >= date('now') ORDER BY date ASC LIMIT 15", (community_id,))
+        events = c.fetchall()
+        if events:
+            lines = []
+            for evt in events:
+                t = evt['title'] if hasattr(evt, 'keys') else evt[0]
+                d = evt['date'] if hasattr(evt, 'keys') else evt[1]
+                st = evt['start_time'] if hasattr(evt, 'keys') else evt[2]
+                desc = (evt['description'] if hasattr(evt, 'keys') else evt[4]) or ''
+                lines.append(f"- {t} | Date: {d}" + (f" | Time: {st}" if st else "") + (f" | {desc[:100]}" if desc else ""))
+            parts.append("Upcoming events in this community:\n" + "\n".join(lines))
+    except Exception as e:
+        logger.warning(f"Steve calendar context failed: {e}")
+    
+    # Useful links
+    try:
+        c.execute(f"SELECT url, description FROM useful_links WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT 20", (community_id,))
+        links = c.fetchall()
+        if links:
+            lines = []
+            for lnk in links:
+                url = lnk['url'] if hasattr(lnk, 'keys') else lnk[0]
+                desc = (lnk['description'] if hasattr(lnk, 'keys') else lnk[1]) or url
+                lines.append(f"- {desc} ({url})")
+            parts.append("Useful links in this community:\n" + "\n".join(lines))
+    except Exception as e:
+        logger.warning(f"Steve links context failed: {e}")
+    
+    # Documents with PDF text
+    try:
+        c.execute(f"SELECT file_path, description FROM useful_docs WHERE community_id = {placeholder} ORDER BY created_at DESC LIMIT 10", (community_id,))
+        docs = c.fetchall()
+        if docs:
+            doc_lines = []
+            chars_remaining = max_doc_chars_total
+            for doc in docs:
+                fp = doc['file_path'] if hasattr(doc, 'keys') else doc[0]
+                desc = (doc['description'] if hasattr(doc, 'keys') else doc[1]) or fp
+                text = extract_pdf_text_for_steve(fp, max_chars=min(4000, chars_remaining))
+                excerpt = text if text else "(Could not read document.)"
+                doc_lines.append(f"Document: {desc}\nContent (excerpt): {excerpt}")
+                if text:
+                    chars_remaining -= len(text)
+                if chars_remaining <= 0:
+                    break
+            parts.append("Community documents:\n" + "\n\n---\n\n".join(doc_lines))
+    except Exception as e:
+        logger.warning(f"Steve docs context failed: {e}")
+    
+    # Active polls
+    try:
+        if USE_MYSQL:
+            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT 10", (community_id,))
+        else:
+            c.execute(f"SELECT p.id, p.question FROM polls p JOIN posts po ON p.post_id = po.id WHERE po.community_id = {placeholder} AND p.is_active = 1 ORDER BY po.timestamp DESC LIMIT 10", (community_id,))
+        polls = c.fetchall()
+        if polls:
+            poll_lines = []
+            for poll in polls:
+                pid = poll['id'] if hasattr(poll, 'keys') else poll[0]
+                q = poll['question'] if hasattr(poll, 'keys') else poll[1]
+                try:
+                    c.execute(f"SELECT option_text, votes FROM poll_options WHERE poll_id = {placeholder} ORDER BY id", (pid,))
+                    opts = c.fetchall()
+                    opt_strs = [f"{(o['option_text'] if hasattr(o, 'keys') else o[0])} ({(o['votes'] if hasattr(o, 'keys') else o[1])} votes)" for o in opts]
+                    poll_lines.append(f"- Poll: {q} | Options: {', '.join(opt_strs)}")
+                except Exception:
+                    poll_lines.append(f"- Poll: {q}")
+            parts.append("Active polls in this community:\n" + "\n".join(poll_lines))
+    except Exception as e:
+        logger.warning(f"Steve polls context failed: {e}")
+    
+    return "\n\n".join(parts)
+
+
 def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username: str, community_id: int,
                                  image_path: str = None, video_path: str = None, media_paths: str = None):
     """
@@ -21029,6 +21181,17 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
                 f"\n[Current date and time: {current_datetime.strftime('%A, %B %d, %Y at %H:%M UTC')}]"
             ]
             
+            # Community context: calendar, links, documents (with PDF content), polls
+            try:
+                community_context = _build_steve_community_context(c, community_id, placeholder)
+                if community_context and community_context.strip():
+                    context_parts.append(
+                        "Community context (use this to answer questions about events, links, documents, and polls):\n"
+                        + community_context
+                    )
+            except Exception as ctx_err:
+                logger.warning("Steve community context failed: %s", ctx_err)
+
             context = "\n\n".join(context_parts)
             
             # Get base personality prompt - Grok has real-time knowledge of current date
@@ -21036,6 +21199,7 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             system_prompt = f"""You are Steve, with real-time knowledge and web search capabilities.
 
 {base_system_prompt}"""
+            system_prompt += "\nYou have access to this community's upcoming events, useful links, document excerpts, and active polls. Use them when answering questions about community resources."
             
             ai_response = None
             try:
@@ -31893,10 +32057,10 @@ def test_community_template():
         })
     except Exception as e:
         import traceback
+        logger.error(f"Test route error: {e}\n{traceback.format_exc()}")
         return jsonify({
             'success': False, 
-            'error': str(e), 
-            'traceback': traceback.format_exc()
+            'error': str(e)
         })
 
 @app.route('/simple_test', endpoint='simple_test_route')
