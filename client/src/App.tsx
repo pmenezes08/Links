@@ -755,6 +755,19 @@ function AppRoutes(){
 }
 
 export default function App() {
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    import('@codetrix-studio/capacitor-google-auth')
+      .then(({ GoogleAuth }) => {
+        return GoogleAuth.initialize({
+          clientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
+          scopes: ['profile', 'email'],
+          grantOfflineAccess: false,
+        })
+      })
+      .catch(() => {})
+  }, [])
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
