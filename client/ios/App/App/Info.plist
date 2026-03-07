@@ -65,6 +65,14 @@
 				<string>cpoint</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Google Sign-In</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>
