@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Capacitor } from '@capacitor/core'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
@@ -462,7 +461,8 @@ export default function MobileLogin() {
                   setGoogleLoading(true)
                   setError(null)
                   try {
-                    const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
+                    const { registerPlugin } = await import('@capacitor/core')
+                    const GoogleAuth = registerPlugin('GoogleAuth') as any
                     await GoogleAuth.initialize({
                       clientId: '739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com',
                       scopes: ['profile', 'email'],
@@ -474,7 +474,7 @@ export default function MobileLogin() {
                     const r = await fetch('/api/auth/google', {
                       method: 'POST', credentials: 'include',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ id_token: idToken, platform: Capacitor.getPlatform(), invite_token: inviteToken || undefined })
+                      body: JSON.stringify({ id_token: idToken, platform: (await import('@capacitor/core')).Capacitor.getPlatform(), invite_token: inviteToken || undefined })
                     })
                     const j = await r.json()
                     if (j?.success) {
