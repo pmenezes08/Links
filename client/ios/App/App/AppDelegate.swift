@@ -3,7 +3,6 @@ import Capacitor
 import Firebase
 import FirebaseMessaging
 import UserNotifications
-import GoogleSignIn
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -207,13 +206,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         NSLog("🔗🔗🔗 URL SCHEME RECEIVED 🔗🔗🔗")
         NSLog("URL: %@", url.absoluteString)
-        
-        // Google Sign-In callback
-        if url.scheme?.hasPrefix("com.googleusercontent.apps") == true {
-            return GIDSignIn.sharedInstance.handle(url)
-        }
-        
-        // Forward to Capacitor for other URL schemes
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
