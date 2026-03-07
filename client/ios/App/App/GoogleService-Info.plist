@@ -2,11 +2,33 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>API_KEY</key>
+	<string>AIzaSyC2k41qA_ozm9Llrtj15-1ghOR4RYCb3Mk</string>
+	<key>GCM_SENDER_ID</key>
+	<string>739552904126</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>co.cpoint.app</string>
+	<key>PROJECT_ID</key>
+	<string>cpoint-127c2</string>
+	<key>STORAGE_BUCKET</key>
+	<string>cpoint-127c2.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false/>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false/>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true/>
+	<key>IS_GCM_ENABLED</key>
+	<true/>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true/>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:739552904126:ios:c1e46b8d190201d563efef</string>
 	<key>CLIENT_ID</key>
 	<string>739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
 	<string>com.googleusercontent.apps.739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p</string>
-	<key>BUNDLE_ID</key>
-	<string>co.cpoint.app</string>
 </dict>
 </plist>
