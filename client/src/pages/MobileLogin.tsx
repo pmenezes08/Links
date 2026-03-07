@@ -463,6 +463,7 @@ export default function MobileLogin() {
                   setError(null)
                   try {
                     const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
+                    await GoogleAuth.initialize()
                     const result = await GoogleAuth.signIn()
                     const idToken = result?.authentication?.idToken
                     if (!idToken) { setError('Google sign-in failed'); return }
