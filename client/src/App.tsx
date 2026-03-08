@@ -494,6 +494,11 @@ function AppRoutes(){
           } catch (e) {
             console.warn('Error clearing IndexedDB for user change:', e)
           }
+          
+          // Clear all avatar caches so previous user's profile picture doesn't persist
+          try {
+            import('./utils/avatarCache').then(({ clearAllAvatarCache }) => clearAllAvatarCache()).catch(() => {})
+          } catch {}
         }
         
         // Store current username for future comparison
@@ -580,9 +585,9 @@ function AppRoutes(){
       const username = (profileData as any)?.username
       const displayName = (profileData as any)?.display_name || username
       const rawAvatarUrl = (profileData as any)?.profile_picture || null
-      // Add cache-buster to avatar URL to ensure fresh image loads after upload
+      // Cache-bust by username + timestamp so switching accounts always shows correct avatar
       const avatarUrl = rawAvatarUrl 
-        ? (rawAvatarUrl.includes('?') ? rawAvatarUrl : `${rawAvatarUrl}?v=${Date.now()}`)
+        ? (rawAvatarUrl.includes('?') ? rawAvatarUrl : `${rawAvatarUrl}?u=${username}&v=${Date.now()}`)
         : null
       setUserMeta({ username, displayName, avatarUrl })
     } else {

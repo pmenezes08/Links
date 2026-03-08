@@ -479,7 +479,7 @@ export default function MobileLogin() {
                     try { localStorage.setItem('current_username', j.username) } catch {}
                     await (window as any).__reregisterPushToken?.()
                     await triggerDashboardServerPull()
-                    navigate(j.is_new ? '/onboarding' : '/premium_dashboard')
+                    navigate('/premium_dashboard')
                   } else {
                     setError(j?.error || 'Google sign-in failed')
                   }

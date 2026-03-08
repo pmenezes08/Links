@@ -29,6 +29,12 @@ export async function performLogout(): Promise<void> {
     }
   } catch {}
 
+  // 0a. Clear avatar cache so next login doesn't show stale profile picture
+  try {
+    const { clearAllAvatarCache } = await import('./avatarCache')
+    clearAllAvatarCache()
+  } catch {}
+
   // 0b. Clear Capacitor native storage first (critical for iOS apps)
   await clearCapacitorStorage()
   

@@ -239,6 +239,22 @@ export function getAvatarUrl(username: string, url: string | null | undefined): 
 }
 
 /**
+ * Clear ALL avatar cache (memory + localStorage). Call on logout / account switch.
+ */
+export function clearAllAvatarCache() {
+  memoryCache.forEach((blobUrl) => {
+    try { URL.revokeObjectURL(blobUrl) } catch {}
+  })
+  memoryCache.clear()
+  loadingPromises.clear()
+  verifiedUrls.clear()
+  const storage = getStorage()
+  if (storage) {
+    try { storage.removeItem(AVATAR_CACHE_KEY) } catch {}
+  }
+}
+
+/**
  * Cleanup function to revoke blob URLs when they're no longer needed
  * Call this when the app unmounts or periodically to prevent memory leaks
  */
