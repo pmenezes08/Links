@@ -8,8 +8,30 @@ import UserNotifications
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
-    private let serverURL = "https://app.c-point.co"
-    
+
+    /// Read server URL from bundled capacitor.config.json; fall back to production.
+    private lazy var serverURL: String = {
+        let fallback = "https://app.c-point.co"
+        guard let path = Bundle.main.path(forResource: "capacitor.config", ofType: "json") else {
+            NSLog("⚠️ capacitor.config.json not in bundle, using fallback URL")
+            return fallback
+        }
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let server = json["server"] as? [String: Any],
+               let url = server["url"] as? String,
+               !url.isEmpty {
+                let trimmed = url.hasSuffix("/") ? String(url.dropLast()) : url
+                NSLog("✅ Server URL from capacitor.config.json: %@", trimmed)
+                return trimmed
+            }
+        } catch {
+            NSLog("⚠️ Failed to parse capacitor.config.json: %@", error.localizedDescription)
+        }
+        return fallback
+    }()
+
     override init() {
         super.init()
         NSLog("🔴🔴🔴 AppDelegate init() called - object created 🔴🔴🔴")
