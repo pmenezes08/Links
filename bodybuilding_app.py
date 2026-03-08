@@ -547,6 +547,7 @@ def _block_unverified_users():
         # API behavior: return JSON instead of HTML redirects to avoid client parse errors
         # Exception for public endpoints (no auth required)
         public_api_endpoints = [
+            '/api/auth/google',  # Google Sign-In (no session yet)
             '/api/poll_notification_check', 
             '/api/event_notification_check', 
             '/api/email_verified_status', 
