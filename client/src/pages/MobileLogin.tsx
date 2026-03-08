@@ -454,7 +454,7 @@ export default function MobileLogin() {
 
             <button
               type="button"
-              disabled={googleLoading || isSubmitting}
+              disabled={googleLoading || isSubmitting || !window.__googleAuthReady}
               className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
               onClick={async () => {
                 setGoogleLoading(true)
