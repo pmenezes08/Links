@@ -10,20 +10,3 @@ index 6432925..9212fae 100644
 +    s.dependency 'GoogleSignIn', '~> 7.1'
      s.static_framework = true
    end
-diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/ios/Plugin/Plugin.swift b/node_modules/@codetrix-studio/capacitor-google-auth/ios/Plugin/Plugin.swift
-index fd39ed9..e08480c 100644
---- a/node_modules/@codetrix-studio/capacitor-google-auth/ios/Plugin/Plugin.swift
-+++ b/node_modules/@codetrix-studio/capacitor-google-auth/ios/Plugin/Plugin.swift
-@@ -38,6 +38,12 @@ public class GoogleAuth: CAPPlugin {
- 
-     
-     public override func load() {
-+        // AUTO-INIT PATCH: initialize from config on plugin load
-+        if let clientId = getClientIdValue() {
-+            let scopes = (getConfigValue("scopes") as? [String]) ?? ["profile", "email"]
-+            self.loadSignInClient(customClientId: clientId, customScopes: scopes)
-+            NSLog("GoogleAuth: auto-initialized from config on load()")
-+        }
-     }
- 
-     @objc

@@ -25,6 +25,8 @@ target 'App' do
   capacitor_pods
   # Add your Pods here
   pod 'Firebase/Messaging'
+  # Force GoogleSignIn 7.1+ for App Store privacy manifest (ITMS-91061)
+  pod 'GoogleSignIn', '~> 7.1'
 end
 
 post_install do |installer|
