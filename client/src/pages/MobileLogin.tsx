@@ -272,8 +272,9 @@ export default function MobileLogin() {
                     return
                   }
                   
-                  // Successful login - clear stored username and redirect
+                  // Successful login - re-register push token, clear stored username, redirect
                   try { sessionStorage.removeItem('cpoint_pending_username') } catch {}
+                  await (window as any).__reregisterPushToken?.()
                   window.location.href = url.pathname + url.search
                   return
                 }
@@ -288,7 +289,7 @@ export default function MobileLogin() {
                     setError('Incorrect password. Please try again.')
                   }
                 } else if (response.ok) {
-                  // Assume success, redirect to dashboard
+                  await (window as any).__reregisterPushToken?.()
                   window.location.href = '/premium_dashboard'
                 } else {
                   setError('Login failed. Please try again.')
@@ -476,6 +477,7 @@ export default function MobileLogin() {
                       try { await fetch('/api/join_with_invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ invite_token: inviteToken }) }) } catch {}
                     }
                     try { localStorage.setItem('current_username', j.username) } catch {}
+                    await (window as any).__reregisterPushToken?.()
                     await triggerDashboardServerPull()
                     navigate(j.is_new ? '/onboarding' : '/premium_dashboard')
                   } else {

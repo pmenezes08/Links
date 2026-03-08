@@ -101,11 +101,23 @@ export default function PushInit(){
             PushNotifications.addListener('registration', async (token) => {
               console.log('🔥 Capacitor registration event fired!')
               console.log('🔥 FCM token received: ' + token.value.substring(0, 30) + '...')
-              console.log('🔥 Token length: ' + token.value.length + ' characters')
+              
+              // Store token globally for re-registration after login
+              ;(window as any).__fcmToken = token.value
+              ;(window as any).__reregisterPushToken = async () => {
+                const t = (window as any).__fcmToken
+                if (!t) return
+                try {
+                  await fetch('/api/push/register_fcm', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: t, platform: Capacitor.getPlatform() })
+                  })
+                } catch {}
+              }
               
               // Send token to backend
               try {
-                console.log('📤 Sending FCM token to server...')
                 const response = await fetch('/api/push/register_fcm', {
                   method: 'POST',
                   credentials: 'include',
@@ -119,11 +131,9 @@ export default function PushInit(){
                 const result = await response.json()
                 
                 if (response.ok) {
-                  console.log('✅ FCM token successfully registered with server!')
-                  console.log('✅ Server response:', result)
+                  console.log('✅ FCM token registered with server')
                 } else {
-                  console.error('❌ Failed to register token. Status:', response.status)
-                  console.error('❌ Error response:', result)
+                  console.error('❌ Failed to register token:', response.status, result)
                 }
               } catch (error) {
                 console.error('❌ Network error registering push token:', error)
