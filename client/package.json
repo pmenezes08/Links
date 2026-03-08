@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "bash patches/fix-google-auth-ios.sh || true"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",
