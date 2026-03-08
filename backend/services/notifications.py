@@ -188,6 +188,44 @@ def send_apns_notification(device_token: str, title: str, body: str, data: dict 
         logger.error("APNs send error: %s", exc)
 
 
+def send_apns_badge_only(device_token: str, badge_count: int = 0):
+    """Send a silent badge-only push via APNs HTTP/2 (no alert, no sound)."""
+    if not APNS_AVAILABLE:
+        return
+    token = (device_token or "").strip().replace(" ", "")
+    if not token:
+        return
+    if not all([APNS_KEY_PATH, APNS_KEY_ID, APNS_TEAM_ID, APNS_BUNDLE_ID]):
+        logger.debug("APNs credentials not configured for badge-only send")
+        return
+    if not os.path.exists(APNS_KEY_PATH):
+        return
+    try:
+        payload = {"aps": {"badge": badge_count}}
+        auth_token = _get_apns_jwt_token()
+        if not auth_token:
+            return
+        apns_server = "api.sandbox.push.apple.com" if APNS_USE_SANDBOX else "api.push.apple.com"
+        url = f"https://{apns_server}/3/device/{token}"
+        headers = {
+            "authorization": f"bearer {auth_token}",
+            "apns-push-type": "alert",
+            "apns-topic": APNS_BUNDLE_ID,
+            "apns-priority": "10"
+        }
+        with httpx.Client(http2=True, timeout=10.0) as client:
+            response = client.post(url, json=payload, headers=headers)
+        if response.status_code == 200:
+            logger.info("✅ APNs badge-only sent to %s… (badge=%d)", token[:8], badge_count)
+        elif response.status_code == 410:
+            logger.warning("APNs token %s no longer active (badge)", token[:8])
+            _disable_push_token(token)
+        else:
+            logger.warning("APNs badge error %s: %s", response.status_code, response.text)
+    except Exception as exc:
+        logger.error("APNs badge-only error: %s", exc)
+
+
 def send_fcm_notification(device_token: str, title: str, body: str, data: dict = None):
     """Send Android push notification via FCM"""
     # TODO: Implement FCM sending using firebase-admin

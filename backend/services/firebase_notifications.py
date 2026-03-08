@@ -541,9 +541,14 @@ def send_fcm_to_user_badge_only(username: str, badge_count: int = 0) -> int:
             if platform != 'ios':
                 continue
             
-            # Skip APNs device tokens (64 hex chars) - only send to FCM tokens
+            # APNs tokens: send badge via direct APNs, not FCM
             if is_apns_token(token):
-                logger.debug(f"Skipping APNs token {token[:16]}... for badge (use FCM token)")
+                try:
+                    from backend.services.notifications import send_apns_badge_only
+                    send_apns_badge_only(token, badge_count)
+                    sent_count += 1
+                except Exception as apns_err:
+                    logger.warning(f"APNs badge failed for {token[:16]}...: {apns_err}")
                 continue
             
             try:
