@@ -129,6 +129,14 @@ export default function AccountDangerZone() {
       if (json?.success) {
         setFeedback({ type: 'success', text: 'Account deleted. Clearing data…' })
         
+        // Clear Google Sign-In cached account
+        try {
+          if (Capacitor.isNativePlatform()) {
+            const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
+            await GoogleAuth.signOut()
+          }
+        } catch {}
+
         // Clear all user data (localStorage, sessionStorage, IndexedDB, Capacitor Preferences, service worker caches)
         await clearAllUserData()
         

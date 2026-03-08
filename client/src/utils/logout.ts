@@ -20,7 +20,16 @@ async function clearCapacitorStorage(): Promise<void> {
 export async function performLogout(): Promise<void> {
   console.log('🚪 Starting logout process...')
   
-  // 0. Clear Capacitor native storage first (critical for iOS apps)
+  // 0. Clear Google Sign-In cached account (so next sign-in shows account picker)
+  try {
+    const { Capacitor } = await import('@capacitor/core')
+    if (Capacitor.isNativePlatform()) {
+      const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
+      await GoogleAuth.signOut()
+    }
+  } catch {}
+
+  // 0b. Clear Capacitor native storage first (critical for iOS apps)
   await clearCapacitorStorage()
   
   // 1. Stop any polling intervals
