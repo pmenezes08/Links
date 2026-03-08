@@ -471,6 +471,22 @@ def get_total_badge_count(username: str) -> int:
         return 0
 
 
+def _deactivate_fcm_token(token: str) -> None:
+    """Deactivate an invalid or unregistered FCM token in the database."""
+    from backend.services.database import get_db_connection, get_sql_placeholder
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        ph = get_sql_placeholder()
+        cursor.execute(f"UPDATE fcm_tokens SET is_active = 0 WHERE token = {ph}", (token,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        logger.info(f"Deactivated invalid FCM token: {token[:16]}...")
+    except Exception as e:
+        logger.warning(f"Failed to deactivate FCM token {token[:16]}...: {e}")
+
+
 def send_fcm_to_user_badge_only(username: str, badge_count: int = 0) -> int:
     """
     Send a silent push notification to reset the iOS badge count.
@@ -525,21 +541,23 @@ def send_fcm_to_user_badge_only(username: str, badge_count: int = 0) -> int:
             if platform != 'ios':
                 continue
             
+            # Skip APNs device tokens (64 hex chars) - only send to FCM tokens
+            if is_apns_token(token):
+                logger.debug(f"Skipping APNs token {token[:16]}... for badge (use FCM token)")
+                continue
+            
             try:
-                # Badge update push - use alert type for faster delivery
-                # iOS throttles background pushes but processes alert pushes immediately
                 message = messaging.Message(
                     token=token,
                     apns=messaging.APNSConfig(
                         headers={
-                            'apns-push-type': 'alert',  # Use alert type for faster delivery
-                            'apns-priority': '10',  # High priority
+                            'apns-push-type': 'alert',
+                            'apns-priority': '10',
                         },
                         payload=messaging.APNSPayload(
                             aps=messaging.Aps(
                                 badge=badge_count,
                                 content_available=True,
-                                # Empty alert to avoid showing notification but still get fast delivery
                                 sound=None,
                             )
                         )
@@ -551,9 +569,15 @@ def send_fcm_to_user_badge_only(username: str, badge_count: int = 0) -> int:
                 sent_count += 1
                 
             except messaging.UnregisteredError:
-                logger.warning(f"FCM token no longer valid: {token[:16]}...")
+                logger.warning(f"FCM token unregistered: {token[:16]}...")
+                _deactivate_fcm_token(token)
             except Exception as e:
-                logger.warning(f"Badge reset failed for {token[:16]}...: {e}")
+                err_msg = str(e).lower()
+                if 'not a valid fcm registration token' in err_msg or 'invalid registration' in err_msg:
+                    logger.warning(f"Invalid FCM token {token[:16]}..., deactivating: {e}")
+                    _deactivate_fcm_token(token)
+                else:
+                    logger.warning(f"Badge reset failed for {token[:16]}...: {e}")
         
         return sent_count
         
