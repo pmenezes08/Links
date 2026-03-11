@@ -292,8 +292,10 @@ def add_cors_headers(response):
     allowed_origins = [
         'https://admin.c-point.co',
         'https://cpoint-admin-739552904126.europe-west1.run.app',
-        'http://localhost:5173',  # admin-web dev
     ]
+    # Also allow any Cloud Run admin origin (staging may have different URL)
+    if origin and ('.run.app' in origin or 'localhost' in origin):
+        allowed_origins.append(origin)
     if origin in allowed_origins:
         response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Credentials'] = 'true'
@@ -458,7 +460,8 @@ app.config['SESSION_COOKIE_SECURE'] = _is_cloud_run or _canonical_scheme == 'htt
 # Must be paired with Secure=True
 app.config['SESSION_COOKIE_SAMESITE'] = 'None' if (_is_cloud_run or _canonical_scheme == 'https') else 'Lax'
 
-# Cookie domain: scope to .c-point.co so admin.c-point.co shares session with app.c-point.co
+# Cookie domain: set to .c-point.co ONLY when CANONICAL_HOST confirms we're on c-point.co
+# Do NOT auto-set for all Cloud Run (staging uses run.app hostnames, not c-point.co)
 try:
     explicit_domain = os.getenv('SESSION_COOKIE_DOMAIN')
     if explicit_domain:
@@ -466,8 +469,6 @@ try:
     else:
         ch = os.getenv('CANONICAL_HOST') or ''
         if ch.endswith('c-point.co'):
-            app.config['SESSION_COOKIE_DOMAIN'] = '.c-point.co'
-        elif _is_cloud_run:
             app.config['SESSION_COOKIE_DOMAIN'] = '.c-point.co'
 except Exception:
     pass
