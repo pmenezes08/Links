@@ -1,0 +1,23 @@
+# Cloud Build config for C.Point Admin Web (admin.c-point.co)
+# Use: gcloud builds submit --config=cloudbuild-admin.yaml ./admin-web
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/cpoint-admin:latest', '.']
+    dir: 'admin-web'
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/cpoint-admin:latest']
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'cpoint-admin'
+      - '--image=gcr.io/$PROJECT_ID/cpoint-admin:latest'
+      - '--region=europe-west1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY

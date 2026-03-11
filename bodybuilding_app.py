@@ -286,6 +286,22 @@ def handle_broken_pipe(f):
 
 # Add caching headers for static files (especially images)
 @app.after_request
+def add_cors_headers(response):
+    """CORS for admin.c-point.co (Phase 2: tenant subdomains will be added here)."""
+    origin = request.headers.get('Origin', '')
+    allowed_origins = [
+        'https://admin.c-point.co',
+        'https://cpoint-admin-739552904126.europe-west1.run.app',
+        'http://localhost:5173',  # admin-web dev
+    ]
+    if origin in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    return response
+
+@app.after_request
 def add_cache_headers(response):
     """Add aggressive caching headers for static files to improve performance"""
     # Force no-cache for HTML responses (especially important for iOS WKWebView)
