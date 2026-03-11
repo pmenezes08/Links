@@ -23522,19 +23522,19 @@ def get_invite_logo_url():
                 if val:
                     if val.startswith('http'):
                         return val
-                    # Resolve R2 path to full URL
+                    # Resolve R2 path to full URL - ONLY via R2_PUBLIC_URL
                     try:
                         from backend.services.r2_storage import R2_PUBLIC_URL
                         if R2_PUBLIC_URL:
                             return f"{R2_PUBLIC_URL.rstrip('/')}/{val.lstrip('/')}"
                     except Exception:
                         pass
-                    return val
+                    # R2 not available - fall through to default (don't return bare path)
     except Exception as e:
         logger.warning(f"Could not fetch invite logo: {e}")
-    # Fallback: use PUBLIC_BASE_URL + default logo
-    base = PUBLIC_BASE_URL or ''
-    return f"{base}/static/cpoint-logo.svg" if base else DEFAULT_INVITE_LOGO
+    # Fallback: absolute URL to default logo (never return a relative path)
+    base = PUBLIC_BASE_URL or 'https://app.c-point.co'
+    return f"{base}/static/cpoint-logo.svg"
 
 @app.route('/invite/<token>')
 def invite_landing(token):

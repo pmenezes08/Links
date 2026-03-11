@@ -17,10 +17,13 @@ The main app sets `SESSION_COOKIE_DOMAIN=.c-point.co` automatically when:
 
 The cookie is also set with `Secure=True` on Cloud Run (HTTPS).
 
-**If admins see "Not authorized. Admin access required."** after logging in correctly, check:
-1. The main app's `CANONICAL_HOST` env var is set (e.g. `app.c-point.co`)
-2. Or `SESSION_COOKIE_DOMAIN=.c-point.co` is set explicitly
-3. The admin SPA's `VITE_API_BASE` points to the main app (`https://app.c-point.co`)
+The cookie uses `SameSite=None; Secure=True` on Cloud Run so it's sent in cross-origin `fetch()` from `admin.c-point.co` to `app.c-point.co`.
+
+**If admins see "Not authorized. Admin access required."** after logging in correctly:
+1. Ensure the main app (cpoint-app on Cloud Run) has `SESSION_COOKIE_DOMAIN=.c-point.co` or `CANONICAL_HOST=app.c-point.co` set as an environment variable
+2. Ensure the main app is accessed via `https://app.c-point.co` (custom domain), not only the default Cloud Run URL
+3. Ensure the admin SPA is built with `VITE_API_BASE=https://app.c-point.co` (set in `admin-web/Dockerfile`)
+4. Clear cookies for both `admin.c-point.co` and `app.c-point.co` and try again
 
 ## CORS
 
