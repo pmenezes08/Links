@@ -24114,6 +24114,12 @@ def invite_to_community():
                     )
                     nested_text_section = "\nYou're also joining:\n" + ''.join(f"- {name}\n" for name in nested_names)
 
+                # Build logo URL for email
+                email_logo_url = get_invite_logo_url() if 'get_invite_logo_url' in dir() else None
+                if not email_logo_url or not email_logo_url.startswith('http'):
+                    email_base = PUBLIC_BASE_URL or request.host_url.rstrip('/')
+                    email_logo_url = f"{email_base}/static/cpoint-logo.svg"
+                
                 # Send notification email (not signup invitation)
                 html = f"""
                 <!DOCTYPE html>
@@ -24129,6 +24135,7 @@ def invite_to_community():
                                 <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 12px; overflow: hidden; max-width: 100%;">
                                     <tr>
                                         <td style="background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%); padding: 30px; text-align: center;">
+                                            <img src="{email_logo_url}" alt="C.Point" style="max-width: 160px; max-height: 60px; margin-bottom: 12px;" />
                                             <h1 style="margin: 0; color: #000000; font-size: 28px; font-weight: 700;">
                                                 You've Been Added!
                                             </h1>
@@ -24234,6 +24241,11 @@ Go to C.Point: https://www.c-point.co/login
                 # Use current domain or configured base URL
                 base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
                 invite_url = f"{base_url}/invite/{token}"
+                
+                # Logo URL for email
+                inv_logo_url = get_invite_logo_url() if 'get_invite_logo_url' in dir() else None
+                if not inv_logo_url or not inv_logo_url.startswith('http'):
+                    inv_logo_url = f"{base_url}/static/cpoint-logo.svg"
             
             html = f"""
             <!DOCTYPE html>
@@ -24250,6 +24262,7 @@ Go to C.Point: https://www.c-point.co/login
                                 <!-- Header -->
                                 <tr>
                                     <td style="background: linear-gradient(135deg, #4db6ac 0%, #26a69a 100%); padding: 30px; text-align: center;">
+                                        <img src="{inv_logo_url}" alt="C.Point" style="max-width: 160px; max-height: 60px; margin-bottom: 12px;" />
                                         <h1 style="margin: 0; color: #000000; font-size: 28px; font-weight: 700;">
                                             Welcome to C.Point
                                         </h1>

@@ -1,6 +1,10 @@
 # Build stage
 FROM node:20-slim AS builder
 WORKDIR /app
+
+ARG VITE_API_BASE=https://app.c-point.co
+ENV VITE_API_BASE=${VITE_API_BASE}
+
 COPY package.json package-lock.json* ./
 RUN npm install
 COPY . .
@@ -9,7 +13,6 @@ RUN npm run build
 # Serve stage
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
-# SPA routing: serve index.html for all paths
 RUN echo 'server { \
     listen 8080; \
     root /usr/share/nginx/html; \

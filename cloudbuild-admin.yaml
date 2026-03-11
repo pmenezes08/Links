@@ -3,7 +3,12 @@
 
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/cpoint-admin:latest', '.']
+    args:
+      - 'build'
+      - '--build-arg=VITE_API_BASE=https://app.c-point.co'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/cpoint-admin:latest'
+      - '.'
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/cpoint-admin:latest']
   - name: 'google/cloud-sdk:slim'

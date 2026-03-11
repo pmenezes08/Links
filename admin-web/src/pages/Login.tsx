@@ -52,7 +52,7 @@ export default function Login() {
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-accent flex items-center justify-center text-black font-bold text-2xl">C</div>
+          <img src={`${import.meta.env.VITE_API_BASE || ''}/static/logo.png`} alt="C.Point" className="w-16 h-16 mx-auto mb-4 rounded-2xl" />
           <h1 className="text-xl font-semibold">C.Point Admin</h1>
           <p className="text-muted text-sm mt-1">Sign in to manage your platform</p>
         </div>

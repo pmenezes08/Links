@@ -51,11 +51,20 @@ Map `admin.c-point.co` to the `cpoint-admin` Cloud Run service:
 2. Add `admin.c-point.co`
 3. Update DNS CNAME as instructed
 
-### Environment Variables
+### Environment / Build Args
 
-The admin SPA uses `VITE_API_BASE` to set the API base URL. For production:
-- Not needed (defaults to same origin, and CORS handles cross-origin)
-- For staging, set `VITE_API_BASE=https://cpoint-app-staging-739552904126.europe-west1.run.app`
+| Variable | Where | Default | Description |
+|----------|-------|---------|-------------|
+| `VITE_API_BASE` | Dockerfile ARG / Vite env | `https://app.c-point.co` | API base URL for the admin SPA. All `/api/*`, `/login`, `/logout` calls go here. |
+
+The `cloudbuild-admin.yaml` passes `--build-arg=VITE_API_BASE=https://app.c-point.co` so the production build targets the main app. For staging, change this to the staging Cloud Run URL.
+
+### Invite Emails
+
+Invite emails are sent by the main app (Flask) and use the same C-Point branding:
+- Logo: `{PUBLIC_BASE_URL}/static/cpoint-logo.svg` (or custom invite logo when configured)
+- Colors: teal `#4db6ac`, black `#000000`, dark card `#1a1a1a`
+- Both "You've been added" and "You're invited to join" templates include the logo in the header
 
 ## Local Development
 
