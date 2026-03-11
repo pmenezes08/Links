@@ -29,7 +29,7 @@ export default function Layout() {
       <aside className="hidden md:flex flex-col w-56 bg-surface border-r border-white/10 fixed inset-y-0">
         <div className="p-4 border-b border-white/10">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-black font-bold text-sm">C</div>
+            <img src={`${import.meta.env.VITE_API_BASE || ''}/api/public/logo`} alt="C.Point" className="w-8 h-8 rounded-lg" />
             <span className="font-semibold">C.Point Admin</span>
           </div>
         </div>
@@ -52,7 +52,7 @@ export default function Layout() {
       {/* Mobile header */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-surface border-b border-white/10 z-50 flex items-center px-4 justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center text-black font-bold text-xs">C</div>
+          <img src={`${import.meta.env.VITE_API_BASE || ''}/api/public/logo`} alt="C.Point" className="w-7 h-7 rounded-lg" />
           <span className="font-semibold text-sm">Admin</span>
         </div>
         <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2"><i className="fa-solid fa-bars" /></button>

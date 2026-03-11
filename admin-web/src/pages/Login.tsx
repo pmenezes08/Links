@@ -34,9 +34,17 @@ export default function Login() {
     setError('')
     try {
       const fd = new URLSearchParams({ password, username: username.trim() })
-      const res = await api('/login_password', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
-      if (res.ok || res.redirected) {
-        // Check if actually admin
+      // Use redirect:'manual' so we get the Set-Cookie without following cross-origin redirect
+      const res = await api('/login_password', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, 
+        body: fd,
+        redirect: 'manual'
+      })
+      // Status 0 = opaque redirect (CORS), 302/303 = redirect, 200 = success
+      if (res.status === 0 || res.ok || res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
+        // Small delay to let cookie propagate
+        await new Promise(r => setTimeout(r, 300))
         const check = await api('/api/check_admin')
         const j = await check.json()
         if (j?.is_admin) { navigate('/', { replace: true }) }

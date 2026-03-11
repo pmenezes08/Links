@@ -444,17 +444,19 @@ RUNWAY_MODEL_RATIO_OPTIONS: Dict[str, Dict[str, Any]] = {
     }
 }
 
-# Session configuration: persist login for 30 days
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookie is available for all paths
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
-# For production with HTTPS - disabled for PythonAnywhere proxy compatibility
-# Session cookie security: Secure=True when running on HTTPS (Cloud Run, production)
-# Keep False for PythonAnywhere or HTTP local dev
+# Detect Cloud Run / HTTPS environment FIRST (used by cookie config below)
 _is_cloud_run = bool(os.getenv('K_SERVICE'))
 _canonical_scheme = (os.getenv('CANONICAL_SCHEME') or '').lower()
+
+# Session configuration
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_PATH'] = '/'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+# Secure=True on Cloud Run (HTTPS); False for local dev
 app.config['SESSION_COOKIE_SECURE'] = _is_cloud_run or _canonical_scheme == 'https'
+# SameSite=None required for cross-subdomain fetch (admin.c-point.co → app.c-point.co)
+# Must be paired with Secure=True
+app.config['SESSION_COOKIE_SAMESITE'] = 'None' if (_is_cloud_run or _canonical_scheme == 'https') else 'Lax'
 
 # Cookie domain: scope to .c-point.co so admin.c-point.co shares session with app.c-point.co
 try:
