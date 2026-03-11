@@ -450,18 +450,22 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_PATH'] = '/'  # Ensure cookie is available for all paths
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 # For production with HTTPS - disabled for PythonAnywhere proxy compatibility
-# PythonAnywhere proxy doesn't forward X-Forwarded-Proto properly, so Flask thinks it's HTTP
-# Setting this to True prevents session cookies from being set
-app.config['SESSION_COOKIE_SECURE'] = False  # Must be False for PythonAnywhere
-# Cookie domain: ensure session persists across apex and www
+# Session cookie security: Secure=True when running on HTTPS (Cloud Run, production)
+# Keep False for PythonAnywhere or HTTP local dev
+_is_cloud_run = bool(os.getenv('K_SERVICE'))
+_canonical_scheme = (os.getenv('CANONICAL_SCHEME') or '').lower()
+app.config['SESSION_COOKIE_SECURE'] = _is_cloud_run or _canonical_scheme == 'https'
+
+# Cookie domain: scope to .c-point.co so admin.c-point.co shares session with app.c-point.co
 try:
     explicit_domain = os.getenv('SESSION_COOKIE_DOMAIN')
     if explicit_domain:
         app.config['SESSION_COOKIE_DOMAIN'] = explicit_domain
     else:
-        # If canonical host is provided and ends with c-point.co, scope cookie to .c-point.co
         ch = os.getenv('CANONICAL_HOST') or ''
         if ch.endswith('c-point.co'):
+            app.config['SESSION_COOKIE_DOMAIN'] = '.c-point.co'
+        elif _is_cloud_run:
             app.config['SESSION_COOKIE_DOMAIN'] = '.c-point.co'
 except Exception:
     pass
@@ -564,6 +568,7 @@ def _block_unverified_users():
         # Exception for public endpoints (no auth required)
         public_api_endpoints = [
             '/api/auth/google',  # Google Sign-In (no session yet)
+            '/api/public/logo',  # Public logo (no auth, used by admin/landing)
             '/api/poll_notification_check', 
             '/api/event_notification_check', 
             '/api/email_verified_status', 
@@ -23491,8 +23496,17 @@ def debug_posts():
 APP_STORE_URL = "https://apps.apple.com/us/app/cpoint/id6755534074"
 DEFAULT_INVITE_LOGO = '/static/cpoint-logo.svg'
 
+@app.route('/api/public/logo')
+def api_public_logo():
+    """Public logo endpoint (no auth). Returns R2 logo URL or redirects to it."""
+    logo_url = get_invite_logo_url()
+    if not logo_url or not logo_url.startswith('http'):
+        base = PUBLIC_BASE_URL or request.host_url.rstrip('/')
+        logo_url = f"{base}{logo_url}" if logo_url else f"{base}/static/cpoint-logo.svg"
+    return redirect(logo_url)
+
 def get_invite_logo_url():
-    """Get the invite logo URL from database or return default."""
+    """Get the invite logo URL from database, resolving R2 paths to full URLs."""
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -23502,10 +23516,23 @@ def get_invite_logo_url():
                 c.execute("SELECT value FROM site_settings WHERE key = 'invite_logo'")
             row = c.fetchone()
             if row:
-                return row[0] if isinstance(row, tuple) else row['value']
+                val = row[0] if isinstance(row, tuple) else row['value']
+                if val:
+                    if val.startswith('http'):
+                        return val
+                    # Resolve R2 path to full URL
+                    try:
+                        from backend.services.r2_storage import R2_PUBLIC_URL
+                        if R2_PUBLIC_URL:
+                            return f"{R2_PUBLIC_URL.rstrip('/')}/{val.lstrip('/')}"
+                    except Exception:
+                        pass
+                    return val
     except Exception as e:
         logger.warning(f"Could not fetch invite logo: {e}")
-    return DEFAULT_INVITE_LOGO
+    # Fallback: use PUBLIC_BASE_URL + default logo
+    base = PUBLIC_BASE_URL or ''
+    return f"{base}/static/cpoint-logo.svg" if base else DEFAULT_INVITE_LOGO
 
 @app.route('/invite/<token>')
 def invite_landing(token):

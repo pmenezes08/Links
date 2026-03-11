@@ -7,9 +7,20 @@
 | Main App | https://app.c-point.co | cpoint-app | Mobile app backend + SPA |
 | Admin Web | https://admin.c-point.co | cpoint-admin | Admin dashboard SPA (static) |
 
-## Session Cookie
+## Admin Login / Session
 
-The session cookie is scoped to `Domain=.c-point.co` so the same session works on both `app.c-point.co` and `admin.c-point.co`. This is set automatically when the canonical host ends with `c-point.co`.
+When the admin site is at `admin.c-point.co` and the API at `app.c-point.co`, the session cookie must be valid for both subdomains.
+
+The main app sets `SESSION_COOKIE_DOMAIN=.c-point.co` automatically when:
+- `CANONICAL_HOST` ends with `c-point.co`, OR
+- Running on Cloud Run (`K_SERVICE` is set)
+
+The cookie is also set with `Secure=True` on Cloud Run (HTTPS).
+
+**If admins see "Not authorized. Admin access required."** after logging in correctly, check:
+1. The main app's `CANONICAL_HOST` env var is set (e.g. `app.c-point.co`)
+2. Or `SESSION_COOKIE_DOMAIN=.c-point.co` is set explicitly
+3. The admin SPA's `VITE_API_BASE` points to the main app (`https://app.c-point.co`)
 
 ## CORS
 
