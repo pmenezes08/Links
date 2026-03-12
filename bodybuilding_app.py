@@ -7011,6 +7011,32 @@ def admin_communities_list_api():
         logger.error(f"admin_communities_list error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+@app.route('/api/admin/communities', methods=['GET'])
+@login_required  
+def admin_communities_api():
+    """Communities list for dropdowns. ?roots_only=1 for parent communities only."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    roots_only = request.args.get('roots_only', '0') == '1'
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            tf, tp = _tenant_filter()
+            if roots_only:
+                c.execute(f"SELECT id, name FROM communities WHERE parent_community_id IS NULL{tf} ORDER BY name", tp)
+            else:
+                c.execute(f"SELECT id, name, parent_community_id FROM communities WHERE 1=1{tf} ORDER BY name", tp)
+            comms = []
+            for co in c.fetchall():
+                d = {'id': co['id'] if hasattr(co,'keys') else co[0], 'name': co['name'] if hasattr(co,'keys') else co[1]}
+                if not roots_only:
+                    d['parent_community_id'] = co['parent_community_id'] if hasattr(co,'keys') else co[2]
+                comms.append(d)
+            return jsonify({'success': True, 'communities': comms})
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/api/admin/login-by-email', methods=['POST'])
 def admin_login_by_email():
     """Phase 2: Look up tenant by admin email and return redirect URL."""
@@ -7144,19 +7170,291 @@ def admin_users_api():
         logger.error(f"admin_users error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+def _compute_admin_metrics(c):
+    """Compute DAU, MAU, cohorts, leaderboards and return a stats dict."""
+    tf, tp = _tenant_filter()
+
+    c.execute(f"SELECT COUNT(*) as count FROM users WHERE 1=1{tf}", tp)
+    total_users = get_scalar_result(c.fetchone(), column_name='count')
+
+    c.execute(f"SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'{tf}", tp)
+    premium_users = get_scalar_result(c.fetchone(), column_name='count')
+
+    c.execute(f"SELECT COUNT(*) as count FROM communities WHERE 1=1{tf}", tp)
+    total_communities = get_scalar_result(c.fetchone(), column_name='count')
+
+    c.execute(f"SELECT COUNT(*) as count FROM posts WHERE 1=1{tf}", tp)
+    total_posts = get_scalar_result(c.fetchone(), column_name='count')
+
+    from datetime import datetime, timedelta
+    today = datetime.now().date()
+    start_of_day = datetime(today.year, today.month, today.day)
+    start_of_30 = start_of_day - timedelta(days=30)
+
+    def get_unique_between(table, field, ts_field, start_ts):
+        try:
+            q = f"SELECT DISTINCT {field}, {ts_field} FROM {table} WHERE {ts_field} IS NOT NULL"
+            c.execute(q)
+            rows = c.fetchall() or []
+            vals = set()
+            for r in rows:
+                try:
+                    username_val = r[field] if hasattr(r, 'keys') else r[0]
+                    ts_val = r[ts_field] if hasattr(r, 'keys') else (r[1] if len(r) > 1 else None)
+                    if not ts_val:
+                        continue
+                    s = str(ts_val)
+                    dtv = None
+                    try:
+                        dtv = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d', '%m.%d.%y %H:%M'):
+                            try:
+                                dtv = datetime.strptime(s, fmt)
+                                break
+                            except Exception:
+                                continue
+                    if dtv and dtv >= start_ts:
+                        vals.add(username_val)
+                except Exception:
+                    pass
+            return vals
+        except Exception:
+            return set()
+
+    dau_sets = []
+    mau_sets = []
+    for tbl, user_field, ts_field in (
+        ('posts','username','timestamp'),
+        ('reactions','username','created_at'),
+        ('poll_votes','username','voted_at'),
+        ('community_visit_history','username','visit_time'),
+        ('messages','sender','timestamp'),
+    ):
+        dau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_day))
+        mau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_30))
+
+    dau = len(set().union(*dau_sets))
+    mau = len(set().union(*mau_sets))
+    dau_pct = round((dau / total_users) * 100, 2) if total_users else 0.0
+    mau_pct = round((mau / total_users) * 100, 2) if total_users else 0.0
+
+    def get_unique_between_window(table, field, ts_field, start_ts, end_ts):
+        try:
+            q = f"SELECT DISTINCT {field}, {ts_field} FROM {table} WHERE {ts_field} IS NOT NULL"
+            c.execute(q)
+            rows = c.fetchall() or []
+            vals = set()
+            for r in rows:
+                try:
+                    username_val = r[field] if hasattr(r, 'keys') else r[0]
+                    ts_val = r[ts_field] if hasattr(r, 'keys') else (r[1] if len(r) > 1 else None)
+                    if not ts_val:
+                        continue
+                    s = str(ts_val)
+                    dtv = None
+                    try:
+                        dtv = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d', '%m.%d.%y %H:%M'):
+                            try:
+                                dtv = datetime.strptime(s, fmt)
+                                break
+                            except Exception:
+                                continue
+                    if dtv and (dtv >= start_ts) and (dtv < end_ts):
+                        vals.add(username_val)
+                except Exception:
+                    pass
+            return vals
+        except Exception:
+            return set()
+
+    daily_counts = []
+    for i in range(0, 30):
+        day_start = start_of_day - timedelta(days=i)
+        day_end = day_start + timedelta(days=1)
+        day_sets = []
+        for tbl, user_field, ts_field in (
+            ('posts','username','timestamp'),
+            ('reactions','username','created_at'),
+            ('poll_votes','username','voted_at'),
+            ('community_visit_history','username','visit_time'),
+            ('messages','sender','timestamp'),
+        ):
+            day_sets.append(get_unique_between_window(tbl, user_field, ts_field, day_start, day_end))
+        daily_counts.append(len(set().union(*day_sets)))
+    avg_dau_30 = round(sum(daily_counts) / len(daily_counts), 2) if daily_counts else 0.0
+
+    def get_activity_users(start_ts, end_ts):
+        users_union = set()
+        for tbl, user_field, ts_field in (
+            ('posts','username','timestamp'),
+            ('reactions','username','created_at'),
+            ('poll_votes','username','voted_at'),
+            ('community_visit_history','username','visit_time'),
+            ('messages','sender','timestamp'),
+        ):
+            users_union |= get_unique_between_window(tbl, user_field, ts_field, start_ts, end_ts)
+        return users_union
+
+    from calendar import monthrange
+    cur_month_start = start_of_day.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if cur_month_start.month == 1:
+        prev_month_start = cur_month_start.replace(year=cur_month_start.year-1, month=12)
+    else:
+        prev_month_start = cur_month_start.replace(month=cur_month_start.month-1)
+    days_in_prev_month = monthrange(prev_month_start.year, prev_month_start.month)[1]
+    prev_month_end = prev_month_start.replace(day=days_in_prev_month, hour=23, minute=59, second=59)
+    days_in_cur_month = monthrange(cur_month_start.year, cur_month_start.month)[1]
+    cur_month_end = cur_month_start.replace(day=days_in_cur_month, hour=23, minute=59, second=59)
+
+    users_prev_month = get_activity_users(prev_month_start, prev_month_end)
+    users_cur_month = get_activity_users(cur_month_start, cur_month_end)
+    mau_month = len(users_cur_month)
+    mru = len(users_prev_month & users_cur_month)
+    mru_repeat_rate = round((mru / mau_month) * 100, 2) if mau_month else 0.0
+
+    weekday = start_of_day.weekday()
+    start_of_week = start_of_day.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=weekday)
+    prev_week_start = start_of_week - timedelta(days=7)
+    prev_week_end = start_of_week - timedelta(seconds=1)
+    cur_week_end = start_of_week + timedelta(days=7) - timedelta(seconds=1)
+    users_prev_week = get_activity_users(prev_week_start, prev_week_end)
+    users_cur_week = get_activity_users(start_of_week, cur_week_end)
+    wau = len(users_cur_week)
+    wru = len(users_prev_week & users_cur_week)
+    wru_repeat_rate = round((wru / wau) * 100, 2) if wau else 0.0
+
+    cohorts = []
+    month_starts = []
+    ms = cur_month_start
+    for _ in range(6):
+        month_starts.append(ms)
+        if ms.month == 1:
+            ms = ms.replace(year=ms.year-1, month=12)
+        else:
+            ms = ms.replace(month=ms.month-1)
+    month_starts = list(reversed(month_starts))
+
+    c.execute(f"SELECT username, created_at FROM users WHERE 1=1{tf}", tp)
+    all_users = c.fetchall() or []
+    def in_month(dt, y, m):
+        return (dt.year == y and dt.month == m)
+    month_windows = []
+    for ms in month_starts:
+        y = ms.year; m = ms.month
+        days_in_month = monthrange(y, m)[1]
+        start = ms
+        end = ms.replace(day=days_in_month, hour=23, minute=59, second=59)
+        month_windows.append((y, m, start, end))
+
+    for i, (y, m, start, end) in enumerate(month_windows):
+        cohort_users = set()
+        for u in all_users:
+            uname = u['username'] if hasattr(u,'keys') else u[0]
+            created = u['created_at'] if hasattr(u,'keys') else (u[1] if len(u)>1 else None)
+            if not created: continue
+            try:
+                s = str(created)
+                dtc = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+            except Exception:
+                try:
+                    dtc = datetime.strptime(str(created), '%Y-%m-%d')
+                except Exception:
+                    continue
+            if in_month(dtc, y, m):
+                cohort_users.add(uname)
+        cohort_size = len(cohort_users)
+        retention = []
+        if cohort_size:
+            for j in range(i, len(month_windows)):
+                ys, ms_, ws, we = month_windows[j]
+                active = get_activity_users(ws, we)
+                retained = len(active & cohort_users)
+                retention.append(round((retained / cohort_size) * 100, 2))
+        cohorts.append({
+            'month': f"{y:04d}-{m:02d}",
+            'size': cohort_size,
+            'retention': retention,
+        })
+
+    def scalar_list(query, params=()):
+        c.execute(query, params)
+        rows = c.fetchall() or []
+        out = []
+        for r in rows:
+            if hasattr(r, 'keys'):
+                out.append({'username': r['username'], 'count': r['cnt']})
+            else:
+                out.append({'username': r[0], 'count': r[1]})
+        return out
+
+    top_posters = scalar_list("SELECT username, COUNT(*) as cnt FROM posts WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
+    top_reactors = scalar_list("SELECT username, COUNT(*) as cnt FROM reactions WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
+    top_voters = scalar_list("SELECT username, COUNT(*) as cnt FROM poll_votes WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
+
+    stats = {
+        'total_users': total_users,
+        'premium_users': premium_users,
+        'total_communities': total_communities,
+        'total_posts': total_posts,
+        'dau': dau,
+        'mau': mau,
+        'dau_pct': dau_pct,
+        'mau_pct': mau_pct,
+        'avg_dau_30': avg_dau_30,
+        'mau_month': mau_month,
+        'mru': mru,
+        'mru_repeat_rate_pct': mru_repeat_rate,
+        'wau': wau,
+        'wru': wru,
+        'wru_repeat_rate_pct': wru_repeat_rate,
+        'cohorts': cohorts,
+        'leaderboards': {
+            'top_posters': top_posters,
+            'top_reactors': top_reactors,
+            'top_voters': top_voters,
+        }
+    }
+
+    try:
+        c.execute(f"SELECT username, created_at FROM users WHERE 1=1{tf} ORDER BY created_at DESC LIMIT 1", tp)
+        last_user_row = c.fetchone()
+        if last_user_row:
+            stats['last_user'] = {
+                'username': last_user_row['username'] if hasattr(last_user_row, 'keys') else last_user_row[0],
+                'created_at': str(last_user_row['created_at'] if hasattr(last_user_row, 'keys') else last_user_row[1]) if (last_user_row['created_at'] if hasattr(last_user_row, 'keys') else last_user_row[1]) else None
+            }
+    except Exception:
+        pass
+
+    try:
+        c.execute(f"SELECT name, id FROM communities WHERE 1=1{tf} ORDER BY id DESC LIMIT 1", tp)
+        last_comm_row = c.fetchone()
+        if last_comm_row:
+            stats['last_community'] = {
+                'name': last_comm_row['name'] if hasattr(last_comm_row, 'keys') else last_comm_row[0],
+                'id': last_comm_row['id'] if hasattr(last_comm_row, 'keys') else last_comm_row[1]
+            }
+    except Exception:
+        pass
+
+    return stats
+
+
 @app.route('/api/admin/metrics', methods=['GET'])
 @login_required
 def admin_metrics_api():
-    """Metrics-only endpoint. Calls dashboard and returns only stats."""
+    """Dedicated metrics endpoint - DAU, MAU, cohorts, leaderboards."""
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
-        resp = admin_dashboard_api()
-        data = resp.get_json() if hasattr(resp, 'get_json') else resp[0].get_json()
-        if data and data.get('success'):
-            return jsonify({'success': True, 'stats': data.get('stats', {})})
-        return jsonify({'success': False, 'error': 'Could not load metrics'}), 500
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            stats = _compute_admin_metrics(c)
+            return jsonify({'success': True, 'stats': stats})
     except Exception as e:
         logger.error(f"admin_metrics error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
@@ -7164,7 +7462,7 @@ def admin_metrics_api():
 @app.route('/api/admin/dashboard', methods=['GET'])
 @login_required
 def admin_dashboard_api():
-    """API endpoint for admin dashboard data"""
+    """API endpoint for admin dashboard data - users, communities, and basic counts."""
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
@@ -7174,7 +7472,6 @@ def admin_dashboard_api():
             c = conn.cursor()
             tf, tp = _tenant_filter()
             
-            # Get statistics
             c.execute(f"SELECT COUNT(*) as count FROM users WHERE 1=1{tf}", tp)
             total_users = get_scalar_result(c.fetchone(), column_name='count')
             
@@ -7187,280 +7484,12 @@ def admin_dashboard_api():
             c.execute(f"SELECT COUNT(*) as count FROM posts WHERE 1=1{tf}", tp)
             total_posts = get_scalar_result(c.fetchone(), column_name='count')
             
-            # Activity windows
-            from datetime import datetime, timedelta
-            # Use server-local midnight for "today" to better match stored timestamps
-            today = datetime.now().date()
-            start_of_day = datetime(today.year, today.month, today.day)
-            start_of_30 = start_of_day - timedelta(days=30)
-
-            # DAU/MAU (unique usernames with any activity: post, reaction, vote, or reading timeline)
-            # Reading timeline proxy: community_feed/api hits tracked in community_visit_history
-            def get_unique_between(table, field, ts_field, start_ts):
-                try:
-                    q = f"SELECT DISTINCT {field}, {ts_field} FROM {table} WHERE {ts_field} IS NOT NULL"
-                    c.execute(q)
-                    rows = c.fetchall() or []
-                    vals = set()
-                    for r in rows:
-                        try:
-                            username_val = r[field] if hasattr(r, 'keys') else r[0]
-                            ts_val = r[ts_field] if hasattr(r, 'keys') else (r[1] if len(r) > 1 else None)
-                            if not ts_val:
-                                continue
-                            s = str(ts_val)
-                            dtv = None
-                            # Fast path ISO-like
-                            try:
-                                dtv = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                            except Exception:
-                                for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d', '%m.%d.%y %H:%M'):
-                                    try:
-                                        dtv = datetime.strptime(s, fmt)
-                                        break
-                                    except Exception:
-                                        continue
-                            if dtv and dtv >= start_ts:
-                                vals.add(username_val)
-                        except Exception:
-                            pass
-                    return vals
-                except Exception:
-                    return set()
-
-            dau_sets = []
-            mau_sets = []
-            for tbl, user_field, ts_field in (
-                ('posts','username','timestamp'),
-                ('reactions','username','created_at'),
-                ('poll_votes','username','voted_at'),
-                ('community_visit_history','username','visit_time'),
-                ('messages','sender','timestamp'),
-            ):
-                dau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_day))
-                mau_sets.append(get_unique_between(tbl, user_field, ts_field, start_of_30))
-
-            dau = len(set().union(*dau_sets))
-            mau = len(set().union(*mau_sets))
-            dau_pct = round((dau / total_users) * 100, 2) if total_users else 0.0
-            mau_pct = round((mau / total_users) * 100, 2) if total_users else 0.0
-
-            # Average DAU over the past 30 days (including today):
-            # For each day window [day_start, day_end), union distinct users across activity tables, then average the counts
-            def get_unique_between_window(table, field, ts_field, start_ts, end_ts):
-                try:
-                    q = f"SELECT DISTINCT {field}, {ts_field} FROM {table} WHERE {ts_field} IS NOT NULL"
-                    c.execute(q)
-                    rows = c.fetchall() or []
-                    vals = set()
-                    for r in rows:
-                        try:
-                            username_val = r[field] if hasattr(r, 'keys') else r[0]
-                            ts_val = r[ts_field] if hasattr(r, 'keys') else (r[1] if len(r) > 1 else None)
-                            if not ts_val:
-                                continue
-                            s = str(ts_val)
-                            dtv = None
-                            try:
-                                dtv = datetime.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                            except Exception:
-                                for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d', '%m.%d.%y %H:%M'):
-                                    try:
-                                        dtv = datetime.strptime(s, fmt)
-                                        break
-                                    except Exception:
-                                        continue
-                            if dtv and (dtv >= start_ts) and (dtv < end_ts):
-                                vals.add(username_val)
-                        except Exception:
-                            pass
-                    return vals
-                except Exception:
-                    return set()
-
-            daily_counts = []
-            for i in range(0, 30):
-                day_start = start_of_day - timedelta(days=i)
-                day_end = day_start + timedelta(days=1)
-                day_sets = []
-                for tbl, user_field, ts_field in (
-                    ('posts','username','timestamp'),
-                    ('reactions','username','created_at'),
-                    ('poll_votes','username','voted_at'),
-                    ('community_visit_history','username','visit_time'),
-                    ('messages','sender','timestamp'),
-                ):
-                    day_sets.append(get_unique_between_window(tbl, user_field, ts_field, day_start, day_end))
-                daily_counts.append(len(set().union(*day_sets)))
-            avg_dau_30 = round(sum(daily_counts) / len(daily_counts), 2) if daily_counts else 0.0
-
-            # Helper: get activity users for a window [start, end)
-            def get_activity_users(start_ts, end_ts):
-                users_union = set()
-                for tbl, user_field, ts_field in (
-                    ('posts','username','timestamp'),
-                    ('reactions','username','created_at'),
-                    ('poll_votes','username','voted_at'),
-                    ('community_visit_history','username','visit_time'),
-                    ('messages','sender','timestamp'),
-                ):
-                    users_union |= get_unique_between_window(tbl, user_field, ts_field, start_ts, end_ts)
-                return users_union
-
-            # Monthly returning users (current month vs previous month)
-            from calendar import monthrange
-            cur_month_start = start_of_day.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            # Prev month start
-            if cur_month_start.month == 1:
-                prev_month_start = cur_month_start.replace(year=cur_month_start.year-1, month=12)
-            else:
-                prev_month_start = cur_month_start.replace(month=cur_month_start.month-1)
-            # Month ends
-            days_in_prev_month = monthrange(prev_month_start.year, prev_month_start.month)[1]
-            prev_month_end = prev_month_start.replace(day=days_in_prev_month, hour=23, minute=59, second=59)
-            days_in_cur_month = monthrange(cur_month_start.year, cur_month_start.month)[1]
-            cur_month_end = cur_month_start.replace(day=days_in_cur_month, hour=23, minute=59, second=59)
-
-            users_prev_month = get_activity_users(prev_month_start, prev_month_end)
-            users_cur_month = get_activity_users(cur_month_start, cur_month_end)
-            mau_month = len(users_cur_month)
-            mru = len(users_prev_month & users_cur_month)
-            mru_repeat_rate = round((mru / mau_month) * 100, 2) if mau_month else 0.0
-
-            # Weekly returning users (current week vs previous week), week starts Monday
-            weekday = start_of_day.weekday()  # Mon=0
-            start_of_week = start_of_day.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=weekday)
-            prev_week_start = start_of_week - timedelta(days=7)
-            prev_week_end = start_of_week - timedelta(seconds=1)
-            cur_week_end = start_of_week + timedelta(days=7) - timedelta(seconds=1)
-            users_prev_week = get_activity_users(prev_week_start, prev_week_end)
-            users_cur_week = get_activity_users(start_of_week, cur_week_end)
-            wau = len(users_cur_week)
-            wru = len(users_prev_week & users_cur_week)
-            wru_repeat_rate = round((wru / wau) * 100, 2) if wau else 0.0
-
-            # Cohort retention (last 6 calendar months)
-            cohorts = []
-            # Build list of month starts (oldest to newest)
-            month_starts = []
-            ms = cur_month_start
-            for _ in range(6):
-                month_starts.append(ms)
-                # go back one month
-                if ms.month == 1:
-                    ms = ms.replace(year=ms.year-1, month=12)
-                else:
-                    ms = ms.replace(month=ms.month-1)
-            month_starts = list(reversed(month_starts))
-
-            # Preload user signups
-            c.execute(f"SELECT username, created_at FROM users WHERE 1=1{tf}", tp)
-            all_users = c.fetchall() or []
-            def in_month(dt, y, m):
-                return (dt.year == y and dt.month == m)
-            # Pre-calc month windows
-            month_windows = []
-            for ms in month_starts:
-                y = ms.year; m = ms.month
-                days_in_month = monthrange(y, m)[1]
-                start = ms
-                end = ms.replace(day=days_in_month, hour=23, minute=59, second=59)
-                month_windows.append((y, m, start, end))
-
-            # Build cohorts
-            for i, (y, m, start, end) in enumerate(month_windows):
-                cohort_users = set()
-                for u in all_users:
-                    uname = u['username'] if hasattr(u,'keys') else u[0]
-                    created = u['created_at'] if hasattr(u,'keys') else (u[1] if len(u)>1 else None)
-                    if not created: continue
-                    try:
-                        s = str(created)
-                        dtc = _dt.strptime(s[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
-                    except Exception:
-                        try:
-                            dtc = _dt.strptime(str(created), '%Y-%m-%d')
-                        except Exception:
-                            continue
-                    if in_month(dtc, y, m):
-                        cohort_users.add(uname)
-                cohort_size = len(cohort_users)
-                # Compute retention for subsequent months up to the latest window
-                retention = []
-                if cohort_size:
-                    for j in range(i, len(month_windows)):
-                        ys, ms_, ws, we = month_windows[j]
-                        active = get_activity_users(ws, we)
-                        retained = len(active & cohort_users)
-                        retention.append(round((retained / cohort_size) * 100, 2))
-                cohorts.append({
-                    'month': f"{y:04d}-{m:02d}",
-                    'size': cohort_size,
-                    'retention': retention,
-                })
-
-            # Leaderboards
-            def scalar_list(query, params=()):
-                c.execute(query, params)
-                rows = c.fetchall() or []
-                out = []
-                for r in rows:
-                    if hasattr(r, 'keys'):
-                        out.append({'username': r['username'], 'count': r['cnt']})
-                    else:
-                        out.append({'username': r[0], 'count': r[1]})
-                return out
-
-            top_posters = scalar_list("SELECT username, COUNT(*) as cnt FROM posts WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
-            top_reactors = scalar_list("SELECT username, COUNT(*) as cnt FROM reactions WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
-            top_voters = scalar_list("SELECT username, COUNT(*) as cnt FROM poll_votes WHERE LOWER(username) <> 'admin' GROUP BY username ORDER BY cnt DESC LIMIT 10")
-
             stats = {
                 'total_users': total_users,
                 'premium_users': premium_users,
                 'total_communities': total_communities,
                 'total_posts': total_posts,
-                'dau': dau,
-                'mau': mau,
-                'dau_pct': dau_pct,
-                'mau_pct': mau_pct,
-                'avg_dau_30': avg_dau_30,
-                'mau_month': mau_month,
-                'mru': mru,
-                'mru_repeat_rate_pct': mru_repeat_rate,
-                'wau': wau,
-                'wru': wru,
-                'wru_repeat_rate_pct': wru_repeat_rate,
-                'cohorts': cohorts,
-                'leaderboards': {
-                    'top_posters': top_posters,
-                    'top_reactors': top_reactors,
-                    'top_voters': top_voters,
-                }
             }
-            
-            # Last user created and last community created
-            try:
-                c.execute(f"SELECT username, created_at FROM users WHERE 1=1{tf} ORDER BY created_at DESC LIMIT 1", tp)
-                last_user_row = c.fetchone()
-                if last_user_row:
-                    stats['last_user'] = {
-                        'username': last_user_row['username'] if hasattr(last_user_row, 'keys') else last_user_row[0],
-                        'created_at': str(last_user_row['created_at'] if hasattr(last_user_row, 'keys') else last_user_row[1]) if (last_user_row['created_at'] if hasattr(last_user_row, 'keys') else last_user_row[1]) else None
-                    }
-            except Exception:
-                pass
-            
-            try:
-                c.execute(f"SELECT name, id FROM communities WHERE 1=1{tf} ORDER BY id DESC LIMIT 1", tp)
-                last_comm_row = c.fetchone()
-                if last_comm_row:
-                    stats['last_community'] = {
-                        'name': last_comm_row['name'] if hasattr(last_comm_row, 'keys') else last_comm_row[0],
-                        'id': last_comm_row['id'] if hasattr(last_comm_row, 'keys') else last_comm_row[1]
-                    }
-            except Exception:
-                pass
             
             # Get users list with created_at
             c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE 1=1{tf} ORDER BY username", tp)
@@ -7490,7 +7519,6 @@ def admin_dashboard_api():
             communities_raw = c.fetchall()
             logger.info(f"Admin dashboard: Found {len(communities_raw)} total communities")
             
-            # First, create all community objects (support dict or tuple rows)
             all_communities = {}
             for comm in communities_raw:
                 if hasattr(comm, 'keys'):
@@ -7520,34 +7548,25 @@ def admin_dashboard_api():
                 }
                 all_communities[cid] = community_data
             
-            # Now organize into parent-child structure
             root_communities = {}
             
             for comm_id, comm_data in all_communities.items():
                 if comm_data['parent_community_id'] is None:
-                    # This is a root community
                     root_communities[comm_id] = comm_data
                 else:
-                    # This is a child community - add it to its parent if parent exists
                     parent_id = comm_data['parent_community_id']
                     if parent_id in all_communities:
                         all_communities[parent_id]['children'].append(comm_data)
                     else:
-                        # Parent doesn't exist, treat this as a root community
                         root_communities[comm_id] = comm_data
             
-            # For any community that has children but isn't a root (nested hierarchy),
-            # we need to ensure it appears as a root if its parent isn't in our list
             for comm_id, comm_data in all_communities.items():
                 if comm_data['children'] and comm_id not in root_communities:
-                    # Check if this community's parent is in our list
                     if comm_data['parent_community_id'] and comm_data['parent_community_id'] not in all_communities:
                         root_communities[comm_id] = comm_data
             
-            # Convert to list and include all communities (even orphaned ones)
             communities = list(root_communities.values())
             
-            # Also include any communities that might have been missed
             included_ids = set()
             
             def collect_ids(comm):
@@ -7558,7 +7577,6 @@ def admin_dashboard_api():
             for comm in communities:
                 collect_ids(comm)
             
-            # Add any missing communities as root level
             for comm_id, comm_data in all_communities.items():
                 if comm_id not in included_ids:
                     communities.append(comm_data)
@@ -7988,57 +8006,62 @@ def admin_delete_community():
 @app.route('/api/admin/tenants', methods=['GET'])
 @login_required
 def admin_list_tenants():
-    """List all tenants with user/community counts. Landlord only."""
+    """List all tenants (landlord only)."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord access only'}), 403
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        return jsonify({'success': False, 'error': 'Landlord only'}), 403
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            ph = get_sql_placeholder()
             _ensure_tenants_table(c)
-            c.execute("""
-                SELECT t.id, t.name, t.subdomain, t.custom_domain, t.plan, t.created_at,
-                       (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) as user_count,
-                       (SELECT COUNT(*) FROM communities co WHERE co.tenant_id = t.id) as community_count
-                FROM tenants t ORDER BY t.name
-            """)
+            ph = get_sql_placeholder()
+            c.execute("SELECT id, name, subdomain, custom_domain, plan, created_at FROM tenants ORDER BY id")
             tenants = []
-            for r in c.fetchall():
+            for t in c.fetchall():
+                tid = t['id'] if hasattr(t,'keys') else t[0]
+                c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE tenant_id = {ph}", (tid,))
+                r = c.fetchone()
+                uc = r['cnt'] if hasattr(r,'keys') else r[0]
+                c.execute(f"SELECT COUNT(*) as cnt FROM communities WHERE tenant_id = {ph}", (tid,))
+                r = c.fetchone()
+                cc = r['cnt'] if hasattr(r,'keys') else r[0]
                 tenants.append({
-                    'id': r['id'] if hasattr(r,'keys') else r[0],
-                    'name': r['name'] if hasattr(r,'keys') else r[1],
-                    'subdomain': r['subdomain'] if hasattr(r,'keys') else r[2],
-                    'custom_domain': r['custom_domain'] if hasattr(r,'keys') else r[3],
-                    'plan': r['plan'] if hasattr(r,'keys') else r[4],
-                    'created_at': str(r['created_at'] if hasattr(r,'keys') else r[5]) if (r['created_at'] if hasattr(r,'keys') else r[5]) else None,
-                    'user_count': r['user_count'] if hasattr(r,'keys') else r[6],
-                    'community_count': r['community_count'] if hasattr(r,'keys') else r[7],
+                    'id': tid,
+                    'name': t['name'] if hasattr(t,'keys') else t[1],
+                    'subdomain': t['subdomain'] if hasattr(t,'keys') else t[2],
+                    'custom_domain': t['custom_domain'] if hasattr(t,'keys') else t[3],
+                    'plan': t['plan'] if hasattr(t,'keys') else t[4],
+                    'created_at': str(t['created_at'] if hasattr(t,'keys') else t[5]) if (t['created_at'] if hasattr(t,'keys') else t[5]) else None,
+                    'user_count': uc,
+                    'community_count': cc,
                 })
             return jsonify({'success': True, 'tenants': tenants})
     except Exception as e:
         logger.error(f"admin_list_tenants error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+
 @app.route('/api/admin/tenants', methods=['POST'])
 @login_required
 def admin_create_tenant():
-    """Create a new tenant. Landlord only."""
+    """Create a tenant (landlord only)."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord access only'}), 403
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        return jsonify({'success': False, 'error': 'Landlord only'}), 403
     data = request.get_json() or {}
     name = (data.get('name') or '').strip()
     subdomain = (data.get('subdomain') or '').strip().lower()
     if not name or not subdomain:
         return jsonify({'success': False, 'error': 'Name and subdomain required'}), 400
-    import re as _re
-    if not _re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', subdomain):
-        return jsonify({'success': False, 'error': 'Subdomain must be alphanumeric with hyphens'}), 400
+    import re
+    if not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', subdomain):
+        return jsonify({'success': False, 'error': 'Invalid subdomain (alphanumeric and hyphens only)'}), 400
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -8047,12 +8070,7 @@ def admin_create_tenant():
             c.execute(f"SELECT id FROM tenants WHERE subdomain = {ph}", (subdomain,))
             if c.fetchone():
                 return jsonify({'success': False, 'error': 'Subdomain already taken'}), 409
-            custom_domain = (data.get('custom_domain') or '').strip() or None
-            plan = (data.get('plan') or 'free').strip()
-            if USE_MYSQL:
-                c.execute(f"INSERT INTO tenants (name, subdomain, custom_domain, plan) VALUES ({ph},{ph},{ph},{ph})", (name, subdomain, custom_domain, plan))
-            else:
-                c.execute(f"INSERT INTO tenants (name, subdomain, custom_domain, plan) VALUES ({ph},{ph},{ph},{ph})", (name, subdomain, custom_domain, plan))
+            c.execute(f"INSERT INTO tenants (name, subdomain) VALUES ({ph}, {ph})", (name, subdomain))
             conn.commit()
             tid = c.lastrowid
             return jsonify({'success': True, 'tenant': {'id': tid, 'name': name, 'subdomain': subdomain}})
@@ -8060,15 +8078,17 @@ def admin_create_tenant():
         logger.error(f"admin_create_tenant error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+
 @app.route('/api/admin/tenants/<int:tenant_id>', methods=['PATCH'])
 @login_required
 def admin_update_tenant(tenant_id):
-    """Update a tenant. Landlord only."""
+    """Update a tenant (landlord only)."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord access only'}), 403
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        return jsonify({'success': False, 'error': 'Landlord only'}), 403
     data = request.get_json() or {}
     try:
         with get_db_connection() as conn:
@@ -8078,19 +8098,19 @@ def admin_update_tenant(tenant_id):
             params = []
             for field in ('name', 'subdomain', 'custom_domain', 'plan'):
                 if field in data:
-                    val = (data[field] or '').strip() if data[field] else None
+                    val = (data[field] or '').strip()
                     if field == 'subdomain' and val:
-                        import re as _re
-                        if not _re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', val.lower()):
+                        import re
+                        if not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', val.lower()):
                             return jsonify({'success': False, 'error': 'Invalid subdomain'}), 400
                         c.execute(f"SELECT id FROM tenants WHERE subdomain = {ph} AND id != {ph}", (val.lower(), tenant_id))
                         if c.fetchone():
-                            return jsonify({'success': False, 'error': 'Subdomain taken'}), 409
+                            return jsonify({'success': False, 'error': 'Subdomain already taken'}), 409
                         val = val.lower()
                     updates.append(f"{field} = {ph}")
                     params.append(val)
             if not updates:
-                return jsonify({'success': False, 'error': 'Nothing to update'}), 400
+                return jsonify({'success': False, 'error': 'No fields to update'}), 400
             params.append(tenant_id)
             c.execute(f"UPDATE tenants SET {', '.join(updates)} WHERE id = {ph}", tuple(params))
             conn.commit()
@@ -8099,15 +8119,59 @@ def admin_update_tenant(tenant_id):
         logger.error(f"admin_update_tenant error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
-@app.route('/api/admin/tenants/<int:tenant_id>/assign-users', methods=['PATCH'])
+
+@app.route('/api/admin/tenants/<int:tenant_id>/users', methods=['GET'])
 @login_required
-def admin_assign_tenant_users(tenant_id):
-    """Assign users to a tenant. Landlord only."""
+def admin_tenant_users(tenant_id):
+    """List users for a tenant (landlord only)."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord access only'}), 403
-    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Landlord only'}), 403
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id, username, email FROM users WHERE tenant_id = {ph} ORDER BY username", (tenant_id,))
+            users = [{'id': u['id'] if hasattr(u,'keys') else u[0], 'username': u['username'] if hasattr(u,'keys') else u[1], 'email': u['email'] if hasattr(u,'keys') else u[2]} for u in c.fetchall()]
+            return jsonify({'success': True, 'users': users})
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/admin/tenants/<int:tenant_id>/communities', methods=['GET'])
+@login_required
+def admin_tenant_communities(tenant_id):
+    """List communities for a tenant (landlord only)."""
+    username = session.get('username')
+    if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    from flask import g
+    if getattr(g, 'tenant_id', None) is not None:
+        return jsonify({'success': False, 'error': 'Landlord only'}), 403
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id, name FROM communities WHERE tenant_id = {ph} ORDER BY name", (tenant_id,))
+            comms = [{'id': co['id'] if hasattr(co,'keys') else co[0], 'name': co['name'] if hasattr(co,'keys') else co[1]} for co in c.fetchall()]
+            return jsonify({'success': True, 'communities': comms})
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/admin/tenants/<int:tenant_id>/assign-users', methods=['PATCH'])
+@login_required
+def admin_assign_users_to_tenant(tenant_id):
+    """Assign users to a tenant (landlord only)."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    from flask import g
+    if getattr(g, 'tenant_id', None) is not None:
+        return jsonify({'success': False, 'error': 'Landlord only'}), 403
     data = request.get_json() or {}
     user_ids = data.get('user_ids', [])
     if not user_ids or not isinstance(user_ids, list):
@@ -8121,18 +8185,19 @@ def admin_assign_tenant_users(tenant_id):
             conn.commit()
             return jsonify({'success': True, 'assigned': len(user_ids)})
     except Exception as e:
-        logger.error(f"admin_assign_tenant_users error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
 
 @app.route('/api/admin/tenants/<int:tenant_id>/assign-communities', methods=['PATCH'])
 @login_required
-def admin_assign_tenant_communities(tenant_id):
-    """Assign communities to a tenant. Landlord only."""
+def admin_assign_communities_to_tenant(tenant_id):
+    """Assign communities to a tenant (landlord only)."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord access only'}), 403
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+        return jsonify({'success': False, 'error': 'Landlord only'}), 403
     data = request.get_json() or {}
     community_ids = data.get('community_ids', [])
     if not community_ids or not isinstance(community_ids, list):
@@ -8146,7 +8211,6 @@ def admin_assign_tenant_communities(tenant_id):
             conn.commit()
             return jsonify({'success': True, 'assigned': len(community_ids)})
     except Exception as e:
-        logger.error(f"admin_assign_tenant_communities error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/admin', methods=['GET', 'POST'])
@@ -24870,51 +24934,69 @@ This invitation was sent by {username} from C.Point.
 @app.route('/api/community/invite_bulk', methods=['POST'])
 @login_required
 def invite_bulk():
-    """Bulk invite by comma/newline-separated emails."""
+    """Bulk invite: accepts emails array or comma/newline-separated string."""
     username = session.get('username')
     data = request.get_json() or {}
     community_id = data.get('community_id')
-    emails_raw = data.get('emails', '')
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
-    import re as _re
-    emails = [e.strip().lower() for e in _re.split(r'[,;\n\r]+', emails_raw) if e.strip()]
-    emails = [e for e in emails if '@' in e and '.' in e]
-    if not emails:
-        return jsonify({'success': False, 'error': 'No valid emails provided'}), 400
-
+    
+    raw_emails = data.get('emails', '')
+    if isinstance(raw_emails, list):
+        emails = [e.strip().lower() for e in raw_emails if e and e.strip()]
+    elif isinstance(raw_emails, str):
+        import re
+        emails = [e.strip().lower() for e in re.split(r'[,;\n\r]+', raw_emails) if e.strip()]
+    else:
+        return jsonify({'success': False, 'error': 'emails required'}), 400
+    
+    import re
+    valid_emails = [e for e in emails if re.match(r'^[^@]+@[^@]+\.[^@]+$', e)]
+    
     sent = 0
     failed = 0
     errors = []
-    for email in emails[:100]:
+    
+    for email in valid_emails:
         try:
+            fd = {'email': email, 'community_id': str(community_id)}
             with get_db_connection() as conn:
                 c = conn.cursor()
                 ph = get_sql_placeholder()
-                c.execute(f"SELECT 1 FROM user_communities uc JOIN users u ON uc.user_id = u.id WHERE u.email = {ph} AND uc.community_id = {ph}", (email, community_id))
-                if c.fetchone():
-                    errors.append({'email': email, 'error': 'Already a member'})
-                    failed += 1
-                    continue
-                import secrets
-                token = secrets.token_urlsafe(32)
-                c.execute(f"INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token) VALUES ({ph},{ph},{ph},{ph})", (community_id, email, username, token))
-                conn.commit()
-                base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-                invite_url = f"{base_url}/invite/{token}"
-                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
-                comm_row = c.fetchone()
-                comm_name = (comm_row['name'] if hasattr(comm_row,'keys') else comm_row[0]) if comm_row else 'a community'
-                try:
-                    _send_email_via_resend(email, f"You're invited to join {comm_name} on C.Point", f'<p>You have been invited to join <strong>{comm_name}</strong>. <a href="{invite_url}">Click here to join</a>.</p>', f'Join {comm_name}: {invite_url}')
-                except Exception:
-                    pass
-                sent += 1
+                c.execute(f"SELECT username FROM users WHERE LOWER(email) = LOWER({ph})", (email,))
+                existing = c.fetchone()
+                if existing:
+                    user_uname = existing['username'] if hasattr(existing, 'keys') else existing[0]
+                    try:
+                        add_user_to_community(conn.cursor(), community_id, user_id=None, username=user_uname, role='member')
+                        conn.commit()
+                        sent += 1
+                    except Exception as ae:
+                        errors.append({'email': email, 'error': str(ae)})
+                        failed += 1
+                else:
+                    import secrets
+                    token = secrets.token_urlsafe(32)
+                    c.execute(f"""INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
+                        VALUES ({ph}, {ph}, {ph}, {ph})""", (community_id, email, username, token))
+                    conn.commit()
+                    try:
+                        c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
+                        cn = c.fetchone()
+                        comm_name = cn['name'] if hasattr(cn,'keys') else cn[0] if cn else 'Community'
+                        base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
+                        invite_url = f"{base_url}/invite/{token}"
+                        _send_email_via_resend(email, f"You're invited to join {comm_name} on C.Point",
+                            f'<p>You have been invited to join <strong>{comm_name}</strong> on C.Point.</p><p><a href="{invite_url}">Accept Invitation</a></p>')
+                    except Exception:
+                        pass
+                    sent += 1
         except Exception as e:
             errors.append({'email': email, 'error': str(e)})
             failed += 1
-
-    return jsonify({'success': True, 'sent': sent, 'failed': failed, 'errors': errors[:20]})
+    
+    invalid_count = len(emails) - len(valid_emails)
+    return jsonify({'success': True, 'sent': sent, 'failed': failed, 'invalid': invalid_count, 'errors': errors[:20]})
 
 @app.route('/leave_community', methods=['POST'])
 @login_required
