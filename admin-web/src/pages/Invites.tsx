@@ -4,10 +4,20 @@ import { apiJson, apiPost } from '../utils/api'
 interface Community {
   id: number
   name: string
+  children?: Community[]
+}
+
+function flattenTree(nodes: Community[]): { id: number; name: string }[] {
+  const result: { id: number; name: string }[] = []
+  for (const n of nodes) {
+    result.push({ id: n.id, name: n.name })
+    if (n.children) result.push(...flattenTree(n.children))
+  }
+  return result
 }
 
 export default function Invites() {
-  const [communities, setCommunities] = useState<Community[]>([])
+  const [communities, setCommunities] = useState<{ id: number; name: string }[]>([])
   const [commLoading, setCommLoading] = useState(true)
   const [selectedCommunity, setSelectedCommunity] = useState('')
   const [email, setEmail] = useState('')
@@ -16,8 +26,8 @@ export default function Invites() {
   const [linkMsg, setLinkMsg] = useState('')
 
   useEffect(() => {
-    apiJson<{ communities?: Community[] }>('/api/admin/communities_list')
-      .then(d => setCommunities(d.communities ?? []))
+    apiJson<{ communities?: Community[] }>('/api/admin/dashboard')
+      .then(d => setCommunities(flattenTree(d.communities ?? [])))
       .catch(() => {})
       .finally(() => setCommLoading(false))
   }, [])

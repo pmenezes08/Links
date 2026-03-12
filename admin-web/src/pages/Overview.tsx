@@ -7,8 +7,8 @@ interface OverviewData {
   premium_users: number
   total_communities: number
   total_posts: number
-  recent_users: { username: string; email: string; created_at: string }[]
-  recent_communities: { id: number; name: string; creator: string }[]
+  recent_users: { username: string; created_at: string }[]
+  recent_communities: { id: number; name: string }[]
 }
 
 export default function Overview() {
@@ -47,7 +47,6 @@ export default function Overview() {
                 <div key={u.username} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                   <div>
                     <span className="text-accent font-medium">@{u.username}</span>
-                    {u.email && <span className="text-muted text-xs ml-2">{u.email}</span>}
                   </div>
                   {u.created_at && (
                     <span className="text-muted text-xs">{new Date(u.created_at).toLocaleDateString()}</span>
@@ -66,7 +65,6 @@ export default function Overview() {
                 <div key={c.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
                   <div>
                     <span className="font-medium">{c.name}</span>
-                    {c.creator && <span className="text-muted text-xs ml-2">by {c.creator}</span>}
                   </div>
                 </div>
               ))}

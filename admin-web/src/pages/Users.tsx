@@ -16,7 +16,7 @@ interface UsersResponse {
   total: number
   page: number
   per_page: number
-  total_pages: number
+  pages: number
 }
 
 interface AddUserForm {
@@ -50,7 +50,7 @@ export default function Users() {
     apiJson<UsersResponse>(`/api/admin/users?${params}`)
       .then(d => {
         setUsers(d.users ?? [])
-        setTotalPages(d.total_pages ?? 1)
+        setTotalPages(d.pages ?? 1)
         setTotal(d.total ?? 0)
         setPage(d.page ?? p)
       })
