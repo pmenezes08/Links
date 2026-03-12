@@ -916,6 +916,14 @@ def admin_broadcast_notification():
     title = (payload.get("title") or "").strip()
     message_body = (payload.get("message") or "").strip()
     link = (payload.get("link") or "").strip()
+    community_id = payload.get("community_id")
+    send_email = bool(payload.get("send_email"))
+
+    if community_id is not None:
+        try:
+            community_id = int(community_id)
+        except (TypeError, ValueError):
+            community_id = None
 
     if not title and not message_body:
         return jsonify({"success": False, "error": "Message is required"}), 400
@@ -936,9 +944,17 @@ def admin_broadcast_notification():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username FROM users WHERE COALESCE(is_active, 1) = 1")
+
+            if community_id:
+                if USE_MYSQL:
+                    c.execute("SELECT username FROM user_communities WHERE community_id = %s", (community_id,))
+                else:
+                    c.execute("SELECT username FROM user_communities WHERE community_id = ?", (community_id,))
+            else:
+                c.execute("SELECT username FROM users WHERE COALESCE(is_active, 1) = 1")
             rows = c.fetchall() or []
             notified = 0
+            emailed = 0
 
             for row in rows:
                 target_username = row["username"] if hasattr(row, "keys") else row[0]
@@ -965,8 +981,27 @@ def admin_broadcast_notification():
                 except Exception as insert_err:
                     current_app.logger.warning("Broadcast notification insert failed for %s: %s", target_username, insert_err)
 
+                if send_email:
+                    try:
+                        if USE_MYSQL:
+                            c.execute("SELECT email FROM users WHERE username = %s", (target_username,))
+                        else:
+                            c.execute("SELECT email FROM users WHERE username = ?", (target_username,))
+                        email_row = c.fetchone()
+                        target_email = (email_row["email"] if hasattr(email_row, "keys") else email_row[0]) if email_row else None
+                        if target_email:
+                            from bodybuilding_app import _send_email_via_resend
+                            subject = title or "Notification from C.Point"
+                            html = f"<p>{composite_message.replace(chr(10), '<br>')}</p>"
+                            if link_value:
+                                html += f'<p><a href="{link_value}">View details</a></p>'
+                            _send_email_via_resend(target_email, subject, html)
+                            emailed += 1
+                    except Exception as email_err:
+                        current_app.logger.warning("Broadcast email failed for %s: %s", target_username, email_err)
+
             conn.commit()
-        return jsonify({"success": True, "notified": notified})
+        return jsonify({"success": True, "notified": notified, "emailed": emailed})
     except Exception as exc:
         current_app.logger.error("Error broadcasting notification: %s", exc)
         return jsonify({"success": False, "error": "Failed to send notification"}), 500
