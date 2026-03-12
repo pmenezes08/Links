@@ -19,6 +19,7 @@ export default function MobileLogin() {
   const [showPassword, setShowPassword] = useState(false)
   const [authCheckDone, setAuthCheckDone] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [showComingSoonGoogle, setShowComingSoonGoogle] = useState(false)
   // PWA install state (removed install UI)
 
   // Check invitation token
@@ -458,6 +459,11 @@ export default function MobileLogin() {
               disabled={googleLoading || isSubmitting || !window.__googleAuthReady}
               className="w-full rounded-lg border border-white/10 bg-white/5 py-2.5 text-sm font-medium active:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
               onClick={async () => {
+                const { Capacitor: Cap } = await import('@capacitor/core')
+                if (Cap.getPlatform() !== 'ios') {
+                  setShowComingSoonGoogle(true)
+                  return
+                }
                 setGoogleLoading(true)
                 setError(null)
                 try {
@@ -563,6 +569,20 @@ export default function MobileLogin() {
       )}
 
       {/* Install modal removed */}
+
+      {/* Coming soon modal for Google sign-in on non-iOS */}
+      {showComingSoonGoogle && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowComingSoonGoogle(false)}>
+          <div className="w-[85%] max-w-xs bg-[#1a1a1a] border border-[#333] rounded-2xl p-6 text-center" onClick={e => e.stopPropagation()}>
+            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-teal-400/10 flex items-center justify-center">
+              <i className="fa-solid fa-clock text-teal-400 text-xl" />
+            </div>
+            <h3 className="text-white text-lg font-semibold mb-2">Coming Soon</h3>
+            <p className="text-white/60 text-sm mb-5">Google sign-in is coming soon on this device.</p>
+            <button onClick={() => setShowComingSoonGoogle(false)} className="w-full rounded-lg bg-teal-400 text-black py-2.5 text-sm font-medium">OK</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
