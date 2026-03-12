@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash, abort, send_from_directory, Response, g
 from collections import deque, defaultdict
 # from flask_wtf.csrf import CSRFProtect, generate_csrf, validate_csrf as wtf_validate_csrf
 import errno
@@ -7012,9 +7012,9 @@ def admin_communities_list_api():
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/api/admin/communities', methods=['GET'])
-@login_required  
+@login_required
 def admin_communities_api():
-    """Communities list for dropdowns. ?roots_only=1 for parent communities only."""
+    """Light communities list for dropdowns. Supports ?roots_only=1."""
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
@@ -7027,14 +7027,15 @@ def admin_communities_api():
                 c.execute(f"SELECT id, name FROM communities WHERE parent_community_id IS NULL{tf} ORDER BY name", tp)
             else:
                 c.execute(f"SELECT id, name, parent_community_id FROM communities WHERE 1=1{tf} ORDER BY name", tp)
-            comms = []
-            for co in c.fetchall():
-                d = {'id': co['id'] if hasattr(co,'keys') else co[0], 'name': co['name'] if hasattr(co,'keys') else co[1]}
+            communities = []
+            for r in c.fetchall():
+                comm = {'id': r['id'] if hasattr(r,'keys') else r[0], 'name': r['name'] if hasattr(r,'keys') else r[1]}
                 if not roots_only:
-                    d['parent_community_id'] = co['parent_community_id'] if hasattr(co,'keys') else co[2]
-                comms.append(d)
-            return jsonify({'success': True, 'communities': comms})
+                    comm['parent_community_id'] = (r['parent_community_id'] if hasattr(r,'keys') else r[2]) if len(r) > 2 or hasattr(r,'keys') else None
+                communities.append(comm)
+            return jsonify({'success': True, 'communities': communities})
     except Exception as e:
+        logger.error(f"admin_communities_api error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/api/admin/login-by-email', methods=['POST'])
@@ -7124,7 +7125,7 @@ def admin_overview_api():
             tenant_info = {}
             if getattr(g, 'tenant', None):
                 tenant_info = {'tenant_id': g.tenant['id'], 'tenant_name': g.tenant['name']}
-            return jsonify({'success': True, 'total_users': total_users, 'total_communities': total_communities, 'total_posts': total_posts, 'premium_users': premium_users, 'recent_users': recent_users, 'recent_communities': recent_communities, **tenant_info})
+            return jsonify({'success': True, 'total_users': total_users, 'total_communities': total_communities, 'total_posts': total_posts, 'premium_users': premium_users, 'recent_users': recent_users, 'recent_communities': recent_communities, 'is_landlord': getattr(g, 'tenant_id', None) is None, **tenant_info})
     except Exception as e:
         logger.error(f"admin_overview error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
@@ -7444,20 +7445,17 @@ def _compute_admin_metrics(c):
 
 
 @app.route('/api/admin/metrics', methods=['GET'])
-@login_required
+@login_required  
 def admin_metrics_api():
-    """Dedicated metrics endpoint - DAU, MAU, cohorts, leaderboards."""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            stats = _compute_admin_metrics(c)
-            return jsonify({'success': True, 'stats': stats})
-    except Exception as e:
-        logger.error(f"admin_metrics error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
+    """Metrics-only endpoint. Calls dashboard logic, returns only stats."""
+    response = admin_dashboard_api()
+    if hasattr(response, 'get_json'):
+        data = response.get_json()
+    else:
+        data = response[0].get_json() if isinstance(response, tuple) else response.get_json()
+    if data and data.get('success'):
+        return jsonify({'success': True, 'stats': data.get('stats', {})})
+    return response
 
 @app.route('/api/admin/dashboard', methods=['GET'])
 @login_required
@@ -8007,37 +8005,34 @@ def admin_delete_community():
 @login_required
 def admin_list_tenants():
     """List all tenants (landlord only)."""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
         return jsonify({'success': False, 'error': 'Landlord only'}), 403
+    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            _ensure_tenants_table(c)
             ph = get_sql_placeholder()
+            _ensure_tenants_table(c)
             c.execute("SELECT id, name, subdomain, custom_domain, plan, created_at FROM tenants ORDER BY id")
             tenants = []
-            for t in c.fetchall():
-                tid = t['id'] if hasattr(t,'keys') else t[0]
-                c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE tenant_id = {ph}", (tid,))
-                r = c.fetchone()
-                uc = r['cnt'] if hasattr(r,'keys') else r[0]
-                c.execute(f"SELECT COUNT(*) as cnt FROM communities WHERE tenant_id = {ph}", (tid,))
-                r = c.fetchone()
-                cc = r['cnt'] if hasattr(r,'keys') else r[0]
-                tenants.append({
-                    'id': tid,
-                    'name': t['name'] if hasattr(t,'keys') else t[1],
-                    'subdomain': t['subdomain'] if hasattr(t,'keys') else t[2],
-                    'custom_domain': t['custom_domain'] if hasattr(t,'keys') else t[3],
-                    'plan': t['plan'] if hasattr(t,'keys') else t[4],
-                    'created_at': str(t['created_at'] if hasattr(t,'keys') else t[5]) if (t['created_at'] if hasattr(t,'keys') else t[5]) else None,
-                    'user_count': uc,
-                    'community_count': cc,
-                })
+            for r in c.fetchall():
+                tid = r['id'] if hasattr(r, 'keys') else r[0]
+                t = {'id': tid, 'name': r['name'] if hasattr(r,'keys') else r[1], 'subdomain': r['subdomain'] if hasattr(r,'keys') else r[2], 'custom_domain': (r['custom_domain'] if hasattr(r,'keys') else r[3]) or None, 'plan': (r['plan'] if hasattr(r,'keys') else r[4]) or 'free', 'created_at': str(r['created_at'] if hasattr(r,'keys') else r[5]) if (r['created_at'] if hasattr(r,'keys') else r[5]) else None}
+                try:
+                    c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE tenant_id = {ph}", (tid,))
+                    row = c.fetchone()
+                    t['user_count'] = row['cnt'] if hasattr(row,'keys') else row[0]
+                except Exception:
+                    t['user_count'] = 0
+                try:
+                    c.execute(f"SELECT COUNT(*) as cnt FROM communities WHERE tenant_id = {ph}", (tid,))
+                    row = c.fetchone()
+                    t['community_count'] = row['cnt'] if hasattr(row,'keys') else row[0]
+                except Exception:
+                    t['community_count'] = 0
+                tenants.append(t)
             return jsonify({'success': True, 'tenants': tenants})
     except Exception as e:
         logger.error(f"admin_list_tenants error: {e}")
@@ -8047,13 +8042,12 @@ def admin_list_tenants():
 @app.route('/api/admin/tenants', methods=['POST'])
 @login_required
 def admin_create_tenant():
-    """Create a tenant (landlord only)."""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    """Create a new tenant (landlord only)."""
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
         return jsonify({'success': False, 'error': 'Landlord only'}), 403
+    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     data = request.get_json() or {}
     name = (data.get('name') or '').strip()
     subdomain = (data.get('subdomain') or '').strip().lower()
@@ -8061,7 +8055,7 @@ def admin_create_tenant():
         return jsonify({'success': False, 'error': 'Name and subdomain required'}), 400
     import re
     if not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', subdomain):
-        return jsonify({'success': False, 'error': 'Invalid subdomain (alphanumeric and hyphens only)'}), 400
+        return jsonify({'success': False, 'error': 'Subdomain must be alphanumeric with optional hyphens'}), 400
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -8072,8 +8066,8 @@ def admin_create_tenant():
                 return jsonify({'success': False, 'error': 'Subdomain already taken'}), 409
             c.execute(f"INSERT INTO tenants (name, subdomain) VALUES ({ph}, {ph})", (name, subdomain))
             conn.commit()
-            tid = c.lastrowid
-            return jsonify({'success': True, 'tenant': {'id': tid, 'name': name, 'subdomain': subdomain}})
+            tenant_id = c.lastrowid
+            return jsonify({'success': True, 'tenant': {'id': tenant_id, 'name': name, 'subdomain': subdomain}})
     except Exception as e:
         logger.error(f"admin_create_tenant error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
@@ -8083,12 +8077,11 @@ def admin_create_tenant():
 @login_required
 def admin_update_tenant(tenant_id):
     """Update a tenant (landlord only)."""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
         return jsonify({'success': False, 'error': 'Landlord only'}), 403
+    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     data = request.get_json() or {}
     try:
         with get_db_connection() as conn:
@@ -8124,12 +8117,11 @@ def admin_update_tenant(tenant_id):
 @login_required
 def admin_tenant_users(tenant_id):
     """List users for a tenant (landlord only)."""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
         return jsonify({'success': False, 'error': 'Landlord only'}), 403
+    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -8145,12 +8137,11 @@ def admin_tenant_users(tenant_id):
 @login_required
 def admin_tenant_communities(tenant_id):
     """List communities for a tenant (landlord only)."""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
         return jsonify({'success': False, 'error': 'Landlord only'}), 403
+    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -8166,16 +8157,15 @@ def admin_tenant_communities(tenant_id):
 @login_required
 def admin_assign_users_to_tenant(tenant_id):
     """Assign users to a tenant (landlord only)."""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
         return jsonify({'success': False, 'error': 'Landlord only'}), 403
+    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     data = request.get_json() or {}
     user_ids = data.get('user_ids', [])
     if not user_ids or not isinstance(user_ids, list):
-        return jsonify({'success': False, 'error': 'user_ids required'}), 400
+        return jsonify({'success': False, 'error': 'user_ids array required'}), 400
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -8185,6 +8175,7 @@ def admin_assign_users_to_tenant(tenant_id):
             conn.commit()
             return jsonify({'success': True, 'assigned': len(user_ids)})
     except Exception as e:
+        logger.error(f"admin_assign_users error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
@@ -8192,16 +8183,15 @@ def admin_assign_users_to_tenant(tenant_id):
 @login_required
 def admin_assign_communities_to_tenant(tenant_id):
     """Assign communities to a tenant (landlord only)."""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     from flask import g
     if getattr(g, 'tenant_id', None) is not None:
         return jsonify({'success': False, 'error': 'Landlord only'}), 403
+    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     data = request.get_json() or {}
     community_ids = data.get('community_ids', [])
     if not community_ids or not isinstance(community_ids, list):
-        return jsonify({'success': False, 'error': 'community_ids required'}), 400
+        return jsonify({'success': False, 'error': 'community_ids array required'}), 400
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -8211,6 +8201,7 @@ def admin_assign_communities_to_tenant(tenant_id):
             conn.commit()
             return jsonify({'success': True, 'assigned': len(community_ids)})
     except Exception as e:
+        logger.error(f"admin_assign_communities error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/admin', methods=['GET', 'POST'])
@@ -24934,24 +24925,28 @@ This invitation was sent by {username} from C.Point.
 @app.route('/api/community/invite_bulk', methods=['POST'])
 @login_required
 def invite_bulk():
-    """Bulk invite: accepts emails array or comma/newline-separated string."""
+    """Bulk invite: accept multiple emails for a community."""
     username = session.get('username')
     data = request.get_json() or {}
     community_id = data.get('community_id')
+    emails_raw = data.get('emails', '')
+    
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
     
-    raw_emails = data.get('emails', '')
-    if isinstance(raw_emails, list):
-        emails = [e.strip().lower() for e in raw_emails if e and e.strip()]
-    elif isinstance(raw_emails, str):
+    if isinstance(emails_raw, list):
+        emails = [e.strip().lower() for e in emails_raw if isinstance(e, str) and e.strip()]
+    elif isinstance(emails_raw, str):
         import re
-        emails = [e.strip().lower() for e in re.split(r'[,;\n\r]+', raw_emails) if e.strip()]
+        emails = [e.strip().lower() for e in re.split(r'[,;\n\r]+', emails_raw) if e.strip()]
     else:
         return jsonify({'success': False, 'error': 'emails required'}), 400
     
     import re
     valid_emails = [e for e in emails if re.match(r'^[^@]+@[^@]+\.[^@]+$', e)]
+    
+    if not valid_emails:
+        return jsonify({'success': False, 'error': 'No valid emails provided'}), 400
     
     sent = 0
     failed = 0
@@ -24959,44 +24954,50 @@ def invite_bulk():
     
     for email in valid_emails:
         try:
-            fd = {'email': email, 'community_id': str(community_id)}
             with get_db_connection() as conn:
                 c = conn.cursor()
                 ph = get_sql_placeholder()
-                c.execute(f"SELECT username FROM users WHERE LOWER(email) = LOWER({ph})", (email,))
-                existing = c.fetchone()
-                if existing:
-                    user_uname = existing['username'] if hasattr(existing, 'keys') else existing[0]
-                    try:
-                        add_user_to_community(conn.cursor(), community_id, user_id=None, username=user_uname, role='member')
-                        conn.commit()
-                        sent += 1
-                    except Exception as ae:
-                        errors.append({'email': email, 'error': str(ae)})
-                        failed += 1
-                else:
-                    import secrets
-                    token = secrets.token_urlsafe(32)
-                    c.execute(f"""INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
-                        VALUES ({ph}, {ph}, {ph}, {ph})""", (community_id, email, username, token))
-                    conn.commit()
-                    try:
-                        c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
-                        cn = c.fetchone()
-                        comm_name = cn['name'] if hasattr(cn,'keys') else cn[0] if cn else 'Community'
-                        base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-                        invite_url = f"{base_url}/invite/{token}"
-                        _send_email_via_resend(email, f"You're invited to join {comm_name} on C.Point",
-                            f'<p>You have been invited to join <strong>{comm_name}</strong> on C.Point.</p><p><a href="{invite_url}">Accept Invitation</a></p>')
-                    except Exception:
-                        pass
-                    sent += 1
+                
+                c.execute(f"""
+                    SELECT 1 FROM user_communities uc
+                    JOIN users u ON uc.user_id = u.id
+                    WHERE LOWER(u.email) = LOWER({ph}) AND uc.community_id = {ph}
+                """, (email, community_id))
+                if c.fetchone():
+                    errors.append({'email': email, 'error': 'Already a member'})
+                    failed += 1
+                    continue
+                
+                import secrets
+                token = secrets.token_urlsafe(32)
+                c.execute(f"""
+                    INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
+                    VALUES ({ph}, {ph}, {ph}, {ph})
+                """, (community_id, email, username, token))
+                conn.commit()
+                
+                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
+                comm_row = c.fetchone()
+                community_name = (comm_row['name'] if hasattr(comm_row,'keys') else comm_row[0]) if comm_row else 'Community'
+                
+                base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
+                invite_url = f"{base_url}/invite/{token}"
+                
+                subject = f"You're invited to join {community_name} on C.Point"
+                html = f'<p>{username} has invited you to join <strong>{community_name}</strong> on C.Point.</p><p><a href="{invite_url}">Accept Invitation</a></p>'
+                text = f'{username} has invited you to join {community_name}. Click here: {invite_url}'
+                
+                try:
+                    _send_email_via_resend(email, subject, html, text)
+                except Exception:
+                    pass
+                
+                sent += 1
         except Exception as e:
             errors.append({'email': email, 'error': str(e)})
             failed += 1
     
-    invalid_count = len(emails) - len(valid_emails)
-    return jsonify({'success': True, 'sent': sent, 'failed': failed, 'invalid': invalid_count, 'errors': errors[:20]})
+    return jsonify({'success': True, 'sent': sent, 'failed': failed, 'errors': errors if errors else None})
 
 @app.route('/leave_community', methods=['POST'])
 @login_required
