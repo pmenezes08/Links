@@ -553,12 +553,12 @@ def _check_csrf_origin():
 
 @app.before_request
 def _set_tenant_context():
-    """Phase 2: Set tenant from header, subdomain, or leave None for landlord."""
+    """Phase 2: Set tenant from header, subdomain, or custom domain."""
     from flask import g
     g.tenant_id = None
     g.tenant = None
     
-    # Option 1: explicit header
+    # 1. Check X-Tenant-Id header
     tid = request.headers.get('X-Tenant-Id')
     if tid:
         try:
@@ -567,21 +567,18 @@ def _set_tenant_context():
         except (ValueError, TypeError):
             pass
     
-    # Option 2: subdomain resolution
+    # 2. Check subdomain
     host = request.host.split(':')[0].lower()  # strip port
     app_domain = os.getenv('APP_DOMAIN', 'c-point.co').lower()
-    
-    # Skip known non-tenant subdomains
-    non_tenant = {'www', 'app', 'admin', 'api', 'staging', 'cpoint-app-staging-739552904126.europe-west1.run'}
+    reserved_subdomains = {'www', 'app', 'admin', 'api', 'staging'}
     
     if host.endswith('.' + app_domain):
-        subdomain = host[: -(len(app_domain) + 1)]  # e.g. "whu" from "whu.c-point.co"
-        if subdomain and subdomain not in non_tenant:
+        subdomain = host[:-len('.' + app_domain)]
+        if subdomain and subdomain not in reserved_subdomains:
             try:
                 with get_db_connection() as conn:
                     c = conn.cursor()
                     ph = get_sql_placeholder()
-                    _ensure_tenants_table(c)
                     c.execute(f"SELECT id, name, subdomain FROM tenants WHERE subdomain = {ph}", (subdomain,))
                     row = c.fetchone()
                     if row:
@@ -592,7 +589,19 @@ def _set_tenant_context():
                             'subdomain': row['subdomain'] if hasattr(row, 'keys') else row[2],
                         }
             except Exception as e:
-                logger.debug(f"Tenant subdomain resolution failed for {subdomain}: {e}")
+                logger.debug(f"Tenant subdomain lookup failed for {subdomain}: {e}")
+
+def _tenant_filter(column='tenant_id'):
+    """Return SQL clause and params for tenant scoping.
+    When g.tenant_id is set, returns (' AND {column} = ?', (g.tenant_id,)).
+    When None (landlord), returns ('', ()).
+    """
+    from flask import g
+    tid = getattr(g, 'tenant_id', None)
+    if tid is not None:
+        ph = get_sql_placeholder()
+        return f' AND {column} = {ph}', (tid,)
+    return '', ()
 
 # Block unverified users from entering the app except for auth/static routes
 @app.before_request
@@ -6978,14 +6987,14 @@ def debug_communities():
 @login_required
 def admin_communities_list_api():
     """Flat list of all communities (id, name) for dropdowns."""
-    # Phase 2: scope by g.tenant_id when present
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT id, name, parent_community_id FROM communities ORDER BY name")
+            tf, tp = _tenant_filter()
+            c.execute(f"SELECT id, name, parent_community_id FROM communities WHERE 1=1{tf} ORDER BY name", tp)
             communities = []
             for r in c.fetchall():
                 communities.append({
@@ -6999,45 +7008,55 @@ def admin_communities_list_api():
 
 @app.route('/api/admin/login-by-email', methods=['POST'])
 def admin_login_by_email():
-    """Phase 2: Look up tenant for an admin email and return redirect URL."""
+    """Phase 2: Look up tenant by admin email and return redirect URL."""
     data = request.get_json() or {}
     email = (data.get('email') or '').strip().lower()
     if not email:
         return jsonify({'success': False, 'error': 'Email required'}), 400
     
+    app_domain = os.getenv('APP_DOMAIN', 'c-point.co')
+    
     try:
-        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
-            _ensure_tenants_table(c)
+            ph = get_sql_placeholder()
+            # Find user by email and check if they have a tenant
             c.execute(f"""
-                SELECT u.tenant_id, t.subdomain, t.custom_domain, t.name as tenant_name
+                SELECT u.tenant_id, t.subdomain, t.custom_domain, t.name
                 FROM users u
                 LEFT JOIN tenants t ON u.tenant_id = t.id
                 WHERE LOWER(u.email) = LOWER({ph})
             """, (email,))
             row = c.fetchone()
-            
             if not row:
                 return jsonify({'success': False, 'error': 'No account found with that email'}), 404
             
             tenant_id = row['tenant_id'] if hasattr(row, 'keys') else row[0]
-            
-            if not tenant_id:
-                return jsonify({'success': True, 'redirect_url': 'https://admin.c-point.co'})
-            
             subdomain = row['subdomain'] if hasattr(row, 'keys') else row[1]
             custom_domain = row['custom_domain'] if hasattr(row, 'keys') else row[2]
+            tenant_name = row['name'] if hasattr(row, 'keys') else row[3]
             
+            if not tenant_id or not subdomain:
+                # No tenant - this is a platform/landlord user
+                return jsonify({
+                    'success': True,
+                    'redirect_url': f'https://admin.{app_domain}',
+                    'tenant_name': 'Platform Admin',
+                    'is_landlord': True,
+                })
+            
+            # Build redirect URL
             if custom_domain:
-                redirect_url = f"https://{custom_domain}/admin"
-            elif subdomain:
-                app_domain = os.getenv('APP_DOMAIN', 'c-point.co')
-                redirect_url = f"https://{subdomain}.{app_domain}/admin"
+                redirect_url = f'https://{custom_domain}/admin'
             else:
-                redirect_url = 'https://admin.c-point.co'
+                redirect_url = f'https://{subdomain}.{app_domain}/admin'
             
-            return jsonify({'success': True, 'redirect_url': redirect_url})
+            return jsonify({
+                'success': True,
+                'redirect_url': redirect_url,
+                'tenant_name': tenant_name,
+                'is_landlord': False,
+            })
     except Exception as e:
         logger.error(f"admin_login_by_email error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
@@ -7049,33 +7068,27 @@ def admin_overview_api():
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    from flask import g
-    tid = g.get('tenant_id')
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            ph = get_sql_placeholder()
-            tf_users = f" WHERE tenant_id = {ph}" if tid else ""
-            tp_users = (tid,) if tid else ()
-            tf_communities = f" WHERE tenant_id = {ph}" if tid else ""
-            tp_communities = (tid,) if tid else ()
-            c.execute(f"SELECT COUNT(*) as cnt FROM users{tf_users}", tp_users)
+            tf, tp = _tenant_filter()
+            c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE 1=1{tf}", tp)
             r = c.fetchone()
             total_users = r['cnt'] if hasattr(r, 'keys') else r[0]
-            c.execute(f"SELECT COUNT(*) as cnt FROM communities{tf_communities}", tp_communities)
+            c.execute(f"SELECT COUNT(*) as cnt FROM communities WHERE 1=1{tf}", tp)
             r = c.fetchone()
             total_communities = r['cnt'] if hasattr(r, 'keys') else r[0]
-            c.execute("SELECT COUNT(*) as cnt FROM posts")
+            c.execute(f"SELECT COUNT(*) as cnt FROM posts WHERE 1=1{tf}", tp)
             r = c.fetchone()
             total_posts = r['cnt'] if hasattr(r, 'keys') else r[0]
-            c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE subscription = 'premium'" + (f" AND tenant_id = {ph}" if tid else ""), (tid,) if tid else ())
+            c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE subscription = 'premium'{tf}", tp)
             r = c.fetchone()
             premium_users = r['cnt'] if hasattr(r, 'keys') else r[0]
             # Recent users
-            c.execute(f"SELECT username, created_at FROM users{tf_users} ORDER BY created_at DESC LIMIT 5", tp_users)
+            c.execute(f"SELECT username, created_at FROM users WHERE 1=1{tf} ORDER BY created_at DESC LIMIT 5", tp)
             recent_users = [{'username': u['username'] if hasattr(u,'keys') else u[0], 'created_at': str(u['created_at'] if hasattr(u,'keys') else u[1]) if (u['created_at'] if hasattr(u,'keys') else u[1]) else None} for u in c.fetchall()]
             # Recent communities
-            c.execute(f"SELECT id, name FROM communities{tf_communities} ORDER BY id DESC LIMIT 5", tp_communities)
+            c.execute(f"SELECT id, name FROM communities WHERE 1=1{tf} ORDER BY id DESC LIMIT 5", tp)
             recent_communities = [{'id': co['id'] if hasattr(co,'keys') else co[0], 'name': co['name'] if hasattr(co,'keys') else co[1]} for co in c.fetchall()]
             return jsonify({'success': True, 'total_users': total_users, 'total_communities': total_communities, 'total_posts': total_posts, 'premium_users': premium_users, 'recent_users': recent_users, 'recent_communities': recent_communities})
     except Exception as e:
@@ -7089,8 +7102,6 @@ def admin_users_api():
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    from flask import g
-    tid = g.get('tenant_id')
     page = request.args.get('page', 1, type=int)
     per_page = min(request.args.get('per_page', 50, type=int), 200)
     search = request.args.get('search', '').strip()
@@ -7098,25 +7109,18 @@ def admin_users_api():
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
-            if search and tid:
-                c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE tenant_id = {ph} AND (username LIKE {ph} OR email LIKE {ph})", (tid, f'%{search}%', f'%{search}%'))
-            elif search:
-                c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE username LIKE {ph} OR email LIKE {ph}", (f'%{search}%', f'%{search}%'))
-            elif tid:
-                c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE tenant_id = {ph}", (tid,))
+            tf, tp = _tenant_filter()
+            if search:
+                c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf}", (f'%{search}%', f'%{search}%') + tp)
             else:
-                c.execute("SELECT COUNT(*) as cnt FROM users")
+                c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE 1=1{tf}", tp)
             r = c.fetchone()
             total = r['cnt'] if hasattr(r, 'keys') else r[0]
             offset = (page - 1) * per_page
-            if search and tid:
-                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE tenant_id = {ph} AND (username LIKE {ph} OR email LIKE {ph}) ORDER BY username LIMIT {ph} OFFSET {ph}", (tid, f'%{search}%', f'%{search}%', per_page, offset))
-            elif search:
-                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE username LIKE {ph} OR email LIKE {ph} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%', per_page, offset))
-            elif tid:
-                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE tenant_id = {ph} ORDER BY username LIMIT {ph} OFFSET {ph}", (tid, per_page, offset))
+            if search:
+                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE (username LIKE {ph} OR email LIKE {ph}){tf} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%') + tp + (per_page, offset))
             else:
-                c.execute(f"SELECT id, username, email, subscription, created_at FROM users ORDER BY username LIMIT {ph} OFFSET {ph}", (per_page, offset))
+                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE 1=1{tf} ORDER BY username LIMIT {ph} OFFSET {ph}", tp + (per_page, offset))
             users = []
             for u in c.fetchall():
                 users.append({
@@ -7139,23 +7143,23 @@ def admin_dashboard_api():
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    # Phase 2: TODO scope by g.tenant_id
     
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
+            tf, tp = _tenant_filter()
             
             # Get statistics
-            c.execute("SELECT COUNT(*) as count FROM users")
+            c.execute(f"SELECT COUNT(*) as count FROM users WHERE 1=1{tf}", tp)
             total_users = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'")
+            c.execute(f"SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'{tf}", tp)
             premium_users = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) as count FROM communities")
+            c.execute(f"SELECT COUNT(*) as count FROM communities WHERE 1=1{tf}", tp)
             total_communities = get_scalar_result(c.fetchone(), column_name='count')
             
-            c.execute("SELECT COUNT(*) as count FROM posts")
+            c.execute(f"SELECT COUNT(*) as count FROM posts WHERE 1=1{tf}", tp)
             total_posts = get_scalar_result(c.fetchone(), column_name='count')
             
             # Activity windows
@@ -7325,7 +7329,7 @@ def admin_dashboard_api():
             month_starts = list(reversed(month_starts))
 
             # Preload user signups
-            c.execute("SELECT username, created_at FROM users")
+            c.execute(f"SELECT username, created_at FROM users WHERE 1=1{tf}", tp)
             all_users = c.fetchall() or []
             def in_month(dt, y, m):
                 return (dt.year == y and dt.month == m)
@@ -7412,7 +7416,7 @@ def admin_dashboard_api():
             
             # Last user created and last community created
             try:
-                c.execute("SELECT username, created_at FROM users ORDER BY created_at DESC LIMIT 1")
+                c.execute(f"SELECT username, created_at FROM users WHERE 1=1{tf} ORDER BY created_at DESC LIMIT 1", tp)
                 last_user_row = c.fetchone()
                 if last_user_row:
                     stats['last_user'] = {
@@ -7423,7 +7427,7 @@ def admin_dashboard_api():
                 pass
             
             try:
-                c.execute("SELECT name, id FROM communities ORDER BY id DESC LIMIT 1")
+                c.execute(f"SELECT name, id FROM communities WHERE 1=1{tf} ORDER BY id DESC LIMIT 1", tp)
                 last_comm_row = c.fetchone()
                 if last_comm_row:
                     stats['last_community'] = {
@@ -7434,7 +7438,7 @@ def admin_dashboard_api():
                 pass
             
             # Get users list with created_at
-            c.execute("SELECT id, username, email, subscription, created_at FROM users ORDER BY username")
+            c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE 1=1{tf} ORDER BY username", tp)
             users_raw = c.fetchall()
             users = []
             for user in users_raw:
@@ -7449,14 +7453,15 @@ def admin_dashboard_api():
                 })
             
             # Get all communities with parent information
-            c.execute("""
+            c.execute(f"""
                 SELECT c.id, c.name, c.type, c.creator_username,
                        c.parent_community_id, COUNT(uc.user_id) as member_count
                 FROM communities c
                 LEFT JOIN user_communities uc ON c.id = uc.community_id
+                WHERE 1=1{tf.replace('tenant_id', 'c.tenant_id')}
                 GROUP BY c.id, c.name, c.type, c.creator_username, c.parent_community_id
                 ORDER BY c.name
-            """)
+            """, tp)
             communities_raw = c.fetchall()
             logger.info(f"Admin dashboard: Found {len(communities_raw)} total communities")
             
