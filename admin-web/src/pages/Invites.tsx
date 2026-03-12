@@ -1,21 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { apiJson, apiPost } from '../utils/api'
 
-interface Community {
-  id: number
-  name: string
-  children?: Community[]
-}
-
-function flattenTree(nodes: Community[]): { id: number; name: string }[] {
-  const result: { id: number; name: string }[] = []
-  for (const n of nodes) {
-    result.push({ id: n.id, name: n.name })
-    if (n.children) result.push(...flattenTree(n.children))
-  }
-  return result
-}
-
 export default function Invites() {
   const [communities, setCommunities] = useState<{ id: number; name: string }[]>([])
   const [commLoading, setCommLoading] = useState(true)
@@ -30,8 +15,8 @@ export default function Invites() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    apiJson<{ communities?: Community[] }>('/api/admin/dashboard')
-      .then(d => setCommunities(flattenTree(d.communities ?? [])))
+    apiJson<{ communities?: { id: number; name: string }[] }>('/api/admin/communities')
+      .then(d => setCommunities(d.communities ?? []))
       .catch(() => {})
       .finally(() => setCommLoading(false))
   }, [])

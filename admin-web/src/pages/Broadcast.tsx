@@ -1,21 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiJson, apiPost } from '../utils/api'
 
-interface Community {
-  id: number
-  name: string
-  children?: Community[]
-}
-
-function flattenTree(nodes: Community[]): { id: number; name: string }[] {
-  const result: { id: number; name: string }[] = []
-  for (const n of nodes) {
-    result.push({ id: n.id, name: n.name })
-    if (n.children) result.push(...flattenTree(n.children))
-  }
-  return result
-}
-
 export default function Broadcast() {
   const [communities, setCommunities] = useState<{ id: number; name: string }[]>([])
   const [commLoading, setCommLoading] = useState(true)
@@ -24,8 +9,8 @@ export default function Broadcast() {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    apiJson<{ communities?: Community[] }>('/api/admin/communities?roots_only=1')
-      .then(d => setCommunities(flattenTree(d.communities ?? [])))
+    apiJson<{ communities?: { id: number; name: string }[] }>('/api/admin/communities?roots_only=1')
+      .then(d => setCommunities(d.communities ?? []))
       .catch(() => {})
       .finally(() => setCommLoading(false))
   }, [])
