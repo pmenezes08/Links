@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { api } from '../utils/api'
+import { api, apiJson } from '../utils/api'
 
 const navItems = [
   { to: '/', icon: 'fa-chart-line', label: 'Overview' },
@@ -16,7 +16,14 @@ const navItems = [
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [tenantName, setTenantName] = useState<string | null>(null)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    apiJson('/api/admin/overview').then((d: any) => {
+      if (d?.tenant_name) setTenantName(d.tenant_name)
+    }).catch(() => {})
+  }, [])
 
   const handleLogout = async () => {
     try { await api('/logout') } catch {}
@@ -30,15 +37,10 @@ export default function Layout() {
         <div className="p-4 border-b border-white/10">
           <div className="flex items-center gap-2">
             <img src={`${import.meta.env.VITE_API_BASE || 'https://app.c-point.co'}/api/public/logo`} alt="C.Point" className="w-8 h-8 rounded-lg" />
-            <span className="font-semibold">C.Point Admin</span>
-            {(() => {
-              const host = window.location.hostname
-              const parts = host.split('.')
-              if (parts.length > 2 && !['www', 'app', 'admin'].includes(parts[0])) {
-                return <div className="text-[10px] text-accent/70 mt-0.5">{parts[0]}</div>
-              }
-              return null
-            })()}
+            <div>
+              <span className="font-semibold">C.Point Admin</span>
+              {tenantName && <div className="text-xs text-accent mt-0.5">{tenantName}</div>}
+            </div>
           </div>
         </div>
         <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">

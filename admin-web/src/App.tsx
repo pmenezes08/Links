@@ -11,11 +11,13 @@ import Blocked from './pages/Blocked'
 import Invites from './pages/Invites'
 import Broadcast from './pages/Broadcast'
 import Settings from './pages/Settings'
+import FindAdmin from './pages/FindAdmin'
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/find-admin" element={<FindAdmin />} />
       <Route element={<AuthGuard><Layout /></AuthGuard>}>
         <Route index element={<Overview />} />
         <Route path="users" element={<Users />} />

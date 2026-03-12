@@ -23,15 +23,17 @@
 - When `g.tenant_id` is set: queries filtered to that tenant's data
 - When `g.tenant_id` is None (landlord): all data visible (platform-wide)
 
-#### www.c-point.co Admin Login
+#### Admin Login by Email (`/find-admin`)
 - `POST /api/admin/login-by-email`: looks up user's tenant by email
 - Returns redirect URL to tenant's admin (`https://{subdomain}.c-point.co/admin`)
 - Platform users (no tenant) redirected to `https://admin.c-point.co`
+- `/find-admin` page in admin-web provides the UI for email→tenant redirect
 
 #### Tenant Admin UI
 - Same admin SPA (`admin-web/`) works on tenant subdomains
 - API calls go to the same host, so `g.tenant_id` is set from subdomain
-- Tenant indicator shown in sidebar when on a tenant subdomain
+- Tenant name indicator shown in sidebar header (fetched from `/api/admin/overview`)
+- Overview API returns `tenant_id` and `tenant_name` when in tenant context
 - Landlord at `admin.c-point.co` sees all data
 
 ### Configuration Required

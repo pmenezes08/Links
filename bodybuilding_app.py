@@ -7090,7 +7090,10 @@ def admin_overview_api():
             # Recent communities
             c.execute(f"SELECT id, name FROM communities WHERE 1=1{tf} ORDER BY id DESC LIMIT 5", tp)
             recent_communities = [{'id': co['id'] if hasattr(co,'keys') else co[0], 'name': co['name'] if hasattr(co,'keys') else co[1]} for co in c.fetchall()]
-            return jsonify({'success': True, 'total_users': total_users, 'total_communities': total_communities, 'total_posts': total_posts, 'premium_users': premium_users, 'recent_users': recent_users, 'recent_communities': recent_communities})
+            tenant_info = {}
+            if getattr(g, 'tenant', None):
+                tenant_info = {'tenant_id': g.tenant['id'], 'tenant_name': g.tenant['name']}
+            return jsonify({'success': True, 'total_users': total_users, 'total_communities': total_communities, 'total_posts': total_posts, 'premium_users': premium_users, 'recent_users': recent_users, 'recent_communities': recent_communities, **tenant_info})
     except Exception as e:
         logger.error(f"admin_overview error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
