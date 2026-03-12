@@ -12,6 +12,7 @@ import Invites from './pages/Invites'
 import Broadcast from './pages/Broadcast'
 import Settings from './pages/Settings'
 import FindAdmin from './pages/FindAdmin'
+import Tenants from './pages/Tenants'
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="invites" element={<Invites />} />
         <Route path="broadcast" element={<Broadcast />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="tenants" element={<Tenants />} />
       </Route>
     </Routes>
   )

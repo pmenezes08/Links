@@ -24,7 +24,7 @@ export default function Broadcast() {
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    apiJson<{ communities?: Community[] }>('/api/admin/dashboard')
+    apiJson<{ communities?: Community[] }>('/api/admin/communities?roots_only=1')
       .then(d => setCommunities(flattenTree(d.communities ?? [])))
       .catch(() => {})
       .finally(() => setCommLoading(false))

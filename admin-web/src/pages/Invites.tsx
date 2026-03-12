@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { apiJson, apiPost } from '../utils/api'
 
 interface Community {
@@ -24,6 +24,10 @@ export default function Invites() {
   const [generatedUrl, setGeneratedUrl] = useState('')
   const [emailMsg, setEmailMsg] = useState('')
   const [linkMsg, setLinkMsg] = useState('')
+  const [bulkEmails, setBulkEmails] = useState('')
+  const [bulkMsg, setBulkMsg] = useState('')
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     apiJson<{ communities?: Community[] }>('/api/admin/dashboard')
@@ -74,6 +78,33 @@ export default function Invites() {
     navigator.clipboard.writeText(generatedUrl)
     setLinkMsg('Copied to clipboard!')
     setTimeout(() => setLinkMsg(''), 2000)
+  }
+
+  const handleBulkInvite = async (emails: string) => {
+    if (!selectedCommunity || !emails.trim()) return
+    setBulkLoading(true); setBulkMsg('')
+    try {
+      const emailList = emails.split(/[,\n]+/).map(e => e.trim()).filter(Boolean)
+      if (emailList.length === 0) { setBulkMsg('No valid emails provided'); setBulkLoading(false); return }
+      await apiPost('/api/community/invite_bulk', { emails: emailList, community_id: selectedCommunity })
+      setBulkMsg(`Bulk invite sent to ${emailList.length} email(s)`)
+      setBulkEmails('')
+    } catch {
+      setBulkMsg('Failed to send bulk invites')
+    } finally { setBulkLoading(false) }
+    setTimeout(() => setBulkMsg(''), 5000)
+  }
+
+  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string
+      if (text) handleBulkInvite(text)
+    }
+    reader.readAsText(file)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
@@ -154,6 +185,42 @@ export default function Invites() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="bg-surface-2 border border-white/10 rounded-xl p-5">
+            <h2 className="font-semibold mb-1">Bulk Invite</h2>
+            <p className="text-muted text-xs mb-4">Invite multiple users at once via comma-separated emails or CSV upload</p>
+
+            {bulkMsg && (
+              <div className="mb-3 p-3 bg-accent/10 border border-accent/30 rounded-lg text-accent text-sm">{bulkMsg}</div>
+            )}
+
+            <div className="space-y-3">
+              <textarea
+                placeholder="Enter emails separated by commas or newlines"
+                rows={4}
+                value={bulkEmails}
+                onChange={e => setBulkEmails(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none resize-none"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleBulkInvite(bulkEmails)}
+                  disabled={!selectedCommunity || !bulkEmails.trim() || bulkLoading}
+                  className="flex-1 bg-accent text-black font-semibold py-2.5 rounded-lg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
+                >
+                  <i className="fa-solid fa-paper-plane mr-2" />{bulkLoading ? 'Sending...' : 'Send Bulk Invite'}
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={!selectedCommunity || bulkLoading}
+                  className="px-4 bg-white/5 border border-white/10 font-semibold py-2.5 rounded-lg hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
+                >
+                  <i className="fa-solid fa-file-csv mr-2" />Upload CSV
+                </button>
+                <input ref={fileInputRef} type="file" accept=".csv,.txt" onChange={handleCsvUpload} className="hidden" />
+              </div>
             </div>
           </div>
         </>

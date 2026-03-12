@@ -44,7 +44,7 @@ export default function Metrics() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    apiJson<DashboardResponse>('/api/admin/dashboard')
+    apiJson<DashboardResponse>('/api/admin/metrics')
       .then(d => setStats(d.stats))
       .catch(() => setError('Failed to load metrics'))
       .finally(() => setLoading(false))

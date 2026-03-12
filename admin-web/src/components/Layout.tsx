@@ -12,16 +12,19 @@ const navItems = [
   { to: '/invites', icon: 'fa-envelope', label: 'Invites' },
   { to: '/broadcast', icon: 'fa-bullhorn', label: 'Broadcast' },
   { to: '/settings', icon: 'fa-gear', label: 'Settings' },
+  { to: '/tenants', icon: 'fa-building', label: 'Tenants' },
 ]
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [tenantName, setTenantName] = useState<string | null>(null)
+  const [isLandlord, setIsLandlord] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
     apiJson('/api/admin/overview').then((d: any) => {
       if (d?.tenant_name) setTenantName(d.tenant_name)
+      if (!d?.tenant_id) setIsLandlord(true)
     }).catch(() => {})
   }, [])
 
@@ -44,7 +47,7 @@ export default function Layout() {
           </div>
         </div>
         <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-          {navItems.map(item => (
+          {navItems.filter(item => item.to !== '/tenants' || isLandlord).map(item => (
             <NavLink key={item.to} to={item.to} end={item.to === '/'} className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${isActive ? 'bg-accent/10 text-accent' : 'text-white/70 hover:bg-white/5'}`}>
               <i className={`fa-solid ${item.icon} w-5 text-center text-xs`} />
               {item.label}
@@ -77,7 +80,7 @@ export default function Layout() {
               <span className="font-semibold">Menu</span>
               <button onClick={() => setSidebarOpen(false)} className="p-2"><i className="fa-solid fa-xmark" /></button>
             </div>
-            {navItems.map(item => (
+            {navItems.filter(item => item.to !== '/tenants' || isLandlord).map(item => (
               <NavLink key={item.to} to={item.to} end={item.to === '/'} onClick={() => setSidebarOpen(false)} className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm ${isActive ? 'bg-accent/10 text-accent' : 'text-white/70'}`}>
                 <i className={`fa-solid ${item.icon} w-5 text-center text-xs`} />
                 {item.label}
