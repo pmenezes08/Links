@@ -1,23 +1,38 @@
-import { useState } from 'react'
-import { apiPost } from '../utils/api'
+import { useEffect, useState } from 'react'
+import { apiJson, apiPost } from '../utils/api'
+
+interface Community {
+  id: number
+  name: string
+}
 
 export default function Invites() {
-  const [emailForm, setEmailForm] = useState({ email: '', community_id: '' })
-  const [linkForm, setLinkForm] = useState({ community_id: '' })
+  const [communities, setCommunities] = useState<Community[]>([])
+  const [commLoading, setCommLoading] = useState(true)
+  const [selectedCommunity, setSelectedCommunity] = useState('')
+  const [email, setEmail] = useState('')
   const [generatedUrl, setGeneratedUrl] = useState('')
   const [emailMsg, setEmailMsg] = useState('')
   const [linkMsg, setLinkMsg] = useState('')
 
+  useEffect(() => {
+    apiJson<{ communities?: Community[] }>('/api/admin/communities_list')
+      .then(d => setCommunities(d.communities ?? []))
+      .catch(() => {})
+      .finally(() => setCommLoading(false))
+  }, [])
+
   const handleEmailInvite = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!selectedCommunity) return
     setEmailMsg('')
     try {
       await apiPost('/api/community/invite', {
-        email: emailForm.email,
-        community_id: emailForm.community_id,
+        email,
+        community_id: selectedCommunity,
       })
       setEmailMsg('Invite sent successfully')
-      setEmailForm({ email: '', community_id: emailForm.community_id })
+      setEmail('')
     } catch {
       setEmailMsg('Failed to send invite')
     }
@@ -26,11 +41,12 @@ export default function Invites() {
 
   const handleGenerateLink = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!selectedCommunity) return
     setLinkMsg('')
     setGeneratedUrl('')
     try {
       const res = await apiPost('/api/community/invite_link', {
-        community_id: linkForm.community_id,
+        community_id: selectedCommunity,
       }) as { invite_url?: string; url?: string; link?: string }
       const url = res.invite_url || res.url || res.link || ''
       if (url) {
@@ -54,72 +70,84 @@ export default function Invites() {
     <div className="space-y-6">
       <h1 className="text-xl font-semibold">Invites</h1>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="bg-surface-2 border border-white/10 rounded-xl p-5">
-          <h2 className="font-semibold mb-1">Email Invite</h2>
-          <p className="text-muted text-xs mb-4">Send an invite email to join a community</p>
-
-          {emailMsg && (
-            <div className="mb-3 p-3 bg-accent/10 border border-accent/30 rounded-lg text-accent text-sm">{emailMsg}</div>
-          )}
-
-          <form onSubmit={handleEmailInvite} className="space-y-3">
-            <input
-              type="text"
-              placeholder="Community ID"
-              required
-              value={emailForm.community_id}
-              onChange={e => setEmailForm(p => ({ ...p, community_id: e.target.value }))}
+      {commLoading ? (
+        <div className="text-muted text-center py-12">Loading communities...</div>
+      ) : (
+        <>
+          <div className="max-w-md">
+            <label className="text-sm text-muted block mb-1.5">Community</label>
+            <select
+              value={selectedCommunity}
+              onChange={e => setSelectedCommunity(e.target.value)}
               className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
-            />
-            <input
-              type="email"
-              placeholder="Email address"
-              required
-              value={emailForm.email}
-              onChange={e => setEmailForm(p => ({ ...p, email: e.target.value }))}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
-            />
-            <button type="submit" className="w-full bg-accent text-black font-semibold py-2.5 rounded-lg hover:bg-accent/90 transition text-sm">
-              <i className="fa-solid fa-paper-plane mr-2" />Send Invite
-            </button>
-          </form>
-        </div>
+            >
+              <option value="">Select a community...</option>
+              {communities.map(c => (
+                <option key={c.id} value={c.id}>{c.name} (ID: {c.id})</option>
+              ))}
+            </select>
+          </div>
 
-        <div className="bg-surface-2 border border-white/10 rounded-xl p-5">
-          <h2 className="font-semibold mb-1">QR / Link Invite</h2>
-          <p className="text-muted text-xs mb-4">Generate a shareable invite link</p>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="bg-surface-2 border border-white/10 rounded-xl p-5">
+              <h2 className="font-semibold mb-1">Email Invite</h2>
+              <p className="text-muted text-xs mb-4">Send an invite email to join a community</p>
 
-          {linkMsg && (
-            <div className="mb-3 p-3 bg-accent/10 border border-accent/30 rounded-lg text-accent text-sm">{linkMsg}</div>
-          )}
+              {emailMsg && (
+                <div className="mb-3 p-3 bg-accent/10 border border-accent/30 rounded-lg text-accent text-sm">{emailMsg}</div>
+              )}
 
-          <form onSubmit={handleGenerateLink} className="space-y-3">
-            <input
-              type="text"
-              placeholder="Community ID"
-              required
-              value={linkForm.community_id}
-              onChange={e => setLinkForm({ community_id: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
-            />
-            <button type="submit" className="w-full bg-accent text-black font-semibold py-2.5 rounded-lg hover:bg-accent/90 transition text-sm">
-              <i className="fa-solid fa-link mr-2" />Generate Link
-            </button>
-          </form>
-
-          {generatedUrl && (
-            <div className="mt-4 p-3 bg-white/5 border border-white/10 rounded-lg">
-              <div className="flex items-center justify-between gap-2">
-                <code className="text-accent text-xs break-all flex-1">{generatedUrl}</code>
-                <button onClick={copyToClipboard} className="shrink-0 p-2 rounded-lg hover:bg-white/10 transition text-muted hover:text-white" title="Copy">
-                  <i className="fa-solid fa-copy" />
+              <form onSubmit={handleEmailInvite} className="space-y-3">
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={!selectedCommunity}
+                  className="w-full bg-accent text-black font-semibold py-2.5 rounded-lg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
+                >
+                  <i className="fa-solid fa-paper-plane mr-2" />Send Invite
                 </button>
-              </div>
+              </form>
             </div>
-          )}
-        </div>
-      </div>
+
+            <div className="bg-surface-2 border border-white/10 rounded-xl p-5">
+              <h2 className="font-semibold mb-1">QR / Link Invite</h2>
+              <p className="text-muted text-xs mb-4">Generate a shareable invite link</p>
+
+              {linkMsg && (
+                <div className="mb-3 p-3 bg-accent/10 border border-accent/30 rounded-lg text-accent text-sm">{linkMsg}</div>
+              )}
+
+              <form onSubmit={handleGenerateLink} className="space-y-3">
+                <button
+                  type="submit"
+                  disabled={!selectedCommunity}
+                  className="w-full bg-accent text-black font-semibold py-2.5 rounded-lg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
+                >
+                  <i className="fa-solid fa-link mr-2" />Generate Link
+                </button>
+              </form>
+
+              {generatedUrl && (
+                <div className="mt-4 p-3 bg-white/5 border border-white/10 rounded-lg">
+                  <div className="flex items-center justify-between gap-2">
+                    <code className="text-accent text-xs break-all flex-1">{generatedUrl}</code>
+                    <button onClick={copyToClipboard} className="shrink-0 p-2 rounded-lg hover:bg-white/10 transition text-muted hover:text-white" title="Copy">
+                      <i className="fa-solid fa-copy" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
