@@ -90,14 +90,21 @@ npm run dev
 
 The Vite dev server proxies `/api` requests to `localhost:5000` (the Flask backend).
 
-## Phase 2 – Multi-tenancy (NOT IMPLEMENTED)
+## Phase 2 – Multi-tenancy
 
-Phase 2 will add:
-- `tenants` table in the database
-- `tenant_id` columns on users, communities, etc.
-- Tenant subdomains (e.g. `whu.c-point.co`) with per-tenant admin
-- `admin.c-point.co` becomes the **landlord** (platform owner) admin
-- Tenant admins access their admin at `{tenant}.c-point.co/admin`
-- On `www.c-point.co`, an "Admin Login" flow will look up the tenant by email and redirect to the tenant's site
+Multi-tenancy is now partially implemented:
 
-**Current state:** No tenant_id columns, no tenants table. Admin queries are not scoped by tenant. API base URL is from environment only (no hardcoded tenant).
+- **Landlord admin**: `admin.c-point.co` — sees all platform data
+- **Tenant admin**: `{tenant}.c-point.co/admin` — sees only their tenant's data
+- **www admin login**: `POST /api/admin/login-by-email` — email lookup redirects to tenant admin URL
+
+### Setup for a new tenant
+1. Add a row to `tenants` table: `INSERT INTO tenants (name, subdomain) VALUES ('WHU', 'whu')`
+2. Set `tenant_id` on the tenant's users and communities
+3. Configure wildcard DNS `*.c-point.co` → Cloud Run service
+4. Tenant admin accesses `https://whu.c-point.co/admin`
+
+### Environment
+- `APP_DOMAIN=c-point.co` on the main app Cloud Run service
+
+See `PHASE2.md` for full details.

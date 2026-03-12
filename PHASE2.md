@@ -1,36 +1,46 @@
-# Phase 2 – Multi-tenancy (Started)
+# Phase 2 – Multi-tenancy
 
-## What's done
+## Status: Foundation Complete
 
-### Schema
-- `tenants` table: `id`, `name`, `subdomain` (unique), `created_at`, `custom_domain`, `plan`, `settings`
-- Migration function `_ensure_tenants_table()` creates the table on first use
-- `tenant_id` columns on `users` and `communities` are planned but NOT yet added (requires migration scripts for existing data)
+### Done
 
-### Request Context
-- `_set_tenant_context` before_request handler sets `g.tenant_id` from:
-  - `X-Tenant-Id` header (for API calls from tenant-specific admin)
-  - Subdomain detection (when tenant subdomains are configured)
-- `g.tenant_id = None` for current (default/global) behavior
+#### Schema
+- `tenants` table: id, name, subdomain (unique), custom_domain, plan, settings, created_at
+- `tenant_id` column on `users` and `communities` (nullable, defaults to NULL for global/platform)
+- Auto-migration via `_ensure_tenants_table()` and `_ensure_tenant_id_columns()` on app startup
 
-### Admin
-- **Landlord**: `admin.c-point.co` is the platform owner admin (current admin)
-- **Tenant admins**: Not yet implemented
+#### Tenant Resolution
+- `_set_tenant_context` before_request handler resolves tenant from:
+  - `X-Tenant-Id` header
+  - Subdomain: `{tenant}.c-point.co` → looks up `tenants.subdomain`
+  - Reserved subdomains (www, app, admin, api, staging) are excluded
+- Sets `g.tenant_id` and `g.tenant` (dict with id, name, subdomain)
+- Requires `APP_DOMAIN` env var (default: `c-point.co`) and wildcard DNS `*.c-point.co`
 
-## Next Steps (Phase 2 continuation)
+#### Tenant-Scoped Admin Queries
+- `_tenant_filter()` helper returns SQL clause + params for scoping
+- Applied to all admin API routes: overview, users, communities, dashboard, metrics
+- When `g.tenant_id` is set: queries filtered to that tenant's data
+- When `g.tenant_id` is None (landlord): all data visible (platform-wide)
 
-1. **Add `tenant_id` columns**: Add nullable `tenant_id` FK to `users` and `communities` tables. Backfill existing rows with `NULL` (global tenant).
+#### www.c-point.co Admin Login
+- `POST /api/admin/login-by-email`: looks up user's tenant by email
+- Returns redirect URL to tenant's admin (`https://{subdomain}.c-point.co/admin`)
+- Platform users (no tenant) redirected to `https://admin.c-point.co`
 
-2. **Tenant subdomains**: Configure `{tenant}.c-point.co` routing. Each tenant gets their own subdomain with scoped data.
+#### Tenant Admin UI
+- Same admin SPA (`admin-web/`) works on tenant subdomains
+- API calls go to the same host, so `g.tenant_id` is set from subdomain
+- Tenant indicator shown in sidebar when on a tenant subdomain
+- Landlord at `admin.c-point.co` sees all data
 
-3. **www.c-point.co admin login**: Add "Admin Login" on the landing page. When admin enters email, system looks up their tenant and redirects to `{tenant}.c-point.co`.
+### Configuration Required
+- `APP_DOMAIN=c-point.co` env var on main app
+- Wildcard DNS: `*.c-point.co` → Cloud Run service
+- Each tenant needs a row in `tenants` table with `subdomain` set
 
-4. **Tenant-scoped queries**: Where admin routes run, filter by `g.tenant_id` when present. Comment markers are in place: "Phase 2: scope by g.tenant_id when present."
-
-5. **Tenant admin UI**: Separate admin view for tenant admins (limited to their tenant's data).
-
-## Environment Variables
-
-No new env vars required for Phase 2 foundation. Future:
-- Tenant subdomains will use wildcard DNS (`*.c-point.co`)
-- Each tenant may have custom domain support via `tenants.custom_domain`
+### Next Steps (Optional/Later)
+- Custom domain support (`tenants.custom_domain`)
+- Tenant admin role/permissions (separate from app admin)
+- Billing/plan enforcement per tenant
+- Tenant onboarding wizard

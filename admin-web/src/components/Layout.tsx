@@ -31,6 +31,14 @@ export default function Layout() {
           <div className="flex items-center gap-2">
             <img src={`${import.meta.env.VITE_API_BASE || 'https://app.c-point.co'}/api/public/logo`} alt="C.Point" className="w-8 h-8 rounded-lg" />
             <span className="font-semibold">C.Point Admin</span>
+            {(() => {
+              const host = window.location.hostname
+              const parts = host.split('.')
+              if (parts.length > 2 && !['www', 'app', 'admin'].includes(parts[0])) {
+                return <div className="text-[10px] text-accent/70 mt-0.5">{parts[0]}</div>
+              }
+              return null
+            })()}
           </div>
         </div>
         <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
