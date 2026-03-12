@@ -553,22 +553,16 @@ def _check_csrf_origin():
 
 @app.before_request
 def _set_tenant_context():
-    """Phase 2: Set g.tenant_id from header or subdomain."""
+    """Phase 2: Set tenant from header or subdomain."""
     from flask import g
     g.tenant_id = None
-    # From header (for API clients)
     tid = request.headers.get('X-Tenant-Id')
     if tid:
-        try: g.tenant_id = int(tid)
-        except: pass
-    # From subdomain (e.g. whu from whu.c-point.co)
-    if not g.tenant_id:
-        host = request.host.split(':')[0]
-        if host.endswith('.c-point.co') and host != 'app.c-point.co' and host != 'admin.c-point.co':
-            subdomain = host.replace('.c-point.co', '')
-            if subdomain and subdomain not in ('www', 'api'):
-                # Phase 2: look up tenant by subdomain
-                pass
+        try:
+            g.tenant_id = int(tid)
+        except (ValueError, TypeError):
+            pass
+    # Phase 2: also detect from subdomain when tenant subdomains are configured
 
 # Block unverified users from entering the app except for auth/static routes
 @app.before_request
@@ -4051,36 +4045,41 @@ def has_post_delete_permission(username, post_username, community_id):
         or is_community_admin(username, community_id)
     )
 
-def _ensure_tenants_table():
+def _ensure_tenants_table(cursor=None):
     """Phase 2: Create tenants table if missing."""
+    def _do_create(c):
+        if USE_MYSQL:
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS tenants (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    name VARCHAR(191) NOT NULL,
+                    subdomain VARCHAR(100) UNIQUE,
+                    custom_domain VARCHAR(255),
+                    plan VARCHAR(50) DEFAULT 'free',
+                    settings JSON,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS tenants (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    subdomain TEXT UNIQUE,
+                    custom_domain TEXT,
+                    plan TEXT DEFAULT 'free',
+                    settings TEXT,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            """)
     try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            if USE_MYSQL:
-                c.execute("""
-                    CREATE TABLE IF NOT EXISTS tenants (
-                        id INT PRIMARY KEY AUTO_INCREMENT,
-                        name VARCHAR(191) NOT NULL,
-                        subdomain VARCHAR(100) UNIQUE,
-                        custom_domain VARCHAR(255),
-                        plan VARCHAR(50) DEFAULT 'free',
-                        settings JSON,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-            else:
-                c.execute("""
-                    CREATE TABLE IF NOT EXISTS tenants (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        name TEXT NOT NULL,
-                        subdomain TEXT UNIQUE,
-                        custom_domain TEXT,
-                        plan TEXT DEFAULT 'free',
-                        settings TEXT,
-                        created_at TEXT DEFAULT (datetime('now'))
-                    )
-                """)
-            conn.commit()
+        if cursor:
+            _do_create(cursor)
+        else:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                _do_create(c)
+                conn.commit()
     except Exception as e:
         logger.warning(f"Could not create tenants table: {e}")
 
@@ -6913,109 +6912,6 @@ def debug_communities():
         logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/admin/overview', methods=['GET'])
-@login_required
-def admin_overview_api():
-    """Light admin overview - fast totals + recent items only."""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT COUNT(*) as count FROM users")
-            total_users = get_scalar_result(c.fetchone(), column_name='count')
-            c.execute("SELECT COUNT(*) as count FROM communities")
-            total_communities = get_scalar_result(c.fetchone(), column_name='count')
-            c.execute("SELECT COUNT(*) as count FROM posts")
-            total_posts = get_scalar_result(c.fetchone(), column_name='count')
-            c.execute("SELECT COUNT(*) as count FROM users WHERE subscription = 'premium'")
-            premium_users = get_scalar_result(c.fetchone(), column_name='count')
-            
-            # Recent users (last 5)
-            recent_users = []
-            c.execute("SELECT username, email, created_at FROM users ORDER BY created_at DESC LIMIT 5")
-            for r in c.fetchall():
-                recent_users.append({
-                    'username': r['username'] if hasattr(r, 'keys') else r[0],
-                    'email': (r['email'] if hasattr(r, 'keys') else r[1]) or '',
-                    'created_at': str(r['created_at'] if hasattr(r, 'keys') else r[2]) if (r['created_at'] if hasattr(r, 'keys') else r[2]) else None,
-                })
-            
-            # Recent communities (last 5)
-            recent_communities = []
-            c.execute("SELECT id, name, creator_username FROM communities ORDER BY id DESC LIMIT 5")
-            for r in c.fetchall():
-                recent_communities.append({
-                    'id': r['id'] if hasattr(r, 'keys') else r[0],
-                    'name': r['name'] if hasattr(r, 'keys') else r[1],
-                    'creator': r['creator_username'] if hasattr(r, 'keys') else r[2],
-                })
-            
-            return jsonify({
-                'success': True,
-                'total_users': total_users,
-                'premium_users': premium_users,
-                'total_communities': total_communities,
-                'total_posts': total_posts,
-                'recent_users': recent_users,
-                'recent_communities': recent_communities,
-            })
-    except Exception as e:
-        logger.error(f"admin_overview error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-@app.route('/api/admin/users', methods=['GET'])
-@login_required
-def admin_users_api():
-    """Paginated users list with id, email, subscription."""
-    # Phase 2: scope by g.tenant_id when present
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    page = request.args.get('page', 1, type=int)
-    per_page = min(request.args.get('per_page', 50, type=int), 200)
-    search = (request.args.get('search') or '').strip()
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            
-            if search:
-                c.execute(f"SELECT COUNT(*) as count FROM users WHERE username LIKE {ph} OR email LIKE {ph}", (f'%{search}%', f'%{search}%'))
-            else:
-                c.execute("SELECT COUNT(*) as count FROM users")
-            total = get_scalar_result(c.fetchone(), column_name='count')
-            
-            offset = (page - 1) * per_page
-            if search:
-                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE username LIKE {ph} OR email LIKE {ph} ORDER BY created_at DESC LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%', per_page, offset))
-            else:
-                c.execute(f"SELECT id, username, email, subscription, created_at FROM users ORDER BY created_at DESC LIMIT {ph} OFFSET {ph}", (per_page, offset))
-            
-            users = []
-            for r in c.fetchall():
-                users.append({
-                    'id': r['id'] if hasattr(r, 'keys') else r[0],
-                    'username': r['username'] if hasattr(r, 'keys') else r[1],
-                    'email': (r['email'] if hasattr(r, 'keys') else r[2]) or '',
-                    'subscription': r['subscription'] if hasattr(r, 'keys') else r[3],
-                    'created_at': str(r['created_at'] if hasattr(r, 'keys') else r[4]) if (r['created_at'] if hasattr(r, 'keys') else r[4]) else None,
-                    'is_admin': is_app_admin(r['username'] if hasattr(r, 'keys') else r[1]),
-                })
-            
-            return jsonify({
-                'success': True,
-                'users': users,
-                'total': total,
-                'page': page,
-                'per_page': per_page,
-                'total_pages': (total + per_page - 1) // per_page,
-            })
-    except Exception as e:
-        logger.error(f"admin_users error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
 @app.route('/api/admin/communities_list', methods=['GET'])
 @login_required
 def admin_communities_list_api():
@@ -7037,6 +6933,79 @@ def admin_communities_list_api():
                 })
             return jsonify({'success': True, 'communities': communities})
     except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/admin/overview', methods=['GET'])
+@login_required
+def admin_overview_api():
+    """Light admin overview - fast totals + recent items only."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) as cnt FROM users")
+            r = c.fetchone()
+            total_users = r['cnt'] if hasattr(r, 'keys') else r[0]
+            c.execute("SELECT COUNT(*) as cnt FROM communities")
+            r = c.fetchone()
+            total_communities = r['cnt'] if hasattr(r, 'keys') else r[0]
+            c.execute("SELECT COUNT(*) as cnt FROM posts")
+            r = c.fetchone()
+            total_posts = r['cnt'] if hasattr(r, 'keys') else r[0]
+            c.execute("SELECT COUNT(*) as cnt FROM users WHERE subscription = 'premium'")
+            r = c.fetchone()
+            premium_users = r['cnt'] if hasattr(r, 'keys') else r[0]
+            # Recent users
+            c.execute("SELECT username, created_at FROM users ORDER BY created_at DESC LIMIT 5")
+            recent_users = [{'username': u['username'] if hasattr(u,'keys') else u[0], 'created_at': str(u['created_at'] if hasattr(u,'keys') else u[1]) if (u['created_at'] if hasattr(u,'keys') else u[1]) else None} for u in c.fetchall()]
+            # Recent communities
+            c.execute("SELECT id, name FROM communities ORDER BY id DESC LIMIT 5")
+            recent_communities = [{'id': co['id'] if hasattr(co,'keys') else co[0], 'name': co['name'] if hasattr(co,'keys') else co[1]} for co in c.fetchall()]
+            return jsonify({'success': True, 'total_users': total_users, 'total_communities': total_communities, 'total_posts': total_posts, 'premium_users': premium_users, 'recent_users': recent_users, 'recent_communities': recent_communities})
+    except Exception as e:
+        logger.error(f"admin_overview error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/admin/users', methods=['GET'])
+@login_required
+def admin_users_api():
+    """Paginated admin users list with email."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 50, type=int), 200)
+    search = request.args.get('search', '').strip()
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            if search:
+                c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE username LIKE {ph} OR email LIKE {ph}", (f'%{search}%', f'%{search}%'))
+            else:
+                c.execute("SELECT COUNT(*) as cnt FROM users")
+            r = c.fetchone()
+            total = r['cnt'] if hasattr(r, 'keys') else r[0]
+            offset = (page - 1) * per_page
+            if search:
+                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE username LIKE {ph} OR email LIKE {ph} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%', per_page, offset))
+            else:
+                c.execute(f"SELECT id, username, email, subscription, created_at FROM users ORDER BY username LIMIT {ph} OFFSET {ph}", (per_page, offset))
+            users = []
+            for u in c.fetchall():
+                users.append({
+                    'id': u['id'] if hasattr(u,'keys') else u[0],
+                    'username': u['username'] if hasattr(u,'keys') else u[1],
+                    'email': u['email'] if hasattr(u,'keys') else u[2],
+                    'subscription': u['subscription'] if hasattr(u,'keys') else u[3],
+                    'created_at': str(u['created_at'] if hasattr(u,'keys') else u[4]) if (u['created_at'] if hasattr(u,'keys') else u[4]) else None,
+                    'is_admin': is_app_admin(u['username'] if hasattr(u,'keys') else u[1])
+                })
+            return jsonify({'success': True, 'users': users, 'total': total, 'page': page, 'per_page': per_page, 'pages': (total + per_page - 1) // per_page})
+    except Exception as e:
+        logger.error(f"admin_users error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/api/admin/dashboard', methods=['GET'])
@@ -7340,16 +7309,18 @@ def admin_dashboard_api():
                 pass
             
             # Get users list with created_at
-            c.execute("SELECT username, subscription, created_at FROM users ORDER BY username")
+            c.execute("SELECT id, username, email, subscription, created_at FROM users ORDER BY username")
             users_raw = c.fetchall()
             users = []
             for user in users_raw:
                 users.append({
-                    'username': user['username'] if hasattr(user, 'keys') else user[0],
-                    'subscription': user['subscription'] if hasattr(user, 'keys') else user[1],
-                    'created_at': str(user['created_at'] if hasattr(user, 'keys') else user[2]) if (user['created_at'] if hasattr(user, 'keys') else user[2]) else None,
+                    'id': user['id'] if hasattr(user, 'keys') else user[0],
+                    'username': user['username'] if hasattr(user, 'keys') else user[1],
+                    'email': user['email'] if hasattr(user, 'keys') else user[2],
+                    'subscription': user['subscription'] if hasattr(user, 'keys') else user[3],
+                    'created_at': str(user['created_at'] if hasattr(user, 'keys') else user[4]) if (user['created_at'] if hasattr(user, 'keys') else user[4]) else None,
                     'is_active': True,
-                    'is_admin': is_app_admin(user['username'] if hasattr(user, 'keys') else user[0])
+                    'is_admin': is_app_admin(user['username'] if hasattr(user, 'keys') else user[1])
                 })
             
             # Get all communities with parent information
