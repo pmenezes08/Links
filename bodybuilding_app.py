@@ -7011,6 +7011,206 @@ def admin_communities_list_api():
         logger.error(f"admin_communities_list error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+# === Tenant Management (Landlord Only) ===
+
+@app.route('/api/admin/tenants', methods=['GET'])
+@login_required
+def admin_list_tenants():
+    """List all tenants. Landlord only (g.tenant_id must be None)."""
+    from flask import g
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    if getattr(g, 'tenant_id', None) is not None:
+        return jsonify({'success': False, 'error': 'Landlord access only'}), 403
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute("SELECT id, name, subdomain, custom_domain, plan, created_at FROM tenants ORDER BY name")
+            tenants = []
+            for r in c.fetchall():
+                tid = r['id'] if hasattr(r,'keys') else r[0]
+                # Count users and communities
+                c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE tenant_id = {ph}", (tid,))
+                uc = c.fetchone()
+                user_count = uc['cnt'] if hasattr(uc,'keys') else uc[0]
+                c.execute(f"SELECT COUNT(*) as cnt FROM communities WHERE tenant_id = {ph}", (tid,))
+                cc = c.fetchone()
+                comm_count = cc['cnt'] if hasattr(cc,'keys') else cc[0]
+                tenants.append({
+                    'id': tid,
+                    'name': r['name'] if hasattr(r,'keys') else r[1],
+                    'subdomain': r['subdomain'] if hasattr(r,'keys') else r[2],
+                    'custom_domain': r['custom_domain'] if hasattr(r,'keys') else r[3],
+                    'plan': r['plan'] if hasattr(r,'keys') else r[4],
+                    'created_at': str(r['created_at'] if hasattr(r,'keys') else r[5]) if (r['created_at'] if hasattr(r,'keys') else r[5]) else None,
+                    'user_count': user_count,
+                    'community_count': comm_count,
+                })
+            return jsonify({'success': True, 'tenants': tenants})
+    except Exception as e:
+        logger.error(f"admin_list_tenants error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/admin/tenants', methods=['POST'])
+@login_required
+def admin_create_tenant():
+    """Create a tenant. Landlord only."""
+    from flask import g
+    username = session.get('username')
+    if not is_app_admin(username) or getattr(g, 'tenant_id', None) is not None:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    subdomain = (data.get('subdomain') or '').strip().lower()
+    if not name or not subdomain:
+        return jsonify({'success': False, 'error': 'Name and subdomain required'}), 400
+    import re as _re
+    if not _re.match(r'^[a-z0-9][a-z0-9-]*[a-z0-9]$', subdomain) or len(subdomain) < 2:
+        return jsonify({'success': False, 'error': 'Invalid subdomain (alphanumeric + hyphens, min 2 chars)'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            _ensure_tenants_table(c)
+            c.execute(f"SELECT id FROM tenants WHERE subdomain = {ph}", (subdomain,))
+            if c.fetchone():
+                return jsonify({'success': False, 'error': 'Subdomain already taken'}), 409
+            c.execute(f"INSERT INTO tenants (name, subdomain) VALUES ({ph}, {ph})", (name, subdomain))
+            conn.commit()
+            tid = c.lastrowid
+            return jsonify({'success': True, 'tenant': {'id': tid, 'name': name, 'subdomain': subdomain}})
+    except Exception as e:
+        logger.error(f"admin_create_tenant error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/admin/tenants/<int:tenant_id>', methods=['PATCH'])
+@login_required
+def admin_update_tenant(tenant_id):
+    """Update a tenant. Landlord only."""
+    from flask import g
+    username = session.get('username')
+    if not is_app_admin(username) or getattr(g, 'tenant_id', None) is not None:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    data = request.get_json() or {}
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            updates = []
+            params = []
+            for field in ('name', 'subdomain', 'custom_domain', 'plan'):
+                if field in data:
+                    val = data[field]
+                    if field == 'subdomain' and val:
+                        import re as _re
+                        val = val.strip().lower()
+                        if not _re.match(r'^[a-z0-9][a-z0-9-]*[a-z0-9]$', val):
+                            return jsonify({'success': False, 'error': 'Invalid subdomain'}), 400
+                        c.execute(f"SELECT id FROM tenants WHERE subdomain = {ph} AND id != {ph}", (val, tenant_id))
+                        if c.fetchone():
+                            return jsonify({'success': False, 'error': 'Subdomain taken'}), 409
+                    updates.append(f"{field} = {ph}")
+                    params.append(val)
+            if not updates:
+                return jsonify({'success': False, 'error': 'No fields to update'}), 400
+            params.append(tenant_id)
+            c.execute(f"UPDATE tenants SET {', '.join(updates)} WHERE id = {ph}", tuple(params))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"admin_update_tenant error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/admin/tenants/<int:tenant_id>/users', methods=['GET'])
+@login_required
+def admin_tenant_users(tenant_id):
+    """Users for a specific tenant. Landlord only."""
+    from flask import g
+    username = session.get('username')
+    if not is_app_admin(username) or getattr(g, 'tenant_id', None) is not None:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id, username, email, subscription FROM users WHERE tenant_id = {ph} ORDER BY username", (tenant_id,))
+            users = [{'id': u['id'] if hasattr(u,'keys') else u[0], 'username': u['username'] if hasattr(u,'keys') else u[1], 'email': u['email'] if hasattr(u,'keys') else u[2], 'subscription': u['subscription'] if hasattr(u,'keys') else u[3]} for u in c.fetchall()]
+            return jsonify({'success': True, 'users': users})
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/admin/tenants/<int:tenant_id>/communities', methods=['GET'])
+@login_required
+def admin_tenant_communities(tenant_id):
+    """Communities for a specific tenant. Landlord only."""
+    from flask import g
+    username = session.get('username')
+    if not is_app_admin(username) or getattr(g, 'tenant_id', None) is not None:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id, name, type FROM communities WHERE tenant_id = {ph} ORDER BY name", (tenant_id,))
+            comms = [{'id': co['id'] if hasattr(co,'keys') else co[0], 'name': co['name'] if hasattr(co,'keys') else co[1], 'type': co['type'] if hasattr(co,'keys') else co[2]} for co in c.fetchall()]
+            return jsonify({'success': True, 'communities': comms})
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/admin/tenants/<int:tenant_id>/assign-users', methods=['PATCH'])
+@login_required
+def admin_assign_users_to_tenant(tenant_id):
+    """Assign users to a tenant. Landlord only."""
+    from flask import g
+    username = session.get('username')
+    if not is_app_admin(username) or getattr(g, 'tenant_id', None) is not None:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    data = request.get_json() or {}
+    user_ids = data.get('user_ids', [])
+    if not user_ids or not isinstance(user_ids, list):
+        return jsonify({'success': False, 'error': 'user_ids required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            for uid in user_ids:
+                c.execute(f"UPDATE users SET tenant_id = {ph} WHERE id = {ph}", (tenant_id, uid))
+            conn.commit()
+            return jsonify({'success': True, 'assigned': len(user_ids)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/admin/tenants/<int:tenant_id>/assign-communities', methods=['PATCH'])
+@login_required
+def admin_assign_communities_to_tenant(tenant_id):
+    """Assign communities to a tenant. Landlord only."""
+    from flask import g
+    username = session.get('username')
+    if not is_app_admin(username) or getattr(g, 'tenant_id', None) is not None:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    data = request.get_json() or {}
+    community_ids = data.get('community_ids', [])
+    if not community_ids or not isinstance(community_ids, list):
+        return jsonify({'success': False, 'error': 'community_ids required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            for cid in community_ids:
+                c.execute(f"UPDATE communities SET tenant_id = {ph} WHERE id = {ph}", (tenant_id, cid))
+            conn.commit()
+            return jsonify({'success': True, 'assigned': len(community_ids)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/api/admin/communities', methods=['GET'])
 @login_required
 def admin_communities_api():
@@ -7445,17 +7645,21 @@ def _compute_admin_metrics(c):
 
 
 @app.route('/api/admin/metrics', methods=['GET'])
-@login_required  
+@login_required
 def admin_metrics_api():
-    """Metrics-only endpoint. Calls dashboard logic, returns only stats."""
-    response = admin_dashboard_api()
-    if hasattr(response, 'get_json'):
-        data = response.get_json()
-    else:
-        data = response[0].get_json() if isinstance(response, tuple) else response.get_json()
-    if data and data.get('success'):
-        return jsonify({'success': True, 'stats': data.get('stats', {})})
-    return response
+    """Dedicated metrics endpoint - returns only stats (DAU/MAU/cohorts/leaderboards)."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        resp = admin_dashboard_api()
+        data = resp.get_json() if hasattr(resp, 'get_json') else resp[0].get_json()
+        if data and data.get('success'):
+            return jsonify({'success': True, 'stats': data.get('stats', {})})
+        return jsonify({'success': False, 'error': 'Failed to compute metrics'}), 500
+    except Exception as e:
+        logger.error(f"admin_metrics error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/api/admin/dashboard', methods=['GET'])
 @login_required
@@ -8000,209 +8204,6 @@ def admin_delete_community():
     except Exception as e:
         logger.error(f"Error deleting community: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/admin/tenants', methods=['GET'])
-@login_required
-def admin_list_tenants():
-    """List all tenants (landlord only)."""
-    from flask import g
-    if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord only'}), 403
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            _ensure_tenants_table(c)
-            c.execute("SELECT id, name, subdomain, custom_domain, plan, created_at FROM tenants ORDER BY id")
-            tenants = []
-            for r in c.fetchall():
-                tid = r['id'] if hasattr(r, 'keys') else r[0]
-                t = {'id': tid, 'name': r['name'] if hasattr(r,'keys') else r[1], 'subdomain': r['subdomain'] if hasattr(r,'keys') else r[2], 'custom_domain': (r['custom_domain'] if hasattr(r,'keys') else r[3]) or None, 'plan': (r['plan'] if hasattr(r,'keys') else r[4]) or 'free', 'created_at': str(r['created_at'] if hasattr(r,'keys') else r[5]) if (r['created_at'] if hasattr(r,'keys') else r[5]) else None}
-                try:
-                    c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE tenant_id = {ph}", (tid,))
-                    row = c.fetchone()
-                    t['user_count'] = row['cnt'] if hasattr(row,'keys') else row[0]
-                except Exception:
-                    t['user_count'] = 0
-                try:
-                    c.execute(f"SELECT COUNT(*) as cnt FROM communities WHERE tenant_id = {ph}", (tid,))
-                    row = c.fetchone()
-                    t['community_count'] = row['cnt'] if hasattr(row,'keys') else row[0]
-                except Exception:
-                    t['community_count'] = 0
-                tenants.append(t)
-            return jsonify({'success': True, 'tenants': tenants})
-    except Exception as e:
-        logger.error(f"admin_list_tenants error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/admin/tenants', methods=['POST'])
-@login_required
-def admin_create_tenant():
-    """Create a new tenant (landlord only)."""
-    from flask import g
-    if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord only'}), 403
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    data = request.get_json() or {}
-    name = (data.get('name') or '').strip()
-    subdomain = (data.get('subdomain') or '').strip().lower()
-    if not name or not subdomain:
-        return jsonify({'success': False, 'error': 'Name and subdomain required'}), 400
-    import re
-    if not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', subdomain):
-        return jsonify({'success': False, 'error': 'Subdomain must be alphanumeric with optional hyphens'}), 400
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            _ensure_tenants_table(c)
-            c.execute(f"SELECT id FROM tenants WHERE subdomain = {ph}", (subdomain,))
-            if c.fetchone():
-                return jsonify({'success': False, 'error': 'Subdomain already taken'}), 409
-            c.execute(f"INSERT INTO tenants (name, subdomain) VALUES ({ph}, {ph})", (name, subdomain))
-            conn.commit()
-            tenant_id = c.lastrowid
-            return jsonify({'success': True, 'tenant': {'id': tenant_id, 'name': name, 'subdomain': subdomain}})
-    except Exception as e:
-        logger.error(f"admin_create_tenant error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/admin/tenants/<int:tenant_id>', methods=['PATCH'])
-@login_required
-def admin_update_tenant(tenant_id):
-    """Update a tenant (landlord only)."""
-    from flask import g
-    if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord only'}), 403
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    data = request.get_json() or {}
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            updates = []
-            params = []
-            for field in ('name', 'subdomain', 'custom_domain', 'plan'):
-                if field in data:
-                    val = (data[field] or '').strip()
-                    if field == 'subdomain' and val:
-                        import re
-                        if not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', val.lower()):
-                            return jsonify({'success': False, 'error': 'Invalid subdomain'}), 400
-                        c.execute(f"SELECT id FROM tenants WHERE subdomain = {ph} AND id != {ph}", (val.lower(), tenant_id))
-                        if c.fetchone():
-                            return jsonify({'success': False, 'error': 'Subdomain already taken'}), 409
-                        val = val.lower()
-                    updates.append(f"{field} = {ph}")
-                    params.append(val)
-            if not updates:
-                return jsonify({'success': False, 'error': 'No fields to update'}), 400
-            params.append(tenant_id)
-            c.execute(f"UPDATE tenants SET {', '.join(updates)} WHERE id = {ph}", tuple(params))
-            conn.commit()
-            return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"admin_update_tenant error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/admin/tenants/<int:tenant_id>/users', methods=['GET'])
-@login_required
-def admin_tenant_users(tenant_id):
-    """List users for a tenant (landlord only)."""
-    from flask import g
-    if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord only'}), 403
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT id, username, email FROM users WHERE tenant_id = {ph} ORDER BY username", (tenant_id,))
-            users = [{'id': u['id'] if hasattr(u,'keys') else u[0], 'username': u['username'] if hasattr(u,'keys') else u[1], 'email': u['email'] if hasattr(u,'keys') else u[2]} for u in c.fetchall()]
-            return jsonify({'success': True, 'users': users})
-    except Exception as e:
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/admin/tenants/<int:tenant_id>/communities', methods=['GET'])
-@login_required
-def admin_tenant_communities(tenant_id):
-    """List communities for a tenant (landlord only)."""
-    from flask import g
-    if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord only'}), 403
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"SELECT id, name FROM communities WHERE tenant_id = {ph} ORDER BY name", (tenant_id,))
-            comms = [{'id': co['id'] if hasattr(co,'keys') else co[0], 'name': co['name'] if hasattr(co,'keys') else co[1]} for co in c.fetchall()]
-            return jsonify({'success': True, 'communities': comms})
-    except Exception as e:
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/admin/tenants/<int:tenant_id>/assign-users', methods=['PATCH'])
-@login_required
-def admin_assign_users_to_tenant(tenant_id):
-    """Assign users to a tenant (landlord only)."""
-    from flask import g
-    if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord only'}), 403
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    data = request.get_json() or {}
-    user_ids = data.get('user_ids', [])
-    if not user_ids or not isinstance(user_ids, list):
-        return jsonify({'success': False, 'error': 'user_ids array required'}), 400
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            for uid in user_ids:
-                c.execute(f"UPDATE users SET tenant_id = {ph} WHERE id = {ph}", (tenant_id, uid))
-            conn.commit()
-            return jsonify({'success': True, 'assigned': len(user_ids)})
-    except Exception as e:
-        logger.error(f"admin_assign_users error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
-
-
-@app.route('/api/admin/tenants/<int:tenant_id>/assign-communities', methods=['PATCH'])
-@login_required
-def admin_assign_communities_to_tenant(tenant_id):
-    """Assign communities to a tenant (landlord only)."""
-    from flask import g
-    if getattr(g, 'tenant_id', None) is not None:
-        return jsonify({'success': False, 'error': 'Landlord only'}), 403
-    if not is_app_admin(session.get('username')):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-    data = request.get_json() or {}
-    community_ids = data.get('community_ids', [])
-    if not community_ids or not isinstance(community_ids, list):
-        return jsonify({'success': False, 'error': 'community_ids array required'}), 400
-    try:
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
-            for cid in community_ids:
-                c.execute(f"UPDATE communities SET tenant_id = {ph} WHERE id = {ph}", (tenant_id, cid))
-            conn.commit()
-            return jsonify({'success': True, 'assigned': len(community_ids)})
-    except Exception as e:
-        logger.error(f"admin_assign_communities error: {e}")
-        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/admin', methods=['GET', 'POST'])
 @login_required
@@ -24925,26 +24926,26 @@ This invitation was sent by {username} from C.Point.
 @app.route('/api/community/invite_bulk', methods=['POST'])
 @login_required
 def invite_bulk():
-    """Bulk invite: accept multiple emails for a community."""
+    """Bulk invite: comma/newline-separated emails or array."""
     username = session.get('username')
     data = request.get_json() or {}
     community_id = data.get('community_id')
     emails_raw = data.get('emails', '')
+    include_nested_ids = data.get('include_nested_ids')
+    include_parent_ids = data.get('include_parent_ids')
     
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
     
+    import re as _re
     if isinstance(emails_raw, list):
         emails = [e.strip().lower() for e in emails_raw if isinstance(e, str) and e.strip()]
     elif isinstance(emails_raw, str):
-        import re
-        emails = [e.strip().lower() for e in re.split(r'[,;\n\r]+', emails_raw) if e.strip()]
+        emails = [e.strip().lower() for e in _re.split(r'[,;\n\r]+', emails_raw) if e.strip()]
     else:
         return jsonify({'success': False, 'error': 'emails required'}), 400
     
-    import re
-    valid_emails = [e for e in emails if re.match(r'^[^@]+@[^@]+\.[^@]+$', e)]
-    
+    valid_emails = [e for e in emails if _re.match(r'^[^@]+@[^@]+\.[^@]+$', e)]
     if not valid_emails:
         return jsonify({'success': False, 'error': 'No valid emails provided'}), 400
     
@@ -24954,50 +24955,33 @@ def invite_bulk():
     
     for email in valid_emails:
         try:
-            with get_db_connection() as conn:
-                c = conn.cursor()
-                ph = get_sql_placeholder()
-                
-                c.execute(f"""
-                    SELECT 1 FROM user_communities uc
-                    JOIN users u ON uc.user_id = u.id
-                    WHERE LOWER(u.email) = LOWER({ph}) AND uc.community_id = {ph}
-                """, (email, community_id))
-                if c.fetchone():
-                    errors.append({'email': email, 'error': 'Already a member'})
-                    failed += 1
-                    continue
-                
-                import secrets
-                token = secrets.token_urlsafe(32)
-                c.execute(f"""
-                    INSERT INTO community_invitations (community_id, invited_email, invited_by_username, token)
-                    VALUES ({ph}, {ph}, {ph}, {ph})
-                """, (community_id, email, username, token))
-                conn.commit()
-                
-                c.execute(f"SELECT name FROM communities WHERE id = {ph}", (community_id,))
-                comm_row = c.fetchone()
-                community_name = (comm_row['name'] if hasattr(comm_row,'keys') else comm_row[0]) if comm_row else 'Community'
-                
-                base_url = PUBLIC_BASE_URL or request.host_url.rstrip('/')
-                invite_url = f"{base_url}/invite/{token}"
-                
-                subject = f"You're invited to join {community_name} on C.Point"
-                html = f'<p>{username} has invited you to join <strong>{community_name}</strong> on C.Point.</p><p><a href="{invite_url}">Accept Invitation</a></p>'
-                text = f'{username} has invited you to join {community_name}. Click here: {invite_url}'
-                
+            from flask import Request
+            import io
+            body = json.dumps({'email': email, 'community_id': community_id, 'include_nested_ids': include_nested_ids, 'include_parent_ids': include_parent_ids})
+            with app.test_request_context('/api/community/invite', method='POST', content_type='application/json', data=body):
+                from flask import session as test_session
+                test_session['username'] = username
                 try:
-                    _send_email_via_resend(email, subject, html, text)
-                except Exception:
-                    pass
-                
-                sent += 1
+                    result = invite_to_community()
+                    if hasattr(result, 'get_json'):
+                        rd = result.get_json()
+                    elif isinstance(result, tuple):
+                        rd = result[0].get_json()
+                    else:
+                        rd = None
+                    if rd and rd.get('success'):
+                        sent += 1
+                    else:
+                        failed += 1
+                        errors.append({'email': email, 'error': rd.get('error', 'Failed') if rd else 'Failed'})
+                except Exception as inner_e:
+                    failed += 1
+                    errors.append({'email': email, 'error': str(inner_e)})
         except Exception as e:
-            errors.append({'email': email, 'error': str(e)})
             failed += 1
+            errors.append({'email': email, 'error': str(e)})
     
-    return jsonify({'success': True, 'sent': sent, 'failed': failed, 'errors': errors if errors else None})
+    return jsonify({'success': True, 'sent': sent, 'failed': failed, 'total': len(valid_emails), 'errors': errors[:20]})
 
 @app.route('/leave_community', methods=['POST'])
 @login_required
