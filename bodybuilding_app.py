@@ -553,16 +553,46 @@ def _check_csrf_origin():
 
 @app.before_request
 def _set_tenant_context():
-    """Phase 2: Set tenant from header or subdomain."""
+    """Phase 2: Set tenant from header, subdomain, or leave None for landlord."""
     from flask import g
     g.tenant_id = None
+    g.tenant = None
+    
+    # Option 1: explicit header
     tid = request.headers.get('X-Tenant-Id')
     if tid:
         try:
             g.tenant_id = int(tid)
+            return
         except (ValueError, TypeError):
             pass
-    # Phase 2: also detect from subdomain when tenant subdomains are configured
+    
+    # Option 2: subdomain resolution
+    host = request.host.split(':')[0].lower()  # strip port
+    app_domain = os.getenv('APP_DOMAIN', 'c-point.co').lower()
+    
+    # Skip known non-tenant subdomains
+    non_tenant = {'www', 'app', 'admin', 'api', 'staging', 'cpoint-app-staging-739552904126.europe-west1.run'}
+    
+    if host.endswith('.' + app_domain):
+        subdomain = host[: -(len(app_domain) + 1)]  # e.g. "whu" from "whu.c-point.co"
+        if subdomain and subdomain not in non_tenant:
+            try:
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    ph = get_sql_placeholder()
+                    _ensure_tenants_table(c)
+                    c.execute(f"SELECT id, name, subdomain FROM tenants WHERE subdomain = {ph}", (subdomain,))
+                    row = c.fetchone()
+                    if row:
+                        g.tenant_id = row['id'] if hasattr(row, 'keys') else row[0]
+                        g.tenant = {
+                            'id': row['id'] if hasattr(row, 'keys') else row[0],
+                            'name': row['name'] if hasattr(row, 'keys') else row[1],
+                            'subdomain': row['subdomain'] if hasattr(row, 'keys') else row[2],
+                        }
+            except Exception as e:
+                logger.debug(f"Tenant subdomain resolution failed for {subdomain}: {e}")
 
 # Block unverified users from entering the app except for auth/static routes
 @app.before_request
@@ -590,6 +620,7 @@ def _block_unverified_users():
             '/api/email_verified_status', 
             '/api/invitation/verify',
             '/api/push/register_fcm',  # FCM token registration (can be anonymous initially)
+            '/api/admin/login-by-email',  # Phase 2: tenant lookup by email (no auth)
         ]
         if path.startswith('/api/') and path not in public_api_endpoints:
             username = session.get('username')
@@ -4083,6 +4114,31 @@ def _ensure_tenants_table(cursor=None):
     except Exception as e:
         logger.warning(f"Could not create tenants table: {e}")
 
+def _ensure_tenant_id_columns():
+    """Phase 2: Add tenant_id columns to users and communities."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            for table in ('users', 'communities'):
+                try:
+                    c.execute(f"SELECT tenant_id FROM {table} LIMIT 1")
+                except Exception:
+                    try:
+                        if USE_MYSQL:
+                            c.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id INT DEFAULT NULL")
+                            try:
+                                c.execute(f"ALTER TABLE {table} ADD INDEX idx_{table}_tenant (tenant_id)")
+                            except Exception:
+                                pass
+                        else:
+                            c.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id INTEGER DEFAULT NULL")
+                        logger.info(f"Added tenant_id column to {table}")
+                    except Exception as e:
+                        logger.warning(f"Could not add tenant_id to {table}: {e}")
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"_ensure_tenant_id_columns error: {e}")
+
 # ALL initialization deferred to background thread for FAST cold start
 import threading as _threading
 
@@ -4118,6 +4174,12 @@ def _deferred_startup_init():
             logger.info("Background: _ensure_tenants_table completed")
         except Exception as e:
             logger.warning(f"Background: _ensure_tenants_table failed: {e}")
+        
+        try:
+            _ensure_tenant_id_columns()
+            logger.info("Background: _ensure_tenant_id_columns completed")
+        except Exception as e:
+            logger.warning(f"Background: _ensure_tenant_id_columns failed: {e}")
         
         logger.info("Background startup init completed")
     except Exception as e:
@@ -6935,6 +6997,51 @@ def admin_communities_list_api():
     except Exception as e:
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+@app.route('/api/admin/login-by-email', methods=['POST'])
+def admin_login_by_email():
+    """Phase 2: Look up tenant for an admin email and return redirect URL."""
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    if not email:
+        return jsonify({'success': False, 'error': 'Email required'}), 400
+    
+    try:
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            _ensure_tenants_table(c)
+            c.execute(f"""
+                SELECT u.tenant_id, t.subdomain, t.custom_domain, t.name as tenant_name
+                FROM users u
+                LEFT JOIN tenants t ON u.tenant_id = t.id
+                WHERE LOWER(u.email) = LOWER({ph})
+            """, (email,))
+            row = c.fetchone()
+            
+            if not row:
+                return jsonify({'success': False, 'error': 'No account found with that email'}), 404
+            
+            tenant_id = row['tenant_id'] if hasattr(row, 'keys') else row[0]
+            
+            if not tenant_id:
+                return jsonify({'success': True, 'redirect_url': 'https://admin.c-point.co'})
+            
+            subdomain = row['subdomain'] if hasattr(row, 'keys') else row[1]
+            custom_domain = row['custom_domain'] if hasattr(row, 'keys') else row[2]
+            
+            if custom_domain:
+                redirect_url = f"https://{custom_domain}/admin"
+            elif subdomain:
+                app_domain = os.getenv('APP_DOMAIN', 'c-point.co')
+                redirect_url = f"https://{subdomain}.{app_domain}/admin"
+            else:
+                redirect_url = 'https://admin.c-point.co'
+            
+            return jsonify({'success': True, 'redirect_url': redirect_url})
+    except Exception as e:
+        logger.error(f"admin_login_by_email error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/api/admin/overview', methods=['GET'])
 @login_required
 def admin_overview_api():
@@ -6942,26 +7049,33 @@ def admin_overview_api():
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    from flask import g
+    tid = g.get('tenant_id')
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT COUNT(*) as cnt FROM users")
+            ph = get_sql_placeholder()
+            tf_users = f" WHERE tenant_id = {ph}" if tid else ""
+            tp_users = (tid,) if tid else ()
+            tf_communities = f" WHERE tenant_id = {ph}" if tid else ""
+            tp_communities = (tid,) if tid else ()
+            c.execute(f"SELECT COUNT(*) as cnt FROM users{tf_users}", tp_users)
             r = c.fetchone()
             total_users = r['cnt'] if hasattr(r, 'keys') else r[0]
-            c.execute("SELECT COUNT(*) as cnt FROM communities")
+            c.execute(f"SELECT COUNT(*) as cnt FROM communities{tf_communities}", tp_communities)
             r = c.fetchone()
             total_communities = r['cnt'] if hasattr(r, 'keys') else r[0]
             c.execute("SELECT COUNT(*) as cnt FROM posts")
             r = c.fetchone()
             total_posts = r['cnt'] if hasattr(r, 'keys') else r[0]
-            c.execute("SELECT COUNT(*) as cnt FROM users WHERE subscription = 'premium'")
+            c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE subscription = 'premium'" + (f" AND tenant_id = {ph}" if tid else ""), (tid,) if tid else ())
             r = c.fetchone()
             premium_users = r['cnt'] if hasattr(r, 'keys') else r[0]
             # Recent users
-            c.execute("SELECT username, created_at FROM users ORDER BY created_at DESC LIMIT 5")
+            c.execute(f"SELECT username, created_at FROM users{tf_users} ORDER BY created_at DESC LIMIT 5", tp_users)
             recent_users = [{'username': u['username'] if hasattr(u,'keys') else u[0], 'created_at': str(u['created_at'] if hasattr(u,'keys') else u[1]) if (u['created_at'] if hasattr(u,'keys') else u[1]) else None} for u in c.fetchall()]
             # Recent communities
-            c.execute("SELECT id, name FROM communities ORDER BY id DESC LIMIT 5")
+            c.execute(f"SELECT id, name FROM communities{tf_communities} ORDER BY id DESC LIMIT 5", tp_communities)
             recent_communities = [{'id': co['id'] if hasattr(co,'keys') else co[0], 'name': co['name'] if hasattr(co,'keys') else co[1]} for co in c.fetchall()]
             return jsonify({'success': True, 'total_users': total_users, 'total_communities': total_communities, 'total_posts': total_posts, 'premium_users': premium_users, 'recent_users': recent_users, 'recent_communities': recent_communities})
     except Exception as e:
@@ -6975,6 +7089,8 @@ def admin_users_api():
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    from flask import g
+    tid = g.get('tenant_id')
     page = request.args.get('page', 1, type=int)
     per_page = min(request.args.get('per_page', 50, type=int), 200)
     search = request.args.get('search', '').strip()
@@ -6982,15 +7098,23 @@ def admin_users_api():
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
-            if search:
+            if search and tid:
+                c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE tenant_id = {ph} AND (username LIKE {ph} OR email LIKE {ph})", (tid, f'%{search}%', f'%{search}%'))
+            elif search:
                 c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE username LIKE {ph} OR email LIKE {ph}", (f'%{search}%', f'%{search}%'))
+            elif tid:
+                c.execute(f"SELECT COUNT(*) as cnt FROM users WHERE tenant_id = {ph}", (tid,))
             else:
                 c.execute("SELECT COUNT(*) as cnt FROM users")
             r = c.fetchone()
             total = r['cnt'] if hasattr(r, 'keys') else r[0]
             offset = (page - 1) * per_page
-            if search:
+            if search and tid:
+                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE tenant_id = {ph} AND (username LIKE {ph} OR email LIKE {ph}) ORDER BY username LIMIT {ph} OFFSET {ph}", (tid, f'%{search}%', f'%{search}%', per_page, offset))
+            elif search:
                 c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE username LIKE {ph} OR email LIKE {ph} ORDER BY username LIMIT {ph} OFFSET {ph}", (f'%{search}%', f'%{search}%', per_page, offset))
+            elif tid:
+                c.execute(f"SELECT id, username, email, subscription, created_at FROM users WHERE tenant_id = {ph} ORDER BY username LIMIT {ph} OFFSET {ph}", (tid, per_page, offset))
             else:
                 c.execute(f"SELECT id, username, email, subscription, created_at FROM users ORDER BY username LIMIT {ph} OFFSET {ph}", (per_page, offset))
             users = []
@@ -7015,6 +7139,7 @@ def admin_dashboard_api():
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    # Phase 2: TODO scope by g.tenant_id
     
     try:
         with get_db_connection() as conn:
