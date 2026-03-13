@@ -10775,42 +10775,57 @@ def business_logout():
 @app.route('/delete_chat', methods=['POST'])
 @login_required
 def delete_chat():
-    """WhatsApp-style: mark chat as deleted for the current user only. No messages are removed."""
+    """WhatsApp-style one-sided delete: hides chat for deleter only, no message deletion."""
     username = session['username']
-    receiver = request.form.get('receiver') or (request.get_json() or {}).get('receiver')
+    receiver = request.form.get('receiver')
     if not receiver:
-        return jsonify({'success': False, 'error': 'Receiver required'})
+        return jsonify({'success': False, 'error': 'Receiver required!'})
     try:
         ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
+            # Ensure table exists
             if USE_MYSQL:
-                c.execute("""CREATE TABLE IF NOT EXISTS deleted_chat_threads (
-                    username VARCHAR(191) NOT NULL,
-                    other_username VARCHAR(191) NOT NULL,
-                    deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (username, other_username)
-                )""")
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS deleted_chat_threads (
+                        username VARCHAR(191) NOT NULL,
+                        other_username VARCHAR(191) NOT NULL,
+                        deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (username, other_username)
+                    )
+                """)
             else:
-                c.execute("""CREATE TABLE IF NOT EXISTS deleted_chat_threads (
-                    username TEXT NOT NULL,
-                    other_username TEXT NOT NULL,
-                    deleted_at TEXT DEFAULT (datetime('now')),
-                    PRIMARY KEY (username, other_username)
-                )""")
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS deleted_chat_threads (
+                        username TEXT NOT NULL,
+                        other_username TEXT NOT NULL,
+                        deleted_at TEXT DEFAULT (datetime('now')),
+                        PRIMARY KEY (username, other_username)
+                    )
+                """)
+            # Upsert: mark chat as deleted for this user
             now = datetime.now().isoformat()
             if USE_MYSQL:
-                c.execute(f"INSERT INTO deleted_chat_threads (username, other_username, deleted_at) VALUES ({ph},{ph},{ph}) ON DUPLICATE KEY UPDATE deleted_at = VALUES(deleted_at)", (username, receiver, now))
+                c.execute(f"""
+                    INSERT INTO deleted_chat_threads (username, other_username, deleted_at)
+                    VALUES ({ph}, {ph}, {ph})
+                    ON DUPLICATE KEY UPDATE deleted_at = VALUES(deleted_at)
+                """, (username, receiver, now))
             else:
-                c.execute(f"INSERT INTO deleted_chat_threads (username, other_username, deleted_at) VALUES ({ph},{ph},{ph}) ON CONFLICT(username, other_username) DO UPDATE SET deleted_at = excluded.deleted_at", (username, receiver, now))
+                c.execute(f"""
+                    INSERT INTO deleted_chat_threads (username, other_username, deleted_at)
+                    VALUES ({ph}, {ph}, {ph})
+                    ON CONFLICT(username, other_username) DO UPDATE SET deleted_at = excluded.deleted_at
+                """, (username, receiver, now))
             conn.commit()
+            # Invalidate only the deleter's cache
             try:
                 cache.delete(f"chat_threads:{username}")
             except Exception:
                 pass
         return jsonify({'success': True})
     except Exception as e:
-        logger.error(f"Error soft-deleting chat for {username}: {e}")
+        logger.error(f"Error in delete_chat for {username}: {e}")
         return jsonify({'success': False, 'error': 'Failed to delete chat'}), 500
 @app.route('/api/chat/media', methods=['GET'])
 @login_required
@@ -10963,19 +10978,17 @@ def get_messages():
             
             other_username = other_user['username'] if hasattr(other_user, 'keys') else other_user[0]
             
-            # Check if user soft-deleted this chat (show only messages after deleted_at)
-            deleted_at_filter = ''
-            deleted_at_params = ()
+            # Check if user has deleted this chat (WhatsApp-style)
+            deleted_at_filter = None
             try:
                 c.execute(f"SELECT deleted_at FROM deleted_chat_threads WHERE username = {ph} AND other_username = {ph}", (username, other_username))
-                del_row = c.fetchone()
-                if del_row:
-                    del_at = del_row['deleted_at'] if hasattr(del_row, 'keys') else del_row[0]
-                    if del_at:
-                        deleted_at_filter = f" AND timestamp > {ph}"
-                        deleted_at_params = (str(del_at),)
+                drow = c.fetchone()
+                if drow:
+                    deleted_at_filter = str(drow['deleted_at'] if hasattr(drow, 'keys') else drow[0])
             except Exception:
                 pass
+            deleted_at_clause = f" AND timestamp > {ph}" if deleted_at_filter else ""
+            deleted_at_params = (deleted_at_filter,) if deleted_at_filter else ()
             
             # Get messages between users (compat: edited_at and encryption fields may not exist yet)
             # PERFORMANCE: Delta fetch support - only get messages newer than since_id
@@ -10994,7 +11007,7 @@ def get_messages():
                            is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary, reaction, reaction_by
                     FROM messages
                     WHERE ((sender = ? AND receiver = ?)
-                       OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_filter}
+                       OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
                     ORDER BY timestamp ASC
                     """,
                     query_params,
@@ -11009,7 +11022,7 @@ def get_messages():
                                is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary
                         FROM messages
                         WHERE ((sender = ? AND receiver = ?)
-                           OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_filter}
+                           OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
                         ORDER BY timestamp ASC
                         """,
                         query_params,
@@ -11023,7 +11036,7 @@ def get_messages():
                             SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at, audio_summary
                             FROM messages
                             WHERE ((sender = ? AND receiver = ?)
-                               OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_filter}
+                               OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
                             ORDER BY timestamp ASC
                             """,
                             query_params,
@@ -11037,7 +11050,7 @@ def get_messages():
                                 SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp, edited_at
                                 FROM messages
                                 WHERE ((sender = ? AND receiver = ?)
-                                   OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_filter}
+                                   OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
                                 ORDER BY timestamp ASC
                                 """,
                                 query_params,
@@ -11049,7 +11062,7 @@ def get_messages():
                                 SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, timestamp
                                 FROM messages
                                 WHERE ((sender = ? AND receiver = ?)
-                                   OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_filter}
+                                   OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
                                 ORDER BY timestamp ASC
                                 """,
                                 query_params,
@@ -12859,7 +12872,7 @@ def api_chat_threads():
                 # Table might not exist yet or other issue - proceed with empty set
                 archived_set = set()
 
-            # Load soft-deleted chats (WhatsApp-style: hidden until new activity)
+            # Load deleted chat threads for this user
             deleted_chats = {}  # other_username -> deleted_at
             try:
                 c.execute(f"SELECT other_username, deleted_at FROM deleted_chat_threads WHERE username = {ph}", (username,))
@@ -12914,11 +12927,6 @@ def api_chat_threads():
                     if other_username in blocked_set:
                         continue
 
-                    # Skip soft-deleted chats unless there's new activity
-                    if other_username in deleted_chats:
-                        deleted_at_str = deleted_chats[other_username]
-                        # We'll check after fetching last_activity_time below
-
                     # Last message in either direction (preview)
                     # Include is_encrypted to handle encrypted messages
                     try:
@@ -12965,24 +12973,27 @@ def api_chat_threads():
                     if is_encrypted and not last_message_text:
                         last_message_text = '🔒 Encrypted message'
 
-                    # If chat was soft-deleted, skip unless there's newer activity
-                    if other_username in deleted_chats and deleted_chats[other_username]:
-                        try:
-                            from datetime import datetime as _dt
-                            del_at = _dt.fromisoformat(deleted_chats[other_username].replace('Z',''))
-                            if last_activity_time:
-                                last_ts = _dt.fromisoformat(str(last_activity_time)[:19].replace('T',' ').replace(' ','T'))
-                                if last_ts <= del_at:
-                                    continue  # No new activity since delete
-                            else:
-                                continue  # No messages at all
-                        except Exception:
-                            continue  # On parse error, hide the deleted chat
-
                     # Unread count for this thread (messages sent by other -> me)
                     c.execute("SELECT COUNT(*) as count FROM messages WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
                     unread_row = c.fetchone()
                     unread_count = unread_row['count'] if hasattr(unread_row, 'keys') else (unread_row[0] if unread_row else 0)
+
+                    # Skip deleted chats unless there's activity after deleted_at
+                    if other_username in deleted_chats:
+                        del_at = deleted_chats[other_username]
+                        if del_at and last_activity_time:
+                            # Compare: if last activity is after deleted_at, show the thread
+                            try:
+                                from datetime import datetime as _dt
+                                del_dt = _dt.fromisoformat(del_at.replace('Z', '+00:00').replace('T', ' ')[:19])
+                                act_str = str(last_activity_time)[:19].replace('T', ' ')
+                                act_dt = _dt.strptime(act_str, '%Y-%m-%d %H:%M:%S')
+                                if act_dt <= del_dt:
+                                    continue  # No new activity after delete, hide
+                            except Exception:
+                                continue  # Can't parse, hide to be safe
+                        else:
+                            continue  # No activity time, hide
 
                     # Profile info (avatar)
                     c.execute(
