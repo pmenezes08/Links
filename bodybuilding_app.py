@@ -10777,55 +10777,57 @@ def business_logout():
 def delete_chat():
     """WhatsApp-style one-sided delete: hides chat for deleter only, no message deletion."""
     username = session['username']
-    receiver = request.form.get('receiver')
+    receiver = request.form.get('receiver') or (request.get_json() or {}).get('receiver')
     if not receiver:
         return jsonify({'success': False, 'error': 'Receiver required!'})
     try:
-        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
             # Ensure table exists
-            if USE_MYSQL:
-                c.execute("""
-                    CREATE TABLE IF NOT EXISTS deleted_chat_threads (
-                        username VARCHAR(191) NOT NULL,
-                        other_username VARCHAR(191) NOT NULL,
-                        deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY (username, other_username)
-                    )
-                """)
-            else:
-                c.execute("""
-                    CREATE TABLE IF NOT EXISTS deleted_chat_threads (
-                        username TEXT NOT NULL,
-                        other_username TEXT NOT NULL,
-                        deleted_at TEXT DEFAULT (datetime('now')),
-                        PRIMARY KEY (username, other_username)
-                    )
-                """)
-            # Upsert: mark chat as deleted for this user
-            now = datetime.now().isoformat()
+            try:
+                c.execute("SELECT 1 FROM deleted_chat_threads LIMIT 1")
+            except Exception:
+                if USE_MYSQL:
+                    c.execute("""
+                        CREATE TABLE IF NOT EXISTS deleted_chat_threads (
+                            username VARCHAR(191) NOT NULL,
+                            other_username VARCHAR(191) NOT NULL,
+                            deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            PRIMARY KEY (username, other_username)
+                        )
+                    """)
+                else:
+                    c.execute("""
+                        CREATE TABLE IF NOT EXISTS deleted_chat_threads (
+                            username TEXT NOT NULL,
+                            other_username TEXT NOT NULL,
+                            deleted_at TEXT DEFAULT (datetime('now')),
+                            PRIMARY KEY (username, other_username)
+                        )
+                    """)
+            # Insert or update deleted_at
             if USE_MYSQL:
                 c.execute(f"""
                     INSERT INTO deleted_chat_threads (username, other_username, deleted_at)
-                    VALUES ({ph}, {ph}, {ph})
-                    ON DUPLICATE KEY UPDATE deleted_at = VALUES(deleted_at)
-                """, (username, receiver, now))
+                    VALUES ({ph}, {ph}, NOW())
+                    ON DUPLICATE KEY UPDATE deleted_at = NOW()
+                """, (username, receiver))
             else:
                 c.execute(f"""
                     INSERT INTO deleted_chat_threads (username, other_username, deleted_at)
-                    VALUES ({ph}, {ph}, {ph})
-                    ON CONFLICT(username, other_username) DO UPDATE SET deleted_at = excluded.deleted_at
-                """, (username, receiver, now))
+                    VALUES ({ph}, {ph}, datetime('now'))
+                    ON CONFLICT(username, other_username) DO UPDATE SET deleted_at = datetime('now')
+                """, (username, receiver))
             conn.commit()
-            # Invalidate only the deleter's cache
+            # Invalidate only deleter's cache
             try:
                 cache.delete(f"chat_threads:{username}")
             except Exception:
                 pass
         return jsonify({'success': True})
     except Exception as e:
-        logger.error(f"Error in delete_chat for {username}: {e}")
+        logger.error(f"Error in delete_chat for {username}: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to delete chat'}), 500
 @app.route('/api/chat/media', methods=['GET'])
 @login_required
@@ -10978,13 +10980,13 @@ def get_messages():
             
             other_username = other_user['username'] if hasattr(other_user, 'keys') else other_user[0]
             
-            # Check if user has deleted this chat (WhatsApp-style)
+            # WhatsApp-style delete: only show messages after deleted_at for the deleter
             deleted_at_filter = None
             try:
-                c.execute(f"SELECT deleted_at FROM deleted_chat_threads WHERE username = {ph} AND other_username = {ph}", (username, other_username))
-                drow = c.fetchone()
-                if drow:
-                    deleted_at_filter = str(drow['deleted_at'] if hasattr(drow, 'keys') else drow[0])
+                c.execute("SELECT deleted_at FROM deleted_chat_threads WHERE username = ? AND other_username = ?", (username, other_username))
+                del_row = c.fetchone()
+                if del_row:
+                    deleted_at_filter = str(del_row['deleted_at'] if hasattr(del_row, 'keys') else del_row[0])
             except Exception:
                 pass
             deleted_at_clause = f" AND timestamp > {ph}" if deleted_at_filter else ""
@@ -11145,10 +11147,13 @@ def get_messages():
                 
                 messages.append(msg_dict)
             
-            # Filter out messages before soft-delete timestamp
             if deleted_at_filter:
-                normalized_del = deleted_at_filter.replace('T', ' ')[:19]
-                messages = [m for m in messages if (m.get('time') or '') > normalized_del]
+                try:
+                    from datetime import datetime as _dt
+                    del_dt = _dt.strptime(deleted_at_filter[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                    messages = [m for m in messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > del_dt]
+                except Exception:
+                    pass
             
             # Mark messages from other user as read
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
@@ -12873,13 +12878,13 @@ def api_chat_threads():
                 archived_set = set()
 
             # Load deleted chat threads for this user
-            deleted_chats = {}  # other_username -> deleted_at
+            deleted_threads = {}
             try:
                 c.execute(f"SELECT other_username, deleted_at FROM deleted_chat_threads WHERE username = {ph}", (username,))
                 for dr in c.fetchall():
-                    ou = dr['other_username'] if hasattr(dr, 'keys') else dr[0]
-                    da = dr['deleted_at'] if hasattr(dr, 'keys') else dr[1]
-                    deleted_chats[ou] = str(da) if da else None
+                    other = dr['other_username'] if hasattr(dr, 'keys') else dr[0]
+                    dat = dr['deleted_at'] if hasattr(dr, 'keys') else dr[1]
+                    deleted_threads[other] = str(dat) if dat else None
             except Exception:
                 pass
 
@@ -12978,22 +12983,21 @@ def api_chat_threads():
                     unread_row = c.fetchone()
                     unread_count = unread_row['count'] if hasattr(unread_row, 'keys') else (unread_row[0] if unread_row else 0)
 
-                    # Skip deleted chats unless there's activity after deleted_at
-                    if other_username in deleted_chats:
-                        del_at = deleted_chats[other_username]
-                        if del_at and last_activity_time:
-                            # Compare: if last activity is after deleted_at, show the thread
+                    # WhatsApp-style delete: hide if no new activity since delete
+                    if other_username in deleted_threads:
+                        del_at_str = deleted_threads[other_username]
+                        if del_at_str:
                             try:
                                 from datetime import datetime as _dt
-                                del_dt = _dt.fromisoformat(del_at.replace('Z', '+00:00').replace('T', ' ')[:19])
-                                act_str = str(last_activity_time)[:19].replace('T', ' ')
-                                act_dt = _dt.strptime(act_str, '%Y-%m-%d %H:%M:%S')
-                                if act_dt <= del_dt:
-                                    continue  # No new activity after delete, hide
+                                del_dt = _dt.strptime(str(del_at_str)[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                                if last_activity_time:
+                                    act_dt = _dt.strptime(str(last_activity_time)[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                                    if act_dt <= del_dt:
+                                        continue
+                                else:
+                                    continue
                             except Exception:
-                                continue  # Can't parse, hide to be safe
-                        else:
-                            continue  # No activity time, hide
+                                continue
 
                     # Profile info (avatar)
                     c.execute(
