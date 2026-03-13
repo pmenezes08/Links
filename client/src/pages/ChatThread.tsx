@@ -839,11 +839,16 @@ export default function ChatThread(){
         .then(r => r.json())
         .then(profileResponse => {
           if (profileResponse?.success) {
+            // Cache-bust the profile picture URL so browser loads fresh image
+            let ppUrl = profileResponse.profile_picture || null
+            if (ppUrl) {
+              ppUrl = ppUrl + (ppUrl.includes('?') ? '&' : '?') + 'v=' + Date.now()
+            }
             const profile = { 
               display_name: profileResponse.display_name, 
-              profile_picture: profileResponse.profile_picture || null 
+              profile_picture: ppUrl
             }
-            // Clear avatar caches so fresh image is used (fixes stale avatar after push)
+            // Clear avatar caches
             try {
               import('../utils/avatarCache').then(({ clearAvatarCache }) => clearAvatarCache(username || ''))
             } catch {}

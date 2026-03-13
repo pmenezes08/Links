@@ -10918,11 +10918,23 @@ def get_messages():
         if cache_key:
             cached_messages = cache.get(cache_key)
             if cached_messages:
-                # Ensure signal_protocol flag is set for cached messages
-                # This handles messages cached before the signal_protocol logic was added
                 for msg in cached_messages:
                     if msg.get('is_encrypted') and not msg.get('encrypted_body'):
                         msg['signal_protocol'] = True
+                # WhatsApp-style delete: filter cached messages by deleted_at
+                try:
+                    with get_db_connection() as _dc:
+                        _dcc = _dc.cursor()
+                        _dcc.execute("SELECT deleted_at FROM deleted_chat_threads WHERE username = ? AND other_username = ?", (username, other_username_for_key))
+                        _dr = _dcc.fetchone()
+                        if _dr:
+                            _da = str(_dr['deleted_at'] if hasattr(_dr, 'keys') else _dr[0])
+                            if _da:
+                                from datetime import datetime as _dt
+                                _del_dt = _dt.strptime(_da[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                                cached_messages = [m for m in cached_messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt]
+                except Exception:
+                    pass
                 return jsonify({'success': True, 'messages': cached_messages})
     
     # --- Firestore dual-read (feature flag) ---
@@ -10956,6 +10968,34 @@ def get_messages():
                                         pass
                         except Exception as mr_err:
                             logger.warning(f"Failed to mark DM messages as read: {mr_err}")
+                    # WhatsApp-style delete: filter Firestore messages by deleted_at
+                    try:
+                        with get_db_connection() as _dc2:
+                            _dcc2 = _dc2.cursor()
+                            _dcc2.execute("SELECT deleted_at FROM deleted_chat_threads WHERE username = ? AND other_username = ?", (username, peer_username))
+                            _dr2 = _dcc2.fetchone()
+                            if _dr2:
+                                _da2 = str(_dr2['deleted_at'] if hasattr(_dr2, 'keys') else _dr2[0])
+                                if _da2:
+                                    from datetime import datetime as _dt
+                                    _del_dt2 = _dt.strptime(_da2[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                                    messages = [m for m in messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt2]
+                    except Exception:
+                        pass
+                    # WhatsApp-style delete: filter Firestore messages by deleted_at
+                    try:
+                        with get_db_connection() as _dfc:
+                            _dfcc = _dfc.cursor()
+                            _dfcc.execute("SELECT deleted_at FROM deleted_chat_threads WHERE username = ? AND other_username = ?", (username, peer_username))
+                            _dfr = _dfcc.fetchone()
+                            if _dfr:
+                                _dfa = str(_dfr['deleted_at'] if hasattr(_dfr, 'keys') else _dfr[0])
+                                if _dfa:
+                                    from datetime import datetime as _dt
+                                    _del_dt = _dt.strptime(_dfa[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S')
+                                    messages = [m for m in messages if m.get('time') and _dt.strptime(str(m['time'])[:19].replace('T',' '), '%Y-%m-%d %H:%M:%S') > _del_dt]
+                    except Exception:
+                        pass
                     return jsonify({'success': True, 'messages': messages, 'is_delta': is_delta, 'has_more': has_more})
     except Exception as fs_err:
         logger.warning(f"Firestore DM read failed, falling back to MySQL: {fs_err}")
