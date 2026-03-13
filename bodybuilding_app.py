@@ -10775,25 +10775,55 @@ def business_logout():
 @app.route('/delete_chat', methods=['POST'])
 @login_required
 def delete_chat():
+    """WhatsApp-style delete: one-sided, soft delete. No messages removed."""
     username = session['username']
+    receiver = request.form.get('receiver')
+    if not receiver:
+        return jsonify({'success': False, 'error': 'Receiver required!'})
     try:
+        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT subscription FROM users WHERE username=?", (username,))
-            user = c.fetchone()
-            if not user or user['subscription'] != 'premium':
-                return jsonify({'success': False, 'error': 'Premium subscription required!'})
-            receiver = request.form.get('receiver')
-            if not receiver:
-                return jsonify({'success': False, 'error': 'Receiver required!'})
-            c.execute("DELETE FROM messages WHERE (sender=? AND receiver=?) OR (sender=? AND receiver=?)",
-                      (username, receiver, receiver, username))
-            deleted_count = c.rowcount
+            if USE_MYSQL:
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS deleted_chat_threads (
+                        username VARCHAR(191) NOT NULL,
+                        other_username VARCHAR(191) NOT NULL,
+                        deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (username, other_username)
+                    )
+                """)
+            else:
+                c.execute("""
+                    CREATE TABLE IF NOT EXISTS deleted_chat_threads (
+                        username TEXT NOT NULL,
+                        other_username TEXT NOT NULL,
+                        deleted_at TEXT DEFAULT (datetime('now')),
+                        PRIMARY KEY (username, other_username)
+                    )
+                """)
+            now = datetime.now().isoformat()
+            if USE_MYSQL:
+                c.execute(f"""
+                    INSERT INTO deleted_chat_threads (username, other_username, deleted_at)
+                    VALUES ({ph}, {ph}, {ph})
+                    ON DUPLICATE KEY UPDATE deleted_at = VALUES(deleted_at)
+                """, (username, receiver, now))
+            else:
+                c.execute(f"""
+                    INSERT INTO deleted_chat_threads (username, other_username, deleted_at)
+                    VALUES ({ph}, {ph}, {ph})
+                    ON CONFLICT(username, other_username) DO UPDATE SET deleted_at = excluded.deleted_at
+                """, (username, receiver, now))
             conn.commit()
-        return jsonify({'success': True, 'deleted_count': deleted_count})
+            try:
+                cache.delete(f"chat_threads:{username}")
+            except Exception:
+                pass
+        return jsonify({'success': True})
     except Exception as e:
-        logger.error(f"Error deleting chat for {username}: {str(e)}")
-        abort(500)
+        logger.error(f"Error in delete_chat for {username}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to delete chat'}), 500
 @app.route('/api/chat/media', methods=['GET'])
 @login_required
 def get_chat_media():
@@ -10944,6 +10974,16 @@ def get_messages():
                 return jsonify({'success': False, 'error': 'Other user not found'})
             
             other_username = other_user['username'] if hasattr(other_user, 'keys') else other_user[0]
+            
+            # Check if user soft-deleted this chat
+            deleted_at_filter = None
+            try:
+                c.execute("SELECT deleted_at FROM deleted_chat_threads WHERE username=? AND other_username=?", (username, other_username))
+                del_row = c.fetchone()
+                if del_row:
+                    deleted_at_filter = str(del_row['deleted_at'] if hasattr(del_row, 'keys') else del_row[0])
+            except Exception:
+                pass
             
             # Get messages between users (compat: edited_at and encryption fields may not exist yet)
             # PERFORMANCE: Delta fetch support - only get messages newer than since_id
@@ -11099,6 +11139,11 @@ def get_messages():
                         msg_dict['signal_protocol'] = True
                 
                 messages.append(msg_dict)
+            
+            # Filter out messages before soft-delete timestamp
+            if deleted_at_filter:
+                normalized_del = deleted_at_filter.replace('T', ' ')[:19]
+                messages = [m for m in messages if (m.get('time') or '') > normalized_del]
             
             # Mark messages from other user as read
             c.execute("UPDATE messages SET is_read=1 WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
@@ -12822,6 +12867,17 @@ def api_chat_threads():
                 # Table might not exist yet or other issue - proceed with empty set
                 archived_set = set()
 
+            # Load soft-deleted chat timestamps
+            deleted_chats = {}
+            try:
+                c.execute(f"SELECT other_username, deleted_at FROM deleted_chat_threads WHERE username = {ph}", (username,))
+                for r in c.fetchall():
+                    ou = r['other_username'] if hasattr(r, 'keys') else r[0]
+                    da = r['deleted_at'] if hasattr(r, 'keys') else r[1]
+                    deleted_chats[ou] = str(da) if da else None
+            except Exception:
+                pass
+
             # Gather all counterpart usernames the user has messages with (either direction)
             c.execute(
                 f"""
@@ -12911,6 +12967,20 @@ def api_chat_threads():
                     # If message is encrypted and text is empty, show placeholder
                     if is_encrypted and not last_message_text:
                         last_message_text = '🔒 Encrypted message'
+
+                    # Check soft-deleted chats
+                    if other_username in deleted_chats:
+                        del_at = deleted_chats[other_username]
+                        if del_at and last_activity_time:
+                            try:
+                                del_dt = del_at.replace('T', ' ')[:19]
+                                act_dt = str(last_activity_time).replace('T', ' ')[:19]
+                                if act_dt <= del_dt:
+                                    continue
+                            except Exception:
+                                continue
+                        else:
+                            continue
 
                     # Unread count for this thread (messages sent by other -> me)
                     c.execute("SELECT COUNT(*) as count FROM messages WHERE sender=? AND receiver=? AND is_read=0", (other_username, username))
