@@ -865,14 +865,21 @@ export default function Messages(){
                     <button
                       type="button"
                       onClick={() => {
-                        if (!confirm(`Delete chat with ${t.display_name || t.other_username}? This cannot be undone.`)) return
+                        if (!confirm(`Delete chat with ${t.display_name || t.other_username}? The chat will reappear if a new message is sent.`)) return
                         const fd = new URLSearchParams({ other_username: t.other_username })
                         fetch('/delete_chat_thread', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd })
                           .then(r=>r.json()).then(j=>{
                             if (j?.success){
                               setThreads(prev => prev.filter(x => x.other_username !== t.other_username))
                               setSwipeId(null)
-                              // Immediately refetch to avoid cached reappearance
+                              // Clear local caches for this chat
+                              try {
+                                import('../utils/deviceCache').then(({ clearDeviceCache }) => {
+                                  clearDeviceCache(`chat-messages:${t.other_username}`)
+                                  clearDeviceCache(`chat-profile:${t.other_username}`)
+                                })
+                              } catch {}
+                              // Refetch thread list
                               fetch('/api/chat_threads', { credentials:'include' })
                                 .then(rr=> rr.json()).then(jj=>{
                                   if (jj?.success && Array.isArray(jj.threads)){

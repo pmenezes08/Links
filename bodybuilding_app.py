@@ -13142,7 +13142,8 @@ def delete_message():
 @app.route('/delete_chat_thread', methods=['POST'])
 @login_required
 def delete_chat_thread():
-    """Delete all messages between the current user and the specified other user"""
+    """WhatsApp-style one-sided delete: hides chat for deleter only, no message deletion.
+    Chat reappears if a new message is sent; deleter sees only messages after delete."""
     username = session['username']
     other_username = request.form.get('other_username')
     if not other_username:
@@ -13150,33 +13151,46 @@ def delete_chat_thread():
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Allow verified users to manage their chat threads
+            ph = get_sql_placeholder()
+            # Ensure deleted_chat_threads table exists
             try:
-                c.execute("SELECT email_verified FROM users WHERE username=?", (username,))
-                ver_row = c.fetchone()
-                is_verified = bool(ver_row['email_verified'] if hasattr(ver_row,'keys') else (ver_row[0] if ver_row else 0))
+                c.execute("SELECT 1 FROM deleted_chat_threads LIMIT 1")
             except Exception:
-                is_verified = False
-            if username != 'admin' and not is_verified:
-                return jsonify({'success': False, 'error': 'Email verification required!'})
-
-            # Delete messages in both directions
-            c.execute(
-                """
-                DELETE FROM messages
-                WHERE (sender=? AND receiver=?) OR (sender=? AND receiver=?)
-                """,
-                (username, other_username, other_username, username),
-            )
+                if USE_MYSQL:
+                    c.execute("""
+                        CREATE TABLE IF NOT EXISTS deleted_chat_threads (
+                            username VARCHAR(191) NOT NULL,
+                            other_username VARCHAR(191) NOT NULL,
+                            deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            PRIMARY KEY (username, other_username)
+                        )
+                    """)
+                else:
+                    c.execute("""
+                        CREATE TABLE IF NOT EXISTS deleted_chat_threads (
+                            username TEXT NOT NULL,
+                            other_username TEXT NOT NULL,
+                            deleted_at TEXT DEFAULT (datetime('now')),
+                            PRIMARY KEY (username, other_username)
+                        )
+                    """)
+            # Record delete timestamp for this user only (other user unaffected)
+            if USE_MYSQL:
+                c.execute(f"""
+                    INSERT INTO deleted_chat_threads (username, other_username, deleted_at)
+                    VALUES ({ph}, {ph}, NOW())
+                    ON DUPLICATE KEY UPDATE deleted_at = NOW()
+                """, (username, other_username))
+            else:
+                c.execute(f"""
+                    INSERT INTO deleted_chat_threads (username, other_username, deleted_at)
+                    VALUES ({ph}, {ph}, datetime('now'))
+                    ON CONFLICT(username, other_username) DO UPDATE SET deleted_at = datetime('now')
+                """, (username, other_username))
             conn.commit()
-
-            # Invalidate chat threads cache for both users so the thread does not reappear
+            # Invalidate ONLY the deleter's cache (other user keeps their view)
             try:
                 cache.delete(f"chat_threads:{username}")
-            except Exception:
-                pass
-            try:
-                cache.delete(f"chat_threads:{other_username}")
             except Exception:
                 pass
         return jsonify({'success': True})

@@ -777,7 +777,17 @@ export default function ChatThread(){
           const processedMessages = await processRawMessages(msgResponse.messages)
           setMessages(prev => {
             const serverIds = new Set(processedMessages.map(m => String(m.id)))
+            // Keep optimistic messages from state
             const keptOptimistic = prev.filter(m => m.isOptimistic && !serverIds.has(String(m.id)))
+            // Also keep optimistic messages from recentOptimisticRef (handles race with new chats)
+            const keptKeys = new Set(keptOptimistic.map(m => m.clientKey || String(m.id)))
+            recentOptimisticRef.current.forEach((entry) => {
+              const key = entry.message.clientKey || String(entry.message.id)
+              if (!serverIds.has(String(entry.message.id)) && !keptKeys.has(key)) {
+                keptOptimistic.push(entry.message)
+                keptKeys.add(key)
+              }
+            })
             if (keptOptimistic.length === 0) return processedMessages
             return [...processedMessages, ...keptOptimistic]
           })
@@ -833,8 +843,11 @@ export default function ChatThread(){
               display_name: profileResponse.display_name, 
               profile_picture: profileResponse.profile_picture || null 
             }
+            // Clear avatar caches so fresh image is used (fixes stale avatar after push)
+            try {
+              import('../utils/avatarCache').then(({ clearAvatarCache }) => clearAvatarCache(username || ''))
+            } catch {}
             setOtherProfile(profile)
-            // Cache the profile
             if (profileCacheKey) {
               writeDeviceCache(profileCacheKey, profile, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
             }
