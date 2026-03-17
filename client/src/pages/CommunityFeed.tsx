@@ -3053,6 +3053,7 @@ export default function CommunityFeed() {
             }}>
               {communityMuted ? '🔔 Unmute Community' : '🔇 Mute Community'}
             </button>
+            <div className="px-4 pb-1 text-[10px] text-white/30">Muting disables push notifications only</div>
             <EditCommunityButton communityId={String(community_id)} onClose={()=> setMoreOpen(false)} />
           </div>
         </div>
