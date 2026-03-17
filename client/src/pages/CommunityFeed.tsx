@@ -102,6 +102,7 @@ export default function CommunityFeed() {
   const [savingAnn, setSavingAnn] = useState(false)
   // Ads removed
   const [moreOpen, setMoreOpen] = useState(false)
+  const [communityMuted, setCommunityMuted] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const [q, setQ] = useState('#')
   const [results, setResults] = useState<Array<{id:number, username:string, content:string, timestamp:string}>>([])
@@ -198,6 +199,14 @@ export default function CommunityFeed() {
   // Unread counts for header icons
   const [unreadMsgs, setUnreadMsgs] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
+
+  useEffect(() => {
+    if (!community_id) return
+    fetch(`/api/community/mute_status?community_id=${community_id}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d?.success) setCommunityMuted(d.muted) })
+      .catch(() => {})
+  }, [community_id])
 
   // Poll for unread counts
   useEffect(() => {
@@ -2072,7 +2081,7 @@ export default function CommunityFeed() {
           overflowY: highlightStep === 'reaction' ? 'hidden' : 'auto',
           overscrollBehaviorY: 'auto',
           touchAction: highlightStep === 'reaction' ? 'none' : 'pan-y',
-          paddingTop: `calc(env(safe-area-inset-top, 0px) + 56px + ${pullPx}px)`,
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + 48px + ${pullPx}px)`,
         }}
       >
         <div className="space-y-3">
@@ -3034,6 +3043,16 @@ export default function CommunityFeed() {
                 </button>
               </>
             )}
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={async () => {
+              const newState = !communityMuted
+              setCommunityMuted(newState)
+              setMoreOpen(false)
+              try {
+                await fetch('/api/community/mute', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ community_id: Number(community_id), muted: newState }) })
+              } catch {}
+            }}>
+              {communityMuted ? '🔔 Unmute Community' : '🔇 Mute Community'}
+            </button>
             <EditCommunityButton communityId={String(community_id)} onClose={()=> setMoreOpen(false)} />
           </div>
         </div>

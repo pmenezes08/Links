@@ -117,6 +117,7 @@ export default function Messages(){
   // Collapse/expand state for sections
   const [groupChatsCollapsed, setGroupChatsCollapsed] = useState(false)
   const [directMessagesCollapsed, setDirectMessagesCollapsed] = useState(false)
+  const [chatMoreTarget, setChatMoreTarget] = useState<{ type: 'dm' | 'group'; username?: string; groupId?: number; displayName: string } | null>(null)
 
   // Fetch threads with caching
   const loadThreads = useCallback((silent: boolean = false) => {
@@ -720,13 +721,21 @@ export default function Messages(){
                       <div key={gc.id} className="relative w-full overflow-hidden">
                         {/* Delete action (revealed on swipe) */}
                         <div 
-                          className="absolute inset-y-0 right-0 flex items-stretch pr-2" 
+                          className="absolute inset-y-0 right-0 flex items-stretch gap-1 pr-2" 
                           style={{ 
                             opacity: gShowActions ? 1 : 0, 
                             pointerEvents: gShowActions ? 'auto' : 'none', 
                             transition: 'opacity 150ms ease-out' 
                           }}
                         >
+                          <button
+                            type="button"
+                            onClick={() => setChatMoreTarget({ type: 'group', groupId: gc.id, displayName: gc.name })}
+                            className="my-1 h-[44px] w-[52px] rounded-md bg-white/10 text-white/80 hover:bg-white/20 flex items-center justify-center"
+                            aria-label="More options"
+                          >
+                            <i className="fa-solid fa-ellipsis" />
+                          </button>
                           <button
                             type="button"
                             onClick={() => deleteGroupChat(gc.id)}
@@ -861,6 +870,14 @@ export default function Messages(){
                       aria-label="Archive chat"
                     >
                       <i className="fa-solid fa-box-archive" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChatMoreTarget({ type: 'dm', username: t.other_username, displayName: t.display_name || t.other_username })}
+                      className="my-1 h-[44px] w-[52px] rounded-md bg-white/10 text-white/80 hover:bg-white/20 flex items-center justify-center"
+                      aria-label="More options"
+                    >
+                      <i className="fa-solid fa-ellipsis" />
                     </button>
                     <button
                       type="button"
@@ -1077,6 +1094,54 @@ export default function Messages(){
           <NewMessageInline />
         )}
       </div>
+      {chatMoreTarget && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center" onClick={() => setChatMoreTarget(null)}>
+          <div className="w-full max-w-md bg-[#1a1a1a] border-t border-white/10 rounded-t-2xl p-4 pb-8 space-y-1" onClick={e => e.stopPropagation()} style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}>
+            <div className="text-sm text-white/50 text-center mb-3">{chatMoreTarget.displayName}</div>
+            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
+              const key = chatMoreTarget.type === 'dm' ? chatMoreTarget.username : undefined
+              const gid = chatMoreTarget.type === 'group' ? chatMoreTarget.groupId : undefined
+              await fetch('/api/chat/mute', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: key, group_id: gid, muted: true }) }).catch(() => {})
+              setChatMoreTarget(null)
+              alert('Chat muted')
+            }}>
+              <i className="fa-solid fa-bell-slash text-white/60 w-6 text-center" />
+              Mute Chat
+            </button>
+            {chatMoreTarget.type === 'dm' && (
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
+                await fetch('/api/chat/clear_history', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: chatMoreTarget.username }) }).catch(() => {})
+                setChatMoreTarget(null)
+              }}>
+                <i className="fa-solid fa-broom text-white/60 w-6 text-center" />
+                Clear Chat
+              </button>
+            )}
+            {chatMoreTarget.type === 'dm' && (
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={() => {
+                setChatMoreTarget(null)
+                navigate(`/user_chat/chat/${chatMoreTarget.username}`)
+              }}>
+                <i className="fa-solid fa-ban text-white/60 w-6 text-center" />
+                Block User
+              </button>
+            )}
+            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-red-400" onClick={() => {
+              setChatMoreTarget(null)
+              if (chatMoreTarget.type === 'dm') {
+                const fd = new URLSearchParams({ other_username: chatMoreTarget.username! })
+                fetch('/delete_chat_thread', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: fd }).then(r=>r.json()).then(j=>{ if(j?.success) setThreads(prev=>prev.filter(x=>x.other_username!==chatMoreTarget.username)) }).catch(()=>{})
+              } else if (chatMoreTarget.type === 'group' && chatMoreTarget.groupId) {
+                deleteGroupChat(chatMoreTarget.groupId)
+              }
+            }}>
+              <i className="fa-solid fa-trash text-red-400/60 w-6 text-center" />
+              Delete Chat
+            </button>
+            <button className="w-full text-center py-3 text-white/50 text-sm" onClick={() => setChatMoreTarget(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -214,7 +214,7 @@ export default function Communities(){
   })
   const [joinedGroups, setJoinedGroups] = useState<Array<{ group_id: number; name: string; community_id: number; status: string; community_name: string }>>([])
   const [availableGroups, setAvailableGroups] = useState<Array<{ group_id: number; name: string; community_id: number; approval_required: boolean; community_name: string }>>([])
-  const [groupCommunities, setGroupCommunities] = useState<Array<{ id: number; name: string }>>([])
+  const [groupCommunities, setGroupCommunities] = useState<Array<{ id: number; name: string; parent_community_id?: number | null }>>([])
   const [myGroupsLoading, setMyGroupsLoading] = useState(false)
   const [joinedFilter, setJoinedFilter] = useState<string>('all')
   const [availableFilter, setAvailableFilter] = useState<string>('all')
@@ -556,7 +556,13 @@ export default function Communities(){
                         {myGroupsLoading ? (
                           <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading…</div>
                         ) : (
-                          <>
+                          (() => {
+                            const searchParams = new URLSearchParams(location.search)
+                            const parentIdParam = searchParams.get('parent_id')
+                            const filteredGroupCommunities = parentIdParam
+                              ? groupCommunities.filter(c => c.parent_community_id === parseInt(parentIdParam) || c.id === parseInt(parentIdParam))
+                              : groupCommunities
+                            return <>
                             {/* Joined Groups */}
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
@@ -567,7 +573,7 @@ export default function Communities(){
                                   className="rounded-lg border border-white/15 bg-transparent px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
                                 >
                                   <option value="all" className="bg-black">All Communities</option>
-                                  {groupCommunities.map(c => (
+                                  {filteredGroupCommunities.map(c => (
                                     <option key={c.id} value={String(c.id)} className="bg-black">{c.name}</option>
                                   ))}
                                 </select>
@@ -609,7 +615,7 @@ export default function Communities(){
                                   className="rounded-lg border border-white/15 bg-transparent px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
                                 >
                                   <option value="all" className="bg-black">All Communities</option>
-                                  {groupCommunities.map(c => (
+                                  {filteredGroupCommunities.map(c => (
                                     <option key={c.id} value={String(c.id)} className="bg-black">{c.name}</option>
                                   ))}
                                 </select>
@@ -668,6 +674,7 @@ export default function Communities(){
                               })()}
                             </div>
                           </>
+                          })()
                         )}
                       </div>
                     ) : activeTab === 'training' && showTrainingTab ? (
