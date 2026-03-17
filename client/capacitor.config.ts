@@ -7,7 +7,7 @@ const config: CapacitorConfig = {
   appName: 'C.Point',
   webDir: 'dist',
   server: {
-    url: 'https://app.c-point.co',
+    url: 'https://cpoint-app-staging-739552904126.europe-west1.run.app',
     cleartext: false,
   },
   backgroundColor: appBackground,

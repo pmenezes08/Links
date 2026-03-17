@@ -13,6 +13,7 @@ import { refreshDashboardCommunities } from './dashboardCache'
 // Domains that should be handled internally (app subdomain only)
 const INTERNAL_DOMAINS = [
   'app.c-point.co',
+  'cpoint-app-staging-739552904126.europe-west1.run.app',
 ]
 
 // Domains that should open in external browser (landing page)

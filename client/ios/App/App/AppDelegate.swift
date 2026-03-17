@@ -11,7 +11,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     /// Read server URL from bundled capacitor.config.json; fall back to production.
     private lazy var serverURL: String = {
-        let fallback = "https://app.c-point.co"
+        let fallback = "https://cpoint-app-staging-739552904126.europe-west1.run.app"
         guard let path = Bundle.main.path(forResource: "capacitor.config", ofType: "json") else {
             NSLog("⚠️ capacitor.config.json not in bundle, using fallback URL")
             return fallback

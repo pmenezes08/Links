@@ -68,7 +68,7 @@ export function optimizeImage(originalUrl: string | null | undefined, options: I
   
   // If it's a relative URL, make it absolute
   if (originalUrl.startsWith('/')) {
-    imageUrl = `https://app.c-point.co${originalUrl}`
+    imageUrl = `${window.location.origin}${originalUrl}`
   }
   
   // If it's already on media.c-point.co, use it directly
