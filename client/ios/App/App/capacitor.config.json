@@ -1,0 +1,40 @@
+{
+	"appId": "co.cpoint.app",
+	"appName": "C.Point",
+	"webDir": "dist",
+	"server": {
+		"url": "https://cpoint-app-staging-739552904126.europe-west1.run.app",
+		"cleartext": false
+	},
+	"backgroundColor": "#000000",
+	"ios": {
+		"preferredContentMode": "mobile",
+		"backgroundColor": "#000000",
+		"contentInset": "always",
+		"scrollEnabled": true
+	},
+	"plugins": {
+		"Keyboard": {
+			"resize": "native",
+			"style": "dark"
+		},
+		"GoogleAuth": {
+			"iosClientId": "739552904126-nb0l7j8d0p8q8q8rr84gatij5e0ip23p.apps.googleusercontent.com",
+			"scopes": [
+				"profile",
+				"email"
+			],
+			"forceCodeForRefreshToken": false
+		}
+	},
+	"packageClassList": [
+		"AppPlugin",
+		"DevicePlugin",
+		"GeolocationPlugin",
+		"KeyboardPlugin",
+		"PreferencesPlugin",
+		"PushNotificationsPlugin",
+		"GoogleAuth",
+		"TabsBarPlugin"
+	]
+}

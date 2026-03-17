@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/static/logo.png" />
+    <link rel="shortcut icon" type="image/png" href="/static/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark">
+    <meta name="app-version" content="2.19.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>C-Point</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#000000">
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="C-Point">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <style>
+      :root {
+        color-scheme: dark;
+        --sat: env(safe-area-inset-top, 0px);
+        --sab: env(safe-area-inset-bottom, 0px);
+      }
+      
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #000000;
+        color: #ffffff;
+        color-scheme: dark;
+      }
+      
+      #root {
+        height: 100%;
+        background: #000000;
+      }
+      
+      /* Hide scrollbars but allow scrolling */
+      * { scrollbar-width: none; -ms-overflow-style: none; }
+      *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+      
+      /* Prevent iOS text zoom on input focus */
+      input, textarea, select { font-size: 16px !important; }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script type="module" crossorigin src="/assets/index-C3WHwEiy-1773770725213.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-C7avixal-1773770725213.css">
+  </head>
+  <body>
+    <div id="root" style="background-color: #000000;">
+      <!-- Initial loading state - visible immediately while JS loads, replaced when React mounts -->
+      <div id="initial-loader" style="
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #000000;
+        z-index: 9999;
+      ">
+        <img src="/static/logo.png" alt="C.Point" style="width: 80px; height: 80px; margin-bottom: 24px; border-radius: 16px;" onerror="this.style.display='none'" />
+        <div style="
+          width: 32px;
+          height: 32px;
+          border: 3px solid rgba(255,255,255,0.15);
+          border-top-color: #4db6ac;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        "></div>
+        <style>
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        </style>
+      </div>
+    </div>
+  </body>
+</html>
