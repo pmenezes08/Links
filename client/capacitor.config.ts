@@ -9,6 +9,7 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://cpoint-app-staging-739552904126.europe-west1.run.app',
     cleartext: false,
+    allowNavigation: ['cpoint-app-staging-739552904126.europe-west1.run.app', 'app.c-point.co', '*.c-point.co'],
   },
   backgroundColor: appBackground,
   ios: {
