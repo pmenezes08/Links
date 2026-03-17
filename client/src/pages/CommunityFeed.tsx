@@ -3043,17 +3043,20 @@ export default function CommunityFeed() {
                 </button>
               </>
             )}
-            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5" onClick={async () => {
-              const newState = !communityMuted
-              setCommunityMuted(newState)
+            <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={async () => {
               setMoreOpen(false)
               try {
-                await fetch('/api/community/mute', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ community_id: Number(community_id), muted: newState }) })
+                const r = await fetch('/api/community/mute', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ community_id: Number(community_id), muted: !communityMuted }) })
+                const j = await r.json()
+                if (j?.success) setCommunityMuted(j.muted)
               } catch {}
             }}>
-              {communityMuted ? '🔔 Unmute Community' : '🔇 Mute Community'}
+              <i className={`fa-solid ${communityMuted ? 'fa-bell' : 'fa-bell-slash'} text-xs`} />
+              {communityMuted ? 'Unmute Community' : 'Mute Community'}
             </button>
-            <div className="px-4 pb-1 text-[10px] text-white/30">Muting disables push notifications only</div>
+            <p className="text-[10px] text-white/30 text-right px-4 pb-1">
+              {communityMuted ? 'Push notifications disabled. In-app notifications continue.' : 'Muting disables push notifications only.'}
+            </p>
             <EditCommunityButton communityId={String(community_id)} onClose={()=> setMoreOpen(false)} />
           </div>
         </div>
