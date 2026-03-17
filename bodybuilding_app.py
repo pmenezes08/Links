@@ -13238,6 +13238,73 @@ def delete_chat_thread():
         logger.error(f"delete_chat_thread error for {username} with {other_username}: {e}")
         return jsonify({'success': False, 'error': 'Failed to delete chat'}), 500
 
+@app.route('/api/chat/mute', methods=['POST'])
+@login_required
+def mute_chat():
+    """Mute/unmute push notifications for a DM or group chat."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    other_username = data.get('other_username')
+    group_id = data.get('group_id')
+    muted = data.get('muted', True)
+    try:
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                c.execute("SELECT 1 FROM user_muted_chats LIMIT 1")
+            except Exception:
+                if USE_MYSQL:
+                    c.execute("CREATE TABLE IF NOT EXISTS user_muted_chats (username VARCHAR(191) NOT NULL, chat_key VARCHAR(255) NOT NULL, muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (username, chat_key))")
+                else:
+                    c.execute("CREATE TABLE IF NOT EXISTS user_muted_chats (username TEXT NOT NULL, chat_key TEXT NOT NULL, muted_at TEXT DEFAULT (datetime('now')), PRIMARY KEY (username, chat_key))")
+            chat_key = f"dm:{other_username}" if other_username else f"group:{group_id}"
+            if muted:
+                if USE_MYSQL:
+                    c.execute(f"INSERT INTO user_muted_chats (username, chat_key) VALUES ({ph},{ph}) ON DUPLICATE KEY UPDATE muted_at=NOW()", (username, chat_key))
+                else:
+                    c.execute(f"INSERT INTO user_muted_chats (username, chat_key) VALUES ({ph},{ph}) ON CONFLICT(username, chat_key) DO UPDATE SET muted_at=datetime('now')", (username, chat_key))
+            else:
+                c.execute(f"DELETE FROM user_muted_chats WHERE username={ph} AND chat_key={ph}", (username, chat_key))
+            conn.commit()
+            return jsonify({'success': True, 'muted': bool(muted)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/chat/clear_history', methods=['POST'])
+@login_required  
+def clear_chat_history():
+    """Clear chat history for the requesting user only (same as delete but keeps thread visible)."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    other_username = data.get('other_username')
+    if not other_username:
+        return jsonify({'success': False, 'error': 'other_username required'}), 400
+    try:
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Use same mechanism as WhatsApp-style delete (deleted_chat_threads)
+            try:
+                c.execute("SELECT 1 FROM deleted_chat_threads LIMIT 1")
+            except Exception:
+                if USE_MYSQL:
+                    c.execute("CREATE TABLE IF NOT EXISTS deleted_chat_threads (username VARCHAR(191) NOT NULL, other_username VARCHAR(191) NOT NULL, deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (username, other_username))")
+                else:
+                    c.execute("CREATE TABLE IF NOT EXISTS deleted_chat_threads (username TEXT NOT NULL, other_username TEXT NOT NULL, deleted_at TEXT DEFAULT (datetime('now')), PRIMARY KEY (username, other_username))")
+            if USE_MYSQL:
+                c.execute(f"INSERT INTO deleted_chat_threads (username, other_username, deleted_at) VALUES ({ph},{ph},NOW()) ON DUPLICATE KEY UPDATE deleted_at=NOW()", (username, other_username))
+            else:
+                c.execute(f"INSERT INTO deleted_chat_threads (username, other_username, deleted_at) VALUES ({ph},{ph},datetime('now')) ON CONFLICT(username, other_username) DO UPDATE SET deleted_at=datetime('now')", (username, other_username))
+            conn.commit()
+            try:
+                cache.delete(f"chat_threads:{username}")
+            except Exception:
+                pass
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 
 def ensure_archived_chats_table(cursor):
     """Create archived_chats table if it doesn't exist"""
@@ -15853,6 +15920,17 @@ def post_status():
                             conn.commit()
                         except Exception as ne2:
                             logger.warning(f"community post notify db error to {member}: {ne2}")
+
+                    # Check if user has muted this community
+                    is_muted = False
+                    try:
+                        ph = get_sql_placeholder()
+                        c.execute(f"SELECT 1 FROM user_muted_communities WHERE username={ph} AND community_id={ph}", (member, community_id))
+                        is_muted = c.fetchone() is not None
+                    except Exception:
+                        pass
+                    if is_muted:
+                        continue  # Skip push for muted community
 
                     # Web push (non-blocking)
                     try:
@@ -25118,6 +25196,62 @@ def invite_to_community_bulk():
     
     return jsonify({'success': True, 'sent': sent, 'failed': failed, 'errors': errors if errors else None})
 
+@app.route('/api/community/mute', methods=['POST'])
+@login_required
+def mute_community():
+    """Mute/unmute push notifications for a community."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    community_id = data.get('community_id')
+    muted = data.get('muted', True)
+    if not community_id:
+        return jsonify({'success': False, 'error': 'community_id required'}), 400
+    try:
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            # Ensure table
+            try:
+                c.execute("SELECT 1 FROM user_muted_communities LIMIT 1")
+            except Exception:
+                if USE_MYSQL:
+                    c.execute("CREATE TABLE IF NOT EXISTS user_muted_communities (username VARCHAR(191) NOT NULL, community_id INT NOT NULL, muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (username, community_id))")
+                else:
+                    c.execute("CREATE TABLE IF NOT EXISTS user_muted_communities (username TEXT NOT NULL, community_id INTEGER NOT NULL, muted_at TEXT DEFAULT (datetime('now')), PRIMARY KEY (username, community_id))")
+            if muted:
+                if USE_MYSQL:
+                    c.execute(f"INSERT INTO user_muted_communities (username, community_id) VALUES ({ph},{ph}) ON DUPLICATE KEY UPDATE muted_at=NOW()", (username, community_id))
+                else:
+                    c.execute(f"INSERT INTO user_muted_communities (username, community_id) VALUES ({ph},{ph}) ON CONFLICT(username, community_id) DO UPDATE SET muted_at=datetime('now')", (username, community_id))
+            else:
+                c.execute(f"DELETE FROM user_muted_communities WHERE username={ph} AND community_id={ph}", (username, community_id))
+            conn.commit()
+            return jsonify({'success': True, 'muted': bool(muted)})
+    except Exception as e:
+        logger.error(f"mute_community error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/community/mute_status', methods=['GET'])
+@login_required
+def community_mute_status():
+    """Check if current user has muted a community."""
+    username = session.get('username')
+    community_id = request.args.get('community_id')
+    if not community_id:
+        return jsonify({'success': False, 'error': 'community_id required'}), 400
+    try:
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            try:
+                c.execute(f"SELECT 1 FROM user_muted_communities WHERE username={ph} AND community_id={ph}", (username, community_id))
+                muted = c.fetchone() is not None
+            except Exception:
+                muted = False
+            return jsonify({'success': True, 'muted': muted})
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
 @app.route('/leave_community', methods=['POST'])
 @login_required
 def leave_community():
@@ -29224,7 +29358,7 @@ def api_groups_my():
 
             # Get all communities the user belongs to
             c.execute(f"""
-                SELECT c.id, c.name FROM communities c
+                SELECT c.id, c.name, c.parent_community_id FROM communities c
                 JOIN user_communities uc ON uc.community_id = c.id
                 JOIN users u ON u.id = uc.user_id
                 WHERE u.username = {ph}
@@ -29235,7 +29369,8 @@ def api_groups_my():
             for r in c.fetchall():
                 cid = r['id'] if hasattr(r, 'keys') else r[0]
                 cname = r['name'] if hasattr(r, 'keys') else r[1]
-                communities.append({'id': cid, 'name': cname})
+                parent_cid = r['parent_community_id'] if hasattr(r, 'keys') else r[2]
+                communities.append({'id': cid, 'name': cname, 'parent_community_id': parent_cid})
                 comm_ids.append(cid)
 
             if not comm_ids:
