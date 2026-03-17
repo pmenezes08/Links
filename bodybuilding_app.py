@@ -13247,12 +13247,10 @@ def mute_chat():
     other_username = data.get('other_username')
     group_id = data.get('group_id')
     muted = data.get('muted', True)
-    if not other_username and not group_id:
-        return jsonify({'success': False, 'error': 'other_username or group_id required'}), 400
     try:
+        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
-            ph = get_sql_placeholder()
             try:
                 c.execute("SELECT 1 FROM user_muted_chats LIMIT 1")
             except Exception:
@@ -13260,7 +13258,9 @@ def mute_chat():
                     c.execute("CREATE TABLE IF NOT EXISTS user_muted_chats (username VARCHAR(191) NOT NULL, chat_key VARCHAR(255) NOT NULL, muted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (username, chat_key))")
                 else:
                     c.execute("CREATE TABLE IF NOT EXISTS user_muted_chats (username TEXT NOT NULL, chat_key TEXT NOT NULL, muted_at TEXT DEFAULT (datetime('now')), PRIMARY KEY (username, chat_key))")
-            chat_key = f"dm:{other_username}" if other_username else f"group:{group_id}"
+            chat_key = f"dm:{other_username}" if other_username else f"group:{group_id}" if group_id else None
+            if not chat_key:
+                return jsonify({'success': False, 'error': 'other_username or group_id required'}), 400
             if muted:
                 if USE_MYSQL:
                     c.execute(f"INSERT INTO user_muted_chats (username, chat_key) VALUES ({ph},{ph}) ON DUPLICATE KEY UPDATE muted_at=NOW()", (username, chat_key))
@@ -13277,17 +13277,17 @@ def mute_chat():
 @app.route('/api/chat/clear_history', methods=['POST'])
 @login_required
 def clear_chat_history():
-    """Clear chat history for the requesting user only (same as delete but thread stays in list)."""
+    """Clear chat history for the requesting user only. Thread stays visible but empty."""
     username = session.get('username')
     data = request.get_json() or {}
     other_username = data.get('other_username')
     if not other_username:
         return jsonify({'success': False, 'error': 'other_username required'}), 400
     try:
+        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
-            ph = get_sql_placeholder()
-            # Use same deleted_chat_threads mechanism but don't hide from list
+            # Reuse deleted_chat_threads table - set deleted_at to now
             try:
                 c.execute("SELECT 1 FROM deleted_chat_threads LIMIT 1")
             except Exception:
@@ -15925,13 +15925,13 @@ def post_status():
                         except Exception as ne2:
                             logger.warning(f"community post notify db error to {member}: {ne2}")
 
-                    # Check if member has muted this community
+                    # Skip push for muted communities
                     try:
                         c.execute(f"SELECT 1 FROM user_muted_communities WHERE username={ph} AND community_id={ph}", (member, community_id))
                         if c.fetchone():
-                            continue  # Skip push for muted community
+                            continue  # Skip push, in-app notification already created above
                     except Exception:
-                        pass
+                        pass  # Table might not exist yet
                     try:
                         send_push_to_user(
                             member,
@@ -25206,9 +25206,9 @@ def mute_community():
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
     try:
+        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
-            ph = get_sql_placeholder()
             # Ensure table
             try:
                 c.execute("SELECT 1 FROM user_muted_communities LIMIT 1")
@@ -25233,22 +25233,23 @@ def mute_community():
 @app.route('/api/community/mute_status', methods=['GET'])
 @login_required
 def community_mute_status():
-    """Check if a community is muted for the current user."""
+    """Check if current user has muted a community."""
     username = session.get('username')
-    community_id = request.args.get('community_id', type=int)
+    community_id = request.args.get('community_id')
     if not community_id:
-        return jsonify({'success': True, 'muted': False})
+        return jsonify({'success': False, 'error': 'community_id required'}), 400
     try:
+        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
-            ph = get_sql_placeholder()
             try:
                 c.execute(f"SELECT 1 FROM user_muted_communities WHERE username={ph} AND community_id={ph}", (username, community_id))
-                return jsonify({'success': True, 'muted': c.fetchone() is not None})
+                muted = c.fetchone() is not None
             except Exception:
-                return jsonify({'success': True, 'muted': False})
-    except Exception:
-        return jsonify({'success': True, 'muted': False})
+                muted = False
+            return jsonify({'success': True, 'muted': muted})
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/leave_community', methods=['POST'])
 @login_required
