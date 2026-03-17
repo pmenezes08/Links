@@ -3044,15 +3044,15 @@ export default function CommunityFeed() {
               </>
             )}
             <button className="w-full text-right px-4 py-3 rounded-xl hover:bg-white/5 flex items-center justify-end gap-2" onClick={async () => {
-              setMoreOpen(false)
               try {
                 const r = await fetch('/api/community/mute', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ community_id: Number(community_id), muted: !communityMuted }) })
-                const j = await r.json()
-                if (j?.success) setCommunityMuted(j.muted)
+                const d = await r.json()
+                if (d?.success) setCommunityMuted(d.muted)
               } catch {}
+              setMoreOpen(false)
             }}>
-              <i className={`fa-solid ${communityMuted ? 'fa-bell' : 'fa-bell-slash'} text-xs`} />
-              {communityMuted ? 'Unmute Community' : 'Mute Community'}
+              <i className={`fa-solid ${communityMuted ? 'fa-bell' : 'fa-bell-slash'} text-xs ${communityMuted ? 'text-[#4db6ac]' : 'text-white/40'}`} />
+              {communityMuted ? 'Unmute Notifications' : 'Mute Notifications'}
             </button>
             <p className="text-[10px] text-white/30 text-right px-4 pb-1">
               {communityMuted ? 'Push notifications disabled. In-app notifications continue.' : 'Muting disables push notifications only.'}
