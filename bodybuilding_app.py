@@ -13247,10 +13247,12 @@ def mute_chat():
     other_username = data.get('other_username')
     group_id = data.get('group_id')
     muted = data.get('muted', True)
+    if not other_username and not group_id:
+        return jsonify({'success': False, 'error': 'other_username or group_id required'}), 400
     try:
-        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
             try:
                 c.execute("SELECT 1 FROM user_muted_chats LIMIT 1")
             except Exception:
@@ -13269,22 +13271,23 @@ def mute_chat():
             conn.commit()
             return jsonify({'success': True, 'muted': bool(muted)})
     except Exception as e:
+        logger.error(f"mute_chat error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 @app.route('/api/chat/clear_history', methods=['POST'])
-@login_required  
+@login_required
 def clear_chat_history():
-    """Clear chat history for the requesting user only (same as delete but keeps thread visible)."""
+    """Clear chat history for the requesting user only (same as delete but thread stays in list)."""
     username = session.get('username')
     data = request.get_json() or {}
     other_username = data.get('other_username')
     if not other_username:
         return jsonify({'success': False, 'error': 'other_username required'}), 400
     try:
-        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
-            # Use same mechanism as WhatsApp-style delete (deleted_chat_threads)
+            ph = get_sql_placeholder()
+            # Use same deleted_chat_threads mechanism but don't hide from list
             try:
                 c.execute("SELECT 1 FROM deleted_chat_threads LIMIT 1")
             except Exception:
@@ -13303,6 +13306,7 @@ def clear_chat_history():
                 pass
         return jsonify({'success': True})
     except Exception as e:
+        logger.error(f"clear_chat_history error: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
@@ -15921,18 +15925,13 @@ def post_status():
                         except Exception as ne2:
                             logger.warning(f"community post notify db error to {member}: {ne2}")
 
-                    # Check if user has muted this community
-                    is_muted = False
+                    # Check if member has muted this community
                     try:
-                        ph = get_sql_placeholder()
                         c.execute(f"SELECT 1 FROM user_muted_communities WHERE username={ph} AND community_id={ph}", (member, community_id))
-                        is_muted = c.fetchone() is not None
+                        if c.fetchone():
+                            continue  # Skip push for muted community
                     except Exception:
                         pass
-                    if is_muted:
-                        continue  # Skip push for muted community
-
-                    # Web push (non-blocking)
                     try:
                         send_push_to_user(
                             member,
@@ -15940,7 +15939,7 @@ def post_status():
                                 'title': 'New community post',
                                 'body': f"{username}: {content[:100]}",
                                 'url': notif_link,
-                                'tag': f"community-post-{community_id}-{post_id}",  # Unique tag per post
+                                'tag': f"community-post-{community_id}-{post_id}",
                             },
                         )
                     except Exception as pe:
@@ -25207,9 +25206,9 @@ def mute_community():
     if not community_id:
         return jsonify({'success': False, 'error': 'community_id required'}), 400
     try:
-        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
             # Ensure table
             try:
                 c.execute("SELECT 1 FROM user_muted_communities LIMIT 1")
@@ -25234,23 +25233,22 @@ def mute_community():
 @app.route('/api/community/mute_status', methods=['GET'])
 @login_required
 def community_mute_status():
-    """Check if current user has muted a community."""
+    """Check if a community is muted for the current user."""
     username = session.get('username')
-    community_id = request.args.get('community_id')
+    community_id = request.args.get('community_id', type=int)
     if not community_id:
-        return jsonify({'success': False, 'error': 'community_id required'}), 400
+        return jsonify({'success': True, 'muted': False})
     try:
-        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
+            ph = get_sql_placeholder()
             try:
                 c.execute(f"SELECT 1 FROM user_muted_communities WHERE username={ph} AND community_id={ph}", (username, community_id))
-                muted = c.fetchone() is not None
+                return jsonify({'success': True, 'muted': c.fetchone() is not None})
             except Exception:
-                muted = False
-            return jsonify({'success': True, 'muted': muted})
-    except Exception as e:
-        return jsonify({'success': False, 'error': 'Server error'}), 500
+                return jsonify({'success': True, 'muted': False})
+    except Exception:
+        return jsonify({'success': True, 'muted': False})
 
 @app.route('/leave_community', methods=['POST'])
 @login_required
