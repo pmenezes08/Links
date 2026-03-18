@@ -139,7 +139,7 @@ export default function MentionTextarea({
   }
 
   return (
-    <div className="relative">
+    <div className="relative flex-1 min-w-0">
       {/* Highlight overlay (behind textarea) */}
       <MentionHighlightOverlay
         overlayRef={overlayRef as React.RefObject<HTMLDivElement>}
@@ -150,7 +150,7 @@ export default function MentionTextarea({
       <textarea
         ref={taRef}
         rows={rows}
-        className={className}
+        className={`w-full ${className || ''}`}
         placeholder={placeholder}
         value={value}
         onChange={(e)=> onChange(e.target.value)}

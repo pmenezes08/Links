@@ -1857,14 +1857,14 @@ export default function PostDetail(){
             />
 
             {/* Message input container with turquoise border */}
-            <div className="flex-1 flex items-center rounded-lg border border-[#4db6ac] bg-white/8 overflow-hidden min-w-0">
+            <div className="flex-1 min-w-0 flex items-center rounded-lg border border-[#4db6ac] bg-white/8">
               <MentionTextarea
                 value={content}
                 onChange={setContent}
                 communityId={(post as any)?.community_id}
                 postId={post?.id}
                 placeholder="Write a reply..."
-                className="flex-1 bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
+                className="bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[36px]"
                 rows={1}
                 autoExpand
                 perfDegraded={!!uploadFile}
@@ -2524,14 +2524,14 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             
             <input ref={inlineFileRef} type="file" accept="image/*,video/*" onChange={(e) => { const next = (e.target as HTMLInputElement).files?.[0] || null; setImg(next); setInlineGif(null); setGifFile(null) }} className="hidden" />
             
-            <div className="flex-1 flex items-center rounded-lg border border-[#4db6ac] bg-white/5 overflow-hidden min-w-0">
+            <div className="flex-1 min-w-0 flex items-center rounded-lg border border-[#4db6ac] bg-white/5">
               <MentionTextarea
                 value={text}
                 onChange={setText}
                 communityId={communityId}
                 postId={postId}
                 placeholder={`Reply to @${reply.username}`}
-                className="flex-1 bg-transparent px-3 py-2 text-[14px] text-white placeholder-white/50 outline-none resize-none max-h-20 min-h-[36px]"
+                className="bg-transparent px-3 py-2 text-[14px] text-white placeholder-white/50 outline-none resize-none max-h-20 min-h-[36px]"
                 rows={1}
                 autoExpand
               />

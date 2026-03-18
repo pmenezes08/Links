@@ -963,7 +963,7 @@ export default function CommentReply() {
             >
               <i className="fa-solid fa-images text-sm text-white/70" />
             </button>
-            <div className="flex-1 flex items-center rounded-lg border border-white/20 bg-white/5 overflow-hidden">
+            <div className="flex-1 min-w-0 flex items-center rounded-lg border border-white/20 bg-white/5">
               <MentionTextarea
                 value={replyText}
                 onChange={setReplyText}
@@ -971,7 +971,7 @@ export default function CommentReply() {
                 postId={post?.id}
                 replyId={reply.id}
                 placeholder={`Reply to @${reply.username}...`}
-                className="flex-1 bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/40 outline-none resize-none max-h-24 min-h-[36px]"
+                className="bg-transparent px-3 py-2 text-[15px] text-white placeholder-white/40 outline-none resize-none max-h-24 min-h-[36px]"
                 rows={1}
                 autoExpand
               />
