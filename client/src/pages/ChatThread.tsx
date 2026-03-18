@@ -591,6 +591,11 @@ export default function ChatThread(){
         setMessages(prev)
       } else {
         setEditingId(null); setEditText('')
+        // Force next poll to do a full fetch so the edited message is re-fetched from server
+        lastKnownMessageIdRef.current = 0
+        // #region agent log
+        fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:sinceIdReset',message:'Reset since_id to 0 for full refetch after edit',data:{editingId},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
       }
     }catch(err){
       // #region agent log

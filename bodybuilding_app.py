@@ -11383,13 +11383,24 @@ def send_message():
                 if should_push:
                     # Check if chat is muted before sending push
                     try:
-                        c.execute(f"SELECT 1 FROM user_muted_chats WHERE username={ph} AND chat_key={ph}", (recipient_username, f"dm:{username}"))
-                        if c.fetchone():
+                        _mute_ph = get_sql_placeholder()
+                        c.execute(f"SELECT 1 FROM user_muted_chats WHERE username={_mute_ph} AND chat_key={_mute_ph}", (recipient_username, f"dm:{username}"))
+                        _mute_row = c.fetchone()
+                        # #region agent log
+                        import json as _djm; open('debug-057209.log','a').write(_djm.dumps({'sessionId':'057209','location':'bodybuilding_app.py:dm_mute_check','message':'DM mute check result','data':{'recipient':recipient_username,'sender':username,'chat_key':f'dm:{username}','is_muted':_mute_row is not None,'ph':_mute_ph},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'A'})+'\n')
+                        # #endregion
+                        if _mute_row:
                             should_push = False
                             logger.debug(f"Suppressing push for {recipient_username} - DM with {username} is muted")
                     except Exception as mute_err:
+                        # #region agent log
+                        import json as _djm2; open('debug-057209.log','a').write(_djm2.dumps({'sessionId':'057209','location':'bodybuilding_app.py:dm_mute_check_err','message':'DM mute check FAILED','data':{'error':str(mute_err),'recipient':recipient_username,'sender':username},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'A'})+'\n')
+                        # #endregion
                         logger.warning(f"Mute check failed: {mute_err}")
                 if should_push:
+                    # #region agent log
+                    import json as _djm3; open('debug-057209.log','a').write(_djm3.dumps({'sessionId':'057209','location':'bodybuilding_app.py:dm_push_sent','message':'DM push SENT (not muted)','data':{'recipient':recipient_username,'sender':username},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'A'})+'\n')
+                    # #endregion
                     send_push_to_user(recipient_username, {
                         'title': f'Message from {username}',
                         'body': f'You have new messages from {username}',
@@ -11600,6 +11611,9 @@ def edit_message_api():
     else:
         message_id = request.form.get('message_id')
         new_text = (request.form.get('text') or '').strip()
+    # #region agent log
+    import json as _dj; open('debug-057209.log','a').write(_dj.dumps({'sessionId':'057209','location':'bodybuilding_app.py:edit_message_api','message':'Edit request received','data':{'username':username,'message_id':message_id,'new_text_len':len(new_text) if new_text else 0},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'A'})+'\n')
+    # #endregion
     if not message_id or new_text is None:
         return jsonify({'success': False, 'error': 'message_id and text required'}), 400
     try:
@@ -11620,13 +11634,20 @@ def edit_message_api():
             except Exception:
                 pass
             # Enforce sender and 5-minute edit window
-            c.execute("SELECT sender, timestamp FROM messages WHERE id = ?", (message_id,))
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT sender, timestamp FROM messages WHERE id = {ph}", (message_id,))
             row = c.fetchone()
+            # #region agent log
+            import json as _dj2; open('debug-057209.log','a').write(_dj2.dumps({'sessionId':'057209','location':'bodybuilding_app.py:edit_message_api:lookup','message':'Message lookup result','data':{'message_id':message_id,'found':row is not None,'sender':str(row[0] if row else None),'username':username},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'A'})+'\n')
+            # #endregion
             if not row:
                 return jsonify({'success': False, 'error': 'Not found'}), 404
             sender = row['sender'] if hasattr(row, 'keys') else row[0]
             sent_ts_val = row['timestamp'] if hasattr(row, 'keys') else row[1]
             if str(sender) != str(username):
+                # #region agent log
+                import json as _dj3; open('debug-057209.log','a').write(_dj3.dumps({'sessionId':'057209','location':'bodybuilding_app.py:edit_message_api:perm','message':'Permission denied','data':{'sender':str(sender),'username':username},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'A'})+'\n')
+                # #endregion
                 return jsonify({'success': False, 'error': 'Not permitted'}), 403
             # Parse timestamp
             from datetime import datetime as _dt
@@ -11645,24 +11666,34 @@ def edit_message_api():
                 # If unknown, deny edit to be safe
                 return jsonify({'success': False, 'error': 'Invalid timestamp'}), 400
             if (_dt.now() - sent_dt).total_seconds() > 5*60:
+                # #region agent log
+                import json as _dj4; open('debug-057209.log','a').write(_dj4.dumps({'sessionId':'057209','location':'bodybuilding_app.py:edit_message_api:window','message':'Edit window expired','data':{'sent_dt':str(sent_dt),'now':str(_dt.now()),'elapsed_seconds':(_dt.now()-sent_dt).total_seconds()},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'B'})+'\n')
+                # #endregion
                 return jsonify({'success': False, 'error': 'Edit window expired'}), 400
             # Update only if sender is current user
             # Clear encryption fields since we're storing plain text now
             # (Re-encrypting would require access to both users' keys which we don't have here)
+            edited_at_val = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             try:
                 c.execute(
-                    """UPDATE messages 
-                       SET message = ?, edited_at = ?, is_encrypted = 0, 
+                    f"""UPDATE messages 
+                       SET message = {ph}, edited_at = {ph}, is_encrypted = 0, 
                            encrypted_body = NULL, encrypted_body_for_sender = NULL 
-                       WHERE id = ? AND sender = ?""",
-                    (new_text, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), message_id, username)
+                       WHERE id = {ph} AND sender = {ph}""",
+                    (new_text, edited_at_val, message_id, username)
                 )
-            except Exception:
+            except Exception as update_err:
+                # #region agent log
+                import json as _dj5; open('debug-057209.log','a').write(_dj5.dumps({'sessionId':'057209','location':'bodybuilding_app.py:edit_message_api:update_err','message':'Update with encryption cols failed','data':{'error':str(update_err)},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'C'})+'\n')
+                # #endregion
                 # Fallback if encryption columns don't exist
                 c.execute(
-                    "UPDATE messages SET message = ?, edited_at = ? WHERE id = ? AND sender = ?",
-                    (new_text, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), message_id, username)
+                    f"UPDATE messages SET message = {ph}, edited_at = {ph} WHERE id = {ph} AND sender = {ph}",
+                    (new_text, edited_at_val, message_id, username)
                 )
+            # #region agent log
+            import json as _dj6; open('debug-057209.log','a').write(_dj6.dumps({'sessionId':'057209','location':'bodybuilding_app.py:edit_message_api:result','message':'Update executed','data':{'rowcount':c.rowcount,'message_id':message_id,'username':username},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'C'})+'\n')
+            # #endregion
             if c.rowcount == 0:
                 return jsonify({'success': False, 'error': 'Not found or not permitted'}), 403
             conn.commit()
@@ -15972,10 +16003,18 @@ def post_status():
 
                     # Skip push for muted communities
                     try:
-                        c.execute(f"SELECT 1 FROM user_muted_communities WHERE username={ph} AND community_id={ph}", (member, community_id))
-                        if c.fetchone():
+                        _comm_ph = get_sql_placeholder()
+                        c.execute(f"SELECT 1 FROM user_muted_communities WHERE username={_comm_ph} AND community_id={_comm_ph}", (member, community_id))
+                        _comm_mute_row = c.fetchone()
+                        # #region agent log
+                        import json as _djc; open('debug-057209.log','a').write(_djc.dumps({'sessionId':'057209','location':'bodybuilding_app.py:comm_mute_check','message':'Community mute check result','data':{'member':member,'community_id':community_id,'is_muted':_comm_mute_row is not None},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'A'})+'\n')
+                        # #endregion
+                        if _comm_mute_row:
                             continue  # Skip push, in-app notification already created above
-                    except Exception:
+                    except Exception as _comm_mute_err:
+                        # #region agent log
+                        import json as _djc2; open('debug-057209.log','a').write(_djc2.dumps({'sessionId':'057209','location':'bodybuilding_app.py:comm_mute_check_err','message':'Community mute check FAILED','data':{'error':str(_comm_mute_err),'member':member,'community_id':community_id},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'A'})+'\n')
+                        # #endregion
                         pass  # Table might not exist yet
                     try:
                         send_push_to_user(
@@ -16376,6 +16415,19 @@ def create_poll():
                             community_id=community_id,
                             message=poll_notif_msg
                         )
+                        # Skip push for muted communities
+                        _poll_skip = False
+                        try:
+                            _poll_ph = get_sql_placeholder()
+                            with get_db_connection() as _poll_conn:
+                                _poll_c = _poll_conn.cursor()
+                                _poll_c.execute(f"SELECT 1 FROM user_muted_communities WHERE username={_poll_ph} AND community_id={_poll_ph}", (member_username, community_id))
+                                if _poll_c.fetchone():
+                                    _poll_skip = True
+                        except Exception:
+                            pass
+                        if _poll_skip:
+                            continue
                         try:
                             send_push_to_user(
                                 member_username,
