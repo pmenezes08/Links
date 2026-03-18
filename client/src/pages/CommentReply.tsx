@@ -379,12 +379,6 @@ export default function CommentReply() {
   // Submit a reply
   const handleSubmitReply = async () => {
     if (!reply || (!replyText.trim() && !selectedGif)) return
-    // #region agent log
-    const _sendBtn = document.querySelector('[data-send-btn]'); const _sendRect = _sendBtn?.getBoundingClientRect(); const _composerBar = document.querySelector('[data-composer-bar]'); const _barRect = _composerBar?.getBoundingClientRect();
-    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'CommentReply.tsx:handleSubmitReply:pre',message:'Send button position at send start',data:{btnRect:_sendRect?{top:_sendRect.top,bottom:_sendRect.bottom,left:_sendRect.left,right:_sendRect.right,width:_sendRect.width,height:_sendRect.height}:null,barRect:_barRect?{top:_barRect.top,bottom:_barRect.bottom,right:_barRect.right,width:_barRect.width}:null,viewportH:window.innerHeight,viewportW:window.innerWidth,showKeyboard,keyboardLift},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
-    setTimeout(() => { const b2 = document.querySelector('[data-send-btn]')?.getBoundingClientRect(); const c2 = document.querySelector('[data-composer-bar]')?.getBoundingClientRect(); fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'CommentReply.tsx:handleSubmitReply:300ms',message:'Send button position 300ms after send',data:{btnRect:b2?{top:b2.top,bottom:b2.bottom,left:b2.left,right:b2.right,width:b2.width,height:b2.height}:null,barRect:c2?{bottom:c2.bottom,top:c2.top}:null,viewportH:window.innerHeight,viewportW:window.innerWidth},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{}) }, 300);
-    setTimeout(() => { const b3 = document.querySelector('[data-send-btn]')?.getBoundingClientRect(); const c3 = document.querySelector('[data-composer-bar]')?.getBoundingClientRect(); fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'CommentReply.tsx:handleSubmitReply:800ms',message:'Send button position 800ms after send',data:{btnRect:b3?{top:b3.top,bottom:b3.bottom,left:b3.left,right:b3.right,width:b3.width,height:b3.height}:null,barRect:c3?{bottom:c3.bottom,top:c3.top}:null,viewportH:window.innerHeight,viewportW:window.innerWidth},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{}) }, 800);
-    // #endregion
     setSendingReply(true)
     try {
       const fd = new FormData()
@@ -569,7 +563,7 @@ export default function CommentReply() {
 
   return (
     <div
-      className="min-h-screen bg-black text-white flex flex-col overflow-hidden"
+      className="min-h-screen bg-black text-white flex flex-col"
       style={{
         position: 'fixed',
         top: 0,
@@ -950,7 +944,6 @@ export default function CommentReply() {
 
       {/* Fixed bottom reply composer */}
       <div 
-        data-composer-bar
         className="fixed left-0 right-0 z-[100] bg-black border-t border-white/10"
         style={{ bottom: showKeyboard ? keyboardLift : 0 }}
       >
@@ -984,7 +977,6 @@ export default function CommentReply() {
               />
             </div>
             <button
-              data-send-btn
               onClick={handleSubmitReply}
               disabled={sendingReply || (!replyText.trim() && !selectedGif)}
               className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg bg-[#4db6ac] text-white disabled:opacity-40"

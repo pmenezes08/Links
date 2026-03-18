@@ -1503,22 +1503,12 @@ def _send_group_message_notification(cursor, ph, recipient_username: str, sender
         try:
             ph = get_sql_placeholder()
             cursor.execute(f"SELECT 1 FROM user_muted_chats WHERE username={ph} AND chat_key={ph}", (recipient_username, f"group:{group_id}"))
-            _grp_mute_row = cursor.fetchone()
-            # #region agent log
-            import json as _djg; open('debug-057209.log','a').write(_djg.dumps({'sessionId':'057209','location':'group_chat.py:grp_mute_check','message':'Group mute check result','data':{'recipient':recipient_username,'group_id':group_id,'chat_key':f'group:{group_id}','is_muted':_grp_mute_row is not None},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'A'})+'\n')
-            # #endregion
-            if _grp_mute_row:
+            if cursor.fetchone():
                 should_push = False
                 logger.debug(f"Suppressing push for {recipient_username} - group {group_id} is muted")
         except Exception as mute_err:
-            # #region agent log
-            import json as _djg2; open('debug-057209.log','a').write(_djg2.dumps({'sessionId':'057209','location':'group_chat.py:grp_mute_check_err','message':'Group mute check FAILED','data':{'error':str(mute_err),'recipient':recipient_username,'group_id':group_id},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'A'})+'\n')
-            # #endregion
             logger.warning(f"Mute check failed for group: {mute_err}")
     if should_push:
-        # #region agent log
-        import json as _djg3; open('debug-057209.log','a').write(_djg3.dumps({'sessionId':'057209','location':'group_chat.py:grp_push_sent','message':'Group push SENT (not muted)','data':{'recipient':recipient_username,'group_id':group_id},'timestamp':int(__import__('time').time()*1000),'hypothesisId':'A'})+'\n')
-        # #endregion
         try:
             from backend.services.notifications import send_push_to_user
             send_push_to_user(

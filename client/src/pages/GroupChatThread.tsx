@@ -345,6 +345,14 @@ export default function GroupChatThread() {
     el.setSelectionRange(len, len)
   }, [recording])
 
+  function adjustTextareaHeight(){
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    const maxPx = 160
+    ta.style.height = Math.min(ta.scrollHeight, maxPx) + 'px'
+  }
+
   // Visual viewport keyboard handling (web)
   useEffect(() => {
     if (!isMobile) return
@@ -2384,7 +2392,7 @@ export default function GroupChatThread() {
                 <textarea
                   ref={textareaRef}
                   rows={1}
-                  className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
+                  className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-40 min-h-[38px]"
                   placeholder="Message"
                   defaultValue=""
                   autoComplete="off"
@@ -2401,18 +2409,22 @@ export default function GroupChatThread() {
                     pointerEvents: 'auto'
                   } as CSSProperties}
                   onPointerDown={() => {
-                    focusTextarea()
+                    if (document.activeElement !== textareaRef.current) {
+                      focusTextarea()
+                    }
                   }}
                   onTouchEnd={(e) => {
-                    e.preventDefault()
-                    focusTextarea()
+                    if (document.activeElement !== textareaRef.current) {
+                      e.preventDefault()
+                      focusTextarea()
+                    }
                   }}
                   onInput={(e) => {
-                    // Track draft for button visibility only
                     const textarea = e.target as HTMLTextAreaElement
                     const val = textarea.value
                     draftRef.current = val
                     setDraftDisplay(val)
+                    adjustTextareaHeight()
                     
                     // Detect @mention typing
                     const cursorPos = textarea.selectionStart || 0

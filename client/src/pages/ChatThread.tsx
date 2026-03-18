@@ -286,15 +286,9 @@ export default function ChatThread(){
     if (MIC_ENABLED && recording) return
     const el = textareaRef.current
     if (!el) return
-    requestAnimationFrame(() => {
-      el.focus()
-      const length = el.value.length
-      try {
-        el.setSelectionRange(length, length)
-      } catch {
-        // Some browsers may not support setSelectionRange on certain inputs
-      }
-    })
+    el.focus()
+    const length = el.value.length
+    el.setSelectionRange(length, length)
   }, [recording])
   
   // Cleanup preview audio when recording preview changes
@@ -563,9 +557,6 @@ export default function ChatThread(){
     if (!newBody) { alert('Message cannot be empty'); return }
     const prev = messages
     setEditingSaving(true)
-    // #region agent log
-    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:start',message:'Edit commit started',data:{editingId,newBodyLen:newBody.length},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     // Optimistically update - clear encryption flags since server will store as plain text
     setMessages(list => list.map(m => m.id===editingId ? ({ 
       ...m, 
@@ -583,9 +574,6 @@ export default function ChatThread(){
     try{
       const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
       const j = await res.json().catch(()=>null)
-      // #region agent log
-      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:response',message:'Edit API response',data:{success:j?.success,error:j?.error,status:res.status},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       if (!j?.success){
         alert(j?.error || 'Edit failed')
         setMessages(prev)
@@ -593,14 +581,8 @@ export default function ChatThread(){
         setEditingId(null); setEditText('')
         // Force next poll to do a full fetch so the edited message is re-fetched from server
         lastKnownMessageIdRef.current = 0
-        // #region agent log
-        fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:sinceIdReset',message:'Reset since_id to 0 for full refetch after edit',data:{editingId},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
       }
     }catch(err){
-      // #region agent log
-      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:error',message:'Edit network error',data:{error:String(err)},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       alert('Network error while editing')
       setMessages(prev)
     } finally { setEditingSaving(false) }
@@ -3058,7 +3040,7 @@ export default function ChatThread(){
               <textarea
                 ref={textareaRef}
                 rows={1}
-                className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
+                className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-40 min-h-[38px]"
                 placeholder="Message"
                 defaultValue=""
                 autoComplete="off"
@@ -3076,10 +3058,12 @@ export default function ChatThread(){
                 } as CSSProperties}
                 onPaste={handlePaste}
                 onPointerDown={() => {
-                  focusTextarea()
+                  if (document.activeElement !== textareaRef.current) {
+                    focusTextarea()
+                  }
                 }}
                 onTouchEnd={(e) => {
-                  if (Capacitor.getPlatform() === 'ios') {
+                  if (Capacitor.getPlatform() === 'ios' && document.activeElement !== textareaRef.current) {
                     e.preventDefault()
                     focusTextarea()
                   }
@@ -3089,6 +3073,7 @@ export default function ChatThread(){
                   const val = textarea.value
                   draftRef.current = val
                   setDraftDisplay(val)
+                  adjustTextareaHeight()
                   
                   // Only send typing indicator once, not on every keystroke
                   if (!isTypingRef.current) {
