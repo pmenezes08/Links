@@ -563,6 +563,9 @@ export default function ChatThread(){
     if (!newBody) { alert('Message cannot be empty'); return }
     const prev = messages
     setEditingSaving(true)
+    // #region agent log
+    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:start',message:'Edit commit started',data:{editingId,newBodyLen:newBody.length},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     // Optimistically update - clear encryption flags since server will store as plain text
     setMessages(list => list.map(m => m.id===editingId ? ({ 
       ...m, 
@@ -580,13 +583,19 @@ export default function ChatThread(){
     try{
       const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
       const j = await res.json().catch(()=>null)
+      // #region agent log
+      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:response',message:'Edit API response',data:{success:j?.success,error:j?.error,status:res.status},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       if (!j?.success){
         alert(j?.error || 'Edit failed')
         setMessages(prev)
       } else {
         setEditingId(null); setEditText('')
       }
-    }catch{
+    }catch(err){
+      // #region agent log
+      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:error',message:'Edit network error',data:{error:String(err)},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       alert('Network error while editing')
       setMessages(prev)
     } finally { setEditingSaving(false) }
@@ -1652,20 +1661,26 @@ export default function ChatThread(){
           } else {
             console.error('Send failed:', j?.error)
             // Keep optimistic message, restore draft for retry
-            setDraft(messageText)
+            if (textareaRef.current) textareaRef.current.value = messageText
+            draftRef.current = messageText
+            setDraftDisplay(messageText)
           }
         })
         .catch(err => {
           console.error('Send error:', err)
           // Keep optimistic message, restore draft for retry
-          setDraft(messageText)
+          if (textareaRef.current) textareaRef.current.value = messageText
+          draftRef.current = messageText
+          setDraftDisplay(messageText)
         })
         .finally(() => setSending(false))
     } catch (error) {
       console.error('❌ Send function error:', error)
       setSending(false)
       // Restore draft on error
-      setDraft(messageText)
+      if (textareaRef.current) textareaRef.current.value = messageText
+      draftRef.current = messageText
+      setDraftDisplay(messageText)
     }
   }
 
