@@ -1,0 +1,25 @@
+---
+description: Rules for modifying iOS native files in the Capacitor project
+globs: client/ios/**/*.swift, client/ios/**/*.storyboard, client/ios/**/*.pbxproj
+alwaysApply: false
+---
+# iOS Xcode Project Rules
+
+## CRITICAL: project.pbxproj must stay in sync
+
+When creating or referencing any new `.swift` file under `client/ios/App/App/`:
+- The file MUST be added to `project.pbxproj` in ALL of these places:
+  1. `PBXBuildFile` section (compile reference)
+  2. `PBXFileReference` section (file on disk reference)
+  3. The `App` PBXGroup's `children` list
+  4. `PBXSourcesBuildPhase` `files` list
+- If ANY of these are missing, the Swift file will exist on disk but never be compiled. If the storyboard references a class from that file, the app will show a blank screen.
+
+## Never change Main.storyboard customClass without verifying project.pbxproj
+
+- NEVER change `Main.storyboard` to reference a `customClass` unless that class's `.swift` file is already listed in the `PBXSourcesBuildPhase` of `project.pbxproj`.
+- The safe default is `customClass="CAPBridgeViewController"` with `customModule="Capacitor"`. Only change this if the replacement class is confirmed to be in the compile sources.
+
+## After any iOS native changes
+
+- Always tell the user to open Xcode and verify the file appears in Build Phases > Compile Sources before building.
