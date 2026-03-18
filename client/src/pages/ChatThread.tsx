@@ -106,7 +106,8 @@ export default function ChatThread(){
   ]
   const [selectedMessages, setSelectedMessages] = useState<Set<number|string>>(new Set())
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false)
-  const [draft, setDraft] = useState('')
+  const draftRef = useRef('')
+  const [draftDisplay, setDraftDisplay] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string; sender?:string; image_path?:string; video_path?:string; audio_path?:string; audio_summary?:string }|null>(null)
   const [sending, setSendingState] = useState(false)
   // Check if encryption keys need to be synced from another device
@@ -1440,10 +1441,9 @@ export default function ChatThread(){
   }
   
   useEffect(() => { adjustTextareaHeight() }, [])
-  useEffect(() => { adjustTextareaHeight() }, [draft])
 
   async function send(){
-    const messageText = draft.trim()
+    const messageText = (textareaRef.current?.value || '').trim()
     if (!messageText || sendingLockRef.current) return
     let resolvedUserId = otherUserId
     if (!resolvedUserId) {
@@ -1455,7 +1455,12 @@ export default function ChatThread(){
     }
     
     const replySnapshot = replyTo
-    setDraft('')
+    // Clear the textarea (uncontrolled)
+    if (textareaRef.current) {
+      textareaRef.current.value = ''
+    }
+    draftRef.current = ''
+    setDraftDisplay('')
     if (replySnapshot) {
       setReplyTo(null)
     }
@@ -3028,14 +3033,14 @@ export default function ChatThread(){
               </div>
             )}
             
-            {/* Regular text input - hidden during recording or preview */}
+            {/* Regular text input - UNCONTROLLED for reliable cursor positioning */}
             {!(MIC_ENABLED && (recording || recordingPreview)) && (
               <textarea
                 ref={textareaRef}
                 rows={1}
                 className="flex-1 bg-transparent px-3 sm:px-3.5 py-2 text-[15px] text-white placeholder-white/50 outline-none resize-none max-h-24 min-h-[38px]"
                 placeholder="Message"
-                value={draft}
+                defaultValue=""
                 autoComplete="off"
                 autoCorrect="on"
                 autoCapitalize="sentences"
@@ -3059,8 +3064,11 @@ export default function ChatThread(){
                     focusTextarea()
                   }
                 }}
-                onChange={e=> {
-                  setDraft(e.target.value)
+                onInput={(e) => {
+                  const textarea = e.target as HTMLTextAreaElement
+                  const val = textarea.value
+                  draftRef.current = val
+                  setDraftDisplay(val)
                   
                   // Only send typing indicator once, not on every keystroke
                   if (!isTypingRef.current) {
@@ -3090,7 +3098,7 @@ export default function ChatThread(){
           </div>
 
           {/* Mic button - shown when not recording, no preview, and no text */}
-          {MIC_ENABLED && !recording && !recordingPreview && !draft.trim() && (
+          {MIC_ENABLED && !recording && !recordingPreview && !draftDisplay.trim() && (
             <button
               className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
               onPointerDown={(e) => {
@@ -3203,24 +3211,24 @@ export default function ChatThread(){
               className={`w-10 h-10 flex-shrink-0 rounded-[14px] flex items-center justify-center ${
                 sending 
                   ? 'bg-gray-600 text-gray-300' 
-                  : draft.trim()
+                  : draftDisplay.trim()
                     ? 'bg-[#4db6ac] text-black'
                     : 'bg-white/12 text-white/70'
               } active:scale-95`}
               onPointerDown={(e) => {
-                if (!draft.trim() || sending) return
+                if (!draftDisplay.trim() || sending) return
                 e.preventDefault()
                 e.stopPropagation()
                 send()
               }}
               onClick={(e) => {
                 // Fallback for devices where onPointerDown doesn't fire reliably
-                if (!draft.trim() || sending) return
+                if (!draftDisplay.trim() || sending) return
                 e.preventDefault()
                 e.stopPropagation()
                 send()
               }}
-              disabled={sending || !draft.trim()}
+              disabled={sending || !draftDisplay.trim()}
               aria-label="Send"
               style={{
                 touchAction: 'manipulation',

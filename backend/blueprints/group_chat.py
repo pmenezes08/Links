@@ -495,6 +495,20 @@ def list_group_chats():
             
             _ensure_group_chat_tables(c)
             
+            # Load muted group chats for this user
+            muted_groups = set()
+            try:
+                c.execute(f"SELECT chat_key FROM user_muted_chats WHERE username = {ph}", (username,))
+                for mr in c.fetchall():
+                    chat_key = mr['chat_key'] if hasattr(mr, 'keys') else mr[0]
+                    if chat_key.startswith('group:'):
+                        try:
+                            muted_groups.add(int(chat_key[6:]))  # Extract group_id from group:id
+                        except ValueError:
+                            pass
+            except Exception:
+                pass
+            
             # Get all groups the user is a member of
             c.execute(f"""
                 SELECT g.id, g.name, g.creator_username, g.created_at, g.updated_at,
@@ -563,6 +577,7 @@ def list_group_chats():
                     "member_count": member_count,
                     "last_message": last_message,
                     "unread_count": unread_count,
+                    "muted": group_id in muted_groups,
                 })
             
             return jsonify({"success": True, "groups": groups})
@@ -1483,6 +1498,16 @@ def _send_group_message_notification(cursor, ph, recipient_username: str, sender
         logger.warning(f"Could not check group presence: {presence_err}")
     
     # Send push notification only (no bell icon notification)
+    if should_push:
+        # Check if group chat is muted before sending push
+        try:
+            ph = get_sql_placeholder()
+            cursor.execute(f"SELECT 1 FROM user_muted_chats WHERE username={ph} AND chat_key={ph}", (recipient_username, f"group:{group_id}"))
+            if cursor.fetchone():
+                should_push = False
+                logger.debug(f"Suppressing push for {recipient_username} - group {group_id} is muted")
+        except Exception as mute_err:
+            logger.warning(f"Mute check failed for group: {mute_err}")
     if should_push:
         try:
             from backend.services.notifications import send_push_to_user

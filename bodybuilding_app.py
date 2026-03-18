@@ -11381,6 +11381,15 @@ def send_message():
                 except Exception as pe:
                     logger.warning(f"active chat presence check failed: {pe}")
                 if should_push:
+                    # Check if chat is muted before sending push
+                    try:
+                        c.execute(f"SELECT 1 FROM user_muted_chats WHERE username={ph} AND chat_key={ph}", (recipient_username, f"dm:{username}"))
+                        if c.fetchone():
+                            should_push = False
+                            logger.debug(f"Suppressing push for {recipient_username} - DM with {username} is muted")
+                    except Exception as mute_err:
+                        logger.warning(f"Mute check failed: {mute_err}")
+                if should_push:
                     send_push_to_user(recipient_username, {
                         'title': f'Message from {username}',
                         'body': f'You have new messages from {username}',
@@ -11906,6 +11915,18 @@ def send_photo_message():
                 except Exception as pe:
                     logger.warning(f"active chat presence check (photo) failed: {pe}")
                 if should_push:
+                    # Check if chat is muted before sending push
+                    try:
+                        with get_db_connection() as conn3:
+                            c3 = conn3.cursor()
+                            ph = get_sql_placeholder()
+                            c3.execute(f"SELECT 1 FROM user_muted_chats WHERE username={ph} AND chat_key={ph}", (recipient_username, f"dm:{username}"))
+                            if c3.fetchone():
+                                should_push = False
+                                logger.debug(f"Suppressing push for {recipient_username} - DM with {username} is muted")
+                    except Exception as mute_err:
+                        logger.warning(f"Mute check failed: {mute_err}")
+                if should_push:
                     send_push_to_user(recipient_username, {
                         'title': f'Photo from {username}',
                         'body': f'{username} sent you a photo',
@@ -12290,6 +12311,18 @@ def send_audio_message():
                             should_push = False
                 except Exception as pe:
                     logger.warning(f"active chat presence check (audio) failed: {pe}")
+                if should_push:
+                    # Check if chat is muted before sending push
+                    try:
+                        with get_db_connection() as conn3:
+                            c3 = conn3.cursor()
+                            ph = get_sql_placeholder()
+                            c3.execute(f"SELECT 1 FROM user_muted_chats WHERE username={ph} AND chat_key={ph}", (recipient_username, f"dm:{username}"))
+                            if c3.fetchone():
+                                should_push = False
+                                logger.debug(f"Suppressing push for {recipient_username} - DM with {username} is muted")
+                    except Exception as mute_err:
+                        logger.warning(f"Mute check failed: {mute_err}")
                 if should_push:
                     import time
                     send_push_to_user(recipient_username, {
@@ -12928,6 +12961,17 @@ def api_chat_threads():
             except Exception:
                 pass
 
+            # Load muted chats for this user
+            muted_chats = set()
+            try:
+                c.execute(f"SELECT chat_key FROM user_muted_chats WHERE username = {ph}", (username,))
+                for mr in c.fetchall():
+                    chat_key = mr['chat_key'] if hasattr(mr, 'keys') else mr[0]
+                    if chat_key.startswith('dm:'):
+                        muted_chats.add(chat_key[3:])  # Extract username from dm:username
+            except Exception:
+                pass
+
             # Gather all counterpart usernames the user has messages with (either direction)
             c.execute(
                 f"""
@@ -13074,6 +13118,7 @@ def api_chat_threads():
                         'last_activity_time': last_activity_time,
                         'last_sender': last_sender,
                         'unread_count': int(unread_count or 0),
+                        'muted': other_username in muted_chats,
                     })
                 except Exception as inner_e:
                     logger.warning(f"Failed to build thread for counterpart: {inner_e}")

@@ -483,6 +483,27 @@ export default function Communities(){
                       setJoinedGroups(j.joined || [])
                       setAvailableGroups(j.available || [])
                       setGroupCommunities(j.communities || [])
+                      // Auto-select filter based on parent_id from URL
+                      const parentIdParam = new URLSearchParams(location.search).get('parent_id')
+                      if (parentIdParam) {
+                        const parentIdNum = parseInt(parentIdParam)
+                        const communities = j.communities || []
+                        // Find the parent or first matching community
+                        const matchingCommunity = communities.find((c: { id: number; parent_community_id?: number | null }) => 
+                          c.id === parentIdNum || c.parent_community_id === parentIdNum
+                        )
+                        if (matchingCommunity) {
+                          setJoinedFilter(String(matchingCommunity.id))
+                          setAvailableFilter(String(matchingCommunity.id))
+                        } else {
+                          // If parent_id itself is a valid community
+                          const directMatch = communities.find((c: { id: number }) => c.id === parentIdNum)
+                          if (directMatch) {
+                            setJoinedFilter(String(parentIdNum))
+                            setAvailableFilter(String(parentIdNum))
+                          }
+                        }
+                      }
                     }
                   })
                   .catch(() => {})
@@ -559,9 +580,14 @@ export default function Communities(){
                           (() => {
                             const searchParams = new URLSearchParams(location.search)
                             const parentIdParam = searchParams.get('parent_id')
+                            const parentIdNum = parentIdParam ? parseInt(parentIdParam) : null
                             const filteredGroupCommunities = parentIdParam
-                              ? groupCommunities.filter(c => c.parent_community_id === parseInt(parentIdParam) || c.id === parseInt(parentIdParam))
+                              ? groupCommunities.filter(c => c.parent_community_id === parentIdNum || c.id === parentIdNum)
                               : groupCommunities
+                            // Get the set of valid community IDs for filtering when parent_id is present
+                            const validCommunityIds = parentIdParam
+                              ? new Set(filteredGroupCommunities.map(c => c.id))
+                              : null
                             return <>
                             {/* Joined Groups */}
                             <div className="space-y-2">
@@ -572,16 +598,22 @@ export default function Communities(){
                                   onChange={e => setJoinedFilter(e.target.value)}
                                   className="rounded-lg border border-white/15 bg-transparent px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
                                 >
-                                  <option value="all" className="bg-black">All Communities</option>
+                                  <option value="all" className="bg-black">{parentIdParam ? 'This Community' : 'All Communities'}</option>
                                   {filteredGroupCommunities.map(c => (
                                     <option key={c.id} value={String(c.id)} className="bg-black">{c.name}</option>
                                   ))}
                                 </select>
                               </div>
                               {(() => {
-                                const filtered = joinedFilter === 'all' ? joinedGroups : joinedGroups.filter(g => String(g.community_id) === joinedFilter)
+                                // When parent_id is present and filter is 'all', only show groups from the current community hierarchy
+                                let filtered = joinedGroups
+                                if (joinedFilter !== 'all') {
+                                  filtered = joinedGroups.filter(g => String(g.community_id) === joinedFilter)
+                                } else if (validCommunityIds) {
+                                  filtered = joinedGroups.filter(g => validCommunityIds.has(g.community_id))
+                                }
                                 return filtered.length === 0 ? (
-                                  <div className="text-[#6f7c81] text-xs py-4 text-center">No joined groups{joinedFilter !== 'all' ? ' in this community' : ''}.</div>
+                                  <div className="text-[#6f7c81] text-xs py-4 text-center">No joined groups{joinedFilter !== 'all' || parentIdParam ? ' in this community' : ''}.</div>
                                 ) : (
                                   <div className="space-y-2">
                                     {filtered.map(g => (
@@ -614,16 +646,22 @@ export default function Communities(){
                                   onChange={e => setAvailableFilter(e.target.value)}
                                   className="rounded-lg border border-white/15 bg-transparent px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#4db6ac]"
                                 >
-                                  <option value="all" className="bg-black">All Communities</option>
+                                  <option value="all" className="bg-black">{parentIdParam ? 'This Community' : 'All Communities'}</option>
                                   {filteredGroupCommunities.map(c => (
                                     <option key={c.id} value={String(c.id)} className="bg-black">{c.name}</option>
                                   ))}
                                 </select>
                               </div>
                               {(() => {
-                                const filtered = availableFilter === 'all' ? availableGroups : availableGroups.filter(g => String(g.community_id) === availableFilter)
+                                // When parent_id is present and filter is 'all', only show groups from the current community hierarchy
+                                let filtered = availableGroups
+                                if (availableFilter !== 'all') {
+                                  filtered = availableGroups.filter(g => String(g.community_id) === availableFilter)
+                                } else if (validCommunityIds) {
+                                  filtered = availableGroups.filter(g => validCommunityIds.has(g.community_id))
+                                }
                                 return filtered.length === 0 ? (
-                                  <div className="text-[#6f7c81] text-xs py-4 text-center">No available groups{availableFilter !== 'all' ? ' in this community' : ''}.</div>
+                                  <div className="text-[#6f7c81] text-xs py-4 text-center">No available groups{availableFilter !== 'all' || parentIdParam ? ' in this community' : ''}.</div>
                                 ) : (
                                   <div className="space-y-2">
                                     {filtered.map(g => (

@@ -17,6 +17,7 @@ type Thread = {
   last_sender?: string | null
   unread_count?: number
   is_archived?: boolean
+  muted?: boolean
 }
 
 type CommunityNode = {
@@ -103,6 +104,7 @@ export default function Messages(){
     creator: string
     last_message: { sender: string; text: string; time: string } | null
     unread_count: number
+    muted?: boolean
   }
   const [groupChats, setGroupChats] = useState<GroupChat[]>([])
   const [_groupChatsLoading, setGroupChatsLoading] = useState(false)
@@ -810,6 +812,9 @@ export default function Messages(){
                                 )}
                               </div>
                             </div>
+                            {gc.muted && (
+                              <i className="ml-2 fa-solid fa-bell-slash text-white/40 text-xs" title="Muted" />
+                            )}
                             {gc.unread_count > 0 && (
                               <div className="ml-2 px-2 h-5 rounded-full bg-[#4db6ac] text-black text-[11px] flex items-center justify-center">
                                 {gc.unread_count > 99 ? '99+' : gc.unread_count}
@@ -859,18 +864,11 @@ export default function Messages(){
               const tx = isDragging ? Math.min(0, dragX) : (swipeId === t.other_username ? -116 : 0)
               const transition = isDragging ? 'none' : 'transform 150ms ease-out'
               const showActions = isDragging ? (dragX < -20) : (swipeId === t.other_username)
+              const isMuted = t.muted === true
               return (
                 <div key={t.other_username} className="relative w-full overflow-hidden">
                   {/* Actions (revealed on swipe) */}
                   <div className="absolute inset-y-0 right-0 flex items-stretch gap-1 pr-2" style={{ opacity: showActions ? 1 : 0, pointerEvents: showActions ? 'auto' : 'none', transition: 'opacity 150ms ease-out' }}>
-                    <button
-                      type="button"
-                      onClick={() => archiveChat(t.other_username)}
-                      className="my-1 h-[44px] w-[52px] rounded-md bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 flex items-center justify-center"
-                      aria-label="Archive chat"
-                    >
-                      <i className="fa-solid fa-box-archive" />
-                    </button>
                     <button
                       type="button"
                       onClick={() => setChatMoreTarget({ type: 'dm', username: t.other_username, displayName: t.display_name || t.other_username })}
@@ -970,6 +968,9 @@ export default function Messages(){
                         {formatLastMessagePreview(t.last_message_text)}
                       </div>
                     </div>
+                    {isMuted && (
+                      <i className="ml-2 fa-solid fa-bell-slash text-white/40 text-xs" title="Muted" />
+                    )}
                     {t.unread_count && t.unread_count > 0 ? (
                       <div className="ml-2 px-2 h-5 rounded-full bg-[#4db6ac] text-black text-[11px] flex items-center justify-center">
                         {t.unread_count > 99 ? '99+' : t.unread_count}
@@ -1098,16 +1099,38 @@ export default function Messages(){
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center" onClick={() => setChatMoreTarget(null)}>
           <div className="w-full max-w-md bg-[#1a1a1a] border-t border-white/10 rounded-t-2xl p-4 pb-8 space-y-1" onClick={e => e.stopPropagation()} style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}>
             <div className="text-sm text-white/50 text-center mb-3">{chatMoreTarget.displayName}</div>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
-              const key = chatMoreTarget.type === 'dm' ? chatMoreTarget.username : undefined
-              const gid = chatMoreTarget.type === 'group' ? chatMoreTarget.groupId : undefined
-              await fetch('/api/chat/mute', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: key, group_id: gid, muted: true }) }).catch(() => {})
-              setChatMoreTarget(null)
-              alert('Chat muted')
-            }}>
-              <i className="fa-solid fa-bell-slash text-white/60 w-6 text-center" />
-              Mute Chat
-            </button>
+            {(() => {
+              const isMuted = chatMoreTarget.type === 'dm'
+                ? threads.find(t => t.other_username === chatMoreTarget.username)?.muted
+                : groupChats.find(g => g.id === chatMoreTarget.groupId)?.muted
+              return (
+                <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
+                  const key = chatMoreTarget.type === 'dm' ? chatMoreTarget.username : undefined
+                  const gid = chatMoreTarget.type === 'group' ? chatMoreTarget.groupId : undefined
+                  const newMuted = !isMuted
+                  await fetch('/api/chat/mute', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: key, group_id: gid, muted: newMuted }) }).catch(() => {})
+                  // Update local state
+                  if (chatMoreTarget.type === 'dm') {
+                    setThreads(prev => prev.map(t => t.other_username === chatMoreTarget.username ? { ...t, muted: newMuted } : t))
+                  } else if (chatMoreTarget.type === 'group') {
+                    setGroupChats(prev => prev.map(g => g.id === chatMoreTarget.groupId ? { ...g, muted: newMuted } : g))
+                  }
+                  setChatMoreTarget(null)
+                }}>
+                  <i className={`fa-solid ${isMuted ? 'fa-bell' : 'fa-bell-slash'} text-white/60 w-6 text-center`} />
+                  {isMuted ? 'Unmute Chat' : 'Mute Chat'}
+                </button>
+              )
+            })()}
+            {chatMoreTarget.type === 'dm' && (
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={() => {
+                archiveChat(chatMoreTarget.username!)
+                setChatMoreTarget(null)
+              }}>
+                <i className="fa-solid fa-box-archive text-white/60 w-6 text-center" />
+                Archive Chat
+              </button>
+            )}
             {chatMoreTarget.type === 'dm' && (
               <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
                 await fetch('/api/chat/clear_history', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ other_username: chatMoreTarget.username }) }).catch(() => {})
