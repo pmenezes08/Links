@@ -1502,11 +1502,24 @@ def _send_group_message_notification(cursor, ph, recipient_username: str, sender
         # Check if group chat is muted before sending push
         try:
             ph = get_sql_placeholder()
+            # #region agent log
+            try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"group_chat.py:group-mute-check","message":"Group mute check","data":{"recipient":"'+str(recipient_username)+'","group_id":'+str(group_id)+',"chat_key":"group:'+str(group_id)+'"},"hypothesisId":"H2B"}\n')
+            except Exception: pass
+            # #endregion
             cursor.execute(f"SELECT 1 FROM user_muted_chats WHERE username={ph} AND chat_key={ph}", (recipient_username, f"group:{group_id}"))
-            if cursor.fetchone():
+            _gc_mute_row = cursor.fetchone()
+            # #region agent log
+            try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"group_chat.py:group-mute-result","message":"Group mute result","data":{"found":'+('true' if _gc_mute_row else 'false')+'},"hypothesisId":"H2B"}\n')
+            except Exception: pass
+            # #endregion
+            if _gc_mute_row:
                 should_push = False
                 logger.debug(f"Suppressing push for {recipient_username} - group {group_id} is muted")
         except Exception as mute_err:
+            # #region agent log
+            try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"group_chat.py:group-mute-error","message":"Group mute check FAILED","data":{"error":"'+str(mute_err).replace(chr(34),chr(92)+chr(34))[:100]+'"},"hypothesisId":"H2B"}\n')
+            except Exception: pass
+            # #endregion
             logger.warning(f"Mute check failed for group: {mute_err}")
     if should_push:
         try:

@@ -572,8 +572,14 @@ export default function ChatThread(){
       invalidateCachedDecryption(editingId)
     }
     try{
+      // #region agent log
+      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:pre-api',message:'Edit API call starting',data:{editingId,newBody:newBody.substring(0,50)},timestamp:Date.now(),hypothesisId:'H1A'})}).catch(()=>{});
+      // #endregion
       const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
       const j = await res.json().catch(()=>null)
+      // #region agent log
+      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:post-api',message:'Edit API response',data:{status:res.status,success:j?.success,error:j?.error,lastKnownBefore:lastKnownMessageIdRef.current},timestamp:Date.now(),hypothesisId:'H1A'})}).catch(()=>{});
+      // #endregion
       if (!j?.success){
         alert(j?.error || 'Edit failed')
         setMessages(prev)
@@ -581,8 +587,14 @@ export default function ChatThread(){
         setEditingId(null); setEditText('')
         // Force next poll to do a full fetch so the edited message is re-fetched from server
         lastKnownMessageIdRef.current = 0
+        // #region agent log
+        fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:success',message:'Edit succeeded, lastKnownMessageIdRef reset to 0',data:{},timestamp:Date.now(),hypothesisId:'H1B'})}).catch(()=>{});
+        // #endregion
       }
     }catch(err){
+      // #region agent log
+      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:commitEdit:error',message:'Edit network error',data:{err:String(err)},timestamp:Date.now(),hypothesisId:'H1A'})}).catch(()=>{});
+      // #endregion
       alert('Network error while editing')
       setMessages(prev)
     } finally { setEditingSaving(false) }
@@ -1097,6 +1109,10 @@ export default function ChatThread(){
         try{
           // Build request params - include since_id for delta fetching if supported
           const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
+          // #region agent log
+          const _isFullRefetch = lastKnownMessageIdRef.current === 0;
+          fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:poll:pre-fetch',message:'Poll starting',data:{lastKnownMessageId:lastKnownMessageIdRef.current,isFullRefetch:_isFullRefetch},timestamp:Date.now(),hypothesisId:'H1B'})}).catch(()=>{});
+          // #endregion
           if (lastKnownMessageIdRef.current > 0) {
             fd.append('since_id', String(lastKnownMessageIdRef.current))
           }
@@ -1117,6 +1133,9 @@ export default function ChatThread(){
               if (!isNaN(msgId) && msgId > maxId) maxId = msgId
             })
             lastKnownMessageIdRef.current = maxId
+            // #region agent log
+            if (_isFullRefetch) { fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:poll:full-refetch-result',message:'Full refetch completed',data:{messageCount:j.messages.length,newMaxId:maxId,lastFewMessages:j.messages.slice(-3).map((m:any)=>({id:m.id,text:(m.text||'').substring(0,40),edited_at:m.edited_at}))},timestamp:Date.now(),hypothesisId:'H1B'})}).catch(()=>{}); }
+            // #endregion
             
             // Process encrypted messages (mostly no-op since E2E disabled)
             const decryptedMessages = await Promise.all(
@@ -1457,6 +1476,7 @@ export default function ChatThread(){
     }
     draftRef.current = ''
     setDraftDisplay('')
+    adjustTextareaHeight()
     if (replySnapshot) {
       setReplyTo(null)
     }
@@ -3058,11 +3078,17 @@ export default function ChatThread(){
                 } as CSSProperties}
                 onPaste={handlePaste}
                 onPointerDown={() => {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:onPointerDown',message:'Pointer down on textarea',data:{isFocused:document.activeElement===textareaRef.current,selStart:textareaRef.current?.selectionStart,selEnd:textareaRef.current?.selectionEnd},timestamp:Date.now(),hypothesisId:'H3A'})}).catch(()=>{});
+                  // #endregion
                   if (document.activeElement !== textareaRef.current) {
                     focusTextarea()
                   }
                 }}
                 onTouchEnd={(e) => {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:onTouchEnd',message:'Touch end on textarea',data:{isFocused:document.activeElement===textareaRef.current,platform:Capacitor.getPlatform(),willPreventDefault:Capacitor.getPlatform()==='ios'&&document.activeElement!==textareaRef.current},timestamp:Date.now(),hypothesisId:'H3A'})}).catch(()=>{});
+                  // #endregion
                   if (Capacitor.getPlatform() === 'ios' && document.activeElement !== textareaRef.current) {
                     e.preventDefault()
                     focusTextarea()

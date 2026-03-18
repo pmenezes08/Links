@@ -11384,18 +11384,35 @@ def send_message():
                     # Check if chat is muted before sending push
                     try:
                         _mute_ph = get_sql_placeholder()
+                        # #region agent log
+                        try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"bodybuilding_app.py:dm-text-mute-check","message":"DM mute check","data":{"recipient":"'+str(recipient_username)+'","sender":"'+str(username)+'","chat_key":"dm:'+str(username)+'","ph":"'+str(_mute_ph)+'"},"hypothesisId":"H2A"}\n')
+                        except Exception: pass
+                        # #endregion
                         c.execute(f"SELECT 1 FROM user_muted_chats WHERE username={_mute_ph} AND chat_key={_mute_ph}", (recipient_username, f"dm:{username}"))
-                        if c.fetchone():
+                        _mute_row = c.fetchone()
+                        # #region agent log
+                        try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"bodybuilding_app.py:dm-text-mute-result","message":"DM mute result","data":{"found":'+('true' if _mute_row else 'false')+'},"hypothesisId":"H2A"}\n')
+                        except Exception: pass
+                        # #endregion
+                        if _mute_row:
                             should_push = False
                             logger.debug(f"Suppressing push for {recipient_username} - DM with {username} is muted")
                     except Exception as mute_err:
+                        # #region agent log
+                        try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"bodybuilding_app.py:dm-text-mute-error","message":"DM mute check FAILED","data":{"error":"'+str(mute_err).replace('"','\\"')[:100]+'"},"hypothesisId":"H2A"}\n')
+                        except Exception: pass
+                        # #endregion
                         logger.warning(f"Mute check failed: {mute_err}")
+                # #region agent log
+                try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"bodybuilding_app.py:dm-text-push-decision","message":"Push decision","data":{"should_push":'+('true' if should_push else 'false')+'},"hypothesisId":"H2A"}\n')
+                except Exception: pass
+                # #endregion
                 if should_push:
                     send_push_to_user(recipient_username, {
                         'title': f'Message from {username}',
                         'body': f'You have new messages from {username}',
                         'url': f'/user_chat/chat/{username}',
-                        'tag': f'message-{username}-{inserted_id}',  # Unique tag per message
+                        'tag': f'message-{username}-{inserted_id}',
                     })
             except Exception as _e:
                 logger.warning(f"push send_message warn: {_e}")
@@ -11594,6 +11611,10 @@ RESPONSE STYLE:
 def edit_message_api():
     """Edit an existing message's text. Only the sender can edit. Records edited_at."""
     username = session.get('username')
+    # #region agent log
+    try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"bodybuilding_app.py:edit_message_api:entry","message":"Edit API called","data":{"username":"'+str(username)+'"},"hypothesisId":"H1A"}\n')
+    except Exception: pass
+    # #endregion
     if request.is_json:
         data = request.get_json(silent=True) or {}
         message_id = data.get('message_id')
@@ -11644,8 +11665,16 @@ def edit_message_api():
                     except Exception:
                         continue
             if not sent_dt:
-                # If unknown, deny edit to be safe
+                # #region agent log
+                try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"bodybuilding_app.py:edit_message_api:no-sent-dt","message":"Invalid timestamp","data":{"raw_ts":"'+str(sent_ts_val)+'"},"hypothesisId":"H1B"}\n')
+                except Exception: pass
+                # #endregion
                 return jsonify({'success': False, 'error': 'Invalid timestamp'}), 400
+            # #region agent log
+            import json as _json_log
+            try: open('debug-057209.log','a').write(_json_log.dumps({"sessionId":"057209","location":"bodybuilding_app.py:edit_message_api:time-check","message":"Time check","data":{"sent_dt":str(sent_dt),"now":str(_dt.now()),"seconds_since_sent":(_dt.now()-sent_dt).total_seconds(),"sender":str(sender),"username":str(username)},"hypothesisId":"H1B"})+'\n')
+            except Exception: pass
+            # #endregion
             if (_dt.now() - sent_dt).total_seconds() > 5*60:
                 return jsonify({'success': False, 'error': 'Edit window expired'}), 400
             # Update only if sender is current user
@@ -11666,12 +11695,25 @@ def edit_message_api():
                     f"UPDATE messages SET message = {ph}, edited_at = {ph} WHERE id = {ph} AND sender = {ph}",
                     (new_text, edited_at_val, message_id, username)
                 )
+            # #region agent log
+            import json as _json_log2
+            try: open('debug-057209.log','a').write(_json_log2.dumps({"sessionId":"057209","location":"bodybuilding_app.py:edit_message_api:post-update","message":"UPDATE result","data":{"rowcount":c.rowcount,"message_id":str(message_id),"new_text_len":len(new_text)},"hypothesisId":"H1C"})+'\n')
+            except Exception: pass
+            # #endregion
             if c.rowcount == 0:
                 return jsonify({'success': False, 'error': 'Not found or not permitted'}), 403
             conn.commit()
+        # #region agent log
+        try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"bodybuilding_app.py:edit_message_api:success","message":"Edit committed successfully","hypothesisId":"H1A"}\n')
+        except Exception: pass
+        # #endregion
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"edit_message_api error: {e}")
+        # #region agent log
+        try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"bodybuilding_app.py:edit_message_api:exception","message":"'+str(e).replace('"','\\"')[:100]+'","hypothesisId":"H1A"}\n')
+        except Exception: pass
+        # #endregion
         return jsonify({'success': False, 'error': 'Failed to edit message'}), 500
 
 @app.route('/api/chat/react_to_message', methods=['POST'])
@@ -15976,10 +16018,23 @@ def post_status():
                     # Skip push for muted communities
                     try:
                         _comm_ph = get_sql_placeholder()
+                        # #region agent log
+                        try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"bodybuilding_app.py:community-post-mute-check","message":"Community mute check","data":{"member":"'+str(member)+'","community_id":'+str(community_id)+'},"hypothesisId":"H2C"}\n')
+                        except Exception: pass
+                        # #endregion
                         c.execute(f"SELECT 1 FROM user_muted_communities WHERE username={_comm_ph} AND community_id={_comm_ph}", (member, community_id))
-                        if c.fetchone():
+                        _comm_row = c.fetchone()
+                        # #region agent log
+                        try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"bodybuilding_app.py:community-post-mute-result","message":"Community mute result","data":{"found":'+('true' if _comm_row else 'false')+'},"hypothesisId":"H2C"}\n')
+                        except Exception: pass
+                        # #endregion
+                        if _comm_row:
                             continue  # Skip push, in-app notification already created above
-                    except Exception:
+                    except Exception as _comm_mute_err:
+                        # #region agent log
+                        try: open('debug-057209.log','a').write('{"sessionId":"057209","location":"bodybuilding_app.py:community-post-mute-error","message":"Community mute check FAILED","data":{"error":"'+str(_comm_mute_err).replace('"','\\"')[:100]+'"},"hypothesisId":"H2C"}\n')
+                        except Exception: pass
+                        # #endregion
                         pass  # Table might not exist yet
                     try:
                         send_push_to_user(

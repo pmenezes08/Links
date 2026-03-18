@@ -634,6 +634,7 @@ export default function GroupChatThread() {
     }
     draftRef.current = ''
     setDraftDisplay('')
+    adjustTextareaHeight()
     setReplyTo(null)
     
     // Format message with reply if needed
