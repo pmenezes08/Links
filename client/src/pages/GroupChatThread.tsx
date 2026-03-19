@@ -70,10 +70,11 @@ export default function GroupChatThread() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  // Combine server and pending messages for display
-  const messages = [...serverMessages, ...pendingMessages].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  )
+  // Combine server (sorted) and pending messages; pending always at the end to avoid clock-skew jumps
+  const messages = [
+    ...serverMessages.slice().sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
+    ...pendingMessages,
+  ]
   // Use ref-based draft to avoid React state update issues
   const draftRef = useRef('')
   const [draftDisplay, setDraftDisplay] = useState('') // Only for UI updates (button visibility)
