@@ -76,6 +76,25 @@ def write_dm_message(sender: str, receiver: str, message_id: int, text: str = ''
         logger.warning(f"Firestore DM write failed (non-fatal): {e}")
 
 
+def edit_dm_message(sender: str, receiver: str, message_id: int, new_text: str, edited_at=None):
+    """Update a DM message text in Firestore after MySQL edit."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        conv_id = _dm_conv_id(sender, receiver)
+        ts = edited_at if isinstance(edited_at, datetime) else datetime.utcnow()
+        msg_ref = fs.collection('dm_conversations').document(conv_id).collection('messages').document(str(message_id))
+        msg_ref.update({
+            'text': new_text,
+            'edited_at': ts,
+            'is_encrypted': False,
+        })
+        logger.debug(f"Firestore DM edit: msg {message_id} in {conv_id}")
+    except Exception as e:
+        logger.warning(f"Firestore DM edit failed (non-fatal): {e}")
+
+
 def write_dm_reaction(sender: str, receiver: str, message_id: int,
                       reaction: str = None, reaction_by: str = None):
     """Update a DM message reaction in Firestore."""

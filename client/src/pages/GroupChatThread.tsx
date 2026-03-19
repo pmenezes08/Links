@@ -688,19 +688,16 @@ export default function GroupChatThread() {
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          // SUCCESS: Remove from pending (server will have it on next poll)
+          // Add confirmed message to serverMessages directly to avoid flicker gap
+          setServerMessages(prev => [...prev, data.message])
           setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, data.message.id)
-          // Trigger immediate poll to get the server message
-          loadMessages(true)
         } else {
-          // FAILURE: Remove from pending
           setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
           console.error('Failed to send:', data.error)
         }
       })
       .catch(err => {
-        // ERROR: Remove from pending
         setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
         console.error('Error sending message:', err)
       })

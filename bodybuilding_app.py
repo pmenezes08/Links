@@ -11689,6 +11689,12 @@ def edit_message_api():
             invalidate_message_cache(username, receiver)
         except Exception:
             pass
+        # Sync edit to Firestore so dual-read returns updated text
+        try:
+            from backend.services.firestore_writes import edit_dm_message
+            edit_dm_message(username, receiver, message_id, new_text, edited_at_val)
+        except Exception:
+            pass
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"edit_message_api error: {e}")
