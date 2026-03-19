@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { App as CapacitorApp } from '@capacitor/app'
@@ -8,61 +8,72 @@ import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from
 import { extractInviteToken, joinCommunityWithInvite } from './utils/internalLinkHandler'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
-import MobileLogin from './pages/MobileLogin'
-import PremiumDashboard from './pages/PremiumDashboard'
 import HeaderBar from './components/HeaderBar'
 import { HeaderContext } from './contexts/HeaderContext'
 import { UserProfileContext, type UserProfile } from './contexts/UserProfileContext'
 import PushInit from './components/PushInit'
 import NotificationPrompt from './components/NotificationPrompt'
-// import NativePushInit from './components/NativePushInit' // Disabled - conflicts with PushInit
 import BrandAssetsInit from './components/BrandAssetsInit'
-// Encryption removed — not in use
-import CrossfitExact from './pages/CrossfitExact'
-import CommunityFeed from './pages/CommunityFeed'
-import CommunityCalendar from './pages/CommunityCalendar'
-import CommunityTasks from './pages/CommunityTasks'
-import CommunityPolls from './pages/CommunityPolls'
-import CommunityResources from './pages/CommunityResources'
-import UsefulLinks from './pages/UsefulLinks'
-import CommunityPhotos from './pages/CommunityPhotos'
-import PostDetail from './pages/PostDetail'
-import CreatePost from './pages/CreatePost'
-import Members from './pages/Members'
-import EditCommunity from './pages/EditCommunity'
-import Communities from './pages/Communities'
-import Followers from './pages/Followers'
-import Networking from './pages/Networking'
-import HomeTimeline from './pages/HomeTimeline'
-import WorkoutTracking from './pages/WorkoutTracking'
-import Gym from './pages/Gym'
-import YourSports from './pages/YourSports'
-import Messages from './pages/Messages'
-import NewMessage from './pages/NewMessage'
-import ChatThread from './pages/ChatThread'
-import GroupChatThread from './pages/GroupChatThread'
-import GroupChatMedia from './pages/GroupChatMedia'
-import ChatMedia from './pages/ChatMedia'
-import Profile from './pages/Profile'
-import PublicProfile from './pages/PublicProfile'
-import AccountSettings from './pages/AccountSettings'
-import AccountSecurity from './pages/AccountSecurity'
-import AccountDangerZone from './pages/AccountDangerZone'
-import SubscriptionPlans from './pages/SubscriptionPlans'
-import Signup from './pages/Signup'
-import Notifications from './pages/Notifications'
-import AdminDashboard from './pages/AdminDashboard'
-import AdminProfile from './pages/AdminProfile'
-import KeyPosts from './pages/KeyPosts'
-import OnboardingWelcome from './pages/OnboardingWelcome'
 import VerifyOverlay from './components/VerifyOverlay'
-import EventDetail from './pages/EventDetail'
-import GroupFeed from './pages/GroupFeed'
-import EditGroup from './pages/EditGroup'
-// EncryptionSettings removed — not in use
-import CommentReply from './pages/CommentReply'
+
+// OnboardingWelcome is eagerly loaded since it's the root fallback for unauthenticated users
+import OnboardingWelcome from './pages/OnboardingWelcome'
+
+// Lazy-loaded pages — each becomes a separate chunk, loaded on-demand
+const MobileLogin = lazy(() => import('./pages/MobileLogin'))
+const PremiumDashboard = lazy(() => import('./pages/PremiumDashboard'))
+const CrossfitExact = lazy(() => import('./pages/CrossfitExact'))
+const CommunityFeed = lazy(() => import('./pages/CommunityFeed'))
+const CommunityCalendar = lazy(() => import('./pages/CommunityCalendar'))
+const CommunityTasks = lazy(() => import('./pages/CommunityTasks'))
+const CommunityPolls = lazy(() => import('./pages/CommunityPolls'))
+const CommunityResources = lazy(() => import('./pages/CommunityResources'))
+const UsefulLinks = lazy(() => import('./pages/UsefulLinks'))
+const CommunityPhotos = lazy(() => import('./pages/CommunityPhotos'))
+const PostDetail = lazy(() => import('./pages/PostDetail'))
+const CreatePost = lazy(() => import('./pages/CreatePost'))
+const Members = lazy(() => import('./pages/Members'))
+const EditCommunity = lazy(() => import('./pages/EditCommunity'))
+const Communities = lazy(() => import('./pages/Communities'))
+const Followers = lazy(() => import('./pages/Followers'))
+const Networking = lazy(() => import('./pages/Networking'))
+const HomeTimeline = lazy(() => import('./pages/HomeTimeline'))
+const WorkoutTracking = lazy(() => import('./pages/WorkoutTracking'))
+const Gym = lazy(() => import('./pages/Gym'))
+const YourSports = lazy(() => import('./pages/YourSports'))
+const Messages = lazy(() => import('./pages/Messages'))
+const NewMessage = lazy(() => import('./pages/NewMessage'))
+const ChatThread = lazy(() => import('./pages/ChatThread'))
+const GroupChatThread = lazy(() => import('./pages/GroupChatThread'))
+const GroupChatMedia = lazy(() => import('./pages/GroupChatMedia'))
+const ChatMedia = lazy(() => import('./pages/ChatMedia'))
+const Profile = lazy(() => import('./pages/Profile'))
+const PublicProfile = lazy(() => import('./pages/PublicProfile'))
+const AccountSettings = lazy(() => import('./pages/AccountSettings'))
+const AccountSecurity = lazy(() => import('./pages/AccountSecurity'))
+const AccountDangerZone = lazy(() => import('./pages/AccountDangerZone'))
+const SubscriptionPlans = lazy(() => import('./pages/SubscriptionPlans'))
+const Signup = lazy(() => import('./pages/Signup'))
+const Notifications = lazy(() => import('./pages/Notifications'))
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
+const AdminProfile = lazy(() => import('./pages/AdminProfile'))
+const KeyPosts = lazy(() => import('./pages/KeyPosts'))
+const EventDetail = lazy(() => import('./pages/EventDetail'))
+const GroupFeed = lazy(() => import('./pages/GroupFeed'))
+const EditGroup = lazy(() => import('./pages/EditGroup'))
+const CommentReply = lazy(() => import('./pages/CommentReply'))
 
 const queryClient = new QueryClient()
+
+function PageLoader() {
+  return (
+    <div className="flex h-screen w-full items-center justify-center bg-black">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-white/15 border-t-[#4db6ac]" />
+      </div>
+    </div>
+  )
+}
 
 function AppRoutes(){
   const [title, setTitle] = useState('')
@@ -589,24 +600,25 @@ function AppRoutes(){
           style={mainStyle}
         >
             <ErrorBoundary>
-              <Routes>
-                <Route path="/" element={rootRouteElement} />
-                <Route path="/welcome" element={<OnboardingWelcome />} />
-                <Route path="/login" element={<MobileLogin />} />
-                <Route path="/signup" element={<Signup />} />
-                <Route path="/signup_react" element={<Signup />} />
-                <Route path="/onboarding" element={<OnboardingWelcome />} />
-                <Route path="/premium" element={<PremiumDashboard />} />
-                <Route path="/premium_dashboard" element={<PremiumDashboard />} />
-                <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
-                <Route path="/crossfit" element={<CrossfitExact />} />
-                <Route path="/crossfit_react" element={<CrossfitExact />} />
-                <Route path="/communities" element={<Communities />} />
-                <Route path="/followers" element={<Followers />} />
-                <Route path="/networking" element={<Networking />} />
-                <Route path="/your_sports" element={<YourSports />} />
-                <Route path="/gym" element={<Gym />} />
-                <Route path="/user_chat" element={<Messages />} />
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/" element={rootRouteElement} />
+                  <Route path="/welcome" element={<OnboardingWelcome />} />
+                  <Route path="/login" element={<MobileLogin />} />
+                  <Route path="/signup" element={<Signup />} />
+                  <Route path="/signup_react" element={<Signup />} />
+                  <Route path="/onboarding" element={<OnboardingWelcome />} />
+                  <Route path="/premium" element={<PremiumDashboard />} />
+                  <Route path="/premium_dashboard" element={<PremiumDashboard />} />
+                  <Route path="/premium_dashboard_react" element={<PremiumDashboard />} />
+                  <Route path="/crossfit" element={<CrossfitExact />} />
+                  <Route path="/crossfit_react" element={<CrossfitExact />} />
+                  <Route path="/communities" element={<Communities />} />
+                  <Route path="/followers" element={<Followers />} />
+                  <Route path="/networking" element={<Networking />} />
+                  <Route path="/your_sports" element={<YourSports />} />
+                  <Route path="/gym" element={<Gym />} />
+                  <Route path="/user_chat" element={<Messages />} />
                   <Route path="/user_chat/new" element={<NewMessage />} />
                   <Route path="/user_chat/chat/:username" element={<ChatThread />} />
                   <Route path="/chat/:username/media" element={<ChatMedia />} />
@@ -615,36 +627,37 @@ function AppRoutes(){
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/profile_react" element={<Profile />} />
                   <Route path="/profile/:username" element={<PublicProfile />} />
-                <Route path="/account_settings" element={<AccountSettings />} />
-                <Route path="/account_settings_react" element={<AccountSettings />} />
-                <Route path="/account_settings/security" element={<AccountSecurity />} />
-                <Route path="/account_settings/danger" element={<AccountDangerZone />} />
+                  <Route path="/account_settings" element={<AccountSettings />} />
+                  <Route path="/account_settings_react" element={<AccountSettings />} />
+                  <Route path="/account_settings/security" element={<AccountSecurity />} />
+                  <Route path="/account_settings/danger" element={<AccountDangerZone />} />
                   <Route path="/subscription_plans" element={<SubscriptionPlans />} />
-                <Route path="/notifications" element={<Notifications />} />
-                <Route path="/admin" element={<AdminDashboard />} />
-                <Route path="/admin_dashboard" element={<AdminDashboard />} />
-                <Route path="/admin_dashboard_react" element={<AdminDashboard />} />
-                <Route path="/admin_profile_react" element={<AdminProfile />} />
-                <Route path="/home" element={<HomeTimeline />} />
-                <Route path="/workout_tracking" element={<WorkoutTracking />} />
-                <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
-                <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
-                <Route path="/community/:community_id/tasks_react" element={<CommunityTasks />} />
-                <Route path="/community/:community_id/polls_react" element={<CommunityPolls />} />
-                <Route path="/community/:community_id/resources_react" element={<CommunityResources />} />
-                <Route path="/community/:community_id/useful_links_react" element={<UsefulLinks />} />
-                <Route path="/community/:community_id/photos_react" element={<CommunityPhotos />} />
-                <Route path="/community/:community_id/key_posts" element={<KeyPosts />} />
-                <Route path="/community/:community_id/members" element={<Members />} />
-                <Route path="/community/:community_id/edit" element={<EditCommunity />} />
-                <Route path="/event/:event_id" element={<EventDetail />} />
-                <Route path="/post/:post_id" element={<PostDetail />} />
-                <Route path="/reply/:reply_id" element={<CommentReply />} />
-                <Route path="/compose" element={<CreatePost />} />
-                <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
-                <Route path="/group/:group_id/edit" element={<EditGroup />} />
-                <Route path="*" element={<PremiumDashboard />} />
-              </Routes>
+                  <Route path="/notifications" element={<Notifications />} />
+                  <Route path="/admin" element={<AdminDashboard />} />
+                  <Route path="/admin_dashboard" element={<AdminDashboard />} />
+                  <Route path="/admin_dashboard_react" element={<AdminDashboard />} />
+                  <Route path="/admin_profile_react" element={<AdminProfile />} />
+                  <Route path="/home" element={<HomeTimeline />} />
+                  <Route path="/workout_tracking" element={<WorkoutTracking />} />
+                  <Route path="/community_feed_react/:community_id" element={<CommunityFeed />} />
+                  <Route path="/community/:community_id/calendar_react" element={<CommunityCalendar />} />
+                  <Route path="/community/:community_id/tasks_react" element={<CommunityTasks />} />
+                  <Route path="/community/:community_id/polls_react" element={<CommunityPolls />} />
+                  <Route path="/community/:community_id/resources_react" element={<CommunityResources />} />
+                  <Route path="/community/:community_id/useful_links_react" element={<UsefulLinks />} />
+                  <Route path="/community/:community_id/photos_react" element={<CommunityPhotos />} />
+                  <Route path="/community/:community_id/key_posts" element={<KeyPosts />} />
+                  <Route path="/community/:community_id/members" element={<Members />} />
+                  <Route path="/community/:community_id/edit" element={<EditCommunity />} />
+                  <Route path="/event/:event_id" element={<EventDetail />} />
+                  <Route path="/post/:post_id" element={<PostDetail />} />
+                  <Route path="/reply/:reply_id" element={<CommentReply />} />
+                  <Route path="/compose" element={<CreatePost />} />
+                  <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
+                  <Route path="/group/:group_id/edit" element={<EditGroup />} />
+                  <Route path="*" element={<PremiumDashboard />} />
+                </Routes>
+              </Suspense>
             </ErrorBoundary>
         </main>
         {requireVerification && authLoaded && isVerified === false && (
