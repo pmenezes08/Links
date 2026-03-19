@@ -120,6 +120,8 @@ export default function Messages(){
   const [groupChatsCollapsed, setGroupChatsCollapsed] = useState(false)
   const [directMessagesCollapsed, setDirectMessagesCollapsed] = useState(false)
   const [chatMoreTarget, setChatMoreTarget] = useState<{ type: 'dm' | 'group'; username?: string; groupId?: number; displayName: string } | null>(null)
+  const [groupSearchQuery, setGroupSearchQuery] = useState('')
+  const [dmSearchQuery, setDmSearchQuery] = useState('')
 
   // Fetch threads with caching
   const loadThreads = useCallback((silent: boolean = false) => {
@@ -713,7 +715,26 @@ export default function Messages(){
                 </button>
                 {!groupChatsCollapsed && (
                 <div className="divide-y divide-white/10">
-                  {groupChats.map((gc) => {
+                  {groupChats.length > 3 && (
+                    <div className="px-3 py-2">
+                      <div className="relative">
+                        <i className="fa-solid fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 text-xs" />
+                        <input
+                          type="text"
+                          value={groupSearchQuery}
+                          onChange={e => setGroupSearchQuery(e.target.value)}
+                          placeholder="Search groups..."
+                          className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-white/30 outline-none focus:border-[#4db6ac]/50"
+                        />
+                        {groupSearchQuery && (
+                          <button type="button" onClick={() => setGroupSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60">
+                            <i className="fa-solid fa-xmark text-xs" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {groupChats.filter(gc => !groupSearchQuery || gc.name.toLowerCase().includes(groupSearchQuery.toLowerCase())).map((gc) => {
                     const isGDragging = groupDraggingIdRef.current === gc.id
                     const gtx = isGDragging ? Math.min(0, groupDragX) : (groupSwipeId === gc.id ? -60 : 0)
                     const gTransition = isGDragging ? 'none' : 'transform 150ms ease-out'
@@ -859,7 +880,27 @@ export default function Messages(){
                     : 'No chats match this community filter.'}
                 </div>
               ) : (
-                visibleThreads.map((t) => {
+                <>
+                {visibleThreads.length > 3 && (
+                  <div className="px-3 py-2">
+                    <div className="relative">
+                      <i className="fa-solid fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30 text-xs" />
+                      <input
+                        type="text"
+                        value={dmSearchQuery}
+                        onChange={e => setDmSearchQuery(e.target.value)}
+                        placeholder="Search conversations..."
+                        className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-white/30 outline-none focus:border-[#4db6ac]/50"
+                      />
+                      {dmSearchQuery && (
+                        <button type="button" onClick={() => setDmSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60">
+                          <i className="fa-solid fa-xmark text-xs" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {visibleThreads.filter(t => !dmSearchQuery || (t.display_name || t.other_username).toLowerCase().includes(dmSearchQuery.toLowerCase()) || t.other_username.toLowerCase().includes(dmSearchQuery.toLowerCase())).map((t) => {
               const isDragging = draggingIdRef.current === t.other_username
               const tx = isDragging ? Math.min(0, dragX) : (swipeId === t.other_username ? -116 : 0)
               const transition = isDragging ? 'none' : 'transform 150ms ease-out'
@@ -980,6 +1021,8 @@ export default function Messages(){
                 </div>
                 )
               })
+            }
+            </>
             ))}
             </div>
             </>
