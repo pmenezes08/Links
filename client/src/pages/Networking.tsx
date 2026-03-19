@@ -53,6 +53,9 @@ export default function Networking() {
   const [steveSessions, setSteveSessions] = useState<Array<{ id: number; created_at: string; first_message: string }>>([])
   const [showSessionList, setShowSessionList] = useState(false)
   const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null)
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressActiveRef = useRef(false)
 
   // Keyboard tracking — same approach as GroupChatThread
   const [keyboardOffset, setKeyboardOffset] = useState(0)
@@ -269,6 +272,44 @@ export default function Networking() {
     return null
   }, [steveSessionId, steveCommunity])
 
+  const handleMentionClick = useCallback((username: string) => {
+    navigate(`/profile/${username}`)
+  }, [navigate])
+
+  const deleteSession = useCallback((sessionId: number) => {
+    if (!steveCommunity) return
+    fetch(`/api/networking/steve_session/${sessionId}`, {
+      method: 'DELETE', credentials: 'include'
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          if (steveSessionId === sessionId) {
+            setSteveSessionId(null)
+            setSteveMessages([])
+          }
+          loadSessions(steveCommunity)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setDeletingSessionId(null))
+  }, [steveCommunity, steveSessionId, loadSessions])
+
+  const handleSessionLongPressStart = useCallback((sessionId: number) => {
+    longPressActiveRef.current = false
+    longPressTimerRef.current = setTimeout(() => {
+      longPressActiveRef.current = true
+      setDeletingSessionId(sessionId)
+    }, 600)
+  }, [])
+
+  const handleSessionLongPressEnd = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }, [])
+
   const sendSteveMessage = async () => {
     if (!steveInput.trim() || !steveCommunity || steveSending) return
     const msg = steveInput.trim()
@@ -394,14 +435,38 @@ export default function Networking() {
                     <div className="text-xs text-[#6f7c81] py-2 text-center">No previous chats</div>
                   ) : (
                     steveSessions.map(s => (
-                      <button
-                        key={s.id}
-                        onClick={() => loadSession(s.id)}
-                        className={`w-full text-left rounded-lg px-3 py-2 text-xs transition ${s.id === steveSessionId ? 'bg-white/10 text-white' : 'text-[#a7b8be] hover:bg-white/5'}`}
-                      >
-                        <div className="truncate font-medium">{s.first_message || 'New chat'}</div>
-                        <div className="text-[10px] text-[#6f7c81] mt-0.5">{new Date(s.created_at.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-                      </button>
+                      <div key={s.id} className="relative">
+                        <button
+                          onClick={() => { if (!longPressActiveRef.current) loadSession(s.id) }}
+                          onTouchStart={() => handleSessionLongPressStart(s.id)}
+                          onTouchEnd={handleSessionLongPressEnd}
+                          onTouchCancel={handleSessionLongPressEnd}
+                          onContextMenu={e => { e.preventDefault(); setDeletingSessionId(s.id) }}
+                          className={`w-full text-left rounded-lg px-3 py-2 text-xs transition select-none ${s.id === steveSessionId ? 'bg-white/10 text-white' : 'text-[#a7b8be] hover:bg-white/5'}`}
+                        >
+                          <div className="truncate font-medium">{s.first_message || 'New chat'}</div>
+                          <div className="text-[10px] text-[#6f7c81] mt-0.5">{new Date(s.created_at.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                        </button>
+                        {deletingSessionId === s.id && (
+                          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-black/90 border border-red-500/30 backdrop-blur-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-[#a7b8be]">Delete?</span>
+                              <button
+                                onClick={() => deleteSession(s.id)}
+                                className="rounded-md bg-red-500/20 border border-red-500/40 px-2.5 py-1 text-[11px] font-medium text-red-400 hover:bg-red-500/30 transition"
+                              >
+                                Delete
+                              </button>
+                              <button
+                                onClick={() => setDeletingSessionId(null)}
+                                className="rounded-md border border-white/15 px-2.5 py-1 text-[11px] font-medium text-[#a7b8be] hover:bg-white/5 transition"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     ))
                   )}
                 </div>
@@ -428,7 +493,7 @@ export default function Networking() {
                           : 'bg-transparent text-[#c8d6db] rounded-bl-md'
                       }`}>
                         {msg.role === 'steve' ? (
-                          <div className="whitespace-pre-wrap">{renderTextWithSourceLinks(msg.text)}</div>
+                          <div className="whitespace-pre-wrap">{renderTextWithSourceLinks(msg.text, false, handleMentionClick)}</div>
                         ) : msg.text}
                       </div>
                     </div>

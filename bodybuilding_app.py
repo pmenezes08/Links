@@ -12633,14 +12633,16 @@ def api_networking_steve_match():
             user_profile = f"User: {_v(ur,0)} | {_v(ur,1)} | Bio: {_v(ur,2) or ''} | City: {_v(ur,3) or ''} | Country: {_v(ur,4) or ''} | Industry: {_v(ur,5) or ''} | Role: {_v(ur,6) or ''} | Company: {_v(ur,7) or ''}" if ur else ""
             # Members (exclude admin and steve)
             c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
-            members_text = "\n".join([f"- {_v(r,0)} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}" for r in c.fetchall()])
+            member_rows = c.fetchall()
+            member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
+            members_text = "\n".join([f"- {_v(r,0)} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}" for r in member_rows])
 
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         response = client.responses.create(
             model="grok-4-1-fast-non-reasoning",
             input=[
-                {"role": "system", "content": "You are Steve, a networking assistant. Given a user's profile and community members, recommend the best matches for the user's request. Be concise and friendly. Only reference actual members from the list."},
+                {"role": "system", "content": "You are Steve, a networking assistant. Given a user's profile and community members, recommend the best matches for the user's request. Be concise and friendly. Only reference actual members from the list. When mentioning a member, always use their username with @ prefix (e.g. @johndoe), never bold formatting."},
                 {"role": "user", "content": f"My profile:\n{user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"}
             ],
             tools=[{"type": "web_search"}, {"type": "x_search"}],
@@ -12648,6 +12650,7 @@ def api_networking_steve_match():
         )
         ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
         if not ai_response: ai_response = "I couldn't find matching members. Try refining your request."
+        ai_response = inject_member_mentions(ai_response, member_names)
         return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
     except Exception as e:
         logger.error(f"Error in steve_match: {e}", exc_info=True)
@@ -12679,14 +12682,16 @@ def api_networking_steve_auto_match():
                 except: return ''
             user_profile = f"User: {_v(ur,0)} | {_v(ur,1)} | Bio: {_v(ur,2) or ''} | City: {_v(ur,3) or ''} | Country: {_v(ur,4) or ''} | Industry: {_v(ur,5) or ''} | Role: {_v(ur,6) or ''} | Company: {_v(ur,7) or ''} | Interests: {_v(ur,8) or ''} | About: {_v(ur,9) or ''}" if ur else ""
             c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
-            members_text = "\n".join([f"- {_v(r,0)} | {_v(r,1)} | Bio: {_v(r,2) or ''} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'} | Interests: {_v(r,8) or ''} | About: {_v(r,9) or ''}" for r in c.fetchall()])
+            member_rows = c.fetchall()
+            member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
+            members_text = "\n".join([f"- {_v(r,0)} | {_v(r,1)} | Bio: {_v(r,2) or ''} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'} | Interests: {_v(r,8) or ''} | About: {_v(r,9) or ''}" for r in member_rows])
 
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         response = client.responses.create(
             model="grok-4-1-fast-non-reasoning",
             input=[
-                {"role": "system", "content": "You are Steve, a networking assistant. Analyze the user's profile and all community members' profiles. Suggest the top 3-5 best matches based on shared interests, location, industry, or complementary skills. Be concise and explain why each is a good match."},
+                {"role": "system", "content": "You are Steve, a networking assistant. Analyze the user's profile and all community members' profiles. Suggest the top 3-5 best matches based on shared interests, location, industry, or complementary skills. Be concise and explain why each is a good match. When mentioning a member, always use their username with @ prefix (e.g. @johndoe), never bold formatting."},
                 {"role": "user", "content": f"My profile:\n{user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
             ],
             tools=[{"type": "web_search"}, {"type": "x_search"}],
@@ -12694,6 +12699,7 @@ def api_networking_steve_auto_match():
         )
         ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
         if not ai_response: ai_response = "I couldn't generate matches. Please try again."
+        ai_response = inject_member_mentions(ai_response, member_names)
         return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
     except Exception as e:
         logger.error(f"Error in steve_auto_match: {e}", exc_info=True)
@@ -12807,6 +12813,27 @@ def api_steve_session_add_message(session_id):
     except Exception as e:
         logger.error(f"Error saving steve message: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Failed to save message'}), 500
+
+
+@app.route('/api/networking/steve_session/<int:session_id>', methods=['DELETE'])
+@login_required
+def api_steve_session_delete(session_id):
+    """Permanently delete a Steve chat session and all its messages."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM steve_chat_sessions WHERE id = {ph} AND username = {ph}", (session_id, username))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Session not found'}), 404
+            c.execute(f"DELETE FROM steve_chat_messages WHERE session_id = {ph}", (session_id,))
+            c.execute(f"DELETE FROM steve_chat_sessions WHERE id = {ph}", (session_id,))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting steve session: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to delete session'}), 500
 
 
 @app.route('/audio_compat/<path:filename>')
@@ -21848,6 +21875,27 @@ You CAN be helpful, but wrapped in so much verbal abuse they'll question asking 
 Keep it short, keep it BRUTAL, and make them regret tagging you. 💀🔥'''
     }
 }
+
+def inject_member_mentions(text: str, member_names: list) -> str:
+    """Replace **username** or **display_name** bold markers with @username mentions."""
+    import re
+    if not text or not member_names:
+        return text
+    name_to_username = {}
+    for uname, dname in member_names:
+        name_to_username[uname.lower()] = uname
+        if dname and dname.lower() != uname.lower():
+            name_to_username[dname.lower()] = uname
+    def _replace_bold(match):
+        name = match.group(1).strip()
+        if name.startswith('@'):
+            name = name[1:]
+        lower = name.lower()
+        if lower in name_to_username:
+            return f"@{name_to_username[lower]}"
+        return match.group(0)
+    return re.sub(r'\*\*([^*]+)\*\*', _replace_bold, text)
+
 
 def format_steve_response_links(response_text: str) -> str:
     """

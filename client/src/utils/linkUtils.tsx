@@ -151,9 +151,10 @@ function SmartLink({
 }
 
 /**
- * Colorizes @mentions in an array of React nodes
+ * Colorizes @mentions in an array of React nodes.
+ * When onMentionClick is provided, mentions become clickable.
  */
-function colorizeMentions(nodes: React.ReactNode[]): React.ReactNode[] {
+function colorizeMentions(nodes: React.ReactNode[], onMentionClick?: (username: string) => void): React.ReactNode[] {
   const out: React.ReactNode[] = []
   const mentionRe = /(^|\s)(@([a-zA-Z0-9_]{1,30}))/g
   nodes.forEach((n, idx) => {
@@ -165,9 +166,22 @@ function colorizeMentions(nodes: React.ReactNode[]): React.ReactNode[] {
       const start = m.index
       const lead = m[1]
       const full = m[2]
+      const username = m[3]
       if (start > last) { segs.push(n.slice(last, start)) }
       if (lead) { segs.push(lead) }
-      segs.push(<span key={`men-${idx}-${start}`} className="text-[#4db6ac]">{full}</span>)
+      if (onMentionClick) {
+        segs.push(
+          <span
+            key={`men-${idx}-${start}`}
+            className="text-[#4db6ac] cursor-pointer hover:underline"
+            onClick={(e) => { e.stopPropagation(); onMentionClick(username) }}
+            role="link"
+            tabIndex={0}
+          >{full}</span>
+        )
+      } else {
+        segs.push(<span key={`men-${idx}-${start}`} className="text-[#4db6ac]">{full}</span>)
+      }
       last = start + lead.length + full.length
     }
     if (last < n.length) { segs.push(n.slice(last)) }
@@ -195,7 +209,8 @@ function preserveNewlines(text: string): React.ReactNode[] {
  */
 export function renderTextWithSourceLinks(
   text: string,
-  shortenUrls: boolean = false
+  shortenUrls: boolean = false,
+  onMentionClick?: (username: string) => void
 ): React.ReactNode {
   if (!text) return null
   
@@ -211,7 +226,7 @@ export function renderTextWithSourceLinks(
     // Add text before the link
     if (match.index > lastIndex) {
       const textBefore = text.substring(lastIndex, match.index)
-      parts.push(...colorizeMentions(preserveNewlines(textBefore)))
+      parts.push(...colorizeMentions(preserveNewlines(textBefore), onMentionClick))
     }
     
     let url: string
@@ -251,7 +266,7 @@ export function renderTextWithSourceLinks(
   // Add remaining text
   if (lastIndex < text.length) {
     const remainingText = text.substring(lastIndex)
-    parts.push(...colorizeMentions(preserveNewlines(remainingText)))
+    parts.push(...colorizeMentions(preserveNewlines(remainingText), onMentionClick))
   }
   
   return parts.length > 0 ? <>{parts}</> : text
