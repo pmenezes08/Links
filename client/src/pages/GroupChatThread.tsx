@@ -66,15 +66,16 @@ export default function GroupChatThread() {
     || ''
   const [group, setGroup] = useState<GroupInfo | null>(null)
   const [serverMessages, setServerMessages] = useState<Message[]>([])
-  const [pendingMessages, setPendingMessages] = useState<(Message & { clientKey: string })[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  // Combine server (sorted) and pending messages; pending always at the end to avoid clock-skew jumps
-  const messages = [
-    ...serverMessages.slice().sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
-    ...pendingMessages,
-  ]
+  // Single unified array: server messages sorted, then unconfirmed optimistic at the end
+  const messages = (() => {
+    const confirmed = serverMessages.filter(m => !(m as any).isOptimistic)
+    const optimistic = serverMessages.filter(m => (m as any).isOptimistic)
+    const sorted = confirmed.slice().sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    return [...sorted, ...optimistic]
+  })()
   // Use ref-based draft to avoid React state update issues
   const draftRef = useRef('')
   const [draftDisplay, setDraftDisplay] = useState('') // Only for UI updates (button visibility)
@@ -498,32 +499,39 @@ export default function GroupChatThread() {
 
         if (!silent) setHasMoreMessages(!!data.has_more)
 
-        // Set server messages, but preserve any optimistic messages (negative IDs)
-        // On poll (silent): compare message IDs to avoid unnecessary re-renders (flicker)
         setServerMessages(prev => {
-          const optimistic = prev.filter(m => m.id < 0)
-          const prevServer = prev.filter(m => m.id > 0)
+          const optimistic = prev.filter(m => (m as any).isOptimistic)
+          const prevServer = prev.filter(m => !(m as any).isOptimistic)
 
-          // Quick check: if same message IDs in same order, skip update
           if (silent) {
-            // If the new messages are a subset (just the recent page), merge with older
             const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
             const olderFromPrev = prevServer.filter(m => m.id < minNewId)
             const mergedIds = [...olderFromPrev, ...newServerMessages].map(m => m.id).join(',')
             const currentIds = prevServer.map(m => m.id).join(',')
             if (mergedIds === currentIds) {
-              // Check if any text/edit changed
               const changed = newServerMessages.some(nm => {
                 const pm = prevServer.find(p => p.id === nm.id)
                 return pm && (pm.text !== nm.text || pm.is_edited !== nm.is_edited)
               })
-              if (!changed) return prev
+              if (!changed) {
+                // Still filter out confirmed optimistic
+                const unconfirmed = optimistic.filter(opt =>
+                  !newServerMessages.some(nm =>
+                    nm.sender === opt.sender && nm.text === opt.text &&
+                    Math.abs(new Date(nm.created_at).getTime() - new Date(opt.created_at).getTime()) < 10000
+                  )
+                )
+                if (unconfirmed.length !== optimistic.length) {
+                  return [...prevServer, ...unconfirmed]
+                }
+                return prev
+              }
             }
           }
 
           const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
           const olderMessages = silent ? prevServer.filter(m => m.id < minNewId && !newServerMessages.some(n => n.id === m.id)) : []
-          // Filter out optimistic messages already confirmed by server (prevents duplicates/flicker)
+          // Keep optimistic messages not yet confirmed by server
           const unconfirmedOptimistic = optimistic.filter(opt =>
             !newServerMessages.some(nm =>
               nm.sender === opt.sender && nm.text === opt.text &&
@@ -541,15 +549,6 @@ export default function GroupChatThread() {
           }
         })
         setReactions(prev => ({ ...prev, ...serverReactions }))
-        
-        // Remove any pending messages that now exist on server (by matching text and time)
-        setPendingMessages(prev => prev.filter(pending => {
-          const matchesServer = newServerMessages.some(server => 
-            server.text === pending.text &&
-            Math.abs(new Date(server.created_at).getTime() - new Date(pending.created_at).getTime()) < 30000
-          )
-          return !matchesServer
-        }))
         
         lastMessageIdRef.current = newMaxId
         
@@ -660,10 +659,9 @@ export default function GroupChatThread() {
       formattedMessage = `[REPLY:${replySnapshot.sender}:${replySnippet}]\n${text}`
     }
     
-    // Create pending message (show clean text, not formatted)
     const now = new Date().toISOString()
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const pendingMessage: Message & { clientKey: string; replySnippet?: string; replySender?: string } = {
+    const optimisticMessage: Message & { clientKey: string; replySnippet?: string; replySender?: string; isOptimistic: boolean } = {
       id: -Date.now(),
       sender: currentUsername || 'You',
       text: text,
@@ -674,12 +672,12 @@ export default function GroupChatThread() {
       clientKey: tempId,
       replySnippet: replySnippet,
       replySender: replySnapshot?.sender,
+      isOptimistic: true,
     }
     
-    // Add to pending messages - this is a SEPARATE state, always visible
-    setPendingMessages(prev => [...prev, pendingMessage as any])
+    // Add optimistic message directly to serverMessages (same pattern as DMs)
+    setServerMessages(prev => [...prev, optimisticMessage as any])
 
-    // Send to server (with formatted message including reply)
     fetch(`/api/group_chat/${group_id}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -689,17 +687,36 @@ export default function GroupChatThread() {
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          // Add confirmed message to serverMessages directly to avoid flicker gap
-          setServerMessages(prev => [...prev, data.message])
-          setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+          // Replace optimistic in-place with server-confirmed message
+          setServerMessages(prev => {
+            const updated = prev.map(m =>
+              (m as any).clientKey === tempId
+                ? { ...data.message, clientKey: tempId, isOptimistic: false }
+                : m
+            )
+            // Deduplicate: if poll already added this message, remove the poll copy
+            const serverId = data.message.id
+            const seen = new Set<string>()
+            return updated.filter(m => {
+              if (m.id === serverId) {
+                const key = (m as any).clientKey || String(m.id)
+                if (seen.has(String(serverId))) return false
+                seen.add(String(serverId))
+                // Keep the one with our clientKey (the replaced optimistic)
+                return (m as any).clientKey === tempId
+              }
+              return true
+            })
+          })
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, data.message.id)
         } else {
-          setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+          // Remove optimistic on failure
+          setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
           console.error('Failed to send:', data.error)
         }
       })
       .catch(err => {
-        setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+        setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
         console.error('Error sending message:', err)
       })
       .finally(() => {
@@ -854,7 +871,6 @@ export default function GroupChatThread() {
       groupId: group_id,
       currentUsername,
       setServerMessages,
-      setPendingMessages,
       loadMessages,
       onProgress: setUploadProgress,
       onError: (msg) => alert(msg),
@@ -918,7 +934,6 @@ export default function GroupChatThread() {
       groupId: group_id,
       currentUsername,
       setServerMessages,
-      setPendingMessages,
       loadMessages,
       onProgress: setUploadProgress,
       onError: (msg) => alert(msg),
@@ -961,7 +976,6 @@ export default function GroupChatThread() {
         groupId: group_id,
         currentUsername,
         setServerMessages,
-        setPendingMessages,
         loadMessages,
         onProgress: setUploadProgress,
         onError: (msg) => alert(msg),
@@ -1026,8 +1040,7 @@ export default function GroupChatThread() {
       const uploadData = await uploadResponse.json()
 
       if (uploadData.success && uploadData.audio_path) {
-        // Show optimistic message immediately with voice player + generating indicator
-        const optimisticMsg: Message = {
+        const optimisticMsg = {
           id: optimisticId,
           sender: currentUsername || 'You',
           text: null,
@@ -1036,8 +1049,9 @@ export default function GroupChatThread() {
           audio_summary: null,
           created_at: new Date().toISOString(),
           profile_picture: null,
+          isOptimistic: true,
         }
-        setServerMessages(prev => [...prev, optimisticMsg])
+        setServerMessages(prev => [...prev, optimisticMsg as any])
 
         const response = await fetch(`/api/group_chat/${group_id}/send`, {
           method: 'POST',
@@ -1048,11 +1062,9 @@ export default function GroupChatThread() {
         const data = await response.json()
 
         if (data.success) {
-          // Replace optimistic message with real one (includes audio_summary)
-          setServerMessages(prev => prev.map(m => m.id === optimisticId ? data.message : m))
+          setServerMessages(prev => prev.map(m => m.id === optimisticId ? { ...data.message, isOptimistic: false } : m))
           lastMessageIdRef.current = data.message.id
         } else {
-          // Remove optimistic message on failure
           setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
         }
       }
@@ -1062,7 +1074,6 @@ export default function GroupChatThread() {
       }
     } catch (err) {
       console.error('Error sending voice:', err)
-      // Remove optimistic message on error
       setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
     } finally {
       setSending(false)
@@ -1087,8 +1098,7 @@ export default function GroupChatThread() {
       const uploadData = await uploadResponse.json()
 
       if (uploadData.success && uploadData.audio_path) {
-        // Show optimistic message immediately with voice player + generating indicator
-        const optimisticMsg: Message = {
+        const optimisticMsg = {
           id: optimisticId,
           sender: currentUsername || 'You',
           text: null,
@@ -1097,8 +1107,9 @@ export default function GroupChatThread() {
           audio_summary: null,
           created_at: new Date().toISOString(),
           profile_picture: null,
+          isOptimistic: true,
         }
-        setServerMessages(prev => [...prev, optimisticMsg])
+        setServerMessages(prev => [...prev, optimisticMsg as any])
 
         const response = await fetch(`/api/group_chat/${group_id}/send`, {
           method: 'POST',
@@ -1109,7 +1120,7 @@ export default function GroupChatThread() {
         const data = await response.json()
 
         if (data.success) {
-          setServerMessages(prev => prev.map(m => m.id === optimisticId ? data.message : m))
+          setServerMessages(prev => prev.map(m => m.id === optimisticId ? { ...data.message, isOptimistic: false } : m))
           lastMessageIdRef.current = data.message.id
         } else {
           setServerMessages(prev => prev.filter(m => m.id !== optimisticId))
@@ -1724,9 +1735,7 @@ export default function GroupChatThread() {
                   const showTime = showAvatar || (idx > 0 && 
                     new Date(msg.created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 60000)
                   const messageReaction = reactions[msg.id]
-                  // Check if this is a pending message (not yet confirmed by server)
-                  const isPending = pendingMessages.some(p => p.clientKey === msgWithKey.clientKey)
-                  const isOptimistic = isPending || msgWithKey.clientKey?.startsWith('temp_') || msg.id < 0
+                  const isOptimistic = !!(msgWithKey as any).isOptimistic || msgWithKey.clientKey?.startsWith('temp_') || msg.id < 0
                   // Determine if message is sent by current user
                   // Compare case-insensitively and trim whitespace
                   const senderNormalized = (msg.sender || '').toLowerCase().trim()

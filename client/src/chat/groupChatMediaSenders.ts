@@ -28,8 +28,8 @@ export interface UploadProgress {
 interface BaseMediaOptions {
   groupId: number | string
   currentUsername: string
-  setServerMessages?: Dispatch<SetStateAction<GroupMessage[]>> // Optional, not currently used
-  setPendingMessages: Dispatch<SetStateAction<(GroupMessage & { clientKey: string })[]>>
+  setServerMessages: Dispatch<SetStateAction<GroupMessage[]>>
+  setPendingMessages?: Dispatch<SetStateAction<(GroupMessage & { clientKey: string })[]>>
   loadMessages: (force?: boolean) => void
   onProgress?: (progress: UploadProgress) => void
   onError?: (message: string) => void
@@ -108,21 +108,18 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
     kind = 'photo',
     groupId,
     currentUsername,
-    setServerMessages: _setServerMessages,
-    setPendingMessages,
+    setServerMessages,
     loadMessages,
     onProgress,
     onError = defaultErrorHandler,
     onComplete,
   } = options
-  void _setServerMessages // Intentionally unused - loadMessages handles refresh
 
   const tempId = `temp_${kind}_${Date.now()}_${Math.random()}`
   const now = new Date().toISOString()
   const previewUrl = URL.createObjectURL(file)
 
-  // Create optimistic message
-  const optimisticMessage: GroupMessage & { clientKey: string } = {
+  const optimisticMessage: GroupMessage & { clientKey: string; isOptimistic: boolean } = {
     id: -Date.now(),
     sender: currentUsername,
     text: kind === 'gif' ? '🎞️ GIF' : '📷 Photo',
@@ -134,30 +131,29 @@ export async function sendGroupImageMessage(options: ImageMediaOptions): Promise
     isOptimistic: true,
   }
 
-  // Add to pending messages immediately
-  setPendingMessages(prev => [...prev, optimisticMessage])
+  setServerMessages(prev => [...prev, optimisticMessage as any])
 
   try {
-    // Single request - upload and send in one call (like ChatThread)
     const result = await sendGroupMedia(file, groupId, 'photo', onProgress)
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to send image')
     }
 
-    // Remove from pending, server message will come via loadMessages
-    setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+    // Replace optimistic in-place with server message
+    setServerMessages(prev => prev.map(m =>
+      (m as any).clientKey === tempId
+        ? { ...result.message!, clientKey: tempId, isOptimistic: false }
+        : m
+    ))
     
-    // Refresh messages — immediate + delayed to catch Firestore sync
     loadMessages(true)
     setTimeout(() => loadMessages(true), 2000)
     
     return true
   } catch (error) {
     console.error('[GroupMedia] Image send failed:', error)
-    
-    // Remove optimistic message on failure
-    setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+    setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
     
     const errorMsg = error instanceof Error ? error.message : 'Unknown error'
     onError(kind === 'gif' ? `Failed to send GIF: ${errorMsg}` : `Failed to send photo: ${errorMsg}`)
@@ -180,21 +176,18 @@ export async function sendGroupVideoMessage(options: VideoMediaOptions): Promise
     file,
     groupId,
     currentUsername,
-    setServerMessages: _setServerMessages,
-    setPendingMessages,
+    setServerMessages,
     loadMessages,
     onProgress,
     onError = defaultErrorHandler,
     onComplete,
   } = options
-  void _setServerMessages // Intentionally unused - loadMessages handles refresh
 
   const tempId = `temp_video_${Date.now()}_${Math.random()}`
   const now = new Date().toISOString()
   const previewUrl = URL.createObjectURL(file)
 
-  // Create optimistic message
-  const optimisticMessage: GroupMessage & { clientKey: string } = {
+  const optimisticMessage: GroupMessage & { clientKey: string; isOptimistic: boolean } = {
     id: -Date.now(),
     sender: currentUsername,
     text: '🎬 Video',
@@ -207,30 +200,28 @@ export async function sendGroupVideoMessage(options: VideoMediaOptions): Promise
     isOptimistic: true,
   }
 
-  // Add to pending messages immediately
-  setPendingMessages(prev => [...prev, optimisticMessage])
+  setServerMessages(prev => [...prev, optimisticMessage as any])
 
   try {
-    // Single request - upload and send in one call (like ChatThread)
     const result = await sendGroupMedia(file, groupId, 'video', onProgress)
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to send video')
     }
 
-    // Remove from pending, server message will come via loadMessages
-    setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+    setServerMessages(prev => prev.map(m =>
+      (m as any).clientKey === tempId
+        ? { ...result.message!, clientKey: tempId, isOptimistic: false }
+        : m
+    ))
     
-    // Refresh messages — immediate + delayed to catch Firestore sync
     loadMessages(true)
     setTimeout(() => loadMessages(true), 2000)
     
     return true
   } catch (error) {
     console.error('[GroupMedia] Video send failed:', error)
-    
-    // Remove optimistic message on failure
-    setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+    setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
     
     const errorMsg = error instanceof Error ? error.message : 'Unknown error'
     onError(`Failed to send video: ${errorMsg}`)
@@ -253,25 +244,21 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
     files,
     groupId,
     currentUsername,
-    setServerMessages: _setServerMessages,
-    setPendingMessages,
+    setServerMessages,
     loadMessages,
     onProgress,
     onError = defaultErrorHandler,
     onComplete,
   } = options
-  void _setServerMessages
 
   if (files.length === 0) return false
 
   const tempId = `temp_multi_${Date.now()}_${Math.random()}`
   const now = new Date().toISOString()
   
-  // Create preview URLs for optimistic display
   const previewUrls = files.map(f => URL.createObjectURL(f.file))
 
-  // Create optimistic message with grouped media
-  const optimisticMessage: GroupMessage & { clientKey: string } = {
+  const optimisticMessage: GroupMessage & { clientKey: string; isOptimistic: boolean } = {
     id: -Date.now(),
     sender: currentUsername,
     text: files.length > 1 ? `📷 ${files.length} items` : (files[0].type === 'video' ? '🎬 Video' : '📷 Photo'),
@@ -285,8 +272,7 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
     isOptimistic: true,
   }
 
-  // Add to pending messages immediately
-  setPendingMessages(prev => [...prev, optimisticMessage])
+  setServerMessages(prev => [...prev, optimisticMessage as any])
 
   try {
     onProgress?.({ stage: 'uploading', progress: 5, message: `Uploading ${files.length} items...` })
@@ -378,19 +364,25 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
     
     onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
 
-    // Remove from pending, server message will come via loadMessages
-    setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+    // Replace optimistic in-place if server returned the message
+    if (payload.message) {
+      setServerMessages(prev => prev.map(m =>
+        (m as any).clientKey === tempId
+          ? { ...payload.message, clientKey: tempId, isOptimistic: false }
+          : m
+      ))
+    } else {
+      // No message returned — remove optimistic, poll will pick it up
+      setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
+    }
     
-    // Refresh messages — immediate + delayed to catch Firestore sync
     loadMessages(true)
     setTimeout(() => loadMessages(true), 2000)
     
     return true
   } catch (error) {
     console.error('[GroupMedia] Multi-media send failed:', error)
-    
-    // Remove optimistic message on failure
-    setPendingMessages(prev => prev.filter(m => m.clientKey !== tempId))
+    setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
     
     const errorMsg = error instanceof Error ? error.message : 'Unknown error'
     onError(`Failed to send media: ${errorMsg}`)
