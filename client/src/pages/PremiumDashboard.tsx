@@ -21,7 +21,7 @@ const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
 // type Community = { id: number; name: string; type: string }
 
 export default function PremiumDashboard() {
-  const { setProfile: setContextProfile } = useUserProfile()
+  const { profile: contextProfile, setProfile: setContextProfile } = useUserProfile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [communities, setCommunities] = useState<Array<{id: number, name: string, type: string}>>([])
@@ -235,67 +235,60 @@ export default function PremiumDashboard() {
     let hasGymAccessFlag = false
     let isAdminFlag = false
     try {
-      // Profile (email verification status)
-      try{
-        const profileUrl = forceRefresh ? `/api/profile_me?_nocache=${Date.now()}` : '/api/profile_me'
-        const r = await fetch(profileUrl, { credentials:'include', cache: forceRefresh ? 'no-store' : 'default' })
-        if (r.status === 403){ navigate('/verify_required', { replace: true }); return }
-        const me = await r.json().catch(()=>null)
-        if (me?.success && me.profile){
-          setEmailVerified(!!me.profile.email_verified)
-          setEmailVerifiedAt(me.profile.email_verified_at || null)
-          setUsername(me.profile.username || '')
-          setFirstName(me.profile.first_name || '')
-          setDisplayName(me.profile.display_name || me.profile.username)
-          const profilePicValue = me.profile.profile_picture || null
-          const resolvedPic = resolveAvatar(profilePicValue)
-          setHasProfilePic(!!profilePicValue)
-          setExistingProfilePic(resolvedPic)
-          setPicPreview(prev => prev || resolvedPic)
-          setSubscription((me.profile.subscription || 'free') as string)
-          profileSnapshot = {
-            emailVerified: !!me.profile.email_verified,
-            emailVerifiedAt: me.profile.email_verified_at || null,
-            username: me.profile.username || '',
-            firstName: me.profile.first_name || '',
-            displayName: me.profile.display_name || me.profile.username || '',
-            subscription: (me.profile.subscription || 'free') as string,
-            hasProfilePic: !!profilePicValue,
-            existingProfilePic: resolvedPic,
-          }
-        }
-      }catch{ setEmailVerified(null) }
+      const [profileResult, gymData, adminCheck, parentData] = await Promise.all([
+        // Profile
+        (async () => {
+          if (!forceRefresh && contextProfile) return { success: true, profile: contextProfile }
+          const profileUrl = forceRefresh ? `/api/profile_me?_nocache=${Date.now()}` : '/api/profile_me'
+          const r = await fetch(profileUrl, { credentials:'include', cache: forceRefresh ? 'no-store' : 'default' })
+          if (r.status === 403) return { _forbidden: true } as any
+          return await r.json().catch(() => null)
+        })(),
+        fetchJson('/api/check_gym_membership', forceRefresh),
+        fetchJson('/api/check_admin', forceRefresh).catch(() => null),
+        fetchJson('/api/user_parent_community', forceRefresh),
+      ])
 
-      // Check gym membership
-      const gymData = await fetchJson('/api/check_gym_membership', forceRefresh)
+      if (profileResult?._forbidden) {
+        navigate('/verify_required', { replace: true })
+        return
+      }
+
+      const me = profileResult
+      if (me?.success && me.profile) {
+        setEmailVerified(!!me.profile.email_verified)
+        setEmailVerifiedAt(me.profile.email_verified_at || null)
+        setUsername(me.profile.username || '')
+        setFirstName(me.profile.first_name || '')
+        setDisplayName(me.profile.display_name || me.profile.username)
+        const profilePicValue = me.profile.profile_picture || null
+        const resolvedPic = resolveAvatar(profilePicValue)
+        setHasProfilePic(!!profilePicValue)
+        setExistingProfilePic(resolvedPic)
+        setPicPreview(prev => prev || resolvedPic)
+        setSubscription((me.profile.subscription || 'free') as string)
+        profileSnapshot = {
+          emailVerified: !!me.profile.email_verified,
+          emailVerifiedAt: me.profile.email_verified_at || null,
+          username: me.profile.username || '',
+          firstName: me.profile.first_name || '',
+          displayName: me.profile.display_name || me.profile.username || '',
+          subscription: (me.profile.subscription || 'free') as string,
+          hasProfilePic: !!profilePicValue,
+          existingProfilePic: resolvedPic,
+        }
+      }
+
       hasGymAccessFlag = !!(gymData?.hasGymAccess)
       setHasGymAccess(hasGymAccessFlag)
-      
-      // Check if user is app admin
-      try {
-        const adminCheck = await fetchJson('/api/check_admin', forceRefresh)
-        isAdminFlag = !!(adminCheck?.is_admin)
-        setIsAppAdmin(isAdminFlag)
-      } catch {
-        setIsAppAdmin(false)
-        isAdminFlag = false
-      }
 
-      // Get all user communities and decide using the fetched value (avoid stale state)
-      const parentData = await fetchJson('/api/user_parent_community', forceRefresh)
-      console.log('Dashboard: Parent communities API response:', parentData)
+      isAdminFlag = !!(adminCheck?.is_admin)
+      setIsAppAdmin(isAdminFlag)
+
       const resolvedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
       cachedCommunities = resolvedCommunities
-      if (resolvedCommunities.length > 0) {
-        console.log('Dashboard: Setting communities:', resolvedCommunities)
-        setCommunities(resolvedCommunities)
-        setCommunitiesLoaded(true)
-      } else {
-        console.log('Dashboard: No communities found or API error')
-        setCommunities([])
-        setCommunitiesLoaded(true)
-        // Direct fix: do not redirect here; welcome/join modal handles first-time case
-      }
+      setCommunities(resolvedCommunities)
+      setCommunitiesLoaded(true)
 
       if (profileSnapshot) {
         writeDeviceCache(
@@ -317,7 +310,7 @@ export default function PremiumDashboard() {
     } finally {
       setInitialLoading(false)
     }
-  }, [navigate])
+  }, [navigate, contextProfile])
 
   const refreshDashboardSilently = useCallback(async () => {
     if (refreshInFlightRef.current) return

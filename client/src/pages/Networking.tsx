@@ -49,6 +49,10 @@ export default function Networking() {
   const [steveSending, setSteveSending] = useState(false)
   const [autoMatching, setAutoMatching] = useState(false)
   const steveEndRef = useRef<HTMLDivElement>(null)
+  const [steveSessionId, setSteveSessionId] = useState<number | null>(null)
+  const [steveSessions, setSteveSessions] = useState<Array<{ id: number; created_at: string; first_message: string }>>([])
+  const [showSessionList, setShowSessionList] = useState(false)
+  const [sessionsLoading, setSessionsLoading] = useState(false)
 
   // Keyboard tracking — same approach as GroupChatThread
   const [keyboardOffset, setKeyboardOffset] = useState(0)
@@ -154,6 +158,68 @@ export default function Networking() {
       .finally(() => setLoading(false))
   }, [])
 
+  const loadSessions = useCallback((communityId: number) => {
+    setSessionsLoading(true)
+    fetch(`/api/networking/steve_sessions?community_id=${communityId}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          setSteveSessions(data.sessions || [])
+          if (data.sessions?.length > 0) {
+            const latest = data.sessions[0]
+            setSteveSessionId(latest.id)
+            fetch(`/api/networking/steve_session/${latest.id}/messages`, { credentials: 'include' })
+              .then(r => r.json())
+              .then(d => { if (d.success) setSteveMessages(d.messages || []) })
+              .catch(() => {})
+          } else {
+            setSteveSessionId(null)
+            setSteveMessages([])
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setSessionsLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (steveCommunity) loadSessions(steveCommunity)
+  }, [steveCommunity, loadSessions])
+
+  const startNewChat = useCallback(() => {
+    if (!steveCommunity) return
+    fetch('/api/networking/steve_session', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', body: JSON.stringify({ community_id: steveCommunity })
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          setSteveSessionId(data.session_id)
+          setSteveMessages([])
+          setShowSessionList(false)
+          loadSessions(steveCommunity)
+        }
+      })
+      .catch(() => {})
+  }, [steveCommunity, loadSessions])
+
+  const loadSession = useCallback((sessionId: number) => {
+    setSteveSessionId(sessionId)
+    setShowSessionList(false)
+    fetch(`/api/networking/steve_session/${sessionId}/messages`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (d.success) setSteveMessages(d.messages || []) })
+      .catch(() => {})
+  }, [])
+
+  const saveMessage = useCallback((sessionId: number, role: 'user' | 'steve', text: string) => {
+    fetch(`/api/networking/steve_session/${sessionId}/message`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', body: JSON.stringify({ role, text })
+    }).catch(() => {})
+  }, [])
+
   useEffect(() => { steveEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [steveMessages])
 
   // Personal: load filters + members
@@ -186,29 +252,63 @@ export default function Networking() {
       .catch(() => {})
   }, [selectedLocation, selectedIndustry, selectedInterest, personalCommunity])
 
+  const ensureSession = useCallback(async (): Promise<number | null> => {
+    if (steveSessionId) return steveSessionId
+    if (!steveCommunity) return null
+    try {
+      const res = await fetch('/api/networking/steve_session', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', body: JSON.stringify({ community_id: steveCommunity })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setSteveSessionId(data.session_id)
+        return data.session_id
+      }
+    } catch {}
+    return null
+  }, [steveSessionId, steveCommunity])
+
   const sendSteveMessage = async () => {
     if (!steveInput.trim() || !steveCommunity || steveSending) return
     const msg = steveInput.trim()
     setSteveInput('')
     setSteveMessages(prev => [...prev, { role: 'user', text: msg }])
     setSteveSending(true)
+    const sid = await ensureSession()
+    if (sid) saveMessage(sid, 'user', msg)
     try {
       const res = await fetch('/api/networking/steve_match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ community_id: steveCommunity, message: msg }) })
       const data = await res.json()
-      setSteveMessages(prev => [...prev, { role: 'steve', text: data.success ? data.response : (data.error || 'Something went wrong.') }])
-    } catch { setSteveMessages(prev => [...prev, { role: 'steve', text: 'Network error. Please try again.' }]) }
+      const reply = data.success ? data.response : (data.error || 'Something went wrong.')
+      setSteveMessages(prev => [...prev, { role: 'steve', text: reply }])
+      if (sid) saveMessage(sid, 'steve', reply)
+    } catch {
+      const errMsg = 'Network error. Please try again.'
+      setSteveMessages(prev => [...prev, { role: 'steve', text: errMsg }])
+      if (sid) saveMessage(sid, 'steve', errMsg)
+    }
     setSteveSending(false)
   }
 
   const triggerAutoMatch = async () => {
     if (!steveCommunity || autoMatching) return
     setAutoMatching(true)
-    setSteveMessages(prev => [...prev, { role: 'user', text: '✨ Find me the best matches based on my profile' }])
+    const userMsg = '✨ Find me the best matches based on my profile'
+    setSteveMessages(prev => [...prev, { role: 'user', text: userMsg }])
+    const sid = await ensureSession()
+    if (sid) saveMessage(sid, 'user', userMsg)
     try {
       const res = await fetch('/api/networking/steve_auto_match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ community_id: steveCommunity }) })
       const data = await res.json()
-      setSteveMessages(prev => [...prev, { role: 'steve', text: data.success ? data.response : (data.error || 'Something went wrong.') }])
-    } catch { setSteveMessages(prev => [...prev, { role: 'steve', text: 'Network error. Please try again.' }]) }
+      const reply = data.success ? data.response : (data.error || 'Something went wrong.')
+      setSteveMessages(prev => [...prev, { role: 'steve', text: reply }])
+      if (sid) saveMessage(sid, 'steve', reply)
+    } catch {
+      const errMsg = 'Network error. Please try again.'
+      setSteveMessages(prev => [...prev, { role: 'steve', text: errMsg }])
+      if (sid) saveMessage(sid, 'steve', errMsg)
+    }
     setAutoMatching(false)
   }
 
@@ -260,11 +360,52 @@ export default function Networking() {
               {/* Community selector */}
               <select
                 value={steveCommunity || ''}
-                onChange={e => { setSteveCommunity(Number(e.target.value)); setSteveMessages([]) }}
+                onChange={e => { setSteveCommunity(Number(e.target.value)); setSteveMessages([]); setSteveSessionId(null); setShowSessionList(false) }}
                 className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-xs text-white focus:outline-none focus:border-[#4db6ac]"
               >
                 {communities.map(c => <option key={c.id} value={c.id} className="bg-black">{c.name}</option>)}
               </select>
+
+              {/* Session controls */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={startNewChat}
+                  className="flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white hover:border-white/35 transition"
+                >
+                  <i className="fa-solid fa-plus text-[10px] text-[#4db6ac]" />
+                  New Chat
+                </button>
+                <button
+                  onClick={() => setShowSessionList(prev => !prev)}
+                  className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition ${showSessionList ? 'border-[#4db6ac]/50 text-[#4db6ac]' : 'border-white/15 text-white hover:border-white/35'}`}
+                >
+                  <i className="fa-solid fa-clock-rotate-left text-[10px]" />
+                  History
+                  {steveSessions.length > 0 && <span className="text-[10px] text-[#6f7c81]">({steveSessions.length})</span>}
+                </button>
+              </div>
+
+              {/* Session history list */}
+              {showSessionList && (
+                <div className="rounded-xl border border-white/10 bg-black/60 p-2 max-h-[200px] overflow-y-auto space-y-1">
+                  {sessionsLoading ? (
+                    <div className="text-xs text-[#6f7c81] py-2 text-center">Loading…</div>
+                  ) : steveSessions.length === 0 ? (
+                    <div className="text-xs text-[#6f7c81] py-2 text-center">No previous chats</div>
+                  ) : (
+                    steveSessions.map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => loadSession(s.id)}
+                        className={`w-full text-left rounded-lg px-3 py-2 text-xs transition ${s.id === steveSessionId ? 'bg-white/10 text-white' : 'text-[#a7b8be] hover:bg-white/5'}`}
+                      >
+                        <div className="truncate font-medium">{s.first_message || 'New chat'}</div>
+                        <div className="text-[10px] text-[#6f7c81] mt-0.5">{new Date(s.created_at.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
 
               {/* Chat area */}
               <div className="rounded-xl border border-white/10 bg-black/50 p-3 min-h-[280px] max-h-[50vh] overflow-y-auto space-y-3">

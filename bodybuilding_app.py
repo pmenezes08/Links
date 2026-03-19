@@ -147,6 +147,46 @@ try:
 except Exception as _me:
     print(f"[STARTUP] Mute table init warning: {_me}", file=sys.stderr, flush=True)
 
+try:
+    with get_db_connection() as _sc:
+        _scc = _sc.cursor()
+        if USE_MYSQL:
+            _scc.execute("""CREATE TABLE IF NOT EXISTS steve_chat_sessions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(191) NOT NULL,
+                community_id INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_steve_user_comm (username, community_id)
+            )""")
+            _scc.execute("""CREATE TABLE IF NOT EXISTS steve_chat_messages (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                session_id INT NOT NULL,
+                role ENUM('user','steve') NOT NULL,
+                text TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_steve_session (session_id),
+                FOREIGN KEY (session_id) REFERENCES steve_chat_sessions(id) ON DELETE CASCADE
+            )""")
+        else:
+            _scc.execute("""CREATE TABLE IF NOT EXISTS steve_chat_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                community_id INTEGER NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )""")
+            _scc.execute("""CREATE TABLE IF NOT EXISTS steve_chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                role TEXT NOT NULL CHECK(role IN ('user','steve')),
+                text TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (session_id) REFERENCES steve_chat_sessions(id) ON DELETE CASCADE
+            )""")
+        _sc.commit()
+    print("[STARTUP] Steve chat tables ensured", file=sys.stderr, flush=True)
+except Exception as _se:
+    print(f"[STARTUP] Steve chat table init warning: {_se}", file=sys.stderr, flush=True)
+
 MISSING_UPLOAD_CACHE = deque(maxlen=200)
 
 COUNTRY_CACHE_TTL = 60 * 60 * 24  # 24 hours
@@ -320,20 +360,16 @@ def add_cors_headers(response):
 
 @app.after_request
 def add_cache_headers(response):
-    """Add aggressive caching headers for static files to improve performance"""
-    # Force no-cache for HTML responses (especially important for iOS WKWebView)
+    """Add caching headers for static files to improve performance"""
     content_type = response.headers.get('Content-Type', '')
     if 'text/html' in content_type:
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Cache-Control'] = 'no-cache'
         response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
         return response
     
-    # Force no-cache for service worker
     if request.path.endswith('sw.js'):
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Cache-Control'] = 'no-cache'
         response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
         return response
     
     # Check if this is a static file request
@@ -12662,6 +12698,115 @@ def api_networking_steve_auto_match():
     except Exception as e:
         logger.error(f"Error in steve_auto_match: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'AI service error'}), 500
+
+
+@app.route('/api/networking/steve_sessions', methods=['GET'])
+@login_required
+def api_steve_sessions():
+    """List Steve chat sessions for the current user (last 30 days)."""
+    username = session.get('username')
+    community_id = request.args.get('community_id')
+    if not community_id:
+        return jsonify({'success': False, 'error': 'community_id required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            if USE_MYSQL:
+                c.execute(f"""SELECT s.id, s.created_at,
+                    (SELECT sm.text FROM steve_chat_messages sm WHERE sm.session_id = s.id AND sm.role = 'user' ORDER BY sm.id ASC LIMIT 1) AS first_message
+                    FROM steve_chat_sessions s
+                    WHERE s.username = {ph} AND s.community_id = {ph} AND s.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                    ORDER BY s.created_at DESC""", (username, community_id))
+            else:
+                c.execute(f"""SELECT s.id, s.created_at,
+                    (SELECT sm.text FROM steve_chat_messages sm WHERE sm.session_id = s.id AND sm.role = 'user' ORDER BY sm.id ASC LIMIT 1) AS first_message
+                    FROM steve_chat_sessions s
+                    WHERE s.username = {ph} AND s.community_id = {ph} AND s.created_at >= datetime('now', '-30 days')
+                    ORDER BY s.created_at DESC""", (username, community_id))
+            rows = c.fetchall()
+            sessions = []
+            for r in rows:
+                if hasattr(r, 'keys'):
+                    sessions.append({'id': r['id'], 'created_at': str(r['created_at']), 'first_message': r['first_message'] or ''})
+                else:
+                    sessions.append({'id': r[0], 'created_at': str(r[1]), 'first_message': r[2] or ''})
+            return jsonify({'success': True, 'sessions': sessions})
+    except Exception as e:
+        logger.error(f"Error loading steve sessions: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to load sessions'}), 500
+
+
+@app.route('/api/networking/steve_session/<int:session_id>/messages', methods=['GET'])
+@login_required
+def api_steve_session_messages(session_id):
+    """Load messages for a specific Steve chat session."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM steve_chat_sessions WHERE id = {ph} AND username = {ph}", (session_id, username))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Session not found'}), 404
+            c.execute(f"SELECT role, text FROM steve_chat_messages WHERE session_id = {ph} ORDER BY id ASC", (session_id,))
+            messages = []
+            for r in c.fetchall():
+                if hasattr(r, 'keys'):
+                    messages.append({'role': r['role'], 'text': r['text']})
+                else:
+                    messages.append({'role': r[0], 'text': r[1]})
+            return jsonify({'success': True, 'messages': messages})
+    except Exception as e:
+        logger.error(f"Error loading steve session messages: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to load messages'}), 500
+
+
+@app.route('/api/networking/steve_session', methods=['POST'])
+@login_required
+def api_steve_session_create():
+    """Create a new Steve chat session."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    community_id = data.get('community_id')
+    if not community_id:
+        return jsonify({'success': False, 'error': 'community_id required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"INSERT INTO steve_chat_sessions (username, community_id) VALUES ({ph}, {ph})", (username, community_id))
+            conn.commit()
+            session_id = c.lastrowid
+            return jsonify({'success': True, 'session_id': session_id})
+    except Exception as e:
+        logger.error(f"Error creating steve session: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to create session'}), 500
+
+
+@app.route('/api/networking/steve_session/<int:session_id>/message', methods=['POST'])
+@login_required
+def api_steve_session_add_message(session_id):
+    """Add a message to a Steve chat session."""
+    username = session.get('username')
+    data = request.get_json() or {}
+    role = data.get('role')
+    text = data.get('text', '').strip()
+    if role not in ('user', 'steve') or not text:
+        return jsonify({'success': False, 'error': 'role and text required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM steve_chat_sessions WHERE id = {ph} AND username = {ph}", (session_id, username))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Session not found'}), 404
+            c.execute(f"INSERT INTO steve_chat_messages (session_id, role, text) VALUES ({ph}, {ph}, {ph})", (session_id, role, text))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error saving steve message: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to save message'}), 500
 
 
 @app.route('/audio_compat/<path:filename>')
