@@ -687,26 +687,20 @@ export default function GroupChatThread() {
       .then(response => response.json())
       .then(data => {
         if (data.success) {
-          // Replace optimistic in-place with server-confirmed message
           setServerMessages(prev => {
-            const updated = prev.map(m =>
-              (m as any).clientKey === tempId
-                ? { ...data.message, clientKey: tempId, isOptimistic: false }
-                : m
-            )
-            // Deduplicate: if poll already added this message, remove the poll copy
-            const serverId = data.message.id
-            const seen = new Set<string>()
-            return updated.filter(m => {
-              if (m.id === serverId) {
-                const key = (m as any).clientKey || String(m.id)
-                if (seen.has(String(serverId))) return false
-                seen.add(String(serverId))
-                // Keep the one with our clientKey (the replaced optimistic)
-                return (m as any).clientKey === tempId
+            let found = false
+            const updated = prev.map(m => {
+              if ((m as any).clientKey === tempId) {
+                found = true
+                return { ...data.message, clientKey: tempId, isOptimistic: false }
               }
-              return true
+              return m
             })
+            if (!found) return prev
+            const serverId = data.message.id
+            return updated.filter(m =>
+              m.id !== serverId || (m as any).clientKey === tempId
+            )
           })
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, data.message.id)
         } else {
