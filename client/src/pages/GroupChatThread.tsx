@@ -522,7 +522,14 @@ export default function GroupChatThread() {
 
           const minNewId = newServerMessages.length > 0 ? Math.min(...newServerMessages.map(m => m.id)) : Infinity
           const olderMessages = silent ? prevServer.filter(m => m.id < minNewId && !newServerMessages.some(n => n.id === m.id)) : []
-          return [...olderMessages, ...newServerMessages, ...optimistic]
+          // Filter out optimistic messages already confirmed by server (prevents duplicates/flicker)
+          const unconfirmedOptimistic = optimistic.filter(opt =>
+            !newServerMessages.some(nm =>
+              nm.sender === opt.sender && nm.text === opt.text &&
+              Math.abs(new Date(nm.created_at).getTime() - new Date(opt.created_at).getTime()) < 10000
+            )
+          )
+          return [...olderMessages, ...newServerMessages, ...unconfirmedOptimistic]
         })
         
         // Populate reactions from server data
@@ -1450,6 +1457,10 @@ export default function GroupChatThread() {
       const data = await response.json()
       
       if (data.success) {
+        // Re-apply edited state in case a poll overwrote the optimistic update
+        setServerMessages(prev => prev.map(m => 
+          m.id === editingId ? { ...m, text: newText, is_edited: true } : m
+        ))
         setEditingId(null)
         setEditText('')
       } else {

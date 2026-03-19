@@ -77,8 +77,14 @@ function iconFor(type?: string){
 
 function timeAgo(ts?: string){
   if (!ts) return ''
-  const d = new Date(ts)
+  // Server stores timestamps in UTC — ensure JS parses them as UTC
+  let normalized = ts
+  if (!ts.endsWith('Z') && !ts.includes('+')) {
+    normalized = ts.replace(' ', 'T') + 'Z'
+  }
+  const d = new Date(normalized)
   const s = Math.floor((Date.now() - d.getTime())/1000)
+  if (s < 0) return 'just now'
   if (s < 60) return 'just now'
   if (s < 3600) return Math.floor(s/60)+'m'
   if (s < 86400) return Math.floor(s/3600)+'h'
