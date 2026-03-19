@@ -69,12 +69,11 @@ export default function GroupChatThread() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  // Single unified array: server messages sorted, then unconfirmed optimistic at the end
+  // Server messages are already in chronological order from the API; just append optimistic at the end
   const messages = (() => {
     const confirmed = serverMessages.filter(m => !(m as any).isOptimistic)
     const optimistic = serverMessages.filter(m => (m as any).isOptimistic)
-    const sorted = confirmed.slice().sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    return [...sorted, ...optimistic]
+    return [...confirmed, ...optimistic]
   })()
   // Use ref-based draft to avoid React state update issues
   const draftRef = useRef('')
