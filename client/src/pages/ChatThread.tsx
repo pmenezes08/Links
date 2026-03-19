@@ -18,10 +18,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import ZoomableImage from '../components/ZoomableImage'
-// E2E encryption disabled - these imports kept for future re-enablement
-// import { encryptionService } from '../services/simpleEncryption'
-import { signalService } from '../services/signalProtocol' // Still needed for device ID in disabled code path
-import { useSignalDecryption, DECRYPTION_RETRY_DELAY_MS } from '../hooks/useSignalDecryption'
+// Encryption removed — not in use
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
@@ -110,10 +107,6 @@ export default function ChatThread(){
   const [draftDisplay, setDraftDisplay] = useState('')
   const [replyTo, setReplyTo] = useState<{ text:string; sender?:string; image_path?:string; video_path?:string; audio_path?:string; audio_summary?:string }|null>(null)
   const [sending, setSendingState] = useState(false)
-  // Check if encryption keys need to be synced from another device
-  const [encryptionNeedsSync] = useState(() => 
-    localStorage.getItem('encryption_needs_sync') === 'true'
-  )
   const listRef = useRef<HTMLDivElement|null>(null)
   const textareaRef = useRef<HTMLTextAreaElement|null>(null)
   const storageKey = useMemo(() => `chat_meta_${username || ''}`, [username])
@@ -180,62 +173,6 @@ export default function ChatThread(){
   const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
-  // Track last decryption retry to prevent infinite loops
-  const lastDecryptionRetryRef = useRef<number>(0)
-  const decryptionRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const { decryptMessageIfNeeded, retryFailedDecrypts, shouldRetryDecryption, signalReady, invalidateCachedDecryption, cacheDecryptedMessage } =
-    useSignalDecryption({
-      messages,
-      setMessages,
-    })
-
-  useEffect(() => {
-    if (!signalReady) return
-    // Only retry on signal ready if we haven't retried recently
-    const now = Date.now()
-    if (now - lastDecryptionRetryRef.current < DECRYPTION_RETRY_DELAY_MS) return
-    lastDecryptionRetryRef.current = now
-    retryFailedDecrypts()
-  }, [signalReady, retryFailedDecrypts])
-
-  useEffect(() => {
-    // Clear any pending timer on cleanup or re-run
-    if (decryptionRetryTimerRef.current) {
-      clearTimeout(decryptionRetryTimerRef.current)
-      decryptionRetryTimerRef.current = null
-    }
-    
-    // Check if any messages need retry
-    const needsRetry = messages.some(shouldRetryDecryption)
-    if (!needsRetry) return
-    
-    // Check if we've retried recently - prevent infinite loops
-    const now = Date.now()
-    const timeSinceLastRetry = now - lastDecryptionRetryRef.current
-    if (timeSinceLastRetry < DECRYPTION_RETRY_DELAY_MS) {
-      // Schedule retry after the remaining delay
-      const remainingDelay = DECRYPTION_RETRY_DELAY_MS - timeSinceLastRetry + 200
-      decryptionRetryTimerRef.current = setTimeout(() => {
-        lastDecryptionRetryRef.current = Date.now()
-        retryFailedDecrypts()
-      }, remainingDelay)
-      return
-    }
-    
-    // Schedule normal retry
-    decryptionRetryTimerRef.current = setTimeout(() => {
-      lastDecryptionRetryRef.current = Date.now()
-      retryFailedDecrypts()
-    }, DECRYPTION_RETRY_DELAY_MS + 200)
-    
-    return () => {
-      if (decryptionRetryTimerRef.current) {
-        clearTimeout(decryptionRetryTimerRef.current)
-        decryptionRetryTimerRef.current = null
-      }
-    }
-  }, [messages, retryFailedDecrypts, shouldRetryDecryption])
 
   // Auto-scroll logic - declared early so it can be used in useEffects
   const lastCountRef = useRef(0)
@@ -567,10 +504,6 @@ export default function ChatThread(){
       encrypted_body_for_sender: undefined,
       decryption_error: false
     }) : m))
-    // Clear decryption cache for this message so it doesn't use stale cached decryption
-    if (editingId != null) {
-      invalidateCachedDecryption(editingId)
-    }
     try{
       const res = await fetch('/api/chat/edit_message', { method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ message_id: editingId, text: newBody }) })
       const j = await res.json().catch(()=>null)
@@ -677,10 +610,7 @@ export default function ChatThread(){
 
   // Helper to process raw messages (decrypt, parse replies, add metadata)
   const processRawMessages = useCallback(async (rawMessages: any[]): Promise<Message[]> => {
-    // Decrypt encrypted messages first
-    const decryptedMessages = await Promise.all(
-      rawMessages.map(async (m: any) => await decryptMessageIfNeeded(m))
-    )
+    const decryptedMessages = rawMessages
     
     // Load all reactions from ID-based storage (more reliable than time-based)
     const storedReactions = username ? getAllMessageReactions(username) : {}
@@ -728,7 +658,7 @@ export default function ChatThread(){
         edited_at: m.edited_at || null,
       }
     })
-  }, [decryptMessageIfNeeded, username])
+  }, [username])
 
   // Load cached profile immediately
   useEffect(() => {
@@ -1116,10 +1046,7 @@ export default function ChatThread(){
             })
             lastKnownMessageIdRef.current = maxId
             
-            // Process encrypted messages (mostly no-op since E2E disabled)
-            const decryptedMessages = await Promise.all(
-              j.messages.map(async (m: any) => await decryptMessageIfNeeded(m))
-            )
+            const decryptedMessages = j.messages
             
             // Load all reactions from ID-based storage (more reliable)
             const storedReactions = username ? getAllMessageReactions(username) : {}
@@ -1424,7 +1351,7 @@ export default function ChatThread(){
     return () => { 
       if (pollTimer.current) clearInterval(pollTimer.current) 
     }
-  }, [username, otherUserId, decryptMessageIfNeeded])
+  }, [username, otherUserId])
 
   function adjustTextareaHeight(){
     const ta = textareaRef.current
@@ -1496,23 +1423,6 @@ export default function ChatThread(){
         formattedMessage = `[REPLY:${replySender}:${replySnippet}]\n${messageText}`
       }
       
-      // E2E Encryption disabled - send plaintext messages
-      // The server stores messages securely, and HTTPS protects in-transit
-      const isEncrypted = false
-      const encryptedBodyForRecipient = ''
-      const encryptedBodyForSender = ''
-      const signalCiphertexts: Array<{
-        targetUsername: string
-        targetDeviceId: number
-        senderDeviceId: number
-        ciphertext: string
-        messageType: number
-      }> = []
-      const useSignalProtocol = false
-      
-      // Create optimistic message WITH encryption flags
-      // Use messageText (not formattedMessage) for display - formattedMessage contains [REPLY:...] prefix
-      // which should only be sent to server, not displayed
       const optimisticMessage: Message = { 
         id: tempId, 
         text: messageText, 
@@ -1520,10 +1430,8 @@ export default function ChatThread(){
         time: now, 
         replySnippet,
         isOptimistic: true,
-        is_encrypted: isEncrypted,
-        encrypted_body: isEncrypted ? encryptedBodyForRecipient : undefined,
-        encrypted_body_for_sender: isEncrypted ? encryptedBodyForSender : undefined,
-        signal_protocol: useSignalProtocol, // CRITICAL: Mark as Signal Protocol message
+        is_encrypted: false,
+        signal_protocol: false,
       }
       
       // Add optimistic message immediately
@@ -1545,26 +1453,8 @@ export default function ChatThread(){
         try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
       }
       
-      // Send to server
       const fd = new URLSearchParams({ recipient_id: String(resolvedUserId || otherUserId) })
-      
-      if (isEncrypted) {
-        fd.append('message', '') // NO plaintext stored!
-        fd.append('is_encrypted', '1')
-        
-        if (useSignalProtocol) {
-          // Signal Protocol: mark as signal encrypted, ciphertexts stored separately
-          fd.append('signal_protocol', '1')
-          fd.append('encrypted_body', '') // Placeholder - actual ciphertexts stored separately
-          fd.append('encrypted_body_for_sender', '')
-        } else {
-          // Simple encryption: store in traditional fields
-          fd.append('encrypted_body', encryptedBodyForRecipient)
-          fd.append('encrypted_body_for_sender', encryptedBodyForSender)
-        }
-      } else {
-        fd.append('message', formattedMessage)
-      }
+      fd.append('message', formattedMessage)
       
       fetch('/send_message', { 
         method:'POST', 
@@ -1583,32 +1473,7 @@ export default function ChatThread(){
               body: JSON.stringify({ peer: username, is_typing: false }) 
             }).catch(()=>{})
             
-            // CRITICAL: Update optimistic message immediately with server confirmation
             if (j.message_id) {
-              // Store Signal Protocol ciphertexts if applicable
-              if (useSignalProtocol && signalCiphertexts.length > 0) {
-                try {
-                  await fetch('/api/signal/store-ciphertexts', {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      messageId: j.message_id,
-                      senderDeviceId: signalService.getDeviceId(),
-                      ciphertexts: signalCiphertexts
-                    })
-                  })
-                  console.log('🔐 Signal: Stored ciphertexts for message', j.message_id)
-                  
-                  // IMPORTANT: Cache the plaintext for this message IMMEDIATELY
-                  // So when we reload/poll, we can show sent messages correctly
-                  // Use immediate=true to persist to localStorage right away (survives page reload)
-                  cacheDecryptedMessage(j.message_id, { text: messageText, error: false }, true)
-                } catch (cipherError) {
-                  console.error('🔐 Signal: Failed to store ciphertexts:', cipherError)
-                }
-              }
-              
               // Set up bridge mapping
               idBridgeRef.current.tempToServer.set(tempId, j.message_id)
               idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
@@ -1626,10 +1491,6 @@ export default function ChatThread(){
                       isOptimistic: false,
                       time: m.time ?? ensureNormalizedTime(j.time || m.time),
                       clientKey: tempId,
-                      is_encrypted: m.is_encrypted,
-                      encrypted_body: m.encrypted_body,
-                      encrypted_body_for_sender: m.encrypted_body_for_sender,
-                      signal_protocol: m.signal_protocol,
                     }
                   }
                   return m
@@ -2312,46 +2173,17 @@ export default function ChatThread(){
         overflow: 'hidden',
       }}
     >
-      {/* Encryption Sync Banner */}
-      {encryptionNeedsSync && (
-        <div 
-          className="flex-shrink-0 bg-yellow-500/90 text-black px-4 py-2"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            width: '100vw',
-            zIndex: 1002,
-            paddingTop: 'env(safe-area-inset-top, 0px)',
-          }}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm">
-              <i className="fa-solid fa-rotate" />
-              <span className="font-medium">Encryption keys need sync</span>
-            </div>
-            <Link 
-              to="/settings/encryption"
-              className="px-3 py-1 text-xs font-semibold bg-black/20 rounded-full hover:bg-black/30"
-            >
-              Sync Now
-            </Link>
-          </div>
-        </div>
-      )}
-
       {/* Header - fixed at top with safe area, full viewport width */}
       <div 
         className="flex-shrink-0 border-b border-[#262f30]"
         style={{
           position: 'fixed',
-          top: encryptionNeedsSync ? 'calc(env(safe-area-inset-top, 0px) + 40px)' : 0,
+          top: 0,
           left: 0,
           right: 0,
           width: '100vw',
           zIndex: 1001,
-          paddingTop: encryptionNeedsSync ? '0px' : 'env(safe-area-inset-top, 0px)',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
           paddingLeft: 'env(safe-area-inset-left, 0px)',
           paddingRight: 'env(safe-area-inset-right, 0px)',
           background: '#000',

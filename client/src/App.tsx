@@ -17,8 +17,7 @@ import PushInit from './components/PushInit'
 import NotificationPrompt from './components/NotificationPrompt'
 // import NativePushInit from './components/NativePushInit' // Disabled - conflicts with PushInit
 import BrandAssetsInit from './components/BrandAssetsInit'
-import { encryptionService } from './services/simpleEncryption'
-import { signalService } from './services/signalProtocol'
+// Encryption removed — not in use
 import CrossfitExact from './pages/CrossfitExact'
 import CommunityFeed from './pages/CommunityFeed'
 import CommunityCalendar from './pages/CommunityCalendar'
@@ -60,7 +59,7 @@ import VerifyOverlay from './components/VerifyOverlay'
 import EventDetail from './pages/EventDetail'
 import GroupFeed from './pages/GroupFeed'
 import EditGroup from './pages/EditGroup'
-import EncryptionSettings from './pages/EncryptionSettings'
+// EncryptionSettings removed — not in use
 import CommentReply from './pages/CommentReply'
 
 const queryClient = new QueryClient()
@@ -86,7 +85,6 @@ function AppRoutes(){
     () => new Set(['/', '/welcome', '/onboarding', '/login', '/signup', '/signup_react', '/verify_required']),
     [],
   )
-  const encryptionUserRef = useRef<string | null>(null)
   const applyKeyboardOffset = useCallback((nextOffset: number) => {
     setKeyboardOffset(prev => (Math.abs(prev - nextOffset) < 1 ? prev : nextOffset))
     document.documentElement.style.setProperty('--keyboard-offset', `${nextOffset}px`)
@@ -428,39 +426,11 @@ function AppRoutes(){
         setIsVerified(!!(profile as any)?.email_verified)
         setProfileError(null)
 
-        const resetRequested = localStorage.getItem('encryption_reset_requested')
-        if (resetRequested === 'true') {
-          console.log('🔐 Reset requested - deleting old encryption database...')
-          localStorage.removeItem('encryption_reset_requested')
-          try {
-            await new Promise<void>((resolve) => {
-              const request = indexedDB.deleteDatabase('chat-encryption')
-              request.onsuccess = () => {
-                console.log('🔐 ✅ Old encryption database deleted')
-                resolve()
-              }
-              request.onerror = () => {
-                console.log('🔐 ⚠️ Database deletion error (may not exist)')
-                resolve()
-              }
-              request.onblocked = () => {
-                console.log('🔐 ⚠️ Database deletion blocked, will retry on next load')
-                resolve()
-              }
-            })
-          } catch (e) {
-            console.log('🔐 ⚠️ Delete error:', e)
-          }
-        }
-
         const username = (profile as any)?.username
         
         // Detect user change and clear stale caches from previous user
         const previousUsername = localStorage.getItem('current_username')
         if (username && previousUsername && previousUsername !== username) {
-          console.log(`👤 User changed from ${previousUsername} to ${username} - clearing caches`)
-          
-          // Clear localStorage items that might have old user data
           const keysToRemove = ['home-timeline', 'communityManagementShowNested']
           const prefixesToClear = ['community_', 'chat_', 'dashboard-', 'community-feed:', 'group-feed:']
           
@@ -475,7 +445,6 @@ function AppRoutes(){
             console.warn('Error clearing localStorage for user change:', e)
           }
           
-          // Clear service worker caches
           if ('caches' in window) {
             caches.keys().then(names => {
               names.forEach(name => {
@@ -486,60 +455,13 @@ function AppRoutes(){
             }).catch(() => {})
           }
           
-          // Clear IndexedDB for encryption (different user = different keys)
-          try {
-            indexedDB.deleteDatabase('chat-encryption')
-            indexedDB.deleteDatabase('signal-protocol')
-            indexedDB.deleteDatabase('signal-store')
-          } catch (e) {
-            console.warn('Error clearing IndexedDB for user change:', e)
-          }
-          
-          // Clear all avatar caches so previous user's profile picture doesn't persist
           try {
             import('./utils/avatarCache').then(({ clearAllAvatarCache }) => clearAllAvatarCache()).catch(() => {})
           } catch {}
         }
         
-        // Store current username for future comparison
         if (username) {
           localStorage.setItem('current_username', username)
-        }
-        
-        if (username && encryptionUserRef.current !== username) {
-          try {
-            // Initialize Signal Protocol (multi-device E2E encryption)
-            console.log('🔐 Initializing Signal Protocol for:', username)
-            const { isNewDevice, deviceId } = await signalService.init(username)
-            
-            // Store device ID for use in chat
-            localStorage.setItem('signal_device_id', String(deviceId))
-            
-            if (isNewDevice) {
-              console.log('🔐 ✅ New device registered, deviceId:', deviceId)
-              localStorage.setItem('encryption_keys_generated_at', Date.now().toString())
-            } else {
-              console.log('🔐 ✅ Existing device loaded, deviceId:', deviceId)
-            }
-            
-            // Clear old sync flag (no longer needed with Signal Protocol)
-            localStorage.removeItem('encryption_needs_sync')
-            
-            console.log('🔐 ✅ Signal Protocol ready!')
-          } catch (encError) {
-            console.error('🔐 ❌ Signal Protocol init failed:', encError)
-            
-            // Fallback to simple encryption if Signal fails
-            try {
-              console.log('🔐 Falling back to simple encryption...')
-              await encryptionService.init(username)
-              console.log('🔐 ✅ Simple encryption fallback ready')
-            } catch (fallbackError) {
-              console.error('🔐 ❌ Fallback encryption also failed:', fallbackError)
-            }
-          } finally {
-            encryptionUserRef.current = username
-          }
         }
 
         return profile
@@ -721,7 +643,6 @@ function AppRoutes(){
                 <Route path="/compose" element={<CreatePost />} />
                 <Route path="/group_feed_react/:group_id" element={<GroupFeed />} />
                 <Route path="/group/:group_id/edit" element={<EditGroup />} />
-                <Route path="/encryption_settings" element={<EncryptionSettings />} />
                 <Route path="*" element={<PremiumDashboard />} />
               </Routes>
             </ErrorBoundary>
