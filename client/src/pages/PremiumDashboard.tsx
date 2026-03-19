@@ -543,12 +543,8 @@ export default function PremiumDashboard() {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          {/* Animated logo/spinner */}
           <div className="relative">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center shadow-lg shadow-teal-500/30">
-              <span className="text-2xl font-bold text-white">C</span>
-            </div>
-            {/* Spinning ring */}
+            <img src="/static/logo.png" alt="Logo" className="w-16 h-16 rounded-2xl object-contain" />
             <div className="absolute -inset-2">
               <svg className="w-20 h-20 animate-spin" viewBox="0 0 24 24">
                 <circle 
