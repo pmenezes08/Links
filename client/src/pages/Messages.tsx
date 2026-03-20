@@ -736,7 +736,7 @@ export default function Messages(){
                   )}
                   {groupChats.filter(gc => !groupSearchQuery || gc.name.toLowerCase().includes(groupSearchQuery.toLowerCase())).map((gc) => {
                     const isGDragging = groupDraggingIdRef.current === gc.id
-                    const gtx = isGDragging ? Math.min(0, groupDragX) : (groupSwipeId === gc.id ? -60 : 0)
+                    const gtx = isGDragging ? Math.min(0, groupDragX) : (groupSwipeId === gc.id ? -116 : 0)
                     const gTransition = isGDragging ? 'none' : 'transform 150ms ease-out'
                     const gShowActions = isGDragging ? (groupDragX < -20) : (groupSwipeId === gc.id)
                     
@@ -1190,6 +1190,27 @@ export default function Messages(){
               }}>
                 <i className="fa-solid fa-ban text-white/60 w-6 text-center" />
                 Block User
+              </button>
+            )}
+            {chatMoreTarget.type === 'group' && chatMoreTarget.groupId && (
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
+                await fetch(`/api/group_chat/${chatMoreTarget.groupId}/clear_history`, { method: 'POST', credentials: 'include' }).catch(() => {})
+                setChatMoreTarget(null)
+              }}>
+                <i className="fa-solid fa-broom text-white/60 w-6 text-center" />
+                Clear Chat
+              </button>
+            )}
+            {chatMoreTarget.type === 'group' && chatMoreTarget.groupId && (
+              <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white" onClick={async () => {
+                const fd = new URLSearchParams()
+                fd.append('group_id', String(chatMoreTarget.groupId))
+                await fetch('/api/groups/leave', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd }).catch(() => {})
+                setGroupChats(prev => prev.filter(g => g.id !== chatMoreTarget.groupId))
+                setChatMoreTarget(null)
+              }}>
+                <i className="fa-solid fa-right-from-bracket text-white/60 w-6 text-center" />
+                Leave Group
               </button>
             )}
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-red-400" onClick={() => {

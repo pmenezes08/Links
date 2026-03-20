@@ -660,7 +660,7 @@ export default function GroupChatThread() {
     
     const now = new Date().toISOString()
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`
-    const optimisticMessage: Message & { clientKey: string; replySnippet?: string; replySender?: string; isOptimistic: boolean } = {
+    const optimisticMessage: Message & { clientKey: string; replySnippet?: string; replySender?: string; isOptimistic: boolean; sendFailed?: boolean; _originalMessage?: string } = {
       id: -Date.now(),
       sender: currentUsername || 'You',
       text: text,
@@ -672,10 +672,20 @@ export default function GroupChatThread() {
       replySnippet: replySnippet,
       replySender: replySnapshot?.sender,
       isOptimistic: true,
+      sendFailed: false,
+      _originalMessage: formattedMessage,
     }
     
     // Add optimistic message directly to serverMessages (same pattern as DMs)
     setServerMessages(prev => [...prev, optimisticMessage as any])
+
+    const markFailed = (key: string) => {
+      setServerMessages(prev => prev.map(m =>
+        (m as any).clientKey === key ? { ...m, sendFailed: true, isOptimistic: true } : m
+      ))
+    }
+
+    const sendTimeout = setTimeout(() => markFailed(tempId), 10000)
 
     fetch(`/api/group_chat/${group_id}/send`, {
       method: 'POST',
@@ -685,13 +695,14 @@ export default function GroupChatThread() {
     })
       .then(response => response.json())
       .then(data => {
+        clearTimeout(sendTimeout)
         if (data.success) {
           setServerMessages(prev => {
             let found = false
             const updated = prev.map(m => {
               if ((m as any).clientKey === tempId) {
                 found = true
-                return { ...data.message, clientKey: tempId, isOptimistic: false }
+                return { ...data.message, clientKey: tempId, isOptimistic: false, sendFailed: false }
               }
               return m
             })
@@ -703,19 +714,66 @@ export default function GroupChatThread() {
           })
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, data.message.id)
         } else {
-          // Remove optimistic on failure
-          setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
-          console.error('Failed to send:', data.error)
+          clearTimeout(sendTimeout)
+          markFailed(tempId)
         }
       })
-      .catch(err => {
-        setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
-        console.error('Error sending message:', err)
+      .catch(() => {
+        clearTimeout(sendTimeout)
+        markFailed(tempId)
       })
       .finally(() => {
         sendingLockRef.current = false
       })
   }, [group_id, scrollToBottom, currentUsername, loadMessages, replyTo])
+
+  const retryFailedMessage = useCallback((clientKey: string) => {
+    const msg = serverMessages.find(m => (m as any).clientKey === clientKey)
+    if (!msg) return
+    const originalMessage = (msg as any)._originalMessage || msg.text || ''
+    // Reset to pending
+    setServerMessages(prev => prev.map(m =>
+      (m as any).clientKey === clientKey ? { ...m, sendFailed: false, isOptimistic: true } : m
+    ))
+    const retryTimeout = setTimeout(() => {
+      setServerMessages(prev => prev.map(m =>
+        (m as any).clientKey === clientKey ? { ...m, sendFailed: true } : m
+      ))
+    }, 10000)
+    fetch(`/api/group_chat/${group_id}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ message: originalMessage }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        clearTimeout(retryTimeout)
+        if (data.success) {
+          setServerMessages(prev => {
+            let found = false
+            const updated = prev.map(m => {
+              if ((m as any).clientKey === clientKey) { found = true; return { ...data.message, clientKey, isOptimistic: false, sendFailed: false } }
+              return m
+            })
+            if (!found) return prev
+            return updated.filter(m => m.id !== data.message.id || (m as any).clientKey === clientKey)
+          })
+          lastMessageIdRef.current = Math.max(lastMessageIdRef.current, data.message.id)
+        } else {
+          clearTimeout(retryTimeout)
+          setServerMessages(prev => prev.map(m =>
+            (m as any).clientKey === clientKey ? { ...m, sendFailed: true } : m
+          ))
+        }
+      })
+      .catch(() => {
+        clearTimeout(retryTimeout)
+        setServerMessages(prev => prev.map(m =>
+          (m as any).clientKey === clientKey ? { ...m, sendFailed: true } : m
+        ))
+      })
+  }, [group_id, serverMessages])
 
   // Handle @mention selection
   const handleMentionSelect = useCallback((username: string) => {
@@ -1729,6 +1787,7 @@ export default function GroupChatThread() {
                     new Date(msg.created_at).getTime() - new Date(messages[idx-1].created_at).getTime() > 60000)
                   const messageReaction = reactions[msg.id]
                   const isOptimistic = !!(msgWithKey as any).isOptimistic || msgWithKey.clientKey?.startsWith('temp_') || msg.id < 0
+                  const sendFailed = !!(msgWithKey as any).sendFailed
                   // Determine if message is sent by current user
                   // Compare case-insensitively and trim whitespace
                   const senderNormalized = (msg.sender || '').toLowerCase().trim()
@@ -1763,7 +1822,7 @@ export default function GroupChatThread() {
                           </div>
                         </div>
                       )}
-                      <div className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'} ${isSentByMe ? 'flex-row-reverse' : ''} ${isOptimistic ? 'opacity-70' : ''}`}>
+                      <div className={`flex gap-2 ${showAvatar ? 'mt-4 first:mt-0' : 'mt-0.5'} ${isSentByMe ? 'flex-row-reverse' : ''} ${sendFailed ? 'opacity-60' : isOptimistic ? 'opacity-70' : ''}`}>
                       <div className="w-8 flex-shrink-0">
                         {showAvatar && msg.sender && !isSentByMe && (
                           <Avatar
@@ -2046,6 +2105,21 @@ export default function GroupChatThread() {
                             </span>
                           )}
                         </div>
+                        {sendFailed && isSentByMe && msgWithKey.clientKey && (
+                          <button
+                            onClick={() => retryFailedMessage(msgWithKey.clientKey!)}
+                            className="flex items-center gap-1.5 mt-1 text-[11px] text-red-400 hover:text-red-300 self-end"
+                          >
+                            <i className="fa-solid fa-circle-exclamation text-[10px]" />
+                            Not delivered — tap to retry
+                          </button>
+                        )}
+                        {isOptimistic && !sendFailed && isSentByMe && (
+                          <div className="flex items-center gap-1 mt-0.5 self-end">
+                            <i className="fa-solid fa-clock text-[9px] text-white/30" />
+                            <span className="text-[10px] text-white/30">Sending…</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     </div>

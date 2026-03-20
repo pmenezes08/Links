@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
 import Avatar, { clearImageCache } from '../components/Avatar'
 import { useUserProfile } from '../contexts/UserProfileContext'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useBlocker } from 'react-router-dom'
 import { clearAvatarCache } from '../utils/avatarCache'
+
+const PROFILE_DRAFT_KEY = 'cpoint_profile_personal_draft'
 
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
@@ -303,7 +305,10 @@ export default function Profile() {
   const [citiesLoading, setCitiesLoading] = useState(false)
   const cityCache = useRef<Map<string, string[]>>(new Map())
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const bioRef = useRef<HTMLTextAreaElement | null>(null)
   const [interestInput, setInterestInput] = useState('')
+  const serverPersonalRef = useRef<PersonalForm>(PERSONAL_DEFAULT)
+  const [showLeaveModal, setShowLeaveModal] = useState(false)
   const {
     profile: cachedProfile,
     setProfile: setContextProfile,
@@ -311,6 +316,72 @@ export default function Profile() {
     error: cachedProfileError,
     refresh: refreshUserProfile,
   } = useUserProfile()
+
+  const isPersonalDirty = useCallback(() => {
+    const s = serverPersonalRef.current
+    return personal.bio !== s.bio || personal.display_name !== s.display_name ||
+      personal.date_of_birth !== s.date_of_birth || personal.gender !== s.gender ||
+      personal.country !== s.country || personal.city !== s.city
+  }, [personal])
+
+  // Persist personal form as draft on every change
+  useEffect(() => {
+    if (!summary?.username) return
+    if (!isPersonalDirty()) return
+    try { sessionStorage.setItem(PROFILE_DRAFT_KEY, JSON.stringify(personal)) } catch {}
+  }, [personal, summary?.username, isPersonalDirty])
+
+  // Browser tab close / refresh warning
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isPersonalDirty()) { e.preventDefault() }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [isPersonalDirty])
+
+  // React Router in-app navigation blocker
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => {
+    return isPersonalDirty() && currentLocation.pathname !== nextLocation.pathname
+  })
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') setShowLeaveModal(true)
+  }, [blocker.state])
+
+  const handleDiscardAndLeave = useCallback(() => {
+    try { sessionStorage.removeItem(PROFILE_DRAFT_KEY) } catch {}
+    setShowLeaveModal(false)
+    blocker.proceed?.()
+  }, [blocker])
+
+  const handleSaveAndLeave = useCallback(async () => {
+    setSavingPersonal(true)
+    try {
+      const form = new FormData()
+      form.append('bio', personal.bio)
+      form.append('display_name', personal.display_name)
+      if (personal.date_of_birth) form.append('date_of_birth', personal.date_of_birth)
+      form.append('gender', personal.gender)
+      form.append('country', personal.country)
+      form.append('city', personal.city)
+      const response = await fetch('/update_personal_info', { method: 'POST', credentials: 'include', body: form })
+      const payload = await response.json().catch(() => null)
+      if (payload?.success) {
+        serverPersonalRef.current = { ...personal }
+        try { sessionStorage.removeItem(PROFILE_DRAFT_KEY) } catch {}
+        try { await refreshUserProfile() } catch {}
+      }
+    } catch {}
+    setSavingPersonal(false)
+    setShowLeaveModal(false)
+    blocker.proceed?.()
+  }, [personal, blocker, refreshUserProfile])
+
+  const handleCancelLeave = useCallback(() => {
+    setShowLeaveModal(false)
+    blocker.reset?.()
+  }, [blocker])
 
   function normalizeInterests(list: string[]): string[] {
     const seen = new Set<string>()
@@ -465,7 +536,7 @@ export default function Profile() {
         ) || [cityValue, countryValue].filter(Boolean).join(', '),
       bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about, profile.summary, profile.about),
     })
-    setPersonal({
+    const loadedPersonal: PersonalForm = {
       bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about),
       display_name: coalesceString(
         personalInfo.display_name,
@@ -487,7 +558,30 @@ export default function Profile() {
       gender: coalesceString(personalInfo.gender, profile.gender),
       country: countryValue,
       city: cityValue,
-    })
+    }
+    serverPersonalRef.current = loadedPersonal
+    // Restore draft if it exists and differs from server data
+    let finalPersonal = loadedPersonal
+    try {
+      const raw = sessionStorage.getItem(PROFILE_DRAFT_KEY)
+      if (raw) {
+        const draft = JSON.parse(raw) as PersonalForm
+        if (draft && typeof draft.bio === 'string') {
+          const differs = Object.keys(loadedPersonal).some(
+            k => (draft as any)[k] !== (loadedPersonal as any)[k]
+          )
+          if (differs) {
+            finalPersonal = draft
+          } else {
+            sessionStorage.removeItem(PROFILE_DRAFT_KEY)
+          }
+        }
+      }
+    } catch {}
+    setPersonal(finalPersonal)
+    if (bioRef.current && bioRef.current.value !== finalPersonal.bio) {
+      bioRef.current.value = finalPersonal.bio
+    }
     setProfessional({
       role: coalesceString(
         professionalInfo.role,
@@ -652,6 +746,8 @@ export default function Profile() {
       const response = await fetch('/update_personal_info', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
+        serverPersonalRef.current = { ...personal }
+        try { sessionStorage.removeItem(PROFILE_DRAFT_KEY) } catch {}
         setFeedback('Personal information saved')
         setSummary(prev => {
           if (!prev) return prev
@@ -665,9 +761,7 @@ export default function Profile() {
         })
         try {
           await refreshUserProfile()
-        } catch {
-          // Ignore refresh errors; context will retry on navigation
-        }
+        } catch {}
       } else {
         setFeedback(payload?.error || 'Unable to save personal information')
       }
@@ -923,8 +1017,10 @@ export default function Profile() {
             <label className="text-sm block">
               Personal Bio
               <textarea
+                ref={bioRef}
                 className="mt-1 w-full min-h-[100px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
-                value={personal.bio}
+                style={{ userSelect: 'text', WebkitUserSelect: 'text' } as React.CSSProperties}
+                defaultValue={personal.bio}
                 onChange={event => setPersonal(prev => ({ ...prev, bio: event.target.value }))}
                 placeholder={`💼 Your bio is currently consulting its therapist.\nDrop one polished line to lure it back.`}
               />
@@ -1007,7 +1103,7 @@ export default function Profile() {
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingPersonal}
             >
-              {savingPersonal ? 'Saving…' : 'Save personal info'}
+              {savingPersonal ? 'Saving…' : 'Save bio and personal info'}
             </button>
           </form>
         </section>
@@ -1150,6 +1246,36 @@ export default function Profile() {
             {feedback}
           </div>
         ) : null}
+
+        {showLeaveModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] p-5 space-y-4">
+              <h3 className="text-base font-semibold text-white">Unsaved changes</h3>
+              <p className="text-sm text-[#a7b8be]">You have unsaved profile changes. Would you like to save before leaving?</p>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleSaveAndLeave}
+                  disabled={savingPersonal}
+                  className="w-full py-2.5 rounded-lg bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
+                >
+                  {savingPersonal ? 'Saving…' : 'Save and leave'}
+                </button>
+                <button
+                  onClick={handleDiscardAndLeave}
+                  className="w-full py-2.5 rounded-lg border border-white/15 text-sm text-white hover:bg-white/5"
+                >
+                  Discard changes
+                </button>
+                <button
+                  onClick={handleCancelLeave}
+                  className="w-full py-2 text-sm text-[#9fb0b5] hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

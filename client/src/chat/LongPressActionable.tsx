@@ -164,7 +164,7 @@ export default function LongPressActionable({
       </div>
       {!disabled && showMenu && !showEmojiPicker && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => { setShowMenu(false); setShowEmojiPicker(false) }} />
+          <div className="fixed inset-0 z-40" onClick={() => { if (Date.now() - menuOpenTimeRef.current < 400) return; setShowMenu(false); setShowEmojiPicker(false) }} onTouchEnd={(e) => { if (Date.now() - menuOpenTimeRef.current < 400) { e.preventDefault(); e.stopPropagation() } }} />
           <div 
             className="bg-[#111] border border-white/15 rounded-lg shadow-xl px-2 py-2 min-w-[160px]"
             style={menuStyle}

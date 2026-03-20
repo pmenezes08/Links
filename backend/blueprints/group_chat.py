@@ -1632,6 +1632,38 @@ def delete_group_chat(group_id: int):
         return jsonify({"success": False, "error": "Failed to delete group"}), 500
 
 
+@group_chat_bp.route("/api/group_chat/<int:group_id>/clear_history", methods=["POST"])
+@_login_required
+def clear_group_chat_history(group_id: int):
+    """Clear all messages in a group chat for the requesting user by updating their read receipt to the latest message."""
+    username = session["username"]
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            _ensure_group_chat_tables(c)
+            c.execute(f"""
+                SELECT id FROM group_chat_members
+                WHERE group_id = {ph} AND username = {ph}
+            """, (group_id, username))
+            if not c.fetchone():
+                return jsonify({"success": False, "error": "Not a member"}), 403
+            c.execute(f"SELECT MAX(id) FROM group_chat_messages WHERE group_id = {ph}", (group_id,))
+            row = c.fetchone()
+            max_id = (row[0] if row else 0) or 0
+            c.execute(f"""
+                INSERT INTO group_chat_read_receipts (group_id, username, last_read_message_id)
+                VALUES ({ph}, {ph}, {ph})
+                ON {'DUPLICATE KEY UPDATE' if get_sql_placeholder() == '%s' else 'CONFLICT(group_id, username) DO UPDATE SET'}
+                last_read_message_id = {ph}
+            """, (group_id, username, max_id, max_id))
+            conn.commit()
+            return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Error clearing group {group_id} history: {e}")
+        return jsonify({"success": False, "error": "Failed to clear history"}), 500
+
+
 @group_chat_bp.route("/api/group_chat/<int:group_id>/remove_member", methods=["POST"])
 @_login_required
 def remove_group_member(group_id: int):
