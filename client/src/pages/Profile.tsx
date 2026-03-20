@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react'
 import Avatar, { clearImageCache } from '../components/Avatar'
 import { useUserProfile } from '../contexts/UserProfileContext'
-import { useNavigate, useBlocker } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { clearAvatarCache } from '../utils/avatarCache'
 
 const PROFILE_DRAFT_KEY = 'cpoint_profile_personal_draft'
@@ -340,20 +340,34 @@ export default function Profile() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [isPersonalDirty])
 
-  // React Router in-app navigation blocker
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => {
-    return isPersonalDirty() && currentLocation.pathname !== nextLocation.pathname
-  })
+  // In-app back-button navigation blocker (works with BrowserRouter)
+  const pendingNavRef = useRef<string | null>(null)
+  const isPersonalDirtyRef = useRef(isPersonalDirty)
+  isPersonalDirtyRef.current = isPersonalDirty
 
   useEffect(() => {
-    if (blocker.state === 'blocked') setShowLeaveModal(true)
-  }, [blocker.state])
+    const onPopState = () => {
+      if (isPersonalDirtyRef.current()) {
+        window.history.pushState(null, '', window.location.href)
+        setShowLeaveModal(true)
+        pendingNavRef.current = '__back__'
+      }
+    }
+    window.history.pushState(null, '', window.location.href)
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   const handleDiscardAndLeave = useCallback(() => {
     try { sessionStorage.removeItem(PROFILE_DRAFT_KEY) } catch {}
     setShowLeaveModal(false)
-    blocker.proceed?.()
-  }, [blocker])
+    if (pendingNavRef.current === '__back__') {
+      window.history.back()
+    } else if (pendingNavRef.current) {
+      navigate(pendingNavRef.current)
+    }
+    pendingNavRef.current = null
+  }, [navigate])
 
   const handleSaveAndLeave = useCallback(async () => {
     setSavingPersonal(true)
@@ -375,13 +389,18 @@ export default function Profile() {
     } catch {}
     setSavingPersonal(false)
     setShowLeaveModal(false)
-    blocker.proceed?.()
-  }, [personal, blocker, refreshUserProfile])
+    if (pendingNavRef.current === '__back__') {
+      window.history.back()
+    } else if (pendingNavRef.current) {
+      navigate(pendingNavRef.current)
+    }
+    pendingNavRef.current = null
+  }, [personal, navigate, refreshUserProfile])
 
   const handleCancelLeave = useCallback(() => {
     setShowLeaveModal(false)
-    blocker.reset?.()
-  }, [blocker])
+    pendingNavRef.current = null
+  }, [])
 
   function normalizeInterests(list: string[]): string[] {
     const seen = new Set<string>()
