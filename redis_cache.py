@@ -369,6 +369,8 @@ def invalidate_user_cache(username):
     cache.delete(user_cache_key(username))
     cache.delete(user_profile_cache_key(username))
     cache.delete(f"profile:{username}")  # Used by /api/profile_me endpoint
+    cache.delete(f"public_profile:{username}:{username}")  # Self-view of public profile
+    cache.delete(f"public_profile:{username}:_anon")  # Anon view of public profile
     cache.delete(chat_threads_cache_key(username))
     cache.delete(user_communities_cache_key(username))
     cache.delete(user_parent_dashboard_cache_key(username))

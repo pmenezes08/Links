@@ -1553,46 +1553,41 @@ def ensure_followers_table(cursor) -> None:
             cursor.execute("UPDATE followers SET status = 'accepted' WHERE status IS NULL OR status = ''")
     except Exception as backfill_err:
         logger.warning(f"Could not backfill follower status: {backfill_err}")
+    # Indexes for fast follower/following count queries
+    for idx_name, idx_cols in [
+        ('idx_followers_followed_status', 'followed_username, status'),
+        ('idx_followers_follower_status', 'follower_username, status'),
+    ]:
+        try:
+            cursor.execute(f"CREATE INDEX {idx_name} ON followers ({idx_cols})")
+        except Exception:
+            pass
 
 
 def get_follow_summary(cursor, username: str) -> Dict[str, int]:
-    """Return followers/following/request counts for a username."""
+    """Return followers/following/request counts for a username in a single query."""
     ensure_followers_table(cursor)
-    followers_count = 0
-    following_count = 0
-    requests_count = 0
-    placeholder = get_sql_placeholder()
+    ph = get_sql_placeholder()
     try:
-        cursor.execute(
-            f"SELECT COUNT(*) FROM followers WHERE followed_username = {placeholder} AND status = 'accepted'",
-            (username,),
-        )
+        cursor.execute(f"""
+            SELECT
+                SUM(CASE WHEN followed_username = {ph} AND status = 'accepted' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN follower_username = {ph} AND status = 'accepted' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN followed_username = {ph} AND status = 'pending' THEN 1 ELSE 0 END)
+            FROM followers
+            WHERE followed_username = {ph} OR follower_username = {ph}
+        """, (username, username, username, username, username))
         row = cursor.fetchone()
         if row:
-            followers_count = int(row[0] if not hasattr(row, 'keys') else list(row.values())[0] or 0)
+            vals = list(row.values()) if hasattr(row, 'keys') else list(row)
+            return {
+                'followers': int(vals[0] or 0),
+                'following': int(vals[1] or 0),
+                'requests': int(vals[2] or 0),
+            }
     except Exception as e:
-        logger.warning(f"Failed counting accepted followers for {username}: {e}")
-    try:
-        cursor.execute(
-            f"SELECT COUNT(*) FROM followers WHERE follower_username = {placeholder} AND status = 'accepted'",
-            (username,),
-        )
-        row = cursor.fetchone()
-        if row:
-            following_count = int(row[0] if not hasattr(row, 'keys') else list(row.values())[0] or 0)
-    except Exception as e:
-        logger.warning(f"Failed counting accepted following for {username}: {e}")
-    try:
-        cursor.execute(
-            f"SELECT COUNT(*) FROM followers WHERE followed_username = {placeholder} AND status = 'pending'",
-            (username,),
-        )
-        row = cursor.fetchone()
-        if row:
-            requests_count = int(row[0] if not hasattr(row, 'keys') else list(row.values())[0] or 0)
-    except Exception as e:
-        logger.warning(f"Failed counting follow requests for {username}: {e}")
-    return {'followers': followers_count, 'following': following_count, 'requests': requests_count}
+        logger.warning(f"Failed counting follow summary for {username}: {e}")
+    return {'followers': 0, 'following': 0, 'requests': 0}
 
 
 def get_follow_counts(cursor, username: str) -> Tuple[int, int]:
@@ -8536,152 +8531,122 @@ def admin_test():
     return "Admin test route is working!"
                     
 
+PUBLIC_PROFILE_CACHE_TTL = 60  # 60 seconds
+
 @app.route('/api/profile/<username>')
 def api_public_profile(username):
     """Public profile data for a username (JSON)."""
+    viewer_username = session.get('username')
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
-            # Resolve actual username case-insensitively
-            c.execute(f"SELECT username FROM users WHERE LOWER(username) = LOWER({ph})", (username,))
-            user = c.fetchone()
-            if not user:
-                return jsonify({'success': False, 'error': 'not found'}), 404
-            actual_username = user['username'] if hasattr(user, 'keys') else user[0]
 
-            # Profile fields
+            # Single merged query: profile + personal + professional fields
             c.execute(f"""
                 SELECT u.username, u.subscription,
                        u.gender, u.country, u.city, u.date_of_birth, u.age,
                        p.display_name, p.bio, p.location, p.website,
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo,
                        COALESCE(p.is_public, 1),
-                       u.first_name, u.last_name
+                       u.first_name, u.last_name,
+                       u.role, u.company, u.industry, u.degree, u.school,
+                       u.skills, u.linkedin, u.experience,
+                       u.professional_about, u.professional_interests,
+                       u.professional_share_community_id
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username = {ph}
-            """, (actual_username,))
+                WHERE LOWER(u.username) = LOWER({ph})
+            """, (username,))
             row = c.fetchone()
             if not row:
-                return jsonify({'success': False, 'error': 'profile not found'}), 404
+                return jsonify({'success': False, 'error': 'not found'}), 404
 
-            def get_val(r, key, idx):
+            def gv(key, idx):
                 try:
-                    return r[key] if hasattr(r, 'keys') and key in r.keys() else r[idx]
+                    return row[key] if hasattr(row, 'keys') and key in row.keys() else row[idx]
                 except Exception:
                     return None
 
-            # Fetch user's professional info and share setting
-            try:
-                c.execute("SELECT role, company, industry, degree, school, skills, linkedin, experience, professional_about, professional_interests, professional_share_community_id FROM users WHERE username = ?", (actual_username,))
-                urow = c.fetchone()
-            except Exception:
-                urow = None
+            actual_username = gv('username', 0)
+
+            # Check cache (keyed per viewer so follow status is correct)
+            pub_cache_key = f"public_profile:{actual_username}:{viewer_username or '_anon'}"
+            cached_pub = cache.get(pub_cache_key)
+            if cached_pub:
+                return jsonify(cached_pub)
 
             profile = {
                 'username': actual_username,
-                'subscription': get_val(row, 'subscription', 1),
-                'display_name': get_val(row, 'display_name', 7) or actual_username,
-                'bio': get_val(row, 'bio', 8),
-                'location': get_val(row, 'location', 9),
-                'website': get_val(row, 'website', 10),
-                'instagram': get_val(row, 'instagram', 11),
-                'twitter': get_val(row, 'twitter', 12),
-                'profile_picture': get_val(row, 'profile_picture', 13),
-                'cover_photo': get_val(row, 'cover_photo', 14),
-                'is_public': bool(get_val(row, 'is_public', 15)),
+                'subscription': gv('subscription', 1),
+                'display_name': gv('display_name', 7) or actual_username,
+                'bio': gv('bio', 8),
+                'location': gv('location', 9),
+                'website': gv('website', 10),
+                'instagram': gv('instagram', 11),
+                'twitter': gv('twitter', 12),
+                'profile_picture': gv('profile_picture', 13),
+                'cover_photo': gv('cover_photo', 14),
+                'is_public': bool(gv('is_public', 15)),
                 'personal': {
-                    'display_name': (get_val(row, 'display_name', 7) or actual_username),
-                    'first_name': get_val(row, 'first_name', 16),
-                    'last_name': get_val(row, 'last_name', 17),
-                    'gender': get_val(row, 'gender', 2),
-                    'country': get_val(row, 'country', 3),
-                    'city': get_val(row, 'city', 4),
-                    'date_of_birth': get_val(row, 'date_of_birth', 5),
-                    'age': get_val(row, 'age', 6),
+                    'display_name': (gv('display_name', 7) or actual_username),
+                    'first_name': gv('first_name', 16),
+                    'last_name': gv('last_name', 17),
+                    'gender': gv('gender', 2),
+                    'country': gv('country', 3),
+                    'city': gv('city', 4),
+                    'date_of_birth': gv('date_of_birth', 5),
+                    'age': gv('age', 6),
                 },
                 'professional': None
             }
 
-            # Restrict personal fields for non-public profiles
-            viewer = session.get('username')
-            if not profile['is_public'] and viewer != actual_username:
+            if not profile['is_public'] and viewer_username != actual_username:
                 profile['personal'] = {
                     'display_name': profile['personal']['display_name'],
-                    'first_name': None,
-                    'last_name': None,
-                    'gender': None,
-                    'country': None,
-                    'city': None,
-                    'date_of_birth': None,
-                    'age': None,
+                    'first_name': None, 'last_name': None, 'gender': None,
+                    'country': None, 'city': None, 'date_of_birth': None, 'age': None,
                 }
 
-            # Include professional info if it's allowed to be public or scoped to a community, which public profile can render broadly
-            if urow:
-                def uval(idx_or_key):
-                    try:
-                        return urow[idx_or_key] if hasattr(urow, 'keys') else urow[idx_or_key]
-                    except Exception:
-                        return None
-                interests_raw = uval('professional_interests') if hasattr(urow, 'keys') else uval(9)
-                interests_list: list[str] = []
-                if interests_raw:
-                    try:
-                        decoded = json.loads(interests_raw)
-                        if isinstance(decoded, list):
-                            interests_list = [
-                                str(item).strip() for item in decoded if isinstance(item, (str, int, float)) and str(item).strip()
-                            ]
-                        else:
-                            raise ValueError("unexpected format")
-                    except Exception:
+            # Professional info from the same merged row (no second query needed)
+            interests_raw = gv('professional_interests', 27)
+            interests_list: list[str] = []
+            if interests_raw:
+                try:
+                    decoded = json.loads(interests_raw)
+                    if isinstance(decoded, list):
                         interests_list = [
-                            part.strip() for part in str(interests_raw).split(',') if part and part.strip()
+                            str(item).strip() for item in decoded if isinstance(item, (str, int, float)) and str(item).strip()
                         ]
+                    else:
+                        raise ValueError("unexpected format")
+                except Exception:
+                    interests_list = [
+                        part.strip() for part in str(interests_raw).split(',') if part and part.strip()
+                    ]
+                interests_list = list(dict.fromkeys(interests_list))
 
-                    interests_list = list(dict.fromkeys(interests_list))
-
+            has_professional = any(gv(k, i) for k, i in [
+                ('role', 18), ('company', 19), ('industry', 20), ('degree', 21),
+                ('school', 22), ('skills', 23), ('linkedin', 24), ('experience', 25),
+                ('professional_about', 26),
+            ]) or interests_list
+            if has_professional:
                 profile['professional'] = {
-                    'role': uval('role') if hasattr(urow, 'keys') else uval(0),
-                    'company': uval('company') if hasattr(urow, 'keys') else uval(1),
-                    'industry': uval('industry') if hasattr(urow, 'keys') else uval(2),
-                    'degree': uval('degree') if hasattr(urow, 'keys') else uval(3),
-                    'school': uval('school') if hasattr(urow, 'keys') else uval(4),
-                    'skills': uval('skills') if hasattr(urow, 'keys') else uval(5),
-                    'linkedin': uval('linkedin') if hasattr(urow, 'keys') else uval(6),
-                    'experience': uval('experience') if hasattr(urow, 'keys') else uval(7),
-                    'about': uval('professional_about') if hasattr(urow, 'keys') else uval(8),
+                    'role': gv('role', 18),
+                    'company': gv('company', 19),
+                    'industry': gv('industry', 20),
+                    'degree': gv('degree', 21),
+                    'school': gv('school', 22),
+                    'skills': gv('skills', 23),
+                    'linkedin': gv('linkedin', 24),
+                    'experience': gv('experience', 25),
+                    'about': gv('professional_about', 26),
                     'interests': interests_list,
-                    'share_community_id': uval('professional_share_community_id') if hasattr(urow, 'keys') else uval(10)
+                    'share_community_id': gv('professional_share_community_id', 28)
                 }
 
-            # Recent posts (kept for potential future use; frontend may ignore)
-            c.execute(f"""
-                SELECT id, content, image_path, timestamp
-                FROM posts
-                WHERE username = {ph}
-                ORDER BY timestamp DESC
-                LIMIT 20
-            """, (actual_username,))
-            posts = c.fetchall()
-            posts_list = []
-            for p in posts or []:
-                def val(pv, key, idx):
-                    try:
-                        return pv[key] if hasattr(pv, 'keys') and key in pv.keys() else pv[idx]
-                    except Exception:
-                        return None
-                posts_list.append({
-                    'id': val(p, 'id', 0),
-                    'content': val(p, 'content', 1),
-                    'image_path': val(p, 'image_path', 2),
-                    'timestamp': val(p, 'timestamp', 3),
-                })
-
-            profile['is_self'] = session.get('username') == actual_username
-            viewer_username = session.get('username')
+            profile['is_self'] = viewer_username == actual_username
             try:
                 summary_counts = get_follow_summary(c, actual_username)
             except Exception:
@@ -8692,14 +8657,13 @@ def api_public_profile(username):
             if viewer_username and viewer_username.lower() != actual_username.lower():
                 try:
                     ensure_followers_table(c)
-                    placeholder = get_sql_placeholder()
                     c.execute(
-                        f"SELECT status FROM followers WHERE follower_username = {placeholder} AND followed_username = {placeholder}",
+                        f"SELECT status FROM followers WHERE follower_username = {ph} AND followed_username = {ph}",
                         (viewer_username, actual_username)
                     )
-                    row = c.fetchone()
-                    if row:
-                        follow_status = row['status'] if hasattr(row, 'keys') and 'status' in row.keys() else row[0]
+                    frow = c.fetchone()
+                    if frow:
+                        follow_status = frow['status'] if hasattr(frow, 'keys') and 'status' in frow.keys() else frow[0]
                     else:
                         follow_status = 'none'
                 except Exception as follow_err:
@@ -8709,7 +8673,12 @@ def api_public_profile(username):
             profile['is_following'] = follow_status == 'accepted'
             profile['has_pending_follow_request'] = follow_status == 'pending'
 
-            return jsonify({'success': True, 'profile': profile, 'posts': posts_list})
+            result = {'success': True, 'profile': profile}
+            try:
+                cache.set(pub_cache_key, result, PUBLIC_PROFILE_CACHE_TTL)
+            except Exception:
+                pass
+            return jsonify(result)
     except Exception as e:
         logger.error(f"api_public_profile error for {username}: {e}")
         return jsonify({'success': False, 'error': 'server error'}), 500

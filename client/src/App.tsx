@@ -464,6 +464,21 @@ function AppRoutes(){
           localStorage.setItem('current_username', username)
         }
 
+        // Prefetch countries list so Edit Profile loads instantly
+        if (!sessionStorage.getItem('geo_countries')) {
+          fetch('/api/geo/countries', { credentials: 'include' })
+            .then(r => r.json())
+            .then(d => {
+              if (d?.success && Array.isArray(d.countries)) {
+                const names = d.countries
+                  .map((item: any) => typeof item?.name === 'string' ? item.name : null)
+                  .filter(Boolean)
+                try { sessionStorage.setItem('geo_countries', JSON.stringify(names)) } catch {}
+              }
+            })
+            .catch(() => {})
+        }
+
         return profile
       }
 

@@ -648,6 +648,13 @@ export default function Profile() {
     let cancelled = false
     async function loadCountries() {
       try {
+        const cached = sessionStorage.getItem('geo_countries')
+        if (cached) {
+          const names = JSON.parse(cached) as string[]
+          if (!cancelled && names.length) { setCountries(names); return }
+        }
+      } catch {}
+      try {
         const response = await fetch('/api/geo/countries', { credentials: 'include' })
         const payload = await response.json().catch(() => null)
         if (!cancelled) {
@@ -656,6 +663,7 @@ export default function Profile() {
               .map((item: { name?: string }) => typeof item?.name === 'string' ? item.name : null)
               .filter(Boolean) as string[]
             setCountries(names)
+            try { sessionStorage.setItem('geo_countries', JSON.stringify(names)) } catch {}
           } else {
             setCountries([])
           }
@@ -678,11 +686,20 @@ export default function Profile() {
     }
     const exactMatch = countries.find(name => name.toLowerCase() === countryName.toLowerCase()) || countryName
     const cacheKey = exactMatch.toLowerCase()
-    const cached = cityCache.current.get(cacheKey)
-    if (cached) {
-      setCities(cached)
+    const memCached = cityCache.current.get(cacheKey)
+    if (memCached) {
+      setCities(memCached)
       return
     }
+    try {
+      const stored = sessionStorage.getItem(`geo_cities:${cacheKey}`)
+      if (stored) {
+        const list = JSON.parse(stored) as string[]
+        cityCache.current.set(cacheKey, list)
+        setCities(list)
+        return
+      }
+    } catch {}
     let cancelled = false
     async function loadCities() {
       setCitiesLoading(true)
@@ -693,6 +710,7 @@ export default function Profile() {
           if (payload?.success && Array.isArray(payload.cities)) {
             const list = payload.cities.map((item: string) => item?.trim()).filter(Boolean)
             cityCache.current.set(cacheKey, list)
+            try { sessionStorage.setItem(`geo_cities:${cacheKey}`, JSON.stringify(list)) } catch {}
             setCities(list)
           } else {
             cityCache.current.set(cacheKey, [])
