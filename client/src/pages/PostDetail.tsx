@@ -18,7 +18,7 @@ import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
 
-type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number }
+type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
 type Post = { id: number; username: string; content: string; image_path?: string|null; video_path?: string|null; audio_path?: string|null; audio_summary?: string|null; timestamp: string; reactions: Record<string, number>; user_reaction: string|null; replies: Reply[]; ai_videos?: Array<{video_path: string; generated_by: string; created_at: string; style: string}>; view_count?: number; media_paths?: MediaItem[] | string | null }
 
@@ -256,6 +256,13 @@ export default function PostDetail(){
   const [reactorGroups, setReactorGroups] = useState<ReactionGroup[]>([])
   const [reactorViewers, setReactorViewers] = useState<PostViewer[]>([])
   const [reactorViewCount, setReactorViewCount] = useState<number | null>(null)
+
+  // Reply viewers/reactors modal state
+  const [showReplyReactorsModal, setShowReplyReactorsModal] = useState(false)
+  const [replyReactorsLoading, setReplyReactorsLoading] = useState(false)
+  const [replyReactorGroups, setReplyReactorGroups] = useState<ReactionGroup[]>([])
+  const [replyReactorViewers, setReplyReactorViewers] = useState<PostViewer[]>([])
+  const [replyReactorViewCount, setReplyReactorViewCount] = useState<number | null>(null)
 
   // Unread counts for header icons
   const [unreadMsgs, setUnreadMsgs] = useState(0)
@@ -1214,6 +1221,31 @@ export default function PostDetail(){
     }
   }
 
+  // Open reply viewers/reactors modal
+  async function openReplyReactorsModal(replyId: number) {
+    setShowReplyReactorsModal(true)
+    setReplyReactorsLoading(true)
+    setReplyReactorGroups([])
+    setReplyReactorViewers([])
+    setReplyReactorViewCount(null)
+    try {
+      const r = await fetch(`/get_reply_reactors/${replyId}`, { credentials: 'include' })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        setReplyReactorGroups(Array.isArray(j.groups) ? j.groups : [])
+        const viewerList: PostViewer[] = Array.isArray(j.viewers)
+          ? (j.viewers as Array<any>)
+              .map((v: any) => ({ username: v?.username, profile_picture: v?.profile_picture ?? null, viewed_at: v?.viewed_at ?? null }))
+              .filter((v: any) => typeof v.username === 'string' && v.username.length > 0)
+          : []
+        setReplyReactorViewers(viewerList)
+        setReplyReactorViewCount(typeof j.view_count === 'number' ? j.view_count : viewerList.length || null)
+      }
+    } finally {
+      setReplyReactorsLoading(false)
+    }
+  }
+
   // Open viewers/reactors modal
   async function openReactorsModal() {
     if (!post) return
@@ -1692,6 +1724,7 @@ export default function PostDetail(){
               activeInlineReplyFor={activeInlineReplyFor}
               onSetActiveInlineReply={setActiveInlineReplyFor}
               onNavigateToReply={(id) => navigate(`/reply/${id}`)}
+              onOpenReactors={openReplyReactorsModal}
             />
           ))}
           {/* Steve is typing indicator */}
@@ -2190,6 +2223,70 @@ export default function PostDetail(){
         </div>
       )}
 
+      {/* Reply Viewers/Reactors Modal */}
+      {showReplyReactorsModal && (
+        <div
+          className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
+          onClick={(e) => e.currentTarget === e.target && setShowReplyReactorsModal(false)}
+        >
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold">Views & Reactions</div>
+              <button
+                className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-sm text-white/80 hover:bg-white/10"
+                onClick={() => setShowReplyReactorsModal(false)}
+                aria-label="Close"
+              >
+                <span className="leading-none">✕</span>
+              </button>
+            </div>
+            {replyReactorsLoading ? (
+              <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading...</div>
+            ) : (
+              <div className="space-y-3 max-h-[420px] overflow-y-auto">
+                <div className="rounded-lg border border-white/10 p-2">
+                  <div className="flex items-center justify-between text-xs text-white/80 uppercase tracking-wide">
+                    <span>Views</span>
+                    <span className="text-sm font-semibold text-white">{replyReactorViewCount ?? 0}</span>
+                  </div>
+                  {replyReactorViewers.length === 0 ? (
+                    <div className="mt-2 text-xs text-[#9fb0b5]">No views yet.</div>
+                  ) : (
+                    <div className="mt-2 flex flex-col gap-1">
+                      {replyReactorViewers.map((viewer) => {
+                        const viewedLabel = formatViewerRelative(viewer.viewed_at)
+                        return (
+                          <div key={`rv-${viewer.username}-${viewer.viewed_at ?? ''}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                            <Avatar username={viewer.username} url={viewer.profile_picture || undefined} size={18} linkToProfile />
+                            <div className="flex-1 truncate">@{viewer.username}</div>
+                            {viewedLabel && <div className="text-[10px] text-white/40">{viewedLabel}</div>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+                {replyReactorGroups.length === 0 ? (
+                  <div className="text-sm text-[#9fb0b5]">No reactions yet.</div>
+                ) : replyReactorGroups.map((group) => (
+                  <div key={group.reaction_type} className="rounded-lg border border-white/10 p-2">
+                    <div className="text-xs text-white/80 mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
+                    <div className="flex flex-col gap-1">
+                      {(group.users || []).map((u) => (
+                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                          <Avatar username={u.username} url={u.profile_picture || undefined} size={18} linkToProfile />
+                          <div className="flex-1 truncate">@{u.username}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Summary Modal */}
       {showSummaryModal && (
         <div 
@@ -2282,7 +2379,7 @@ const ReplyNodeMemo = memo(ReplyNode, (prev, next) => {
   return true
 })
 
-function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, activeInlineReplyFor, onSetActiveInlineReply, onNavigateToReply }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, activeInlineReplyFor?: number | null, onSetActiveInlineReply?: (id: number | null) => void, onNavigateToReply?: (id: number) => void }){
+function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onInlineReply, onDelete, onPreviewImage, inlineSendingFlag, communityId, postId, activeInlineReplyFor, onSetActiveInlineReply, onNavigateToReply, onOpenReactors }:{ reply: Reply, depth?: number, currentUser?: string|null, onToggle: (id:number, reaction:string)=>void, onInlineReply: (id:number, text:string, file?: File)=>void, onDelete: (id:number)=>void, onPreviewImage: (src:string)=>void, inlineSendingFlag: boolean, communityId?: number | string, postId?: number, activeInlineReplyFor?: number | null, onSetActiveInlineReply?: (id: number | null) => void, onNavigateToReply?: (id: number) => void, onOpenReactors?: (id: number) => void }){
   const currentUser = currentUserName
   // Use parent's activeInlineReplyFor if provided, otherwise use local state
   const [localShowComposer, setLocalShowComposer] = useState(false)
@@ -2429,10 +2526,19 @@ function ReplyNode({ reply, depth=0, currentUser: currentUserName, onToggle, onI
             <Reaction icon="fa-regular fa-thumbs-up" count={reply.reactions?.['thumbs-up']||0} active={reply.user_reaction==='thumbs-up'} onClick={()=> onToggle(reply.id, 'thumbs-up')} />
             <Reaction icon="fa-regular fa-thumbs-down" count={reply.reactions?.['thumbs-down']||0} active={reply.user_reaction==='thumbs-down'} onClick={()=> onToggle(reply.id, 'thumbs-down')} />
             <div className="ml-auto flex items-center gap-1">
+              {onOpenReactors && (
+                <button
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[#9fb0b5] hover:text-white hover:bg-white/10 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); onOpenReactors(reply.id) }}
+                  title="View reactions & viewers"
+                >
+                  <i className="fa-regular fa-eye text-[10px]" />
+                  <span>{typeof reply.view_count === 'number' ? reply.view_count : 0}</span>
+                </button>
+              )}
               <button className="px-2 py-1 rounded-full text-[#9fb0b5] hover:text-[#4db6ac]" onClick={(e)=> {
                 e.stopPropagation()
                 setShowComposer(v => !v)
-                // Scroll to show the composer under the reply
                 setTimeout(() => {
                   const target = e.currentTarget.closest('[data-reply-node]')
                   target?.scrollIntoView({ behavior: 'smooth', block: 'center' })

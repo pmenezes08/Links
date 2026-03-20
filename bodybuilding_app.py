@@ -994,6 +994,62 @@ def upsert_post_view(c, post_id: int, username: Optional[str]) -> Optional[int]:
     return _count_post_views_excluding_admin(c, post_id)
 
 
+def ensure_reply_views_table(c):
+    """Ensure the reply_views table exists for tracking unique reply views."""
+    try:
+        if USE_MYSQL:
+            c.execute('''CREATE TABLE IF NOT EXISTS reply_views (
+                          id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                          reply_id INTEGER NOT NULL,
+                          username VARCHAR(191) NOT NULL,
+                          viewed_at DATETIME NOT NULL,
+                          UNIQUE(reply_id, username),
+                          FOREIGN KEY (reply_id) REFERENCES replies(id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                        )''')
+        else:
+            c.execute('''CREATE TABLE IF NOT EXISTS reply_views (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          reply_id INTEGER NOT NULL,
+                          username VARCHAR(191) NOT NULL,
+                          viewed_at TEXT NOT NULL,
+                          UNIQUE(reply_id, username),
+                          FOREIGN KEY (reply_id) REFERENCES replies(id) ON DELETE CASCADE,
+                          FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                        )''')
+    except Exception as e:
+        logger.warning(f"Could not ensure reply_views table: {e}")
+
+
+def _count_reply_views_excluding_admin(c, reply_id: int) -> int:
+    try:
+        ph = get_sql_placeholder()
+        c.execute(
+            f"SELECT COUNT(*) as cnt FROM reply_views WHERE reply_id = {ph} AND LOWER(username) <> LOWER({ph})",
+            (reply_id, 'admin'),
+        )
+        row = c.fetchone()
+        return int((row['cnt'] if hasattr(row, 'keys') else row[0]) if row else 0)
+    except Exception:
+        return 0
+
+
+def upsert_reply_view(c, reply_id: int, username: Optional[str]) -> int:
+    """Record a unique view for a reply and return the updated count."""
+    ensure_reply_views_table(c)
+    if not username or username.lower() == 'admin':
+        return _count_reply_views_excluding_admin(c, reply_id)
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        if USE_MYSQL:
+            c.execute("INSERT IGNORE INTO reply_views (reply_id, username, viewed_at) VALUES (%s,%s,%s)", (reply_id, username, now_str))
+        else:
+            c.execute("INSERT OR IGNORE INTO reply_views (reply_id, username, viewed_at) VALUES (?,?,?)", (reply_id, username, now_str))
+    except Exception as e:
+        logger.warning(f"Failed inserting reply_view for reply {reply_id}: {e}")
+    return _count_reply_views_excluding_admin(c, reply_id)
+
+
 def ensure_story_tables(c):
     """Ensure community_stories, views, and reactions tables exist. Returns True if successful."""
     try:
@@ -22819,6 +22875,130 @@ def add_reply_reaction():
         logger.error(f"Error adding reply reaction: {str(e)}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
+
+@app.route('/api/reply_view', methods=['POST'])
+@login_required
+def api_reply_view():
+    """Record a unique view for a reply and return the updated count."""
+    username = session.get('username')
+    try:
+        payload = request.get_json(silent=True) or {}
+    except Exception:
+        payload = {}
+    reply_id = payload.get('reply_id')
+    if not reply_id:
+        reply_id = request.form.get('reply_id', type=int)
+    try:
+        reply_id = int(reply_id)
+    except Exception:
+        return jsonify({'success': False, 'error': 'reply_id required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            view_count = upsert_reply_view(c, reply_id, username)
+            conn.commit()
+            return jsonify({'success': True, 'view_count': view_count})
+    except Exception as e:
+        logger.error(f"api_reply_view error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/get_reply_reactors/<int:reply_id>')
+@login_required
+def get_reply_reactors(reply_id: int):
+    """Return users who reacted to a reply + viewers, mirroring get_post_reactors."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM replies WHERE id = {ph}", (reply_id,))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Reply not found'}), 404
+
+            c.execute(f"""
+                SELECT rr.reaction_type, rr.username, up.profile_picture
+                FROM reply_reactions rr
+                LEFT JOIN user_profiles up ON up.username = rr.username
+                WHERE rr.reply_id = {ph}
+                ORDER BY rr.reaction_type, rr.id DESC
+            """, (reply_id,))
+            rows = c.fetchall() or []
+
+            by_type: dict = {}
+            for row in rows:
+                if hasattr(row, 'keys'):
+                    rt = row['reaction_type']
+                    uname = row['username']
+                    pic = row.get('profile_picture') if 'profile_picture' in row.keys() else None
+                else:
+                    rt, uname = row[0], row[1]
+                    pic = row[2] if len(row) > 2 else None
+                by_type.setdefault(rt, []).append({'username': uname, 'profile_picture': pic})
+
+            groups = [{'reaction_type': k, 'users': v} for k, v in by_type.items()]
+            order = {'heart': 0, 'thumbs-up': 1, 'thumbs-down': 2}
+            groups.sort(key=lambda g: order.get(g['reaction_type'], 99))
+
+            def _normalize_pic(value):
+                if not value:
+                    return None
+                s = str(value).strip()
+                if s.startswith(('http://', 'https://', '/uploads', '/static')):
+                    return s
+                if s.startswith('uploads/'):
+                    return '/' + s
+                return f"/uploads/{s}"
+
+            for g in groups:
+                for u in g['users']:
+                    u['profile_picture'] = _normalize_pic(u.get('profile_picture'))
+
+            ensure_reply_views_table(c)
+            view_count = _count_reply_views_excluding_admin(c, reply_id)
+            viewers: list = []
+            try:
+                c.execute(f"""
+                    SELECT rv.username, rv.viewed_at, up.profile_picture
+                    FROM reply_views rv
+                    LEFT JOIN user_profiles up ON up.username = rv.username
+                    WHERE rv.reply_id = {ph}
+                      AND LOWER(rv.username) <> LOWER({ph})
+                    ORDER BY rv.viewed_at DESC
+                    LIMIT 100
+                """, (reply_id, 'admin'))
+                viewer_rows = c.fetchall() or []
+            except Exception:
+                viewer_rows = []
+
+            for vr in viewer_rows:
+                if hasattr(vr, 'keys'):
+                    uname = vr.get('username')
+                    viewed_at_raw = vr.get('viewed_at')
+                    pic = vr.get('profile_picture')
+                else:
+                    uname = vr[0] if len(vr) > 0 else None
+                    viewed_at_raw = vr[1] if len(vr) > 1 else None
+                    pic = vr[2] if len(vr) > 2 else None
+                if not uname:
+                    continue
+                viewed_at_str = viewed_at_raw.isoformat() if isinstance(viewed_at_raw, datetime) else (str(viewed_at_raw).strip() if viewed_at_raw else None)
+                viewers.append({
+                    'username': uname,
+                    'profile_picture': _normalize_pic(pic),
+                    'viewed_at': viewed_at_str,
+                })
+
+            return jsonify({
+                'success': True,
+                'groups': groups,
+                'view_count': int(view_count or 0),
+                'viewers': viewers,
+            })
+    except Exception as e:
+        logger.error(f"get_reply_reactors error: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
 @app.route('/get_post')
 @login_required
 def get_post():
@@ -22903,7 +23083,11 @@ def get_post():
                 counts, user_reaction = get_reply_reaction_summary(c, reply['id'], username)
                 reply['reactions'] = counts
                 reply['user_reaction'] = user_reaction
-                # Count nested replies (replies to this reply)
+                try:
+                    ensure_reply_views_table(c)
+                    reply['view_count'] = _count_reply_views_excluding_admin(c, reply['id'])
+                except Exception:
+                    reply['view_count'] = 0
                 try:
                     c.execute("SELECT COUNT(*) as cnt FROM replies WHERE parent_reply_id = ?", (reply['id'],))
                     cnt_row = c.fetchone()
@@ -23094,6 +23278,11 @@ def api_get_reply(reply_id):
             reply_counts, reply_user_reaction = get_reply_reaction_summary(c, reply_id, username)
             reply['reactions'] = reply_counts
             reply['user_reaction'] = reply_user_reaction
+            try:
+                ensure_reply_views_table(c)
+                reply['view_count'] = _count_reply_views_excluding_admin(c, reply_id)
+            except Exception:
+                reply['view_count'] = 0
             
             # Fetch all nested replies (replies to this reply)
             c.execute(f"SELECT * FROM replies WHERE parent_reply_id = {ph} ORDER BY timestamp ASC", (reply_id,))
@@ -23113,13 +23302,16 @@ def api_get_reply(reply_id):
                     pp = r['profile_picture'] if hasattr(r, 'keys') else r[1]
                     pp_map[uname] = pp
             
-            # Hydrate nested replies with profile pics and reactions
+            # Hydrate nested replies with profile pics, reactions, and view counts
             for nr in nested_replies:
                 nr['profile_picture'] = pp_map.get(nr['username'])
                 nr_counts, nr_user_reaction = get_reply_reaction_summary(c, nr['id'], username)
                 nr['reactions'] = nr_counts
                 nr['user_reaction'] = nr_user_reaction
-                # Count replies to this nested reply
+                try:
+                    nr['view_count'] = _count_reply_views_excluding_admin(c, nr['id'])
+                except Exception:
+                    nr['view_count'] = 0
                 c.execute(f"SELECT COUNT(*) as cnt FROM replies WHERE parent_reply_id = {ph}", (nr['id'],))
                 cnt_row = c.fetchone()
                 nr['reply_count'] = cnt_row['cnt'] if cnt_row and hasattr(cnt_row, 'keys') else (cnt_row[0] if cnt_row else 0)

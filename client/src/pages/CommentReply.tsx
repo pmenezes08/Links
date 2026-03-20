@@ -24,8 +24,12 @@ type Reply = {
   audio_path?: string | null
   parent_reply_id?: number | null
   reply_count?: number
+  view_count?: number
   nested_replies?: Reply[]
 }
+
+type ReactionGroup = { reaction_type: string; users: Array<{ username: string; profile_picture?: string | null }> }
+type ReplyViewer = { username: string; profile_picture?: string | null; viewed_at?: string | null }
 
 type PostInfo = {
   id: number
@@ -166,6 +170,16 @@ export default function CommentReply() {
   // Edit state for nested replies (keyed by reply id)
   const [editingNestedId, setEditingNestedId] = useState<number | null>(null)
   const [editNestedText, setEditNestedText] = useState('')
+
+  // Reply view tracking
+  const viewRecordedRef = useRef(false)
+
+  // Reactors modal state
+  const [showReactorsModal, setShowReactorsModal] = useState(false)
+  const [reactorsLoading, setReactorsLoading] = useState(false)
+  const [reactorGroups, setReactorGroups] = useState<ReactionGroup[]>([])
+  const [reactorViewers, setReactorViewers] = useState<ReplyViewer[]>([])
+  const [reactorViewCount, setReactorViewCount] = useState<number | null>(null)
 
   // Steve AI state
   const [steveIsTyping, setSteveIsTyping] = useState(false)
@@ -367,6 +381,24 @@ export default function CommentReply() {
     fetchReply()
   }, [fetchReply])
 
+  // Record reply view
+  useEffect(() => {
+    if (!reply_id || viewRecordedRef.current) return
+    viewRecordedRef.current = true
+    fetch('/api/reply_view', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reply_id: Number(reply_id) })
+    })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success && typeof j.view_count === 'number') {
+          setReply(prev => prev && prev.id === Number(reply_id) ? { ...prev, view_count: j.view_count } : prev)
+        }
+      })
+      .catch(() => { viewRecordedRef.current = false })
+  }, [reply_id])
+
   // Scroll to main reply on load
   useEffect(() => {
     if (!loading && mainReplyRef.current) {
@@ -428,12 +460,52 @@ export default function CommentReply() {
     }
   }
 
-  // Handle reaction on a reply (heart only)
-  const handleReaction = async (targetReplyId: number) => {
+  function formatViewerRelative(viewed_at?: string | null): string {
+    if (!viewed_at) return ''
+    try {
+      const date = new Date(viewed_at)
+      if (isNaN(date.getTime())) return ''
+      const diffMs = Date.now() - date.getTime()
+      const diffMins = Math.round(diffMs / 60000)
+      if (diffMins < 1) return 'just now'
+      if (diffMins < 60) return `${diffMins}m ago`
+      const diffHrs = Math.round(diffMins / 60)
+      if (diffHrs < 24) return `${diffHrs}h ago`
+      const diffDays = Math.round(diffHrs / 24)
+      if (diffDays < 7) return `${diffDays}d ago`
+      return date.toLocaleDateString()
+    } catch { return '' }
+  }
+
+  async function openReplyReactorsModal(replyId: number) {
+    setShowReactorsModal(true)
+    setReactorsLoading(true)
+    setReactorGroups([])
+    setReactorViewers([])
+    setReactorViewCount(null)
+    try {
+      const r = await fetch(`/get_reply_reactors/${replyId}`, { credentials: 'include' })
+      const j = await r.json().catch(() => null)
+      if (j?.success) {
+        setReactorGroups(Array.isArray(j.groups) ? j.groups : [])
+        const viewerList: ReplyViewer[] = Array.isArray(j.viewers)
+          ? (j.viewers as Array<any>)
+              .map((v: any) => ({ username: v?.username, profile_picture: v?.profile_picture ?? null, viewed_at: v?.viewed_at ?? null }))
+              .filter((v: any) => typeof v.username === 'string' && v.username.length > 0)
+          : []
+        setReactorViewers(viewerList)
+        setReactorViewCount(typeof j.view_count === 'number' ? j.view_count : viewerList.length || null)
+      }
+    } finally {
+      setReactorsLoading(false)
+    }
+  }
+
+  const handleReaction = async (targetReplyId: number, reactionType: string = 'heart') => {
     try {
       const fd = new FormData()
       fd.append('reply_id', String(targetReplyId))
-      fd.append('reaction', '❤️')
+      fd.append('reaction', reactionType)
       const res = await fetch('/add_reply_reaction', { method: 'POST', credentials: 'include', body: fd })
       const data = await res.json()
       if (data.success) {
@@ -554,8 +626,12 @@ export default function CommentReply() {
     )
   }
 
-  const heartCount = reply.reactions?.['❤️'] || 0
-  const isHeartActive = reply.user_reaction === '❤️'
+  const heartCount = reply.reactions?.['heart'] || reply.reactions?.['❤️'] || 0
+  const isHeartActive = reply.user_reaction === 'heart' || reply.user_reaction === '❤️'
+  const thumbsUpCount = reply.reactions?.['thumbs-up'] || 0
+  const isThumbsUpActive = reply.user_reaction === 'thumbs-up'
+  const thumbsDownCount = reply.reactions?.['thumbs-down'] || 0
+  const isThumbsDownActive = reply.user_reaction === 'thumbs-down'
   
   // Calculate keyboard lift (subtract safe area since keyboard height includes it on iOS)
   const keyboardLift = Math.max(0, keyboardOffset - safeBottomPx)
@@ -773,17 +849,37 @@ export default function CommentReply() {
                   </div>
                 )}
 
-                {/* Heart + Reply count - same line */}
+                {/* Reactions + view + reply count */}
                 {!isEditingMain && (
-                  <div className="mt-3 flex items-center gap-4">
+                  <div className="mt-3 flex items-center gap-3">
                     <button
-                      onClick={() => handleReaction(reply.id)}
-                      className={`flex items-center gap-1.5 text-sm transition ${
-                        isHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'
-                      }`}
+                      onClick={() => handleReaction(reply.id, 'heart')}
+                      className={`flex items-center gap-1 text-sm transition ${isHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'}`}
                     >
                       <i className={`${isHeartActive ? 'fa-solid' : 'fa-regular'} fa-heart`} />
                       {heartCount > 0 && <span>{heartCount}</span>}
+                    </button>
+                    <button
+                      onClick={() => handleReaction(reply.id, 'thumbs-up')}
+                      className={`flex items-center gap-1 text-sm transition ${isThumbsUpActive ? 'text-[#4db6ac]' : 'text-white/40 hover:text-[#4db6ac]'}`}
+                    >
+                      <i className={`${isThumbsUpActive ? 'fa-solid' : 'fa-regular'} fa-thumbs-up`} />
+                      {thumbsUpCount > 0 && <span>{thumbsUpCount}</span>}
+                    </button>
+                    <button
+                      onClick={() => handleReaction(reply.id, 'thumbs-down')}
+                      className={`flex items-center gap-1 text-sm transition ${isThumbsDownActive ? 'text-orange-400' : 'text-white/40 hover:text-orange-400'}`}
+                    >
+                      <i className={`${isThumbsDownActive ? 'fa-solid' : 'fa-regular'} fa-thumbs-down`} />
+                      {thumbsDownCount > 0 && <span>{thumbsDownCount}</span>}
+                    </button>
+                    <button
+                      className="flex items-center gap-1 text-sm text-white/40 hover:text-white transition"
+                      onClick={() => openReplyReactorsModal(reply.id)}
+                      title="View reactions & viewers"
+                    >
+                      <i className="fa-regular fa-eye" />
+                      <span>{typeof reply.view_count === 'number' ? reply.view_count : 0}</span>
                     </button>
                     <span className="flex items-center gap-1.5 text-sm text-white/40">
                       <i className="fa-regular fa-comment" />
@@ -799,8 +895,12 @@ export default function CommentReply() {
           {reply.nested_replies && reply.nested_replies.length > 0 && (
             <div className="divide-y divide-white/5">
               {reply.nested_replies.map((nr) => {
-                const nrHeartCount = nr.reactions?.['❤️'] || 0
-                const nrIsHeartActive = nr.user_reaction === '❤️'
+                const nrHeartCount = nr.reactions?.['heart'] || nr.reactions?.['❤️'] || 0
+                const nrIsHeartActive = nr.user_reaction === 'heart' || nr.user_reaction === '❤️'
+                const nrThumbsUpCount = nr.reactions?.['thumbs-up'] || 0
+                const nrIsThumbsUpActive = nr.user_reaction === 'thumbs-up'
+                const nrThumbsDownCount = nr.reactions?.['thumbs-down'] || 0
+                const nrIsThumbsDownActive = nr.user_reaction === 'thumbs-down'
                 const nrReplyCount = nr.reply_count || 0
                 const isEditingThis = editingNestedId === nr.id
 
@@ -893,17 +993,37 @@ export default function CommentReply() {
                           </div>
                         )}
 
-                        {/* Heart + Reply count - same line */}
+                        {/* Reactions + view + reply count */}
                         {!isEditingThis && (
-                          <div className="mt-2 flex items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                          <div className="mt-2 flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                             <button
-                              onClick={() => handleReaction(nr.id)}
-                              className={`flex items-center gap-1 text-xs transition ${
-                                nrIsHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'
-                              }`}
+                              onClick={() => handleReaction(nr.id, 'heart')}
+                              className={`flex items-center gap-1 text-xs transition ${nrIsHeartActive ? 'text-red-400' : 'text-white/40 hover:text-red-400'}`}
                             >
                               <i className={`${nrIsHeartActive ? 'fa-solid' : 'fa-regular'} fa-heart`} />
                               {nrHeartCount > 0 && <span>{nrHeartCount}</span>}
+                            </button>
+                            <button
+                              onClick={() => handleReaction(nr.id, 'thumbs-up')}
+                              className={`flex items-center gap-1 text-xs transition ${nrIsThumbsUpActive ? 'text-[#4db6ac]' : 'text-white/40 hover:text-[#4db6ac]'}`}
+                            >
+                              <i className={`${nrIsThumbsUpActive ? 'fa-solid' : 'fa-regular'} fa-thumbs-up`} />
+                              {nrThumbsUpCount > 0 && <span>{nrThumbsUpCount}</span>}
+                            </button>
+                            <button
+                              onClick={() => handleReaction(nr.id, 'thumbs-down')}
+                              className={`flex items-center gap-1 text-xs transition ${nrIsThumbsDownActive ? 'text-orange-400' : 'text-white/40 hover:text-orange-400'}`}
+                            >
+                              <i className={`${nrIsThumbsDownActive ? 'fa-solid' : 'fa-regular'} fa-thumbs-down`} />
+                              {nrThumbsDownCount > 0 && <span>{nrThumbsDownCount}</span>}
+                            </button>
+                            <button
+                              className="flex items-center gap-1 text-xs text-white/40 hover:text-white transition"
+                              onClick={() => openReplyReactorsModal(nr.id)}
+                              title="View reactions & viewers"
+                            >
+                              <i className="fa-regular fa-eye" />
+                              <span>{typeof nr.view_count === 'number' ? nr.view_count : 0}</span>
                             </button>
                             <span className="flex items-center gap-1 text-xs text-white/40">
                               <i className="fa-regular fa-comment" />
@@ -1000,6 +1120,70 @@ export default function CommentReply() {
         }}
         onClose={() => setShowGifPicker(false)}
       />
+
+      {/* Reply Reactors/Viewers Modal */}
+      {showReactorsModal && (
+        <div
+          className="fixed inset-0 z-[95] bg-black/70 backdrop-blur flex items-center justify-center"
+          onClick={(e) => e.currentTarget === e.target && setShowReactorsModal(false)}
+        >
+          <div className="w-[92%] max-w-[560px] rounded-2xl border border-white/10 bg-black p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="font-semibold">Views & Reactions</div>
+              <button
+                className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center text-sm text-white/80 hover:bg-white/10"
+                onClick={() => setShowReactorsModal(false)}
+                aria-label="Close"
+              >
+                <span className="leading-none">✕</span>
+              </button>
+            </div>
+            {reactorsLoading ? (
+              <div className="text-[#9fb0b5] text-sm py-4 text-center">Loading...</div>
+            ) : (
+              <div className="space-y-3 max-h-[420px] overflow-y-auto">
+                <div className="rounded-lg border border-white/10 p-2">
+                  <div className="flex items-center justify-between text-xs text-white/80 uppercase tracking-wide">
+                    <span>Views</span>
+                    <span className="text-sm font-semibold text-white">{reactorViewCount ?? 0}</span>
+                  </div>
+                  {reactorViewers.length === 0 ? (
+                    <div className="mt-2 text-xs text-[#9fb0b5]">No views yet.</div>
+                  ) : (
+                    <div className="mt-2 flex flex-col gap-1">
+                      {reactorViewers.map((viewer) => {
+                        const viewedLabel = formatViewerRelative(viewer.viewed_at)
+                        return (
+                          <div key={`rv-${viewer.username}-${viewer.viewed_at ?? ''}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                            <Avatar username={viewer.username} url={viewer.profile_picture || undefined} size={18} linkToProfile />
+                            <div className="flex-1 truncate">@{viewer.username}</div>
+                            {viewedLabel && <div className="text-[10px] text-white/40">{viewedLabel}</div>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+                {reactorGroups.length === 0 ? (
+                  <div className="text-sm text-[#9fb0b5]">No reactions yet.</div>
+                ) : reactorGroups.map((group) => (
+                  <div key={group.reaction_type} className="rounded-lg border border-white/10 p-2">
+                    <div className="text-xs text-white/80 mb-1 capitalize">{group.reaction_type.replace('-', ' ')}</div>
+                    <div className="flex flex-col gap-1">
+                      {(group.users || []).map((u) => (
+                        <div key={`${group.reaction_type}-${u.username}`} className="flex items-center gap-2 text-xs text-[#9fb0b5]">
+                          <Avatar username={u.username} url={u.profile_picture || undefined} size={18} linkToProfile />
+                          <div className="flex-1 truncate">@{u.username}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
