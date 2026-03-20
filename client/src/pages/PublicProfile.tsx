@@ -4,6 +4,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import { useUserProfile } from '../contexts/UserProfileContext'
+import { renderTextWithSourceLinks } from '../utils/linkUtils'
 
 type PersonalInfo = {
   display_name?: string | null
@@ -307,7 +308,7 @@ export default function PublicProfile() {
               {bioText ? (
                 <div>
                   <span className="text-[#9fb0b5] mr-2">Bio:</span>
-                  <p className="mt-1 whitespace-pre-wrap leading-relaxed text-white/90">{bioText}</p>
+                  <p className="mt-1 whitespace-pre-wrap leading-relaxed text-white/90">{renderTextWithSourceLinks(bioText)}</p>
                 </div>
               ) : null}
               {formattedDob ? (
