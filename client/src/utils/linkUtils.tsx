@@ -218,14 +218,17 @@ export function renderTextWithSourceLinks(
   let lastIndex = 0
   let sourceCounter = 0
   
-  // Match both markdown links and plain URLs
-  const combinedRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s]+)/g
+  // Match markdown links, https/http URLs, and www. URLs
+  const combinedRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s]+)|(?:^|\s)(www\.[^\s]+)/g
   let match
   
   while ((match = combinedRegex.exec(text)) !== null) {
-    // Add text before the link
-    if (match.index > lastIndex) {
-      const textBefore = text.substring(lastIndex, match.index)
+    // For www. matches the full match may include a leading space; adjust start index
+    const wwwUrl = match[4]
+    const effectiveStart = wwwUrl ? match.index + (match[0].length - wwwUrl.length) : match.index
+    
+    if (effectiveStart > lastIndex) {
+      const textBefore = text.substring(lastIndex, effectiveStart)
       parts.push(...colorizeMentions(preserveNewlines(textBefore), onMentionClick))
     }
     
@@ -233,11 +236,12 @@ export function renderTextWithSourceLinks(
     let displayText: string
     
     if (match[1] && match[2]) {
-      // Markdown link: [text](url)
       displayText = match[1]
       url = match[2]
+    } else if (wwwUrl) {
+      displayText = wwwUrl
+      url = `https://${wwwUrl}`
     } else {
-      // Plain URL
       url = match[0]
       if (shortenUrls) {
         sourceCounter++
@@ -247,14 +251,21 @@ export function renderTextWithSourceLinks(
       }
     }
     
+    const handleLinkClick = (e: React.MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+    
     parts.push(
       <a
-        key={`link-${match.index}`}
+        key={`link-${effectiveStart}`}
         href={url}
         target="_blank"
         rel="noopener noreferrer"
         className="text-[#4db6ac] hover:underline"
         title={shortenUrls ? url : undefined}
+        onClick={handleLinkClick}
       >
         {displayText}
       </a>
