@@ -267,6 +267,8 @@ STORY_VIDEO_EXTENSIONS = {'mp4', 'mov', 'm4v', 'webm', 'avi'}
 STORY_ALLOWED_EXTENSIONS = STORY_IMAGE_EXTENSIONS | STORY_VIDEO_EXTENSIONS
 STORY_DEFAULT_LIFESPAN_HOURS = 24
 STORY_MAX_CAPTION_LENGTH = 2000
+STORY_MAX_DESCRIPTION_LENGTH = 2000
+STORY_MAX_COMMENT_LENGTH = 2000
 
 # Authentication decorators (defined early so they are in scope for route decorators)
 def login_required(f):
@@ -441,6 +443,7 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 ALLOWED_EXTENSIONS = set(DEFAULT_ALLOWED_EXTENSIONS)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['ALLOWED_EXTENSIONS'] = ALLOWED_EXTENSIONS
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB, matches nginx
 
 IMAGINE_OUTPUT_SUBDIR = 'imagine'
 IMAGINE_OUTPUT_DIR = os.path.join(app.config['UPLOAD_FOLDER'], IMAGINE_OUTPUT_SUBDIR)
@@ -1051,68 +1054,105 @@ def upsert_reply_view(c, reply_id: int, username: Optional[str]) -> int:
 
 
 def ensure_story_tables(c):
-    """Ensure community_stories, views, and reactions tables exist. Returns True if successful."""
+    """Ensure community_stories, views, reactions, and comments tables exist. Returns True if successful."""
     try:
-        # First check if tables already exist
         if USE_MYSQL:
             c.execute("SHOW TABLES LIKE 'community_stories'")
-            if c.fetchone():
-                return True  # Tables already exist
-            c.execute(
-                """
-                CREATE TABLE IF NOT EXISTS community_stories (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    community_id INT NOT NULL,
-                    username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-                    media_path VARCHAR(512) NOT NULL,
-                    media_type VARCHAR(16) NOT NULL,
-                    caption TEXT,
-                    duration_seconds INT,
-                    status VARCHAR(32) NOT NULL DEFAULT 'active',
-                    created_at DATETIME NOT NULL,
-                    expires_at DATETIME NOT NULL,
-                    view_count INT NOT NULL DEFAULT 0,
-                    last_viewed_at DATETIME,
-                    text_overlays JSON,
-                    location_data JSON,
-                    INDEX idx_cs_comm_expires (community_id, expires_at),
-                    INDEX idx_cs_user_created (username, created_at),
-                    CONSTRAINT fk_cs_community FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
-                    CONSTRAINT fk_cs_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-                """
-            )
-            c.execute(
-                """
-                CREATE TABLE IF NOT EXISTS community_story_views (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    story_id INT NOT NULL,
-                    username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-                    viewed_at DATETIME NOT NULL,
-                    UNIQUE KEY uniq_story_viewer (story_id, username),
-                    INDEX idx_csv_story (story_id),
-                    INDEX idx_csv_user (username),
-                    CONSTRAINT fk_csv_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
-                    CONSTRAINT fk_csv_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-                """
-            )
-            c.execute(
-                """
-                CREATE TABLE IF NOT EXISTS community_story_reactions (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    story_id INT NOT NULL,
-                    username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-                    reaction VARCHAR(16) NOT NULL,
-                    created_at DATETIME NOT NULL,
-                    UNIQUE KEY uniq_story_reaction (story_id, username),
-                    INDEX idx_csr_story (story_id),
-                    INDEX idx_csr_reaction (reaction),
-                    CONSTRAINT fk_csr_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
-                    CONSTRAINT fk_csr_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-                """
-            )
+            stories_exist = c.fetchone()
+            if not stories_exist:
+                c.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS community_stories (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        community_id INT NOT NULL,
+                        username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+                        media_path VARCHAR(512) NOT NULL,
+                        media_type VARCHAR(16) NOT NULL,
+                        caption TEXT,
+                        duration_seconds INT,
+                        status VARCHAR(32) NOT NULL DEFAULT 'active',
+                        created_at DATETIME NOT NULL,
+                        expires_at DATETIME NOT NULL,
+                        view_count INT NOT NULL DEFAULT 0,
+                        last_viewed_at DATETIME,
+                        text_overlays JSON,
+                        location_data JSON,
+                        story_group_id VARCHAR(64),
+                        description TEXT,
+                        INDEX idx_cs_comm_expires (community_id, expires_at),
+                        INDEX idx_cs_user_created (username, created_at),
+                        INDEX idx_cs_group (story_group_id),
+                        CONSTRAINT fk_cs_community FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE,
+                        CONSTRAINT fk_cs_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                    """
+                )
+            else:
+                for col, col_def in [
+                    ('story_group_id', 'VARCHAR(64)'),
+                    ('description', 'TEXT'),
+                ]:
+                    try:
+                        c.execute(f"ALTER TABLE community_stories ADD COLUMN {col} {col_def}")
+                    except Exception:
+                        pass
+                try:
+                    c.execute("CREATE INDEX idx_cs_group ON community_stories (story_group_id)")
+                except Exception:
+                    pass
+
+            c.execute("SHOW TABLES LIKE 'community_story_views'")
+            if not c.fetchone():
+                c.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS community_story_views (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        story_id INT NOT NULL,
+                        username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+                        viewed_at DATETIME NOT NULL,
+                        UNIQUE KEY uniq_story_viewer (story_id, username),
+                        INDEX idx_csv_story (story_id),
+                        INDEX idx_csv_user (username),
+                        CONSTRAINT fk_csv_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
+                        CONSTRAINT fk_csv_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                    """
+                )
+            c.execute("SHOW TABLES LIKE 'community_story_reactions'")
+            if not c.fetchone():
+                c.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS community_story_reactions (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        story_id INT NOT NULL,
+                        username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+                        reaction VARCHAR(16) NOT NULL,
+                        created_at DATETIME NOT NULL,
+                        UNIQUE KEY uniq_story_reaction (story_id, username),
+                        INDEX idx_csr_story (story_id),
+                        INDEX idx_csr_reaction (reaction),
+                        CONSTRAINT fk_csr_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
+                        CONSTRAINT fk_csr_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                    """
+                )
+            c.execute("SHOW TABLES LIKE 'community_story_comments'")
+            if not c.fetchone():
+                c.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS community_story_comments (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        story_id INT NOT NULL,
+                        username VARCHAR(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+                        content TEXT NOT NULL,
+                        created_at DATETIME NOT NULL,
+                        INDEX idx_csc_story (story_id),
+                        INDEX idx_csc_user (username),
+                        CONSTRAINT fk_csc_story FOREIGN KEY (story_id) REFERENCES community_stories(id) ON DELETE CASCADE,
+                        CONSTRAINT fk_csc_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                    """
+                )
         else:
             c.execute(
                 """
@@ -1130,7 +1170,9 @@ def ensure_story_tables(c):
                     view_count INTEGER NOT NULL DEFAULT 0,
                     last_viewed_at TEXT,
                     text_overlays TEXT,
-                    location_data TEXT
+                    location_data TEXT,
+                    story_group_id TEXT,
+                    description TEXT
                 )
                 """
             )
@@ -1146,6 +1188,7 @@ def ensure_story_tables(c):
             )
             c.execute("CREATE INDEX IF NOT EXISTS idx_cs_comm_expires ON community_stories (community_id, expires_at)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_cs_user_created ON community_stories (username, created_at)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_cs_group ON community_stories (story_group_id)")
             c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uniq_story_viewer ON community_story_views (story_id, username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_csv_user ON community_story_views (username)")
             c.execute(
@@ -1162,6 +1205,19 @@ def ensure_story_tables(c):
             c.execute("CREATE UNIQUE INDEX IF NOT EXISTS uniq_story_reaction ON community_story_reactions (story_id, username)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_csr_story ON community_story_reactions (story_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_csr_reaction ON community_story_reactions (reaction)")
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS community_story_comments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    story_id INTEGER NOT NULL,
+                    username TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+            c.execute("CREATE INDEX IF NOT EXISTS idx_csc_story ON community_story_comments (story_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_csc_user ON community_story_comments (username)")
         return True
     except Exception as e:
         logger.error(f"Could not ensure community story tables: {e}")
@@ -26584,7 +26640,7 @@ def api_community_stories(community_id: int):
                 SELECT cs.id, cs.community_id, cs.username, cs.media_path, cs.media_type,
                        cs.caption, cs.duration_seconds, cs.status, cs.created_at,
                        cs.expires_at, cs.view_count, cs.last_viewed_at, up.profile_picture,
-                       cs.text_overlays, cs.location_data
+                       cs.text_overlays, cs.location_data, cs.story_group_id, cs.description
                 FROM community_stories cs
                 LEFT JOIN user_profiles up ON up.username = cs.username
                 WHERE cs.community_id = {ph}
@@ -26656,6 +26712,8 @@ def api_community_stories(community_id: int):
                     profile_picture = row.get("profile_picture")
                     text_overlays_raw = row.get("text_overlays")
                     location_data_raw = row.get("location_data")
+                    story_group_id_val = row.get("story_group_id")
+                    description_val = row.get("description")
                 else:
                     story_id = row[0]
                     author = row[2] if len(row) > 2 else None
@@ -26669,6 +26727,8 @@ def api_community_stories(community_id: int):
                     profile_picture = row[12] if len(row) > 12 else None
                     text_overlays_raw = row[13] if len(row) > 13 else None
                     location_data_raw = row[14] if len(row) > 14 else None
+                    story_group_id_val = row[15] if len(row) > 15 else None
+                    description_val = row[16] if len(row) > 16 else None
                 if not story_id or not author:
                     continue
                 story_id = int(story_id)
@@ -26706,6 +26766,8 @@ def api_community_stories(community_id: int):
                     'user_reaction': user_reactions.get(story_id),
                     'text_overlays': text_overlays,
                     'location_data': location_data,
+                    'story_group_id': story_group_id_val,
+                    'description': description_val,
                 }
                 stories_payload.append(story_payload)
                 group = groups_map.setdefault(
@@ -26804,31 +26866,25 @@ def create_community_story():
     duration_seconds = request.form.get('duration_seconds', type=int)
     if isinstance(duration_seconds, int) and duration_seconds < 0:
         duration_seconds = None
-    
+
+    # Story-level description (shared across all media in this batch)
+    description = (request.form.get('description') or '').strip()
+    if description and len(description) > STORY_MAX_DESCRIPTION_LENGTH:
+        description = description[:STORY_MAX_DESCRIPTION_LENGTH]
+
+    # Generate a unique group id so all media in this upload are linked
+    import uuid as _uuid
+    story_group_id = str(_uuid.uuid4())
+
     created_stories = []
+    upload_errors = []
     base_created_at = datetime.utcnow()
-    
+
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
             ensure_story_tables(c)
-            
-            # Ensure new columns exist
-            try:
-                if USE_MYSQL:
-                    c.execute("ALTER TABLE community_stories ADD COLUMN text_overlays JSON")
-                else:
-                    c.execute("ALTER TABLE community_stories ADD COLUMN text_overlays TEXT")
-            except Exception:
-                pass
-            try:
-                if USE_MYSQL:
-                    c.execute("ALTER TABLE community_stories ADD COLUMN location_data JSON")
-                else:
-                    c.execute("ALTER TABLE community_stories ADD COLUMN location_data TEXT")
-            except Exception:
-                pass
-            
+
             ph = get_sql_placeholder()
             c.execute(
                 f"SELECT creator_username FROM communities WHERE id = {ph}",
@@ -26844,94 +26900,101 @@ def create_community_story():
             )
             if not user_has_story_access(c, username, community_id, creator_username):
                 return jsonify({'success': False, 'error': 'Forbidden'}), 403
-            
-            # Process each file
+
             for idx, media_file in enumerate(media_files):
-                ext = os.path.splitext(media_file.filename)[1].lower().lstrip('.')
-                if ext not in STORY_ALLOWED_EXTENSIONS:
-                    continue  # Skip unsupported files
-                
-                media_type = 'image' if ext in STORY_IMAGE_EXTENSIONS else 'video'
-                
-                stored_path = save_uploaded_file(
-                    media_file,
-                    subfolder='community_stories',
-                    allowed_extensions=STORY_ALLOWED_EXTENSIONS,
-                )
-                if not stored_path:
-                    continue  # Skip files that fail to save
-                
-                # Get per-file metadata if provided
-                file_caption = caption
-                file_text_overlays = text_overlays
-                file_location_data = location_data
-                file_duration = duration_seconds
-                
-                if idx < len(per_file_meta) and isinstance(per_file_meta[idx], dict):
-                    meta = per_file_meta[idx]
-                    if 'caption' in meta:
-                        file_caption = str(meta['caption'])[:STORY_MAX_CAPTION_LENGTH]
-                    if 'text_overlays' in meta and isinstance(meta['text_overlays'], list):
-                        file_text_overlays = meta['text_overlays']
-                    if 'location_data' in meta and isinstance(meta['location_data'], dict):
-                        file_location_data = meta['location_data']
-                    if 'duration_seconds' in meta:
-                        try:
-                            file_duration = int(meta['duration_seconds'])
-                        except Exception:
-                            pass
-                
-                # Stagger created_at slightly for each file to maintain order
-                created_at = base_created_at + timedelta(milliseconds=idx * 100)
-                expires_at = created_at + timedelta(hours=STORY_DEFAULT_LIFESPAN_HOURS)
-                
-                # Serialize JSON fields
-                text_overlays_str = json.dumps(file_text_overlays) if file_text_overlays else None
-                location_data_str = json.dumps(file_location_data) if file_location_data else None
-                
-                c.execute(
-                    f"""
-                    INSERT INTO community_stories
-                    (community_id, username, media_path, media_type, caption, duration_seconds, status, created_at, expires_at, text_overlays, location_data)
-                    VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-                    """,
-                    (
-                        community_id,
-                        username,
-                        stored_path,
-                        media_type,
-                        file_caption if file_caption else None,
-                        file_duration,
-                        'active',
-                        created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                        expires_at.strftime('%Y-%m-%d %H:%M:%S'),
-                        text_overlays_str,
-                        location_data_str,
-                    ),
-                )
-                story_id = getattr(c, 'lastrowid', None)
-                
-                created_stories.append({
-                    'id': story_id,
-                    'community_id': community_id,
-                    'username': username,
-                    'media_type': media_type,
-                    'media_path': stored_path,
-                    'media_url': get_public_upload_url(normalize_upload_reference(stored_path)),
-                    'caption': file_caption,
-                    'text_overlays': file_text_overlays,
-                    'location_data': file_location_data,
-                    'duration_seconds': file_duration,
-                    'created_at': created_at.isoformat(),
-                    'expires_at': expires_at.isoformat(),
-                    'view_count': 0,
-                    'has_viewed': True,
-                })
-            
+                try:
+                    ext = os.path.splitext(media_file.filename)[1].lower().lstrip('.')
+                    if ext not in STORY_ALLOWED_EXTENSIONS:
+                        upload_errors.append(f"File {idx+1} ({media_file.filename}): unsupported format '{ext}'")
+                        continue
+
+                    media_type = 'image' if ext in STORY_IMAGE_EXTENSIONS else 'video'
+
+                    stored_path = save_uploaded_file(
+                        media_file,
+                        subfolder='community_stories',
+                        allowed_extensions=STORY_ALLOWED_EXTENSIONS,
+                    )
+                    if not stored_path:
+                        upload_errors.append(f"File {idx+1} ({media_file.filename}): failed to save")
+                        continue
+
+                    file_caption = caption
+                    file_text_overlays = text_overlays
+                    file_location_data = location_data
+                    file_duration = duration_seconds
+
+                    if idx < len(per_file_meta) and isinstance(per_file_meta[idx], dict):
+                        meta = per_file_meta[idx]
+                        if 'caption' in meta:
+                            file_caption = str(meta['caption'])[:STORY_MAX_CAPTION_LENGTH]
+                        if 'text_overlays' in meta and isinstance(meta['text_overlays'], list):
+                            file_text_overlays = meta['text_overlays']
+                        if 'location_data' in meta and isinstance(meta['location_data'], dict):
+                            file_location_data = meta['location_data']
+                        if 'duration_seconds' in meta:
+                            try:
+                                file_duration = int(meta['duration_seconds'])
+                            except Exception:
+                                pass
+
+                    created_at = base_created_at + timedelta(milliseconds=idx * 100)
+                    expires_at = created_at + timedelta(hours=STORY_DEFAULT_LIFESPAN_HOURS)
+
+                    text_overlays_str = json.dumps(file_text_overlays) if file_text_overlays else None
+                    location_data_str = json.dumps(file_location_data) if file_location_data else None
+
+                    c.execute(
+                        f"""
+                        INSERT INTO community_stories
+                        (community_id, username, media_path, media_type, caption, duration_seconds, status, created_at, expires_at, text_overlays, location_data, story_group_id, description)
+                        VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+                        """,
+                        (
+                            community_id,
+                            username,
+                            stored_path,
+                            media_type,
+                            file_caption if file_caption else None,
+                            file_duration,
+                            'active',
+                            created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                            expires_at.strftime('%Y-%m-%d %H:%M:%S'),
+                            text_overlays_str,
+                            location_data_str,
+                            story_group_id,
+                            description if description else None,
+                        ),
+                    )
+                    story_id = getattr(c, 'lastrowid', None)
+
+                    created_stories.append({
+                        'id': story_id,
+                        'community_id': community_id,
+                        'username': username,
+                        'media_type': media_type,
+                        'media_path': stored_path,
+                        'media_url': get_public_upload_url(normalize_upload_reference(stored_path)),
+                        'caption': file_caption,
+                        'text_overlays': file_text_overlays,
+                        'location_data': file_location_data,
+                        'duration_seconds': file_duration,
+                        'story_group_id': story_group_id,
+                        'description': description if description else None,
+                        'created_at': created_at.isoformat(),
+                        'expires_at': expires_at.isoformat(),
+                        'view_count': 0,
+                        'has_viewed': True,
+                    })
+                except Exception as file_err:
+                    logger.error(f"Error processing story file {idx+1} ({media_file.filename}): {file_err}")
+                    upload_errors.append(f"File {idx+1} ({media_file.filename}): {str(file_err)[:100]}")
+
             conn.commit()
-        
+
         if not created_stories:
-            return jsonify({'success': False, 'error': 'No valid media files were uploaded'}), 400
+            error_detail = '; '.join(upload_errors) if upload_errors else 'No valid media files were uploaded'
+            return jsonify({'success': False, 'error': error_detail}), 400
         
         logger.info(f"Successfully created {len(created_stories)} stories for community {community_id}")
         invalidate_community_cache(community_id)
@@ -27022,13 +27085,16 @@ def create_community_story():
         except Exception as notify_err:
             logger.warning(f"Story notification block error: {notify_err}")
         
-        # Return single story for backwards compatibility, plus array of all
-        return jsonify({
+        resp = {
             'success': True,
             'story': created_stories[0] if created_stories else None,
             'stories': created_stories,
             'count': len(created_stories),
-        })
+            'story_group_id': story_group_id,
+        }
+        if upload_errors:
+            resp['warnings'] = upload_errors
+        return jsonify(resp)
     except Exception as e:
         logger.error(f"Error creating community story for community {community_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
@@ -27341,6 +27407,168 @@ def api_story_reaction():
             )
     except Exception as e:
         logger.error(f"Error reacting to story {story_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community_stories/<int:story_id>/comments')
+@login_required
+def api_get_story_comments(story_id: int):
+    """Get public comments for a story."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+            c.execute(
+                f"""
+                SELECT cs.community_id, co.creator_username
+                FROM community_stories cs
+                JOIN communities co ON co.id = cs.community_id
+                WHERE cs.id = {ph}
+                """,
+                (story_id,),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Story not found'}), 404
+            community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
+            creator = row['creator_username'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else None)
+            if not user_has_story_access(c, username, community_id, creator):
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(
+                f"""
+                SELECT sc.id, sc.username, sc.content, sc.created_at, up.profile_picture
+                FROM community_story_comments sc
+                LEFT JOIN user_profiles up ON up.username = sc.username
+                WHERE sc.story_id = {ph}
+                ORDER BY sc.created_at ASC
+                LIMIT 200
+                """,
+                (story_id,),
+            )
+            comments = []
+            for r in (c.fetchall() or []):
+                if hasattr(r, 'keys'):
+                    pp = r.get('profile_picture')
+                    if pp and not str(pp).startswith(('http://', 'https://')):
+                        pp = get_public_upload_url(normalize_upload_reference(pp))
+                    comments.append({
+                        'id': r['id'], 'username': r['username'],
+                        'content': r['content'], 'created_at': str(r['created_at']),
+                        'profile_picture': pp,
+                    })
+                else:
+                    pp = r[4] if len(r) > 4 else None
+                    if pp and not str(pp).startswith(('http://', 'https://')):
+                        pp = get_public_upload_url(normalize_upload_reference(pp))
+                    comments.append({
+                        'id': r[0], 'username': r[1],
+                        'content': r[2], 'created_at': str(r[3]),
+                        'profile_picture': pp,
+                    })
+            return jsonify({'success': True, 'comments': comments, 'count': len(comments)})
+    except Exception as e:
+        logger.error(f"Error fetching story comments for {story_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community_stories/<int:story_id>/comments', methods=['POST'])
+@login_required
+def api_add_story_comment(story_id: int):
+    """Add a public comment to a story."""
+    username = session.get('username')
+    try:
+        payload = request.get_json(silent=True) or {}
+    except Exception:
+        payload = {}
+    content = (payload.get('content') or '').strip()
+    if not content:
+        return jsonify({'success': False, 'error': 'Comment content required'}), 400
+    if len(content) > STORY_MAX_COMMENT_LENGTH:
+        content = content[:STORY_MAX_COMMENT_LENGTH]
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+            c.execute(
+                f"""
+                SELECT cs.community_id, co.creator_username
+                FROM community_stories cs
+                JOIN communities co ON co.id = cs.community_id
+                WHERE cs.id = {ph} AND cs.status = 'active'
+                """,
+                (story_id,),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Story not found'}), 404
+            community_id = row['community_id'] if hasattr(row, 'keys') else row[0]
+            creator = row['creator_username'] if hasattr(row, 'keys') else (row[1] if len(row) > 1 else None)
+            if not user_has_story_access(c, username, community_id, creator):
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            c.execute(
+                f"""
+                INSERT INTO community_story_comments (story_id, username, content, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph})
+                """,
+                (story_id, username, content, now_str),
+            )
+            comment_id = getattr(c, 'lastrowid', None)
+            conn.commit()
+            pp_row = c.execute(
+                f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,)
+            ) if False else None
+            profile_picture = None
+            try:
+                c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
+                pp_r = c.fetchone()
+                if pp_r:
+                    pp = pp_r['profile_picture'] if hasattr(pp_r, 'keys') else pp_r[0]
+                    if pp and not str(pp).startswith(('http://', 'https://')):
+                        pp = get_public_upload_url(normalize_upload_reference(pp))
+                    profile_picture = pp
+            except Exception:
+                pass
+            return jsonify({
+                'success': True,
+                'comment': {
+                    'id': comment_id,
+                    'username': username,
+                    'content': content,
+                    'created_at': now_str,
+                    'profile_picture': profile_picture,
+                },
+            })
+    except Exception as e:
+        logger.error(f"Error adding story comment for {story_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community_stories/comments/<int:comment_id>', methods=['DELETE'])
+@login_required
+def api_delete_story_comment(comment_id: int):
+    """Delete a story comment. Only comment author or admin can delete."""
+    username = session.get('username')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT username FROM community_story_comments WHERE id = {ph}", (comment_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Comment not found'}), 404
+            comment_author = row['username'] if hasattr(row, 'keys') else row[0]
+            if comment_author.lower() != username.lower() and username.lower() != 'admin':
+                return jsonify({'success': False, 'error': 'Forbidden'}), 403
+            c.execute(f"DELETE FROM community_story_comments WHERE id = {ph}", (comment_id,))
+            conn.commit()
+            return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting story comment {comment_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 

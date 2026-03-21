@@ -2,6 +2,10 @@ import { type ChangeEvent, type PointerEvent as ReactPointerEvent, type MouseEve
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { Keyboard } from '@capacitor/keyboard'
 import { Geolocation } from '@capacitor/geolocation'
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core'
+import type { DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
 import { formatSmartTime } from '../utils/time'
@@ -42,6 +46,13 @@ type LocationData = {
   x: number
   y: number
 }
+type StoryComment = {
+  id: number
+  username: string
+  content: string
+  created_at: string
+  profile_picture?: string | null
+}
 type Story = {
   id: number
   community_id: number
@@ -60,6 +71,8 @@ type Story = {
   user_reaction?: string | null
   text_overlays?: TextOverlay[] | null
   location_data?: LocationData | null
+  story_group_id?: string | null
+  description?: string | null
 }
 type StoryGroup = {
   username: string
@@ -78,7 +91,49 @@ function normalizeMediaPath(p?: string | null){
   return p.startsWith('uploads') ? `/${p}` : `/uploads/${p}`
 }
 
-// old formatTimestamp removed; using formatSmartTime
+function SortableThumb({ id, file, isActive, onSelect, onRemove }: {
+  id: string
+  file: { preview: string; type: 'image' | 'video' }
+  isActive: boolean
+  onSelect: () => void
+  onRemove: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  }
+  return (
+    <div ref={setNodeRef} style={style} className="relative flex-shrink-0 touch-none" {...attributes} {...listeners}>
+      <button
+        onClick={onSelect}
+        className={`relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border-2 ${
+          isActive ? 'border-[#4db6ac]' : 'border-white/20'
+        }`}
+      >
+        {file.type === 'video' ? (
+          <video src={file.preview} className="w-full h-full object-cover" muted />
+        ) : (
+          <img src={file.preview} alt="" className="w-full h-full object-cover" />
+        )}
+        {file.type === 'video' && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+            <i className="fa-solid fa-play text-white text-xs" />
+          </div>
+        )}
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onRemove() }}
+        className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-black/80 text-white/90 text-xs flex items-center justify-center hover:bg-black border border-white/30"
+        style={{ zIndex: 10 }}
+      >
+        <i className="fa-solid fa-xmark" />
+      </button>
+    </div>
+  )
+}
 
 export default function CommunityFeed() {
   let { community_id } = useParams()
@@ -167,12 +222,21 @@ export default function CommunityFeed() {
   const [showLocationInput, setShowLocationInput] = useState(false)
   const [locationInputValue, setLocationInputValue] = useState('')
   const [keyboardHeight, setKeyboardHeight] = useState(0)
-  // Story reply state
-  const [storyReplyText, setStoryReplyText] = useState('')
-  const [storyReplySending, setStoryReplySending] = useState(false)
+  const [storyEditorDescription, setStoryEditorDescription] = useState('')
+  const [locationLoading, setLocationLoading] = useState(false)
+  // Story reply / comments state
+  const [, setStoryReplyText] = useState('')
   const storyReplyInputRef = useRef<HTMLInputElement | null>(null)
-  // const [storyEditorAddingText, setStoryEditorAddingText] = useState(false)
-  // const [storyEditorNewText, setStoryEditorNewText] = useState('')
+  const [storyComments, setStoryComments] = useState<StoryComment[]>([])
+  const [storyCommentsLoading, setStoryCommentsLoading] = useState(false)
+  const [storyCommentText, setStoryCommentText] = useState('')
+  const [storyCommentSending, setStoryCommentSending] = useState(false)
+  const [storyCommentPanelOpen, setStoryCommentPanelOpen] = useState(false)
+  const storyCommentInputRef = useRef<HTMLInputElement | null>(null)
+  // DnD sensors for story thumbnail reordering
+  const dndPointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  const dndTouchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  const dndSensors = useSensors(dndPointerSensor, dndTouchSensor)
   
   // Report/Hide/Block post state
   const [reportModalPost, setReportModalPost] = useState<Post | null>(null)
@@ -956,7 +1020,6 @@ export default function CommunityFeed() {
   }, [community_id, storyEditorOpen, storyEditorFiles.length])
 
   const handleStoryEditorClose = useCallback(() => {
-    // Revoke object URLs to free memory
     storyEditorFiles.forEach(f => URL.revokeObjectURL(f.preview))
     setStoryEditorFiles([])
     setStoryEditorOpen(false)
@@ -965,8 +1028,7 @@ export default function CommunityFeed() {
     setShowLocationInput(false)
     setLocationInputValue('')
     setKeyboardHeight(0)
-    // setStoryEditorAddingText(false)
-    // setStoryEditorNewText('')
+    setStoryEditorDescription('')
   }, [storyEditorFiles])
 
   // Keyboard event listeners for story editor and story viewer
@@ -994,25 +1056,26 @@ export default function CommunityFeed() {
 
   const handleStoryEditorPublish = useCallback(async () => {
     if (!community_id || storyEditorFiles.length === 0) return
-    
+
     setStoryUploading(true)
     try {
       const fd = new FormData()
       fd.append('community_id', String(community_id))
-      
-      // Add all files
+      if (storyEditorDescription.trim()) {
+        fd.append('description', storyEditorDescription.trim())
+      }
+
       storyEditorFiles.forEach(item => {
         fd.append('media', item.file)
       })
-      
-      // Add per-file metadata
+
       const perFileMeta = storyEditorFiles.map(item => ({
         caption: item.caption,
         text_overlays: item.textOverlays,
         location_data: item.locationData,
       }))
       fd.append('per_file_metadata', JSON.stringify(perFileMeta))
-      
+
       const res = await fetch('/api/community_stories', {
         method: 'POST',
         body: fd,
@@ -1022,6 +1085,9 @@ export default function CommunityFeed() {
       if (!json?.success) {
         throw new Error(json?.error || 'Failed to upload story')
       }
+      if (json.warnings?.length) {
+        console.warn('Story upload warnings:', json.warnings)
+      }
       setStoryRefreshKey(key => key + 1)
       handleStoryEditorClose()
     } catch (err) {
@@ -1030,7 +1096,7 @@ export default function CommunityFeed() {
     } finally {
       setStoryUploading(false)
     }
-  }, [community_id, storyEditorFiles, handleStoryEditorClose])
+  }, [community_id, storyEditorFiles, storyEditorDescription, handleStoryEditorClose])
 
   const updateActiveStoryEditorFile = useCallback((updates: Partial<StoryEditorFile>) => {
     setStoryEditorFiles(prev => prev.map((f, i) => 
@@ -1092,40 +1158,84 @@ export default function CommunityFeed() {
   }, [updateActiveStoryEditorFile])
 
   const fetchDeviceLocation = useCallback(async () => {
+    setLocationLoading(true)
     try {
-      // Request permission and get current position
       const permission = await Geolocation.requestPermissions()
       if (permission.location !== 'granted') {
         alert('Location permission is required to add location to your story')
+        setLocationLoading(false)
         return
       }
 
-      const position = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000
-      })
+      // Check sessionStorage cache first for instant result
+      const cached = sessionStorage.getItem('story_last_location')
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached)
+          if (parsed?.name && Date.now() - (parsed._ts || 0) < 5 * 60 * 1000) {
+            setLocationData({ name: parsed.name, x: 50, y: 85 })
+          }
+        } catch {}
+      }
 
-      const { latitude, longitude } = position.coords
+      // Fast: low-accuracy position first (cell/WiFi, ~instant)
+      let latitude: number, longitude: number
+      try {
+        const fastPos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: false,
+          timeout: 3000,
+          maximumAge: 60000,
+        })
+        latitude = fastPos.coords.latitude
+        longitude = fastPos.coords.longitude
 
-      // Use reverse geocoding to get location name
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=14`
-      )
-      const data = await response.json()
+        const fastName = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+        setLocationData({ name: fastName, x: 50, y: 85 })
+      } catch {
+        const hiPos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 10000,
+        })
+        latitude = hiPos.coords.latitude
+        longitude = hiPos.coords.longitude
+      }
 
-      // Extract city, town, or village name
-      const locationName = 
-        data.address?.city || 
-        data.address?.town || 
-        data.address?.village || 
-        data.address?.county ||
-        data.display_name?.split(',')[0] ||
-        `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+      // Reverse geocode in parallel
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=14`
+        )
+        const data = await response.json()
+        const locationName =
+          data.address?.city ||
+          data.address?.town ||
+          data.address?.village ||
+          data.address?.county ||
+          data.display_name?.split(',')[0] ||
+          `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
+        setLocationData({ name: locationName, x: 50, y: 85 })
+        try { sessionStorage.setItem('story_last_location', JSON.stringify({ name: locationName, _ts: Date.now() })) } catch {}
+      } catch {}
 
-      setLocationData({ name: locationName, x: 50, y: 85 })
+      // Optionally refine with high-accuracy GPS in background
+      try {
+        const hiPos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 8000 })
+        const hiLat = hiPos.coords.latitude, hiLon = hiPos.coords.longitude
+        if (Math.abs(hiLat - latitude) > 0.001 || Math.abs(hiLon - longitude) > 0.001) {
+          const resp2 = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${hiLat}&lon=${hiLon}&zoom=14`
+          )
+          const d2 = await resp2.json()
+          const refined = d2.address?.city || d2.address?.town || d2.address?.village || d2.address?.county || d2.display_name?.split(',')[0] || `${hiLat.toFixed(4)}, ${hiLon.toFixed(4)}`
+          setLocationData({ name: refined, x: 50, y: 85 })
+          try { sessionStorage.setItem('story_last_location', JSON.stringify({ name: refined, _ts: Date.now() })) } catch {}
+        }
+      } catch {}
     } catch (error) {
       console.error('Error fetching location:', error)
       alert('Could not get your location. Please try again.')
+    } finally {
+      setLocationLoading(false)
     }
   }, [setLocationData])
 
@@ -1179,6 +1289,63 @@ export default function CommunityFeed() {
     window.addEventListener('pointerup', upHandler)
     window.addEventListener('pointercancel', upHandler)
   }, [storyEditorActiveIndex])
+
+  const handleThumbDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIdx = storyEditorFiles.findIndex((_, i) => `thumb-${i}` === active.id)
+    const newIdx = storyEditorFiles.findIndex((_, i) => `thumb-${i}` === over.id)
+    if (oldIdx === -1 || newIdx === -1) return
+    setStoryEditorFiles(prev => arrayMove(prev, oldIdx, newIdx))
+    if (storyEditorActiveIndex === oldIdx) {
+      setStoryEditorActiveIndex(newIdx)
+    } else if (oldIdx < storyEditorActiveIndex && newIdx >= storyEditorActiveIndex) {
+      setStoryEditorActiveIndex(prev => prev - 1)
+    } else if (oldIdx > storyEditorActiveIndex && newIdx <= storyEditorActiveIndex) {
+      setStoryEditorActiveIndex(prev => prev + 1)
+    }
+  }, [storyEditorFiles, storyEditorActiveIndex])
+
+  const fetchStoryComments = useCallback(async (storyId: number) => {
+    setStoryCommentsLoading(true)
+    try {
+      const r = await fetch(`/api/community_stories/${storyId}/comments`, { credentials: 'include' })
+      const j = await r.json().catch(() => null)
+      if (j?.success) setStoryComments(j.comments || [])
+    } catch { /* ignore */ } finally {
+      setStoryCommentsLoading(false)
+    }
+  }, [])
+
+  const handleSubmitStoryComment = useCallback(async (storyId: number) => {
+    if (!storyCommentText.trim() || storyCommentSending) return
+    setStoryCommentSending(true)
+    try {
+      const r = await fetch(`/api/community_stories/${storyId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ content: storyCommentText.trim() }),
+      })
+      const j = await r.json().catch(() => null)
+      if (j?.success && j.comment) {
+        setStoryComments(prev => [...prev, j.comment])
+        setStoryCommentText('')
+      }
+    } catch (err) {
+      console.error('Failed to post story comment:', err)
+    } finally {
+      setStoryCommentSending(false)
+    }
+  }, [storyCommentText, storyCommentSending])
+
+  const handleDeleteStoryComment = useCallback(async (commentId: number) => {
+    try {
+      const r = await fetch(`/api/community_stories/comments/${commentId}`, { method: 'DELETE', credentials: 'include' })
+      const j = await r.json().catch(() => null)
+      if (j?.success) setStoryComments(prev => prev.filter(c => c.id !== commentId))
+    } catch {}
+  }, [])
 
   const markStoryAsViewed = useCallback((storyId: number) => {
     if (!storyId || viewedStoriesRef.current.has(storyId)) return
@@ -1257,66 +1424,6 @@ export default function CommunityFeed() {
     setStoryReplyText('')
   }, [])
 
-  // Handle story reply - sends message to story creator's 1:1 chat
-  const handleStoryReply = useCallback(async (story: Story) => {
-    if (!story?.username || !storyReplyText.trim() || storyReplySending) return
-    
-    // Don't allow replying to your own story
-    if (story.username.toLowerCase() === data?.username?.toLowerCase()) {
-      return
-    }
-    
-    setStoryReplySending(true)
-    try {
-      // First, get the recipient's user ID
-      const userIdRes = await fetch('/api/get_user_id_by_username', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ username: story.username })
-      })
-      const userIdJson = await userIdRes.json()
-      
-      if (!userIdJson?.success || !userIdJson.user_id) {
-        console.error('Failed to get user ID for story reply')
-        setStoryReplySending(false)
-        return
-      }
-      
-      // Format message with story reference
-      // Include story media info in a special format that the chat can recognize
-      const storyMediaUrl = story.media_url || story.media_path
-      const storyMediaType = story.media_type === 'video' ? '🎥' : '📷'
-      const storyRef = `[STORY_REPLY:${story.id}:${storyMediaType}:${normalizeMediaPath(storyMediaUrl)}]`
-      const messageText = `${storyRef}\n${storyReplyText.trim()}`
-      
-      // Send the message
-      const fd = new URLSearchParams({
-        recipient_id: String(userIdJson.user_id),
-        message: messageText
-      })
-      
-      const sendRes = await fetch('/send_message', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: fd
-      })
-      const sendJson = await sendRes.json()
-      
-      if (sendJson?.success) {
-        setStoryReplyText('')
-        // Optionally show a toast or feedback
-      } else {
-        console.error('Failed to send story reply:', sendJson?.error)
-      }
-    } catch (err) {
-      console.error('Error sending story reply:', err)
-    } finally {
-      setStoryReplySending(false)
-    }
-  }, [storyReplyText, storyReplySending, data?.username])
-
   const goToNextStory = useCallback(() => {
     if (!activeStoryPointer) return
     const { groupIndex, storyIndex } = activeStoryPointer
@@ -1349,6 +1456,17 @@ export default function CommunityFeed() {
     }
     closeStoryViewer()
   }, [activeStoryPointer, storyGroups, openStory, closeStoryViewer])
+
+  // Load comments when active story changes
+  useEffect(() => {
+    setStoryCommentPanelOpen(false)
+    setStoryCommentText('')
+    setStoryComments([])
+    if (!activeStoryPointer) return
+    const group = storyGroups[activeStoryPointer.groupIndex]
+    const story = group?.stories[activeStoryPointer.storyIndex]
+    if (story?.id) fetchStoryComments(story.id)
+  }, [activeStoryPointer, storyGroups, fetchStoryComments])
 
   const handleStoryBackdropClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -2458,48 +2576,147 @@ export default function CommunityFeed() {
           </div>
 
           {/* Bottom section - fixed at bottom with solid background, lifts with keyboard */}
+          {/* Comments panel - slides up over media */}
+          {storyCommentPanelOpen && (
+            <div
+              className="absolute left-0 right-0 bottom-0 z-[130] bg-black/95 backdrop-blur-lg rounded-t-2xl border-t border-white/10"
+              style={{ maxHeight: '55%', display: 'flex', flexDirection: 'column' }}
+              onClick={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
+                <span className="font-semibold text-white text-sm">Comments ({storyComments.length})</span>
+                <button onClick={() => setStoryCommentPanelOpen(false)} className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-white/80 text-xs"><i className="fa-solid fa-xmark" /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3">
+                {storyCommentsLoading ? (
+                  <div className="text-center text-white/40 text-sm py-6">Loading...</div>
+                ) : storyComments.length === 0 ? (
+                  <div className="text-center text-white/40 text-sm py-6">No comments yet. Be the first!</div>
+                ) : storyComments.map(c => (
+                  <div key={c.id} className="flex gap-2.5">
+                    <Avatar username={c.username} url={c.profile_picture || undefined} size={28} linkToProfile />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xs font-semibold text-white truncate">@{c.username}</span>
+                        <span className="text-[10px] text-white/30 flex-shrink-0">{formatSmartTime(c.created_at)}</span>
+                        {(c.username.toLowerCase() === data?.username?.toLowerCase() || data?.username?.toLowerCase() === 'admin') && (
+                          <button onClick={() => handleDeleteStoryComment(c.id)} className="text-[10px] text-red-400/60 hover:text-red-400 ml-auto flex-shrink-0"><i className="fa-solid fa-trash-can" /></button>
+                        )}
+                      </div>
+                      <p className="text-sm text-white/80 break-words">{c.content}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 px-4 py-3 border-t border-white/10 flex-shrink-0" style={{ paddingBottom: keyboardHeight > 0 ? '8px' : 'max(12px, env(safe-area-inset-bottom, 0px))' }}>
+                <input
+                  ref={storyCommentInputRef}
+                  type="text"
+                  value={storyCommentText}
+                  onChange={(e) => setStoryCommentText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && storyCommentText.trim()) { e.preventDefault(); handleSubmitStoryComment(currentStory.id) } }}
+                  placeholder="Add a comment..."
+                  className="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac]"
+                  disabled={storyCommentSending}
+                />
+                <button
+                  onClick={() => handleSubmitStoryComment(currentStory.id)}
+                  disabled={!storyCommentText.trim() || storyCommentSending}
+                  className="w-9 h-9 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-40 flex-shrink-0"
+                >
+                  {storyCommentSending ? <i className="fa-solid fa-spinner fa-spin text-xs" /> : <i className="fa-solid fa-paper-plane text-xs" />}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div 
             className="absolute left-0 right-0 z-[128] bg-black transition-all duration-200"
             style={{ 
               bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : '0px',
-              paddingBottom: keyboardHeight > 0 ? '8px' : 'env(safe-area-inset-bottom, 16px)'
+              paddingBottom: keyboardHeight > 0 ? '8px' : 'env(safe-area-inset-bottom, 16px)',
+              display: storyCommentPanelOpen ? 'none' : undefined,
             }}
           >
-            {/* Caption */}
+            {/* Description (story-level) */}
+            {currentStory.description && (
+              <div className="px-4 pt-3 pb-1 text-sm text-white font-medium whitespace-pre-wrap break-words max-h-12 overflow-y-auto">
+                {currentStory.description}
+              </div>
+            )}
+            {/* Caption (per-media) */}
             {currentStory.caption && (
-              <div className="px-4 pt-3 pb-2 text-sm text-white/90 whitespace-pre-wrap break-words max-h-16 overflow-y-auto border-b border-white/10">
+              <div className="px-4 pt-1 pb-2 text-sm text-white/80 whitespace-pre-wrap break-words max-h-12 overflow-y-auto border-b border-white/10">
                 {currentStory.caption}
               </div>
             )}
             
-            {/* Reaction bar - always visible */}
+            {/* Reaction / comment / DM bar */}
             <div 
               className="px-4 py-3"
               onClick={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
               onTouchEnd={(e) => e.stopPropagation()}
             >
-              {/* Show reactions for other people's stories */}
               {currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() ? (
                 <div className="flex items-center gap-2">
-                  {/* Reply input */}
+                  {/* Comment input */}
                   <div className="flex-1 relative">
                     <input
                       ref={storyReplyInputRef}
                       type="text"
-                      value={storyReplyText}
-                      onChange={(e) => setStoryReplyText(e.target.value)}
+                      value={storyCommentText}
+                      onChange={(e) => setStoryCommentText(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && storyReplyText.trim()) {
+                        if (e.key === 'Enter' && storyCommentText.trim()) {
                           e.preventDefault()
-                          handleStoryReply(currentStory)
+                          handleSubmitStoryComment(currentStory.id)
                         }
                       }}
-                      placeholder="Send message..."
+                      placeholder="Add a comment..."
                       className="w-full bg-white/10 border border-white/20 rounded-full px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac]"
-                      disabled={storyReplySending}
+                      disabled={storyCommentSending}
                     />
                   </div>
+
+                  {/* Comments button */}
+                  <button
+                    type="button"
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 relative"
+                    onClick={() => setStoryCommentPanelOpen(true)}
+                  >
+                    <i className="fa-regular fa-comment text-lg" />
+                    {storyComments.length > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#4db6ac] text-[9px] text-black font-bold flex items-center justify-center">{storyComments.length > 9 ? '9+' : storyComments.length}</span>
+                    )}
+                  </button>
+
+                  {/* DM (private reply) button */}
+                  <button
+                    type="button"
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10"
+                    onClick={async () => {
+                      const msg = prompt('Send a private reply:')
+                      if (!msg?.trim() || !currentStory?.username || !data?.username) return
+                      if (currentStory.username.toLowerCase() === data.username.toLowerCase()) return
+                      try {
+                        const idRes = await fetch(`/api/user_id/${currentStory.username}`, { credentials: 'include' })
+                        const idJson = await idRes.json()
+                        if (!idJson?.success || !idJson.user_id) return
+                        const storyMediaUrl = currentStory.media_url || normalizeMediaPath(currentStory.media_path)
+                        const storyMediaType = currentStory.media_type === 'video' ? '🎥' : '📷'
+                        const storyRef = `[STORY_REPLY:${currentStory.id}:${storyMediaType}:${normalizeMediaPath(storyMediaUrl)}]`
+                        const fd = new FormData()
+                        fd.append('recipient_id', String(idJson.user_id))
+                        fd.append('message', `${storyRef}\n${msg.trim()}`)
+                        await fetch('/send_message', { method: 'POST', credentials: 'include', body: fd })
+                      } catch {}
+                    }}
+                    title="Send private message"
+                  >
+                    <i className="fa-regular fa-paper-plane text-lg" />
+                  </button>
                   
                   {/* Quick emoji reactions */}
                   {['❤️', '🔥', '😂'].map(emoji => (
@@ -2514,16 +2731,16 @@ export default function CommunityFeed() {
                       {emoji}
                     </button>
                   ))}
-                  
-                  {/* Send button - only show when there's text */}
-                  {storyReplyText.trim() && (
+
+                  {/* Send comment button */}
+                  {storyCommentText.trim() && (
                     <button
                       type="button"
-                      onClick={() => handleStoryReply(currentStory)}
-                      disabled={storyReplySending}
+                      onClick={() => handleSubmitStoryComment(currentStory.id)}
+                      disabled={storyCommentSending}
                       className="w-10 h-10 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-50"
                     >
-                      {storyReplySending ? (
+                      {storyCommentSending ? (
                         <i className="fa-solid fa-spinner fa-spin text-sm" />
                       ) : (
                         <i className="fa-solid fa-paper-plane text-sm" />
@@ -2532,12 +2749,19 @@ export default function CommunityFeed() {
                   )}
                 </div>
               ) : (
-                /* For own stories - show view count */
                 <div className="flex items-center justify-center gap-4 text-white/70 text-sm">
                   <span className="flex items-center gap-2">
                     <i className="fa-regular fa-eye" />
                     {currentStory.view_count ?? 0} views
                   </span>
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 hover:text-white transition"
+                    onClick={() => setStoryCommentPanelOpen(true)}
+                  >
+                    <i className="fa-regular fa-comment" />
+                    {storyComments.length} comments
+                  </button>
                 </div>
               )}
             </div>
@@ -2631,9 +2855,14 @@ export default function CommunityFeed() {
               <button
                 type="button"
                 onClick={fetchDeviceLocation}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white/90 hover:bg-white/15 text-xs"
+                disabled={locationLoading}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white/90 hover:bg-white/15 text-xs disabled:opacity-50"
               >
-                <i className="fa-solid fa-location-dot text-sm" />
+                {locationLoading ? (
+                  <i className="fa-solid fa-spinner fa-spin text-sm" />
+                ) : (
+                  <i className="fa-solid fa-location-dot text-sm" />
+                )}
               </button>
             )}
             <button
@@ -2713,65 +2942,52 @@ export default function CommunityFeed() {
             </div>
           </div>
           
-          {/* Thumbnails strip for multiple files */}
+          {/* Thumbnails strip — drag to reorder */}
           {storyEditorFiles.length > 1 && (
-            <div className="px-4 bg-black absolute left-0 right-0" style={{ bottom: keyboardHeight ? `calc(${keyboardHeight}px + 118px)` : '118px', zIndex: 9998, paddingTop: '6px', paddingBottom: '6px' }}>
-              <div className="flex gap-2 overflow-x-auto no-scrollbar" style={{ margin: 0, padding: 0 }}>
-                {storyEditorFiles.map((file, idx) => (
-                  <div key={idx} className="relative flex-shrink-0">
+            <div className="px-4 bg-black absolute left-0 right-0" style={{ bottom: keyboardHeight ? `calc(${keyboardHeight}px + 148px)` : '148px', zIndex: 9998, paddingTop: '6px', paddingBottom: '6px' }}>
+              <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleThumbDragEnd}>
+                <SortableContext items={storyEditorFiles.map((_, i) => `thumb-${i}`)} strategy={horizontalListSortingStrategy}>
+                  <div className="flex gap-2 overflow-x-auto no-scrollbar" style={{ margin: 0, padding: 0 }}>
+                    {storyEditorFiles.map((file, idx) => (
+                      <SortableThumb
+                        key={`thumb-${idx}`}
+                        id={`thumb-${idx}`}
+                        file={file}
+                        isActive={idx === storyEditorActiveIndex}
+                        onSelect={() => setStoryEditorActiveIndex(idx)}
+                        onRemove={() => removeStoryEditorFile(idx)}
+                      />
+                    ))}
                     <button
-                      onClick={() => setStoryEditorActiveIndex(idx)}
-                      className={`relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border-2 ${
-                        idx === storyEditorActiveIndex ? 'border-[#4db6ac]' : 'border-white/20'
-                      }`}
+                      onClick={() => storyFileInputRef.current?.click()}
+                      className="w-16 h-16 rounded-lg flex-shrink-0 border-2 border-dashed border-white/30 bg-white/5 hover:bg-white/10 flex items-center justify-center"
                     >
-                      {file.type === 'video' ? (
-                        <video src={file.preview} className="w-full h-full object-cover" muted />
-                      ) : (
-                        <img src={file.preview} alt="" className="w-full h-full object-cover" />
-                      )}
-                      {file.type === 'video' && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
-                          <i className="fa-solid fa-play text-white text-xs" />
-                        </div>
-                      )}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        removeStoryEditorFile(idx)
-                      }}
-                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-black/80 text-white/90 text-xs flex items-center justify-center hover:bg-black border border-white/30"
-                      style={{ zIndex: 10 }}
-                    >
-                      <i className="fa-solid fa-xmark" />
+                      <i className="fa-solid fa-plus text-white/70 text-xl" />
                     </button>
                   </div>
-                ))}
-                <button
-                  onClick={() => storyFileInputRef.current?.click()}
-                  className="w-16 h-16 rounded-lg flex-shrink-0 border-2 border-dashed border-white/30 bg-white/5 hover:bg-white/10 flex items-center justify-center"
-                >
-                  <i className="fa-solid fa-plus text-white/70 text-xl" />
-                </button>
-              </div>
+                </SortableContext>
+              </DndContext>
             </div>
           )}
           
           {/* Tools panel */}
-          <div className="px-4 border-t border-white/10 space-y-4 absolute left-0 right-0 bg-black" style={{ bottom: keyboardHeight ? `${keyboardHeight}px` : '0', zIndex: 9999, paddingTop: '20px', paddingBottom: keyboardHeight ? '8px' : 'max(20px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
-            {/* Caption input */}
-            <div>
-              <input
-                type="text"
-                value={storyEditorFiles[storyEditorActiveIndex]?.caption || ''}
-                onChange={(e) => updateActiveStoryEditorFile({ caption: e.target.value })}
-                placeholder="Add a caption..."
-                maxLength={500}
-                className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
-              />
-            </div>
-            
+          <div className="px-4 border-t border-white/10 space-y-3 absolute left-0 right-0 bg-black" style={{ bottom: keyboardHeight ? `${keyboardHeight}px` : '0', zIndex: 9999, paddingTop: '16px', paddingBottom: keyboardHeight ? '8px' : 'max(16px, env(safe-area-inset-bottom, 0px))', pointerEvents: 'auto' }}>
+            <input
+              type="text"
+              value={storyEditorDescription}
+              onChange={(e) => setStoryEditorDescription(e.target.value)}
+              placeholder="Add a description for your story..."
+              maxLength={2000}
+              className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
+            />
+            <input
+              type="text"
+              value={storyEditorFiles[storyEditorActiveIndex]?.caption || ''}
+              onChange={(e) => updateActiveStoryEditorFile({ caption: e.target.value })}
+              placeholder={storyEditorFiles.length > 1 ? `Caption for slide ${storyEditorActiveIndex + 1}...` : 'Add a caption...'}
+              maxLength={500}
+              className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-white/40 text-sm focus:outline-none focus:border-[#4db6ac]/50"
+            />
             {storyEditorFiles[storyEditorActiveIndex]?.locationData && (
               <p className="text-xs text-white/40 text-center">
                 Drag location to reposition it on the image
