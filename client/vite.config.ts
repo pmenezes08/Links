@@ -11,35 +11,25 @@ function fastFirstPaintPlugin(): Plugin {
     name: 'fast-first-paint',
     enforce: 'post',
     transformIndexHtml(html) {
-      const cssLinks: string[] = []
       let mainJs = ''
 
-      // Extract CSS link tags and main JS src
-      const cleaned = html
-        .replace(/<link\s+rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g, (_match, href) => {
-          cssLinks.push(href)
-          return '' // remove from <head>
-        })
+      // Replace render-blocking CSS with non-blocking media="print" pattern.
+      // Stays in <head> (valid HTML, works on all WebViews including Android).
+      // Browser downloads it without blocking paint, onload flips to media="all".
+      const withAsyncCss = html
+        .replace(
+          /<link\s+rel="stylesheet"([^>]*?)href="([^"]+)"([^>]*)>/g,
+          (_match, pre, href, post) =>
+            `<link rel="stylesheet"${pre}href="${href}"${post} media="print" onload="this.media='all'">\n    <noscript><link rel="stylesheet" href="${href}"></noscript>`,
+        )
 
-      // Find the main JS module script
-      const jsMatch = cleaned.match(/<script\s+type="module"[^>]*src="([^"]+)"/)
+      const jsMatch = withAsyncCss.match(/<script\s+type="module"[^>]*src="([^"]+)"/)
       if (jsMatch) mainJs = jsMatch[1]
 
-      // Build the async CSS loader + modulepreload to inject before </body>
-      const preloads = cssLinks
-        .map(href => `<link rel="preload" href="${href}" as="style" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="${href}"></noscript>`)
-        .join('\n    ')
-
-      const modulepreload = mainJs
-        ? `<link rel="modulepreload" href="${mainJs}">`
-        : ''
-
-      // Inject modulepreload in <head> and async CSS before </body>
-      let result = cleaned
-      if (modulepreload) {
-        result = result.replace('</head>', `    ${modulepreload}\n  </head>`)
+      let result = withAsyncCss
+      if (mainJs) {
+        result = result.replace('</head>', `    <link rel="modulepreload" href="${mainJs}">\n  </head>`)
       }
-      result = result.replace('</body>', `    ${preloads}\n  </body>`)
 
       return result
     },

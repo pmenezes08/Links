@@ -109,6 +109,12 @@ XAI_SDK_AVAILABLE = False
 app = Flask(__name__, template_folder='templates')
 init_app(app)
 
+# Enable gzip/brotli compression for all responses (JS, CSS, HTML, JSON)
+from flask_compress import Compress
+app.config['COMPRESS_ALGORITHM'] = ['br', 'gzip']
+app.config['COMPRESS_MIN_SIZE'] = 512
+Compress(app)
+
 # Initialize Firebase Cloud Messaging (required for push notifications)
 # This must be synchronous to ensure notifications work immediately
 # Firebase module now supports both file paths and JSON strings for credentials
@@ -1476,6 +1482,14 @@ def prefers_json_response() -> bool:
         return False
 
 
+def _set_html_cache_headers(resp: Response) -> None:
+    """Set cache headers for index.html: allow 304 but always revalidate."""
+    try:
+        resp.headers['Cache-Control'] = 'no-cache'
+        resp.headers['Vary'] = 'Accept-Encoding'
+    except Exception:
+        pass
+
 def serve_react_index() -> Optional[Response]:
     """Serve the built React single page app, if available."""
     try:
@@ -1486,12 +1500,7 @@ def serve_react_index() -> Optional[Response]:
             logger.warning("React build missing at %s", index_path)
             return None
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as exc:
         logger.error(f"Failed to serve React index: {exc}")
@@ -5559,12 +5568,7 @@ def premium_dashboard():
         index_path = os.path.join(dist_dir, 'index.html')
         if os.path.exists(index_path):
             resp = send_from_directory(dist_dir, 'index.html')
-            try:
-                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                resp.headers['Pragma'] = 'no-cache'
-                resp.headers['Expires'] = '0'
-            except Exception:
-                pass
+            _set_html_cache_headers(resp)
             return resp
         return ("React build not found. Please run 'npm run build' in client directory.", 500)
     except Exception as e:
@@ -6241,12 +6245,7 @@ def premium_dashboard_react():
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as e:
         logger.error(f"Error serving React premium dashboard: {str(e)}")
@@ -6261,12 +6260,7 @@ def networking_page():
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as e:
         logger.error(f"Error serving Networking page: {str(e)}")
@@ -6281,12 +6275,7 @@ def followers_page():
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as e:
         logger.error(f"Error serving Followers page: {e}")
@@ -6302,12 +6291,7 @@ def admin_dashboard_react():
         if os.path.exists(index_path):
             logger.info("Serving React index.html for admin_dashboard")
             resp = send_from_directory(dist_dir, 'index.html')
-            try:
-                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                resp.headers['Pragma'] = 'no-cache'
-                resp.headers['Expires'] = '0'
-            except Exception:
-                pass
+            _set_html_cache_headers(resp)
             return resp
         # Fallback to communities page if React build not available
         return redirect(url_for('communities'))
@@ -6326,12 +6310,7 @@ def admin_profile_react():
         if os.path.exists(index_path):
             logger.info("Serving React index.html for admin_profile_react")
             resp = send_from_directory(dist_dir, 'index.html')
-            try:
-                resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-                resp.headers['Pragma'] = 'no-cache'
-                resp.headers['Expires'] = '0'
-            except Exception:
-                pass
+            _set_html_cache_headers(resp)
             return resp
         # Fallback if React build not available
         return redirect(url_for('communities'))
@@ -13480,12 +13459,7 @@ def user_chat():
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as e:
         logger.error(f"Error in user_chat route: {e}")
@@ -13498,12 +13472,7 @@ def user_chat_subpath(subpath):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as e:
         logger.error(f"Error serving user_chat subpath {subpath}: {e}")
@@ -28599,12 +28568,7 @@ def community_feed_react(community_id):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as e:
         logger.error(f"Error serving React community feed: {str(e)}")
@@ -28634,12 +28598,7 @@ def community_tasks_react(community_id):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as e:
         logger.error(f"Error serving React community tasks: {str(e)}")
@@ -28652,12 +28611,7 @@ def community_polls_react(community_id):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as e:
         logger.error(f"Error serving React community polls: {str(e)}")
@@ -28670,12 +28624,7 @@ def react_post_detail(post_id):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as e:
         logger.error(f"Error serving React post detail: {str(e)}")
@@ -28689,12 +28638,7 @@ def react_reply_detail(reply_id):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as e:
         logger.error(f"Error serving React reply detail: {str(e)}")
@@ -28707,12 +28651,7 @@ def react_members_page(community_id):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         dist_dir = os.path.join(base_dir, 'client', 'dist')
         resp = send_from_directory(dist_dir, 'index.html')
-        try:
-            resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            resp.headers['Pragma'] = 'no-cache'
-            resp.headers['Expires'] = '0'
-        except Exception:
-            pass
+        _set_html_cache_headers(resp)
         return resp
     except Exception as e:
         logger.error(f"Error serving React community members page: {str(e)}")

@@ -546,10 +546,10 @@ function AppRoutes(){
   const rootRouteElement = (() => {
     if (!authLoaded) {
       return (
-        <div className="h-screen bg-black text-white flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <i className="fa-solid fa-spinner fa-spin text-2xl" aria-hidden="true" />
-            <span className="text-sm text-white/70">Loading your dashboard…</span>
+        <div style={{ height: '100vh', background: '#000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 32, height: 32, border: '3px solid rgba(255,255,255,0.15)', borderTopColor: '#4db6ac', borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
+            <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.7)' }}>Loading your dashboard…</span>
           </div>
         </div>
       )
