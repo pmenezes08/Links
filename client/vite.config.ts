@@ -2,36 +2,21 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 /**
- * Vite plugin that transforms the built index.html to:
- * 1. Make CSS <link> tags non-render-blocking (paint #initial-loader immediately)
- * 2. Add <link rel="modulepreload"> for the main JS bundle
+ * Vite plugin: add modulepreload hint for the main JS bundle.
+ * CSS stays as a normal render-blocking <link> — at ~13 KB gzipped it loads
+ * in <50 ms and avoids Android WebView CSP issues with inline onload handlers
+ * and the layout shift caused by async CSS application.
  */
-function fastFirstPaintPlugin(): Plugin {
+function modulePreloadPlugin(): Plugin {
   return {
-    name: 'fast-first-paint',
+    name: 'module-preload',
     enforce: 'post',
     transformIndexHtml(html) {
-      let mainJs = ''
-
-      // Replace render-blocking CSS with non-blocking media="print" pattern.
-      // Stays in <head> (valid HTML, works on all WebViews including Android).
-      // Browser downloads it without blocking paint, onload flips to media="all".
-      const withAsyncCss = html
-        .replace(
-          /<link\s+rel="stylesheet"([^>]*?)href="([^"]+)"([^>]*)>/g,
-          (_match, pre, href, post) =>
-            `<link rel="stylesheet"${pre}href="${href}"${post} media="print" onload="this.media='all'">\n    <noscript><link rel="stylesheet" href="${href}"></noscript>`,
-        )
-
-      const jsMatch = withAsyncCss.match(/<script\s+type="module"[^>]*src="([^"]+)"/)
-      if (jsMatch) mainJs = jsMatch[1]
-
-      let result = withAsyncCss
-      if (mainJs) {
-        result = result.replace('</head>', `    <link rel="modulepreload" href="${mainJs}">\n  </head>`)
+      const jsMatch = html.match(/<script\s+type="module"[^>]*src="([^"]+)"/)
+      if (jsMatch) {
+        return html.replace('</head>', `    <link rel="modulepreload" href="${jsMatch[1]}">\n  </head>`)
       }
-
-      return result
+      return html
     },
   }
 }
@@ -39,7 +24,7 @@ function fastFirstPaintPlugin(): Plugin {
 // https://vite.dev/config/
 export default defineConfig({
   base: '/',
-  plugins: [react(), fastFirstPaintPlugin()],
+  plugins: [react(), modulePreloadPlugin()],
   server: {
     port: 5173,
     proxy: {

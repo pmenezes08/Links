@@ -549,7 +549,7 @@ function AppRoutes(){
         <div style={{ position: 'fixed', inset: 0, background: '#000', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
           <img src="/static/logo.png" alt="C.Point" style={{ width: 80, height: 80, marginBottom: 24, borderRadius: 16 }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
           <div style={{ width: 32, height: 32, border: '3px solid rgba(255,255,255,0.15)', borderTopColor: '#4db6ac', borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
-          <span style={{ marginTop: 12, fontSize: 14, color: 'rgba(255,255,255,0.7)' }}>Loading your dashboard…</span>
+          <span style={{ marginTop: 12, fontSize: 14, color: 'rgba(255,255,255,0.7)', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>Loading your dashboard…</span>
         </div>
       )
     }
