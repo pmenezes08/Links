@@ -543,16 +543,14 @@ function AppRoutes(){
     [profileData, profileLoading, profileError, loadProfile],
   )
 
-  const rootRouteElement = (() => {
-    if (!authLoaded) {
-      return (
-        <div style={{ position: 'fixed', inset: 0, background: '#000', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <img src="/static/logo.png" alt="C.Point" style={{ width: 80, height: 80, marginBottom: 24, borderRadius: 16 }} onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-          <div style={{ width: 32, height: 32, border: '3px solid rgba(255,255,255,0.15)', borderTopColor: '#4db6ac', borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
-          <span style={{ marginTop: 12, fontSize: 14, color: 'rgba(255,255,255,0.7)', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>Loading your dashboard…</span>
-        </div>
-      )
+  useEffect(() => {
+    if (authLoaded) {
+      document.getElementById('initial-loader')?.remove()
     }
+  }, [authLoaded])
+
+  const rootRouteElement = (() => {
+    if (!authLoaded) return null
     if (profileData) {
       return <Navigate to="/premium_dashboard" replace />
     }
@@ -573,7 +571,7 @@ function AppRoutes(){
     currentPath.startsWith('/reply/') ||  // Reply/thread page has its own header
     currentPath.startsWith('/community_feed_react/') ||  // Community feed has its own header
     currentPath.startsWith('/community/') && currentPath.includes('/feed')  // Community feed alternate route
-  const showHeader = !hideHeader
+  const showHeader = authLoaded && !hideHeader
   const headerHeightValue = showHeader ? 'calc(56px + env(safe-area-inset-top, 0px))' : 'env(safe-area-inset-top, 0px)'
   const contentOffsetValue = headerHeightValue
   const mainStyle = {
