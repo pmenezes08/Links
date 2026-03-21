@@ -10126,6 +10126,44 @@ def api_geo_cities():
         logger.error(f"Failed to load cities for {country}: {e}")
         return jsonify({'success': False, 'error': 'Failed to load cities'}), 500
 
+@app.route('/api/geocode/reverse')
+@login_required
+def api_geocode_reverse():
+    lat = request.args.get('lat', '')
+    lng = request.args.get('lng', '')
+    if not lat or not lng:
+        return jsonify({'success': False, 'error': 'lat and lng required'}), 400
+    api_key = os.environ.get('GOOGLE_MAPS_API_KEY', '')
+    if not api_key:
+        return jsonify({'success': False, 'error': 'Geocoding not configured'}), 503
+    try:
+        resp = requests.get(
+            'https://maps.googleapis.com/maps/api/geocode/json',
+            params={'latlng': f'{lat},{lng}', 'key': api_key, 'result_type': 'locality|administrative_area_level_1'},
+            timeout=5
+        )
+        data = resp.json()
+        if data.get('status') != 'OK' or not data.get('results'):
+            return jsonify({'success': True, 'location': None})
+        components = data['results'][0].get('address_components', [])
+        city = ''
+        region = ''
+        country = ''
+        for comp in components:
+            types = comp.get('types', [])
+            if 'locality' in types:
+                city = comp.get('long_name', '')
+            elif 'administrative_area_level_1' in types:
+                region = comp.get('short_name', '')
+            elif 'country' in types:
+                country = comp.get('long_name', '')
+        parts = [p for p in [city, region, country] if p]
+        return jsonify({'success': True, 'location': ', '.join(parts) if parts else None})
+    except Exception as e:
+        logger.error(f"Reverse geocode error: {e}")
+        return jsonify({'success': False, 'error': 'Geocoding failed'}), 500
+
+
 @app.route('/upload_logo', methods=['POST'])
 @login_required
 def upload_logo():

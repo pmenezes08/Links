@@ -224,6 +224,9 @@ export default function GroupChatThread() {
   const composerCardRef = useRef<HTMLDivElement | null>(null)
   const keyboardOffsetRef = useRef(0)
   const viewportBaseRef = useRef<number | null>(null)
+  const lastFocusTimeRef = useRef(0)
+  const showKeyboardStableRef = useRef(false)
+  const showKeyboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Format recording time
   const formatRecordingTime = (ms: number) => {
@@ -298,7 +301,19 @@ export default function GroupChatThread() {
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
-  const showKeyboard = liftSource > 50
+  const showKeyboardRaw = liftSource > 50
+  if (showKeyboardRaw && !showKeyboardStableRef.current) {
+    showKeyboardStableRef.current = true
+    if (showKeyboardTimerRef.current) { clearTimeout(showKeyboardTimerRef.current); showKeyboardTimerRef.current = null }
+  } else if (!showKeyboardRaw && showKeyboardStableRef.current) {
+    if (!showKeyboardTimerRef.current) {
+      showKeyboardTimerRef.current = setTimeout(() => {
+        showKeyboardStableRef.current = false
+        showKeyboardTimerRef.current = null
+      }, 150)
+    }
+  }
+  const showKeyboard = showKeyboardRaw || showKeyboardStableRef.current
   const composerGapPx = 4
 
   const listPaddingBottom = showKeyboard
@@ -341,6 +356,7 @@ export default function GroupChatThread() {
     if (MIC_ENABLED && recording) return
     const el = textareaRef.current
     if (!el) return
+    lastFocusTimeRef.current = Date.now()
     el.focus()
     const len = el.value.length
     el.setSelectionRange(len, len)
@@ -2420,7 +2436,6 @@ export default function GroupChatThread() {
                 touchAction: 'manipulation',
                 WebkitTapHighlightColor: 'transparent'
               }}
-              onPointerDown={focusTextarea}
             >
               {/* Recording sound bar */}
               {MIC_ENABLED && recording && (

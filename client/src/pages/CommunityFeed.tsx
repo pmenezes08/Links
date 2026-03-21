@@ -1200,21 +1200,17 @@ export default function CommunityFeed() {
         longitude = hiPos.coords.longitude
       }
 
-      // Reverse geocode in parallel
+      // Reverse geocode via backend proxy (Google Maps API)
       try {
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=14`
+          `/api/geocode/reverse?lat=${latitude}&lng=${longitude}`,
+          { credentials: 'include' }
         )
         const data = await response.json()
-        const locationName =
-          data.address?.city ||
-          data.address?.town ||
-          data.address?.village ||
-          data.address?.county ||
-          data.display_name?.split(',')[0] ||
-          `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
-        setLocationData({ name: locationName, x: 50, y: 85 })
-        try { sessionStorage.setItem('story_last_location', JSON.stringify({ name: locationName, _ts: Date.now() })) } catch {}
+        if (data.success && data.location) {
+          setLocationData({ name: data.location, x: 50, y: 85 })
+          try { sessionStorage.setItem('story_last_location', JSON.stringify({ name: data.location, _ts: Date.now() })) } catch {}
+        }
       } catch {}
 
       // Optionally refine with high-accuracy GPS in background
@@ -1223,12 +1219,14 @@ export default function CommunityFeed() {
         const hiLat = hiPos.coords.latitude, hiLon = hiPos.coords.longitude
         if (Math.abs(hiLat - latitude) > 0.001 || Math.abs(hiLon - longitude) > 0.001) {
           const resp2 = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${hiLat}&lon=${hiLon}&zoom=14`
+            `/api/geocode/reverse?lat=${hiLat}&lng=${hiLon}`,
+            { credentials: 'include' }
           )
           const d2 = await resp2.json()
-          const refined = d2.address?.city || d2.address?.town || d2.address?.village || d2.address?.county || d2.display_name?.split(',')[0] || `${hiLat.toFixed(4)}, ${hiLon.toFixed(4)}`
-          setLocationData({ name: refined, x: 50, y: 85 })
-          try { sessionStorage.setItem('story_last_location', JSON.stringify({ name: refined, _ts: Date.now() })) } catch {}
+          if (d2.success && d2.location) {
+            setLocationData({ name: d2.location, x: 50, y: 85 })
+            try { sessionStorage.setItem('story_last_location', JSON.stringify({ name: d2.location, _ts: Date.now() })) } catch {}
+          }
         }
       } catch {}
     } catch (error) {
