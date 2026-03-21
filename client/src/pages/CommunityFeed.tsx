@@ -233,6 +233,12 @@ export default function CommunityFeed() {
   const [storyCommentSending, setStoryCommentSending] = useState(false)
   const [storyCommentPanelOpen, setStoryCommentPanelOpen] = useState(false)
   const storyCommentInputRef = useRef<HTMLInputElement | null>(null)
+  const storyViewerHistoryPushedRef = useRef(false)
+  const storyEditorHistoryPushedRef = useRef(false)
+  const [storyPrivateReplyOpen, setStoryPrivateReplyOpen] = useState(false)
+  const [storyPrivateReplyText, setStoryPrivateReplyText] = useState('')
+  const [storyPrivateReplySending, setStoryPrivateReplySending] = useState(false)
+  const storyPrivateReplyInputRef = useRef<HTMLInputElement | null>(null)
   // DnD sensors for story thumbnail reordering
   const dndPointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   const dndTouchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
@@ -1029,17 +1035,19 @@ export default function CommunityFeed() {
     setLocationInputValue('')
     setKeyboardHeight(0)
     setStoryEditorDescription('')
+    if (storyEditorHistoryPushedRef.current) {
+      storyEditorHistoryPushedRef.current = false
+      try { window.history.back() } catch {}
+    }
   }, [storyEditorFiles])
 
   // Keyboard event listeners for story editor and story viewer
   useEffect(() => {
-    // Listen for keyboard when story editor or story viewer (with reply input) is open
     if (!storyEditorOpen && !activeStoryPointer) return
 
     const handleKeyboardShow = (info: any) => {
       setKeyboardHeight(info.keyboardHeight || 0)
     }
-
     const handleKeyboardHide = () => {
       setKeyboardHeight(0)
     }
@@ -1049,8 +1057,23 @@ export default function CommunityFeed() {
     Keyboard.addListener('keyboardWillHide', handleKeyboardHide)
     Keyboard.addListener('keyboardDidHide', handleKeyboardHide)
 
+    // VisualViewport fallback for web/iOS Safari
+    const vv = window.visualViewport
+    let vpCleanup: (() => void) | null = null
+    if (vv) {
+      const baseHeight = window.innerHeight
+      const onResize = () => {
+        const diff = baseHeight - (vv.height + vv.offsetTop)
+        setKeyboardHeight(diff > 50 ? diff : 0)
+      }
+      vv.addEventListener('resize', onResize)
+      vv.addEventListener('scroll', onResize)
+      vpCleanup = () => { vv.removeEventListener('resize', onResize); vv.removeEventListener('scroll', onResize) }
+    }
+
     return () => {
       Keyboard.removeAllListeners()
+      vpCleanup?.()
     }
   }, [storyEditorOpen, activeStoryPointer])
 
@@ -1345,6 +1368,28 @@ export default function CommunityFeed() {
     } catch {}
   }, [])
 
+  const handleSendPrivateReply = useCallback(async (story: Story) => {
+    if (!storyPrivateReplyText.trim() || storyPrivateReplySending) return
+    if (!story?.username || !data?.username) return
+    if (story.username.toLowerCase() === data.username.toLowerCase()) return
+    setStoryPrivateReplySending(true)
+    try {
+      const idRes = await fetch(`/api/user_id/${story.username}`, { credentials: 'include' })
+      const idJson = await idRes.json()
+      if (!idJson?.success || !idJson.user_id) return
+      const storyMediaUrl = story.media_url || normalizeMediaPath(story.media_path)
+      const storyMediaType = story.media_type === 'video' ? '🎥' : '📷'
+      const storyRef = `[STORY_REPLY:${story.id}:${storyMediaType}:${normalizeMediaPath(storyMediaUrl)}]`
+      const fd = new FormData()
+      fd.append('recipient_id', String(idJson.user_id))
+      fd.append('message', `${storyRef}\n${storyPrivateReplyText.trim()}`)
+      await fetch('/send_message', { method: 'POST', credentials: 'include', body: fd })
+      setStoryPrivateReplyText('')
+      setStoryPrivateReplyOpen(false)
+    } catch {}
+    finally { setStoryPrivateReplySending(false) }
+  }, [storyPrivateReplyText, storyPrivateReplySending, data?.username])
+
   const markStoryAsViewed = useCallback((storyId: number) => {
     if (!storyId || viewedStoriesRef.current.has(storyId)) return
     viewedStoriesRef.current.add(storyId)
@@ -1420,7 +1465,49 @@ export default function CommunityFeed() {
     setActiveStoryPointer(null)
     setStoryViewersState(prev => ({ ...prev, open: false }))
     setStoryReplyText('')
+    if (storyViewerHistoryPushedRef.current) {
+      storyViewerHistoryPushedRef.current = false
+      // Pop the fake history entry we pushed
+      try { window.history.back() } catch {}
+    }
   }, [])
+
+  // Push history state when story viewer opens, pop on back button
+  useEffect(() => {
+    if (!activeStoryPointer) return
+    if (!storyViewerHistoryPushedRef.current) {
+      window.history.pushState({ storyViewerOpen: true }, '')
+      storyViewerHistoryPushedRef.current = true
+    }
+    const onPopState = () => {
+      if (storyViewerHistoryPushedRef.current) {
+        storyViewerHistoryPushedRef.current = false
+        storySwipeRef.current = null
+        setActiveStoryPointer(null)
+        setStoryViewersState(prev => ({ ...prev, open: false }))
+        setStoryReplyText('')
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [activeStoryPointer])
+
+  // Push history state when story editor opens, pop on back button
+  useEffect(() => {
+    if (!storyEditorOpen) return
+    if (!storyEditorHistoryPushedRef.current) {
+      window.history.pushState({ storyEditorOpen: true }, '')
+      storyEditorHistoryPushedRef.current = true
+    }
+    const onPopState = () => {
+      if (storyEditorHistoryPushedRef.current) {
+        storyEditorHistoryPushedRef.current = false
+        handleStoryEditorClose()
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [storyEditorOpen, handleStoryEditorClose])
 
   const goToNextStory = useCallback(() => {
     if (!activeStoryPointer) return
@@ -1460,6 +1547,9 @@ export default function CommunityFeed() {
     setStoryCommentPanelOpen(false)
     setStoryCommentText('')
     setStoryComments([])
+    setStoryPrivateReplyOpen(false)
+    setStoryPrivateReplyText('')
+    setStoryDeleteMenuOpen(false)
     if (!activeStoryPointer) return
     const group = storyGroups[activeStoryPointer.groupIndex]
     const story = group?.stories[activeStoryPointer.storyIndex]
@@ -1566,13 +1656,13 @@ export default function CommunityFeed() {
   }, [])
 
   const [deletingStory, setDeletingStory] = useState(false)
+  const [storyDeleteMenuOpen, setStoryDeleteMenuOpen] = useState(false)
 
   const handleDeleteStory = useCallback(async (storyId: number) => {
     if (!storyId || deletingStory) return
     
-    if (!confirm('Delete this story?')) return
-    
     setDeletingStory(true)
+    setStoryDeleteMenuOpen(false)
     try {
       const res = await fetch(`/api/community_stories/${storyId}`, {
         method: 'DELETE',
@@ -1581,7 +1671,6 @@ export default function CommunityFeed() {
       const json = await res.json()
       
       if (json.success) {
-        // Remove story from local state
         setStoryGroups(prev => {
           const updated = prev
             .map(group => {
@@ -1596,7 +1685,6 @@ export default function CommunityFeed() {
           return updated
         })
         
-        // Close viewer or move to next story
         if (hasNextStory) {
           goToNextStory()
         } else if (hasPrevStory) {
@@ -1614,6 +1702,40 @@ export default function CommunityFeed() {
       setDeletingStory(false)
     }
   }, [deletingStory, hasNextStory, hasPrevStory, goToNextStory, goToPrevStory, closeStoryViewer])
+
+  const handleDeleteStoryGroup = useCallback(async (groupId: string | null | undefined) => {
+    if (!groupId || deletingStory) return
+
+    setDeletingStory(true)
+    setStoryDeleteMenuOpen(false)
+    try {
+      const res = await fetch(`/api/community_stories/group/${encodeURIComponent(groupId)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      const json = await res.json()
+      if (json.success) {
+        const deletedIds = new Set<number>(json.deleted_ids || [])
+        setStoryGroups(prev =>
+          prev
+            .map(group => ({
+              ...group,
+              stories: group.stories.filter(s => !deletedIds.has(s.id)),
+              has_unseen: group.stories.filter(s => !deletedIds.has(s.id)).some(s => !s.has_viewed),
+            }))
+            .filter(group => group.stories.length > 0)
+        )
+        closeStoryViewer()
+      } else {
+        alert(json.error || 'Failed to delete story')
+      }
+    } catch (err) {
+      console.error('Failed to delete story group:', err)
+      alert('Failed to delete story')
+    } finally {
+      setDeletingStory(false)
+    }
+  }, [deletingStory, closeStoryViewer])
 
   // Optimistic delete - removes post from UI immediately, syncs with server in background
   async function handleDeletePost(postId: number) {
@@ -2551,14 +2673,45 @@ export default function CommunityFeed() {
                     <span>{currentStory.view_count ?? 0}</span>
                   </button>
                   {(currentStory.username?.toLowerCase() === data?.username?.toLowerCase()) && (
-                    <button
-                      className="w-8 h-8 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 flex items-center justify-center disabled:opacity-50"
-                      onClick={() => handleDeleteStory(currentStory.id)}
-                      disabled={deletingStory}
-                      aria-label="Delete story"
-                    >
-                      <i className={`fa-solid ${deletingStory ? 'fa-spinner fa-spin' : 'fa-trash'} text-sm`} />
-                    </button>
+                    <div className="relative">
+                      <button
+                        className="w-8 h-8 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 flex items-center justify-center disabled:opacity-50"
+                        onClick={() => {
+                          const groupStories = currentStoryGroup?.stories || []
+                          if (groupStories.length <= 1) {
+                            if (confirm('Delete this story?')) handleDeleteStory(currentStory.id)
+                          } else {
+                            setStoryDeleteMenuOpen(prev => !prev)
+                          }
+                        }}
+                        disabled={deletingStory}
+                        aria-label="Delete story"
+                      >
+                        <i className={`fa-solid ${deletingStory ? 'fa-spinner fa-spin' : 'fa-trash'} text-sm`} />
+                      </button>
+                      {storyDeleteMenuOpen && (
+                        <div className="absolute right-0 top-10 w-48 bg-black/95 border border-white/15 rounded-xl overflow-hidden shadow-xl z-[140]">
+                          <button
+                            className="w-full text-left px-4 py-3 text-sm text-white hover:bg-white/10 transition-colors"
+                            onClick={() => { if (confirm('Delete this slide?')) handleDeleteStory(currentStory.id) }}
+                          >
+                            Delete this slide
+                          </button>
+                          <button
+                            className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-white/10 transition-colors border-t border-white/10"
+                            onClick={() => { if (confirm('Delete the entire story (all slides)?')) handleDeleteStoryGroup(currentStory.story_group_id) }}
+                          >
+                            Delete entire story
+                          </button>
+                          <button
+                            className="w-full text-left px-4 py-3 text-xs text-white/50 hover:bg-white/10 transition-colors border-t border-white/10"
+                            onClick={() => setStoryDeleteMenuOpen(false)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                   {/* Close button */}
                   <button
@@ -2577,9 +2730,11 @@ export default function CommunityFeed() {
           {/* Comments panel - slides up over media */}
           {storyCommentPanelOpen && (
             <div
-              className="absolute left-0 right-0 bottom-0 z-[130] bg-black/95 backdrop-blur-lg rounded-t-2xl border-t border-white/10"
-              style={{ maxHeight: '55%', display: 'flex', flexDirection: 'column' }}
+              className="absolute left-0 right-0 z-[130] bg-black/95 backdrop-blur-lg rounded-t-2xl border-t border-white/10"
+              style={{ bottom: keyboardHeight > 0 ? `${keyboardHeight}px` : '0px', maxHeight: keyboardHeight > 0 ? '45%' : '55%', display: 'flex', flexDirection: 'column' }}
               onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
@@ -2636,6 +2791,11 @@ export default function CommunityFeed() {
               paddingBottom: keyboardHeight > 0 ? '8px' : 'env(safe-area-inset-bottom, 16px)',
               display: storyCommentPanelOpen ? 'none' : undefined,
             }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
           >
             {/* Description (story-level) */}
             {currentStory.description && (
@@ -2650,119 +2810,120 @@ export default function CommunityFeed() {
               </div>
             )}
             
+            {/* Private reply inline input */}
+            {storyPrivateReplyOpen && currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() && (
+              <div className="px-4 py-2 flex items-center gap-2 border-b border-white/10">
+                <input
+                  ref={storyPrivateReplyInputRef}
+                  type="text"
+                  value={storyPrivateReplyText}
+                  onChange={(e) => setStoryPrivateReplyText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && storyPrivateReplyText.trim()) { e.preventDefault(); handleSendPrivateReply(currentStory) } }}
+                  placeholder={`Message @${currentStory.username} privately...`}
+                  className="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac]"
+                  disabled={storyPrivateReplySending}
+                  autoFocus
+                />
+                <button
+                  onClick={() => handleSendPrivateReply(currentStory)}
+                  disabled={!storyPrivateReplyText.trim() || storyPrivateReplySending}
+                  className="w-9 h-9 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-40 flex-shrink-0"
+                >
+                  {storyPrivateReplySending ? <i className="fa-solid fa-spinner fa-spin text-xs" /> : <i className="fa-solid fa-paper-plane text-xs" />}
+                </button>
+                <button onClick={() => { setStoryPrivateReplyOpen(false); setStoryPrivateReplyText('') }} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 text-xs flex-shrink-0"><i className="fa-solid fa-xmark" /></button>
+              </div>
+            )}
+
             {/* Reaction / comment / DM bar */}
-            <div 
-              className="px-4 py-3"
-              onClick={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
-              onTouchEnd={(e) => e.stopPropagation()}
-            >
-              {currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() ? (
-                <div className="flex items-center gap-2">
-                  {/* Comment input */}
-                  <div className="flex-1 relative">
-                    <input
-                      ref={storyReplyInputRef}
-                      type="text"
-                      value={storyCommentText}
-                      onChange={(e) => setStoryCommentText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && storyCommentText.trim()) {
-                          e.preventDefault()
-                          handleSubmitStoryComment(currentStory.id)
-                        }
-                      }}
-                      placeholder="Add a comment..."
-                      className="w-full bg-white/10 border border-white/20 rounded-full px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac]"
-                      disabled={storyCommentSending}
-                    />
-                  </div>
+            {!storyPrivateReplyOpen && (
+              <div className="px-4 py-3">
+                {currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 relative">
+                      <input
+                        ref={storyReplyInputRef}
+                        type="text"
+                        value={storyCommentText}
+                        onChange={(e) => setStoryCommentText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && storyCommentText.trim()) {
+                            e.preventDefault()
+                            handleSubmitStoryComment(currentStory.id)
+                          }
+                        }}
+                        placeholder="Add a comment..."
+                        className="w-full bg-white/10 border border-white/20 rounded-full px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac]"
+                        disabled={storyCommentSending}
+                      />
+                    </div>
 
-                  {/* Comments button */}
-                  <button
-                    type="button"
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 relative"
-                    onClick={() => setStoryCommentPanelOpen(true)}
-                  >
-                    <i className="fa-regular fa-comment text-lg" />
-                    {storyComments.length > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#4db6ac] text-[9px] text-black font-bold flex items-center justify-center">{storyComments.length > 9 ? '9+' : storyComments.length}</span>
-                    )}
-                  </button>
-
-                  {/* DM (private reply) button */}
-                  <button
-                    type="button"
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10"
-                    onClick={async () => {
-                      const msg = prompt('Send a private reply:')
-                      if (!msg?.trim() || !currentStory?.username || !data?.username) return
-                      if (currentStory.username.toLowerCase() === data.username.toLowerCase()) return
-                      try {
-                        const idRes = await fetch(`/api/user_id/${currentStory.username}`, { credentials: 'include' })
-                        const idJson = await idRes.json()
-                        if (!idJson?.success || !idJson.user_id) return
-                        const storyMediaUrl = currentStory.media_url || normalizeMediaPath(currentStory.media_path)
-                        const storyMediaType = currentStory.media_type === 'video' ? '🎥' : '📷'
-                        const storyRef = `[STORY_REPLY:${currentStory.id}:${storyMediaType}:${normalizeMediaPath(storyMediaUrl)}]`
-                        const fd = new FormData()
-                        fd.append('recipient_id', String(idJson.user_id))
-                        fd.append('message', `${storyRef}\n${msg.trim()}`)
-                        await fetch('/send_message', { method: 'POST', credentials: 'include', body: fd })
-                      } catch {}
-                    }}
-                    title="Send private message"
-                  >
-                    <i className="fa-regular fa-paper-plane text-lg" />
-                  </button>
-                  
-                  {/* Quick emoji reactions */}
-                  {['❤️', '🔥', '😂'].map(emoji => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      className={`w-10 h-10 rounded-full flex items-center justify-center text-xl transition-transform active:scale-90 ${
-                        currentStory.user_reaction === emoji ? 'bg-white/20 scale-110' : 'hover:bg-white/10'
-                      }`}
-                      onClick={() => handleStoryReaction(currentStory, emoji)}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-
-                  {/* Send comment button */}
-                  {storyCommentText.trim() && (
                     <button
                       type="button"
-                      onClick={() => handleSubmitStoryComment(currentStory.id)}
-                      disabled={storyCommentSending}
-                      className="w-10 h-10 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-50"
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 relative flex-shrink-0"
+                      onClick={() => setStoryCommentPanelOpen(true)}
                     >
-                      {storyCommentSending ? (
-                        <i className="fa-solid fa-spinner fa-spin text-sm" />
-                      ) : (
-                        <i className="fa-solid fa-paper-plane text-sm" />
+                      <i className="fa-regular fa-comment text-lg" />
+                      {storyComments.length > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#4db6ac] text-[9px] text-black font-bold flex items-center justify-center">{storyComments.length > 9 ? '9+' : storyComments.length}</span>
                       )}
                     </button>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-center justify-center gap-4 text-white/70 text-sm">
-                  <span className="flex items-center gap-2">
-                    <i className="fa-regular fa-eye" />
-                    {currentStory.view_count ?? 0} views
-                  </span>
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 hover:text-white transition"
-                    onClick={() => setStoryCommentPanelOpen(true)}
-                  >
-                    <i className="fa-regular fa-comment" />
-                    {storyComments.length} comments
-                  </button>
-                </div>
-              )}
-            </div>
+
+                    <button
+                      type="button"
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 flex-shrink-0"
+                      onClick={() => { setStoryPrivateReplyOpen(true); setTimeout(() => storyPrivateReplyInputRef.current?.focus(), 100) }}
+                      title="Send private message"
+                    >
+                      <i className="fa-regular fa-paper-plane text-lg" />
+                    </button>
+                    
+                    {['❤️', '🔥', '😂'].map(emoji => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        className={`w-10 h-10 rounded-full flex items-center justify-center text-xl transition-transform active:scale-90 flex-shrink-0 ${
+                          currentStory.user_reaction === emoji ? 'bg-white/20 scale-110' : 'hover:bg-white/10'
+                        }`}
+                        onClick={() => handleStoryReaction(currentStory, emoji)}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+
+                    {storyCommentText.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => handleSubmitStoryComment(currentStory.id)}
+                        disabled={storyCommentSending}
+                        className="w-10 h-10 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-50 flex-shrink-0"
+                      >
+                        {storyCommentSending ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-4 text-white/70 text-sm">
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 hover:text-white transition"
+                      onClick={() => openStoryViewers(currentStory.id)}
+                    >
+                      <i className="fa-regular fa-eye" />
+                      {currentStory.view_count ?? 0} views
+                    </button>
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 hover:text-white transition"
+                      onClick={() => setStoryCommentPanelOpen(true)}
+                    >
+                      <i className="fa-regular fa-comment" />
+                      {storyComments.length} comments
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             
             {/* Sound toggle for videos */}
             {currentStory.media_type === 'video' && (

@@ -27329,8 +27329,10 @@ def delete_community_story(story_id: int):
             if not (is_story_owner or is_community_creator or is_app_admin):
                 return jsonify({'success': False, 'error': 'You can only delete your own stories'}), 403
             
-            # Delete story views first (foreign key constraint)
+            # Delete related data first (foreign key constraints)
             c.execute(f"DELETE FROM community_story_views WHERE story_id = {ph}", (story_id,))
+            c.execute(f"DELETE FROM community_story_reactions WHERE story_id = {ph}", (story_id,))
+            c.execute(f"DELETE FROM community_story_comments WHERE story_id = {ph}", (story_id,))
             
             # Delete the story
             c.execute(f"DELETE FROM community_stories WHERE id = {ph}", (story_id,))
@@ -27341,6 +27343,62 @@ def delete_community_story(story_id: int):
             
     except Exception as e:
         logger.error(f"Error deleting story {story_id}: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/community_stories/group/<story_group_id>', methods=['DELETE'])
+@login_required
+def delete_community_story_group(story_group_id: str):
+    """Delete all stories in a group. Only the story owner or community admin can delete."""
+    username = session.get('username')
+    if not story_group_id:
+        return jsonify({'success': False, 'error': 'story_group_id required'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ensure_story_tables(c)
+            ph = get_sql_placeholder()
+
+            c.execute(
+                f"""
+                SELECT cs.id, cs.username, cs.community_id, c.creator_username
+                FROM community_stories cs
+                JOIN communities c ON c.id = cs.community_id
+                WHERE cs.story_group_id = {ph}
+                LIMIT 1
+                """,
+                (story_group_id,),
+            )
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Story group not found'}), 404
+
+            story_owner = row["username"] if hasattr(row, "keys") else row[1]
+            community_creator = row["creator_username"] if hasattr(row, "keys") else row[3]
+
+            is_owner = username.lower() == story_owner.lower()
+            is_community_creator = username.lower() == (community_creator or '').lower()
+            is_admin = username.lower() == 'admin'
+            if not (is_owner or is_community_creator or is_admin):
+                return jsonify({'success': False, 'error': 'You can only delete your own stories'}), 403
+
+            # Collect all story ids in this group
+            c.execute(f"SELECT id FROM community_stories WHERE story_group_id = {ph}", (story_group_id,))
+            story_ids = [r["id"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
+
+            if story_ids:
+                id_placeholders = ', '.join([ph] * len(story_ids))
+                c.execute(f"DELETE FROM community_story_views WHERE story_id IN ({id_placeholders})", tuple(story_ids))
+                c.execute(f"DELETE FROM community_story_reactions WHERE story_id IN ({id_placeholders})", tuple(story_ids))
+                c.execute(f"DELETE FROM community_story_comments WHERE story_id IN ({id_placeholders})", tuple(story_ids))
+                c.execute(f"DELETE FROM community_stories WHERE story_group_id = {ph}", (story_group_id,))
+
+            conn.commit()
+            logger.info(f"Story group {story_group_id} ({len(story_ids)} stories) deleted by {username}")
+            return jsonify({'success': True, 'message': f'Deleted {len(story_ids)} stories', 'deleted_ids': story_ids})
+
+    except Exception as e:
+        logger.error(f"Error deleting story group {story_group_id}: {e}")
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 

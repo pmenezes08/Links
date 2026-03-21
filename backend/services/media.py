@@ -171,12 +171,13 @@ def save_uploaded_file(file, subfolder: Optional[str] = None, allowed_extensions
     original_filename = file.filename
     allowed_by_mimetype = False
     if not allowed_file(original_filename, allowed_extensions):
-        # Fallback for video subfolders: allow by mimetype when extension check fails
-        # (e.g. mobile cameras may send video with unusual or missing extensions)
-        if subfolder == "message_videos":
-            mime = getattr(file, "mimetype", "") or ""
-            if mime.lower().startswith("video/"):
-                logger.info(f"save_uploaded_file: Allowing video by mimetype {mime} (filename={original_filename})")
+        # Fallback: allow by mimetype when extension check fails
+        # (e.g. mobile cameras may send video/image with unusual or missing extensions)
+        mime = getattr(file, "mimetype", "") or ""
+        mime_lower = mime.lower()
+        if subfolder in ("message_videos", "community_stories"):
+            if mime_lower.startswith("video/") or mime_lower.startswith("image/"):
+                logger.info(f"save_uploaded_file: Allowing by mimetype {mime} (filename={original_filename}, subfolder={subfolder})")
                 allowed_by_mimetype = True
             else:
                 logger.warning(f"save_uploaded_file: File not allowed - filename={original_filename}, mimetype={mime}")
