@@ -43,6 +43,7 @@ export default function LongPressActionable({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const menuOpenTimeRef = useRef(0)
+  const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 })
 
   const safeAction = (fn: () => void) => {
     if (Date.now() - menuOpenTimeRef.current < 300) return
@@ -106,6 +107,30 @@ export default function LongPressActionable({
     }
   }, [])
   
+  const openMenu = useCallback(() => {
+    setMenuStyle(calculateMenuStyle())
+    menuOpenTimeRef.current = Date.now()
+    setShowMenu(true)
+    setIsPressed(false)
+  }, [calculateMenuStyle])
+
+  function handleDoubleTap(e: React.TouchEvent) {
+    if (disabled) return
+    const touch = e.changedTouches[0]
+    if (!touch) return
+    const now = Date.now()
+    const last = lastTapRef.current
+    const dt = now - last.time
+    const dist = Math.hypot(touch.clientX - last.x, touch.clientY - last.y)
+    lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY }
+    if (dt < 300 && dist < 30) {
+      e.preventDefault()
+      if (timerRef.current) clearTimeout(timerRef.current)
+      lastTapRef.current = { time: 0, x: 0, y: 0 }
+      openMenu()
+    }
+  }
+
   function handleStart(e?: React.MouseEvent | React.TouchEvent) {
     if (disabled) return
     try {
@@ -117,12 +142,7 @@ export default function LongPressActionable({
     }
     setIsPressed(true)
     if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      setMenuStyle(calculateMenuStyle())
-      menuOpenTimeRef.current = Date.now()
-      setShowMenu(true)
-      setIsPressed(false)
-    }, 500)
+    timerRef.current = setTimeout(openMenu, 500)
   }
   
   function handleEnd() {
@@ -135,9 +155,7 @@ export default function LongPressActionable({
   const handleContextMenu = (e: React.MouseEvent) => {
     if (disabled) return
     e.preventDefault()
-    setMenuStyle(calculateMenuStyle())
-    menuOpenTimeRef.current = Date.now()
-    setShowMenu(true)
+    openMenu()
   }
   
   return (
@@ -156,9 +174,9 @@ export default function LongPressActionable({
         onMouseUp={disabled ? undefined : handleEnd}
         onMouseLeave={disabled ? undefined : handleEnd}
         onTouchStart={disabled ? undefined : handleStart}
-        onTouchEnd={disabled ? undefined : handleEnd}
+        onTouchEnd={disabled ? undefined : (e) => { handleEnd(); handleDoubleTap(e) }}
+        onDoubleClick={disabled ? undefined : (e) => { e.preventDefault(); openMenu() }}
         onContextMenu={handleContextMenu}
-        title="Hold for options or right-click"
       >
         {children}
       </div>
