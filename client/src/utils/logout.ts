@@ -61,6 +61,7 @@ export async function performLogout(): Promise<void> {
     'mic_permission_granted',
     'home-timeline',
     'communityManagementShowNested',
+    'cached_profile',
   ]
   
   // Also clear any keys that start with these prefixes

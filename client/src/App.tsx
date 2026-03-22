@@ -394,8 +394,27 @@ function AppRoutes(){
     const currentPath = path ?? locationRef.current
     setProfileLoading(true)
     setProfileError(null)
+
+    if (!navigator.onLine) {
+      try {
+        const cached = JSON.parse(localStorage.getItem('cached_profile') || '')
+        if (cached) {
+          setProfileData(cached)
+          setIsVerified(!!(cached as any)?.email_verified)
+          setProfileError(null)
+          setProfileLoading(false)
+          setAuthLoaded(true)
+          return cached
+        }
+      } catch { /* no cached profile */ }
+      setProfileData(null)
+      setProfileError('Offline')
+      setProfileLoading(false)
+      setAuthLoaded(true)
+      return null
+    }
+
     try {
-      // Add cache-buster to prevent browser caching, ensuring profile picture updates appear immediately
       const response = await fetch(`/api/profile_me?_t=${Date.now()}`, { 
         credentials: 'include',
         cache: 'no-store',
@@ -404,6 +423,7 @@ function AppRoutes(){
       if (response.status === 401) {
         setProfileData(null)
         setIsVerified(null)
+        try { localStorage.removeItem('cached_profile') } catch {}
         if (!publicPaths.has(currentPath)) {
           window.location.href = '/'
         } else {
@@ -427,6 +447,7 @@ function AppRoutes(){
         setProfileData(profile)
         setIsVerified(!!(profile as any)?.email_verified)
         setProfileError(null)
+        try { localStorage.setItem('cached_profile', JSON.stringify(profile)) } catch {}
 
         const username = (profile as any)?.username
         
@@ -488,9 +509,15 @@ function AppRoutes(){
       setProfileError(json?.error || 'Failed to load profile')
       return null
     } catch (err) {
-      // #region agent log
-      try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'App.tsx:loadProfile-catch',msg:'loadProfile FAILED',d:{online:navigator.onLine,err:String(err)},h:'H1'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
-      // #endregion
+      try {
+        const cached = JSON.parse(localStorage.getItem('cached_profile') || '')
+        if (cached) {
+          setProfileData(cached)
+          setIsVerified(!!(cached as any)?.email_verified)
+          setProfileError(null)
+          return cached
+        }
+      } catch { /* no cached profile */ }
       setProfileData(null)
       setProfileError('Failed to load profile')
       return null
@@ -511,9 +538,6 @@ function AppRoutes(){
   }, [])
 
   useEffect(() => {
-    // #region agent log
-    try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'App.tsx:loadProfile-effect',msg:'loadProfile firing',d:{online:navigator.onLine,path:locationRef.current},h:'H1'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
-    // #endregion
     loadProfile(locationRef.current)
   }, [loadProfile])
 
