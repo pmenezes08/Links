@@ -16,6 +16,8 @@ export interface ChatMessage {
     mediaPath: string
   }
   isOptimistic?: boolean
+  sendFailed?: boolean
+  _originalMessage?: string
   edited_at?: string | null
   clientKey?: string | number
   is_encrypted?: boolean

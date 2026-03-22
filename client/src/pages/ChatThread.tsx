@@ -1411,17 +1411,19 @@ export default function ChatThread(){
   async function send(){
     const messageText = (textareaRef.current?.value || '').trim()
     if (!messageText || sendingLockRef.current) return
+    
+    sendingLockRef.current = true
+    
     let resolvedUserId = otherUserId
     if (!resolvedUserId) {
       try {
         const r = await fetch('/api/get_user_id_by_username', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ username: username || '' }) })
         const j = await r.json()
-        if (j?.success && j.user_id) { resolvedUserId = j.user_id; setOtherUserId(j.user_id) } else return
-      } catch { return }
+        if (j?.success && j.user_id) { resolvedUserId = j.user_id; setOtherUserId(j.user_id) } else { sendingLockRef.current = false; return }
+      } catch { sendingLockRef.current = false; return }
     }
     
     const replySnapshot = replyTo
-    // Clear the textarea (uncontrolled)
     if (textareaRef.current) {
       textareaRef.current.value = ''
     }
@@ -1432,148 +1434,188 @@ export default function ChatThread(){
       setReplyTo(null)
     }
     
-    try {
-      setSending(true)
-      // PERFORMANCE: Reduced pause from 2000ms to 800ms for faster message confirmation
-      // This still prevents race conditions while allowing quicker poll resumption
-      skipNextPollsUntil.current = Date.now() + 800
-      const now = new Date().toISOString()
-      const tempId = `temp_${Date.now()}_${Math.random()}`
-      
-      // Generate reply snippet - handle media messages
-      // Format: text for regular, or "📷|path|caption" for images, "🎥|path|caption" for video, "🎤|" for audio
-      let replySnippet: string | undefined
-      if (replySnapshot) {
-        if (replySnapshot.image_path) {
-          // Encode image path in snippet for thumbnail display: 📷|image_path|caption
-          const caption = replySnapshot.text || 'Photo'
-          replySnippet = `📷|${replySnapshot.image_path}|${caption.slice(0,60)}`
-        } else if (replySnapshot.video_path) {
-          const caption = replySnapshot.text || 'Video'
-          replySnippet = `🎥|${replySnapshot.video_path}|${caption.slice(0,60)}`
-        } else if (replySnapshot.audio_path) {
-          const summarySnippet = replySnapshot.audio_summary ? replySnapshot.audio_summary.slice(0, 80) : ''
-          replySnippet = summarySnippet ? `🎤|${summarySnippet}` : '🎤|Voice message'
-        } else {
-          replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text
-        }
+    skipNextPollsUntil.current = Date.now() + 800
+    const now = new Date().toISOString()
+    const tempId = `temp_${Date.now()}_${Math.random()}`
+    
+    let replySnippet: string | undefined
+    if (replySnapshot) {
+      if (replySnapshot.image_path) {
+        const caption = replySnapshot.text || 'Photo'
+        replySnippet = `📷|${replySnapshot.image_path}|${caption.slice(0,60)}`
+      } else if (replySnapshot.video_path) {
+        const caption = replySnapshot.text || 'Video'
+        replySnippet = `🎥|${replySnapshot.video_path}|${caption.slice(0,60)}`
+      } else if (replySnapshot.audio_path) {
+        const summarySnippet = replySnapshot.audio_summary ? replySnapshot.audio_summary.slice(0, 80) : ''
+        replySnippet = summarySnippet ? `🎤|${summarySnippet}` : '🎤|Voice message'
+      } else {
+        replySnippet = replySnapshot.text.length > 90 ? replySnapshot.text.slice(0,90) + '…' : replySnapshot.text
       }
-      const replySender = replySnapshot?.sender
-      
-      // Format message with reply if needed
-      let formattedMessage = messageText
-      if (replySnapshot) {
-        // Add a special format that we can parse later
-        // Using a format that won't interfere with normal messages
-        formattedMessage = `[REPLY:${replySender}:${replySnippet}]\n${messageText}`
-      }
-      
-      const optimisticMessage: Message = { 
-        id: tempId, 
-        text: messageText, 
-        sent: true, 
-        time: now, 
-        replySnippet,
-        isOptimistic: true,
-        is_encrypted: false,
-        signal_protocol: false,
-      }
-      
-      // Add optimistic message immediately
-      const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
-      setMessages(prev => [...prev, optimisticWithKey])
-      
-      // Register in recent optimistic to prevent poll from removing it due to stale state
-      recentOptimisticRef.current.set(tempId, {
-        message: optimisticWithKey,
-        timestamp: Date.now()
-      })
-      
-      // Force scroll to bottom for sent messages - use RAF for smooth, immediate scroll
-      requestAnimationFrame(scrollToBottom)
-      
-      // Store reply snippet in metadata if needed
-      if (replySnippet){
-        writeMessageMeta(metaRef.current, now, messageText, true, { replySnippet })
-        try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
-      }
-      
-      const fd = new URLSearchParams({ recipient_id: String(resolvedUserId || otherUserId) })
-      fd.append('message', formattedMessage)
-      
-      fetch('/send_message', { 
-        method:'POST', 
-        credentials:'include', 
-        headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
-        body: fd 
-      })
-        .then(r => r.json())
-        .then(async j => {
-          if (j?.success) {
-            // Stop typing indicator
-            fetch('/api/typing', { 
-              method:'POST', 
-              credentials:'include', 
-              headers:{ 'Content-Type':'application/json' }, 
-              body: JSON.stringify({ peer: username, is_typing: false }) 
-            }).catch(()=>{})
-            
-            if (j.message_id) {
-              // Set up bridge mapping
-              idBridgeRef.current.tempToServer.set(tempId, j.message_id)
-              idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
-              
-              // Update optimistic message and remove poll-added duplicates
-              setMessages(prev => {
-                const serverId = j.message_id
-                let foundOriginal = false
-                const updated = prev.map(m => {
-                  if ((m.clientKey || m.id) === tempId) {
-                    foundOriginal = true
-                    return {
-                      ...m,
-                      id: serverId,
-                      isOptimistic: false,
-                      time: m.time ?? ensureNormalizedTime(j.time || m.time),
-                      clientKey: tempId,
-                    }
-                  }
-                  return m
-                })
-                if (foundOriginal) {
-                  const filtered = updated.filter(m => m.id !== serverId || (m.clientKey || m.id) === tempId)
-                  return filtered
-                }
-                return updated
-              })
-              
-              // Clean up ref
-              setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
-            }
-          } else {
-            console.error('Send failed:', j?.error)
-            // Keep optimistic message, restore draft for retry
-            if (textareaRef.current) textareaRef.current.value = messageText
-            draftRef.current = messageText
-            setDraftDisplay(messageText)
-          }
-        })
-        .catch(err => {
-          console.error('Send error:', err)
-          // Keep optimistic message, restore draft for retry
-          if (textareaRef.current) textareaRef.current.value = messageText
-          draftRef.current = messageText
-          setDraftDisplay(messageText)
-        })
-        .finally(() => setSending(false))
-    } catch (error) {
-      console.error('❌ Send function error:', error)
-      setSending(false)
-      // Restore draft on error
-      if (textareaRef.current) textareaRef.current.value = messageText
-      draftRef.current = messageText
-      setDraftDisplay(messageText)
     }
+    const replySender = replySnapshot?.sender
+    
+    let formattedMessage = messageText
+    if (replySnapshot) {
+      formattedMessage = `[REPLY:${replySender}:${replySnippet}]\n${messageText}`
+    }
+    
+    const optimisticMessage: Message = { 
+      id: tempId, 
+      text: messageText, 
+      sent: true, 
+      time: now, 
+      replySnippet,
+      isOptimistic: true,
+      sendFailed: false,
+      _originalMessage: formattedMessage,
+      is_encrypted: false,
+      signal_protocol: false,
+    }
+    
+    const optimisticWithKey = { ...optimisticMessage, clientKey: tempId }
+    setMessages(prev => [...prev, optimisticWithKey])
+    
+    recentOptimisticRef.current.set(tempId, {
+      message: optimisticWithKey,
+      timestamp: Date.now()
+    })
+    
+    requestAnimationFrame(scrollToBottom)
+    
+    if (replySnippet){
+      writeMessageMeta(metaRef.current, now, messageText, true, { replySnippet })
+      try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
+    }
+
+    const markFailed = (key: string) => {
+      setMessages(prev => prev.map(m =>
+        (m.clientKey || m.id) === key ? { ...m, sendFailed: true, isOptimistic: true } : m
+      ))
+    }
+
+    const sendTimeout = setTimeout(() => markFailed(tempId), 10000)
+    
+    const fd = new URLSearchParams({ recipient_id: String(resolvedUserId || otherUserId) })
+    fd.append('message', formattedMessage)
+    
+    fetch('/send_message', { 
+      method:'POST', 
+      credentials:'include', 
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, 
+      body: fd 
+    })
+      .then(r => r.json())
+      .then(j => {
+        clearTimeout(sendTimeout)
+        if (j?.success) {
+          fetch('/api/typing', { 
+            method:'POST', 
+            credentials:'include', 
+            headers:{ 'Content-Type':'application/json' }, 
+            body: JSON.stringify({ peer: username, is_typing: false }) 
+          }).catch(()=>{})
+          
+          if (j.message_id) {
+            idBridgeRef.current.tempToServer.set(tempId, j.message_id)
+            idBridgeRef.current.serverToTemp.set(j.message_id, tempId)
+            
+            setMessages(prev => {
+              const serverId = j.message_id
+              let foundOriginal = false
+              const updated = prev.map(m => {
+                if ((m.clientKey || m.id) === tempId) {
+                  foundOriginal = true
+                  return {
+                    ...m,
+                    id: serverId,
+                    isOptimistic: false,
+                    sendFailed: false,
+                    time: m.time ?? ensureNormalizedTime(j.time || m.time),
+                    clientKey: tempId,
+                  }
+                }
+                return m
+              })
+              if (foundOriginal) {
+                return updated.filter(m => m.id !== serverId || (m.clientKey || m.id) === tempId)
+              }
+              return updated
+            })
+            
+            setTimeout(() => recentOptimisticRef.current.delete(tempId), 1000)
+          }
+        } else {
+          markFailed(tempId)
+        }
+      })
+      .catch(() => {
+        clearTimeout(sendTimeout)
+        markFailed(tempId)
+      })
+      .finally(() => {
+        sendingLockRef.current = false
+      })
+  }
+
+  function retryFailedMessage(clientKey: string) {
+    const msg = messages.find(m => (m.clientKey || m.id) === clientKey)
+    if (!msg) return
+    const originalMessage = msg._originalMessage || msg.text || ''
+    const resolvedId = otherUserId
+    if (!resolvedId) return
+
+    setMessages(prev => prev.map(m =>
+      (m.clientKey || m.id) === clientKey ? { ...m, sendFailed: false, isOptimistic: true } : m
+    ))
+
+    const retryTimeout = setTimeout(() => {
+      setMessages(prev => prev.map(m =>
+        (m.clientKey || m.id) === clientKey ? { ...m, sendFailed: true } : m
+      ))
+    }, 10000)
+
+    const fd = new URLSearchParams({ recipient_id: String(resolvedId) })
+    fd.append('message', originalMessage)
+
+    fetch('/send_message', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: fd
+    })
+      .then(r => r.json())
+      .then(j => {
+        clearTimeout(retryTimeout)
+        if (j?.success && j.message_id) {
+          idBridgeRef.current.tempToServer.set(clientKey, j.message_id)
+          idBridgeRef.current.serverToTemp.set(j.message_id, clientKey)
+          setMessages(prev => {
+            let found = false
+            const updated = prev.map(m => {
+              if ((m.clientKey || m.id) === clientKey) {
+                found = true
+                return { ...m, id: j.message_id, isOptimistic: false, sendFailed: false, clientKey }
+              }
+              return m
+            })
+            if (!found) return prev
+            return updated.filter(m => m.id !== j.message_id || (m.clientKey || m.id) === clientKey)
+          })
+          setTimeout(() => recentOptimisticRef.current.delete(clientKey), 1000)
+        } else {
+          clearTimeout(retryTimeout)
+          setMessages(prev => prev.map(m =>
+            (m.clientKey || m.id) === clientKey ? { ...m, sendFailed: true } : m
+          ))
+        }
+      })
+      .catch(() => {
+        clearTimeout(retryTimeout)
+        setMessages(prev => prev.map(m =>
+          (m.clientKey || m.id) === clientKey ? { ...m, sendFailed: true } : m
+        ))
+      })
   }
 
   function handlePhotoSelect() {
@@ -2523,6 +2565,7 @@ export default function ChatThread(){
                   }}
                   otherUsername={username}
                   linkifyText={linkifyText}
+                  onRetry={m.clientKey ? () => retryFailedMessage(String(m.clientKey)) : undefined}
                 />
                 </div>
               </div>

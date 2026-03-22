@@ -28,6 +28,7 @@ export interface MessageBubbleProps {
       mediaPath: string
     }
     isOptimistic?: boolean
+    sendFailed?: boolean
     edited_at?: string | null
     decryption_error?: boolean
   }
@@ -51,6 +52,8 @@ export interface MessageBubbleProps {
   onEdit?: () => void
   /** Handler to enter multi-select mode */
   onSelect?: () => void
+  /** Handler to retry a failed message */
+  onRetry?: () => void
   /** Handler to update edit text */
   onEditTextChange: (text: string) => void
   /** Handler to commit edit */
@@ -98,6 +101,7 @@ function MessageBubbleInner({
   onStoryReplyClick,
   otherUsername,
   linkifyText,
+  onRetry,
 }: MessageBubbleProps) {
   return (
     <LongPressActionable
@@ -107,14 +111,18 @@ function MessageBubbleInner({
       onCopy={onCopy}
       onEdit={onEdit}
       onSelect={onSelect}
-      disabled={isEditing}
+      disabled={isEditing || !!m.isOptimistic}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
         <div className={`relative inline-block max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-6' : ''}`}>
           <div
-            className={`liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent text-white' : 'liquid-glass-bubble--received text-white'} px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
+            className={`${
+              m.isOptimistic
+                ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30'
+                : `liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
+            } text-white px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words ${
               m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
-            } ${m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
+            } ${m.sendFailed ? 'opacity-60' : m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
           >
           
           {/* Story reply - shows a preview of the story being replied to */}
@@ -419,6 +427,21 @@ function MessageBubbleInner({
             </div>
           )}
         </div>
+        {m.sendFailed && m.sent && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onRetry?.() }}
+            className="flex items-center gap-1.5 mt-1 text-[11px] text-red-400 hover:text-red-300 self-end"
+          >
+            <i className="fa-solid fa-circle-exclamation text-[10px]" />
+            Not delivered — tap to retry
+          </button>
+        )}
+        {m.isOptimistic && !m.sendFailed && m.sent && (
+          <div className="flex items-center gap-1 mt-0.5 self-end">
+            <i className="fa-solid fa-clock text-[9px] text-white/30" />
+            <span className="text-[10px] text-white/30">Sending…</span>
+          </div>
+        )}
       </div>
     </LongPressActionable>
   )
@@ -440,6 +463,7 @@ const MessageBubble = memo(MessageBubbleInner, (prevProps, nextProps) => {
   if (prevMsg.text !== nextMsg.text) return false
   if (prevMsg.reaction !== nextMsg.reaction) return false
   if (prevMsg.isOptimistic !== nextMsg.isOptimistic) return false
+  if (prevMsg.sendFailed !== nextMsg.sendFailed) return false
   if (prevMsg.edited_at !== nextMsg.edited_at) return false
   if (prevMsg.decryption_error !== nextMsg.decryption_error) return false
   
