@@ -155,12 +155,13 @@ export async function cacheConversations(threads: unknown[]): Promise<void> {
   try {
     const db = await getDb()
     const tx = db.transaction('conversations', 'readwrite')
-    const now = Date.now()
-    for (const t of threads as any[]) {
+    const len = threads.length
+    for (let i = 0; i < len; i++) {
+      const t = (threads as any[])[i]
       await tx.store.put({
         username: t.other_username || t.username || String(t.id),
         data: t,
-        updatedAt: now,
+        updatedAt: len - i,
       })
     }
     await tx.done

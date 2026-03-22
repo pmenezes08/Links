@@ -2359,6 +2359,13 @@ export default function ChatThread(){
             </button>
           </div>
         )}
+        {messages.length === 0 && !navigator.onLine && (
+          <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
+            <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
+            <div className="text-sm">Messages not available offline</div>
+            <div className="text-xs mt-1 opacity-70">Go back online to load this conversation</div>
+          </div>
+        )}
         {messages.map((m, index) => {
           const messageDate = getDateKey(m.time)
           const prevMessageDate = index > 0 ? getDateKey(messages[index - 1].time) : null

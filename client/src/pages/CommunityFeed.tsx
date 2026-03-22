@@ -2144,9 +2144,56 @@ export default function CommunityFeed() {
   }, [data?.posts])
   const visiblePosts = useMemo(() => postsOnly.slice(0, visiblePostCount), [postsOnly, visiblePostCount])
 
-  if (loading) return <div className="p-4 text-[#9fb0b5]">Loading</div>
-  if (error) return <div className="p-4 text-red-400">{error || 'Failed to load feed.'}</div>
-  if (!data) return <div className="p-4 text-[#9fb0b5]">No posts yet.</div>
+  const feedBackButton = (
+    <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
+      <div className="h-12 flex items-center px-3">
+        <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate(-1)} aria-label="Back">
+          <i className="fa-solid fa-arrow-left text-white" />
+        </button>
+        <span className="ml-2 text-white font-semibold truncate">{data?.community?.name || 'Community'}</span>
+      </div>
+    </div>
+  )
+
+  if (loading) return (
+    <div className="min-h-screen bg-black text-white flex flex-col">
+      {feedBackButton}
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
+            <div className="w-12 h-12 border-4 border-white/10 rounded-full" />
+            <div className="absolute inset-0 w-12 h-12 border-4 border-transparent border-t-[#4db6ac] rounded-full animate-spin" />
+          </div>
+          <div className="text-sm text-[#9fb0b5]">Loading feed...</div>
+        </div>
+      </div>
+    </div>
+  )
+  if (error) return (
+    <div className="min-h-screen bg-black text-white flex flex-col">
+      {feedBackButton}
+      <div className="flex-1 flex items-center justify-center px-4">
+        <div className="text-center">
+          <div className="text-red-400 mb-2">{error || 'Failed to load feed.'}</div>
+          <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm hover:bg-white/20">
+            Try Again
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+  if (!data) return (
+    <div className="min-h-screen bg-black text-white flex flex-col">
+      {feedBackButton}
+      <div className="flex-1 flex items-center justify-center px-4">
+        <div className="text-center text-[#9fb0b5]">
+          <i className={`fa-solid ${navigator.onLine ? 'fa-folder-open' : 'fa-wifi-slash'} text-3xl mb-3 opacity-50`} />
+          <div className="text-sm">{navigator.onLine ? 'No posts yet.' : 'Feed not available offline'}</div>
+          {!navigator.onLine && <div className="text-xs mt-1 opacity-70">Go back online to load this feed</div>}
+        </div>
+      </div>
+    </div>
+  )
 
   async function runSearch(){
     const term = (q || '').trim()
@@ -2165,47 +2212,6 @@ export default function CommunityFeed() {
       if (el){ el.scrollIntoView({ behavior:'smooth', block:'start' }) }
       setShowSearch(false)
     }catch{}
-  }
-
-  // Loading state
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white pb-safe flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 px-4">
-          <div className="relative">
-            <div className="w-16 h-16 border-4 border-white/10 rounded-full"></div>
-            <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-[#4db6ac] rounded-full animate-spin"></div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-medium text-white/90 mb-1">Loading Community Feed</div>
-            <div className="text-sm text-white/50">Please wait...</div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div className="min-h-screen bg-black text-white pb-safe flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 px-4 text-center">
-          <div className="w-16 h-16 rounded-full bg-red-500/10 border-2 border-red-500/30 flex items-center justify-center">
-            <i className="fa-solid fa-exclamation-triangle text-2xl text-red-400" />
-          </div>
-          <div>
-            <div className="text-lg font-medium text-white/90 mb-1">Failed to Load Feed</div>
-            <div className="text-sm text-white/50">{error}</div>
-          </div>
-          <button 
-            onClick={() => window.location.reload()} 
-            className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-medium hover:brightness-110"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    )
   }
 
   return (

@@ -1839,9 +1839,19 @@ export default function GroupChatThread() {
             )}
             {messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-[#9fb0b5]">
-                <i className="fa-solid fa-comments text-4xl mb-3 opacity-50" />
-                <div className="text-sm">No messages yet</div>
-                <div className="text-xs mt-1">Send a message to start the conversation</div>
+                {!navigator.onLine ? (
+                  <>
+                    <i className="fa-solid fa-wifi-slash text-3xl mb-3 opacity-50" />
+                    <div className="text-sm">Messages not available offline</div>
+                    <div className="text-xs mt-1 opacity-70">Go back online to load this conversation</div>
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-comments text-4xl mb-3 opacity-50" />
+                    <div className="text-sm">No messages yet</div>
+                    <div className="text-xs mt-1">Send a message to start the conversation</div>
+                  </>
+                )}
               </div>
             ) : (
               <div className="space-y-3 py-3">
