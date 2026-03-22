@@ -74,12 +74,14 @@ export default function Messages(){
     return !cached || cached.length === 0
   })
 
-  // Fallback: load from IndexedDB if localStorage was empty/expired
+  // Fallback: always try IndexedDB — it may have more complete data than localStorage
   useEffect(() => {
-    if (threads.length > 0) return
     getCachedConversations().then(idbThreads => {
       if (idbThreads?.length) {
-        setThreads(prev => prev.length ? prev : idbThreads as Thread[])
+        setThreads(prev => {
+          if (prev.length >= (idbThreads as Thread[]).length) return prev
+          return idbThreads as Thread[]
+        })
         setLoading(false)
       }
     })
@@ -122,11 +124,12 @@ export default function Messages(){
   const [_groupChatsLoading, setGroupChatsLoading] = useState(false)
   void _groupChatsLoading // Suppress unused warning - reserved for future loading state
 
-  // Fallback: load group chats from IndexedDB
+  // Fallback: always try IndexedDB for group chats
   useEffect(() => {
-    if (groupChats.length > 0) return
     getCachedKeyVal<GroupChat[]>('group-chats-list').then(cached => {
-      if (cached?.length) setGroupChats(prev => prev.length ? prev : cached)
+      if (cached?.length) {
+        setGroupChats(prev => prev.length >= cached.length ? prev : cached)
+      }
     })
   }, [])
   
@@ -145,6 +148,7 @@ export default function Messages(){
 
   // Fetch threads with caching
   const loadThreads = useCallback((silent: boolean = false) => {
+    if (!navigator.onLine) return
     if (!silent) setLoading(true)
     fetch('/api/chat_threads', { credentials: 'include' })
       .then(r => r.json())
@@ -174,6 +178,7 @@ export default function Messages(){
 
   // Load archived threads
   const loadArchivedThreads = useCallback(() => {
+    if (!navigator.onLine) return
     setArchivedLoading(true)
     fetch('/api/archived_chats', { credentials: 'include' })
       .then(r => r.json())
@@ -188,6 +193,7 @@ export default function Messages(){
 
   // Load group chats
   const loadGroupChats = useCallback((silent = false) => {
+    if (!navigator.onLine) return
     if (!silent) setGroupChatsLoading(true)
     fetch('/api/group_chat/list', { credentials: 'include' })
       .then(r => r.json())
@@ -313,8 +319,9 @@ export default function Messages(){
     }
     window.addEventListener('popstate', onPopState)
     
-    // Poll every 3 seconds for faster updates (was 5s)
+    // Poll every 3 seconds for faster updates (skip when offline)
     const t = setInterval(() => {
+      if (!navigator.onLine) return
       loadThreads(true)
       loadGroupChats(true)
     }, 3000)

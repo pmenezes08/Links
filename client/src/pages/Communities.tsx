@@ -12,6 +12,7 @@ import EditableAISummary from '../components/EditableAISummary'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
+import { cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 
 type Community = { 
   id: number; 
@@ -281,16 +282,31 @@ export default function Communities(){
   }, [showNested])
   useEffect(() => {
     const cached = readDeviceCache<CommunityManagementCache>(communityDeviceCacheKey, COMMUNITY_DEVICE_CACHE_VERSION)
-    if (!cached) return
-    if (cached.userData) setData(cached.userData)
-    if (Array.isArray(cached.communities) && cached.communities.length > 0) {
-      setCommunities(cached.communities)
-      setLoading(false)
+    if (cached) {
+      if (cached.userData) setData(cached.userData)
+      if (Array.isArray(cached.communities) && cached.communities.length > 0) {
+        setCommunities(cached.communities)
+        setLoading(false)
+      }
+      if (cached.meta) {
+        setParentName(cached.meta.parentName || '')
+        setParentType(cached.meta.parentType || '')
+      }
+      return
     }
-    if (cached.meta) {
-      setParentName(cached.meta.parentName || '')
-      setParentType(cached.meta.parentType || '')
-    }
+    // Fallback: IndexedDB
+    getCachedKeyVal<CommunityManagementCache>(`communities:${communityDeviceCacheKey}`).then(idb => {
+      if (!idb) return
+      if (idb.userData) setData(prev => prev || idb.userData!)
+      if (Array.isArray(idb.communities) && idb.communities.length > 0) {
+        setCommunities(prev => prev.length ? prev : idb.communities)
+        setLoading(false)
+      }
+      if (idb.meta) {
+        setParentName(prev => prev || idb.meta.parentName || '')
+        setParentType(prev => prev || idb.meta.parentType || '')
+      }
+    })
   }, [communityDeviceCacheKey])
   useEffect(() => {
     if (!showNested){
@@ -306,6 +322,7 @@ export default function Communities(){
 
   // Load current user to drive UI permissions for creating sub-communities and groups
   useEffect(() => {
+    if (!navigator.onLine) return
     let mounted = true
     async function loadUser(){
       try{
@@ -333,6 +350,11 @@ export default function Communities(){
   }, [])
 
   useEffect(() => {
+    // Skip network fetches when offline — rely on cached data
+    if (!navigator.onLine) {
+      setLoading(false)
+      return
+    }
     let mounted = true
     let inflight = false
     let latestUserMeta: CommunityManagementCache['userData'] | null = null
@@ -344,7 +366,6 @@ export default function Communities(){
       inflight = true
       setLoading(true)
       try{
-        // Fetch current user meta from home timeline endpoint
         try{
           const r = await fetch(`/api/profile_me`, { credentials:'include' })
           const j = await r.json().catch(()=>null)
@@ -359,7 +380,6 @@ export default function Communities(){
         const jc = await rc.json()
         if (!mounted) return
         if (jc?.success){
-          // Optional filtering by parent_id
           const qs = new URLSearchParams(location.search)
           const parentIdParam = qs.get('parent_id')
           const all: Community[] = jc.communities || []
@@ -378,7 +398,6 @@ export default function Communities(){
               latestCommunitiesSnapshot = all
               latestParentNameSnapshot = ''
               try {
-                // If navigated without parent_id but only one parent root is in view, capture its type
                 const roots = all.filter(c => !c.parent_community_id)
                 if (roots.length === 1) setParentType(roots[0].type || '')
                 else setParentType('')
@@ -396,24 +415,33 @@ export default function Communities(){
           }
           setError(null)
         } else {
-          setError(jc?.error || 'Error loading communities')
+          // Don't overwrite cached data with error
+          setCommunities(prev => {
+            if (prev.length) return prev
+            setError(jc?.error || 'Error loading communities')
+            return prev
+          })
         }
       }catch{
-        if (mounted) setError('Error loading communities')
+        // Don't overwrite cached data with error
+        if (mounted) {
+          setCommunities(prev => {
+            if (prev.length) return prev
+            setError('Error loading communities')
+            return prev
+          })
+        }
       } finally {
         inflight = false
         if (mounted) setLoading(false)
         if (latestCommunitiesSnapshot.length){
-          writeDeviceCache(
-            communityDeviceCacheKey,
-            {
-              communities: latestCommunitiesSnapshot,
-              meta: { parentName: latestParentNameSnapshot, parentType: latestParentTypeSnapshot },
-              userData: latestUserMeta || undefined,
-            },
-            COMMUNITY_MGMT_CACHE_TTL_MS,
-            COMMUNITY_DEVICE_CACHE_VERSION
-          )
+          const cachePayload = {
+            communities: latestCommunitiesSnapshot,
+            meta: { parentName: latestParentNameSnapshot, parentType: latestParentTypeSnapshot },
+            userData: latestUserMeta || undefined,
+          }
+          writeDeviceCache(communityDeviceCacheKey, cachePayload, COMMUNITY_MGMT_CACHE_TTL_MS, COMMUNITY_DEVICE_CACHE_VERSION)
+          cacheKeyVal(`communities:${communityDeviceCacheKey}`, cachePayload)
         }
       }
     }

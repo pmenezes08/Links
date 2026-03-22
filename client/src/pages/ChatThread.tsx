@@ -44,7 +44,6 @@ import {
   MessageBubble,
 } from '../chat'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
-import { useNetwork } from '../contexts/NetworkContext'
 
 type Message = ChatMessage
 
@@ -52,7 +51,6 @@ export default function ChatThread(){
   const { setTitle } = useHeader()
   const { username } = useParams()
   const navigate = useNavigate()
-  const { isOnline } = useNetwork()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
   
   
@@ -722,8 +720,8 @@ export default function ChatThread(){
   // Initial load of messages and other user info (fresh fetch)
   useEffect(() => {
     if (!username) return
-    // Skip network fetches when offline — rely on cached data above
-    if (!isOnline) return
+    // Skip network fetches when offline — navigator.onLine is synchronous and reliable on first render
+    if (!navigator.onLine) return
     
     // Helper to fetch messages and profile once we have user ID
     const fetchMessagesAndProfile = (userId: number) => {

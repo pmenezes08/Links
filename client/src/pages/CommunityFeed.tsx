@@ -503,7 +503,7 @@ export default function CommunityFeed() {
   const lastRefreshRef = useRef(0)
 
   const refreshFeed = useCallback(async () => {
-    if (isRefreshing) return
+    if (!navigator.onLine || isRefreshing) return
     const now = Date.now()
     if (now - lastRefreshRef.current < 5000) return // Debounce 5s
     

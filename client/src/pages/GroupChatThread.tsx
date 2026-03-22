@@ -598,7 +598,13 @@ export default function GroupChatThread() {
       }
     } catch (err) {
       console.error('Error loading messages:', err)
-      if (!silent) setError('Failed to load messages')
+      // Don't show error if we have cached messages
+      if (!silent) {
+        setServerMessages(prev => {
+          if (!prev.length) setError('Failed to load messages')
+          return prev
+        })
+      }
     } finally {
       if (!silent) setLoading(false)
     }
