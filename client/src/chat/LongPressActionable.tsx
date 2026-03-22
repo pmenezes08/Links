@@ -134,7 +134,7 @@ export default function LongPressActionable({
   function handleStart(e?: React.MouseEvent | React.TouchEvent) {
     if (disabled) return
     // #region agent log
-    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'LongPressActionable.tsx:handleStart',message:'LPA handleStart - preventDefault called',data:{type:e?.type,disabled,activeEl:document.activeElement?.tagName},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+    try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'LPA:START',type:e?.type,aEl:document.activeElement?.tagName});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l))}catch{}
     // #endregion
     try {
       if (e && typeof e.preventDefault === 'function') {

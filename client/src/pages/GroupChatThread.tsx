@@ -331,7 +331,7 @@ export default function GroupChatThread() {
     el.scrollTop = el.scrollHeight
     // #region agent log
     if (wasFocused && document.activeElement !== textareaRef.current) {
-      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'GroupChatThread.tsx:scrollToBottom',message:'scrollToBottom STOLE FOCUS',data:{newActiveEl:document.activeElement?.tagName},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+      try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'GCT:SCROLL_STOLE',newEl:document.activeElement?.tagName});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l))}catch{}
     }
     // #endregion
   }, [])
@@ -2581,12 +2581,12 @@ export default function GroupChatThread() {
                   onFocus={() => {
                     lastFocusTimeRef.current = Date.now()
                     // #region agent log
-                    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'GroupChatThread.tsx:textarea-onFocus',message:'textarea FOCUS',data:{time:Date.now(),activeEl:document.activeElement?.tagName},timestamp:Date.now()})}).catch(()=>{});
+                    try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'GCT:FOCUS'});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l))}catch{}
                     // #endregion
                   }}
                   onBlur={() => {
                     // #region agent log
-                    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'GroupChatThread.tsx:textarea-onBlur',message:'textarea BLUR',data:{time:Date.now(),stack:new Error().stack?.split('\n').slice(1,5).join(' | ')},timestamp:Date.now()})}).catch(()=>{});
+                    try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'GCT:BLUR',s:new Error().stack?.split('\n').slice(1,4).join('|')});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l))}catch{}
                     // #endregion
                   }}
                   onPointerDown={() => {
