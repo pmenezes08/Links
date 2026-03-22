@@ -5649,6 +5649,13 @@ def api_clear_stale_session():
         logger.error(f"Error in api_clear_stale_session: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/api/debug/kb_log', methods=['POST'])
+def api_debug_kb_log():
+    data = request.get_json(silent=True) or {}
+    entries = data.get('entries', [])
+    app.logger.info('KB_DEBUG_LOG: %s', json.dumps(entries))
+    return jsonify({'success': True})
+
 @app.route('/api/debug/login_test', methods=['POST'])
 @login_required
 def api_debug_login_test():
@@ -8278,6 +8285,43 @@ def admin_delete_user():
             
     except Exception as e:
         logger.error(f"Error deleting user: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/add_user_to_community', methods=['POST'])
+@login_required
+def admin_add_user_to_community_api():
+    """Add any user to any community/sub-community (admin only)."""
+    if not is_app_admin(session.get('username')):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    data = request.get_json(silent=True) or {}
+    user_id = data.get('user_id')
+    community_id = data.get('community_id')
+    if not user_id or not community_id:
+        return jsonify({'success': False, 'error': 'user_id and community_id required'}), 400
+    try:
+        ph = get_sql_placeholder()
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute(f"SELECT username FROM users WHERE id={ph}", (int(user_id),))
+            u = c.fetchone()
+            if not u:
+                return jsonify({'success': False, 'error': 'User not found'}), 404
+            target_username = u['username'] if hasattr(u, 'keys') else u[0]
+            c.execute(f"SELECT name FROM communities WHERE id={ph}", (int(community_id),))
+            comm = c.fetchone()
+            if not comm:
+                return jsonify({'success': False, 'error': 'Community not found'}), 404
+            comm_name = comm['name'] if hasattr(comm, 'keys') else comm[0]
+            c.execute(f"SELECT 1 FROM user_communities WHERE user_id={ph} AND community_id={ph}", (int(user_id), int(community_id)))
+            if c.fetchone():
+                return jsonify({'success': False, 'error': f'{target_username} is already a member of {comm_name}'})
+            add_user_to_community(c, int(user_id), int(community_id), role='member', username=target_username)
+            conn.commit()
+            return jsonify({'success': True, 'message': f'Added {target_username} to {comm_name}'})
+    except CommunityMembershipLimitError as e:
+        return jsonify({'success': False, 'error': str(e)}), 403
+    except Exception as e:
+        logger.error(f"admin_add_user_to_community error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/delete_community', methods=['POST'])

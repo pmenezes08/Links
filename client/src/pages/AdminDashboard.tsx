@@ -179,6 +179,14 @@ export default function AdminDashboard() {
   const [broadcastSuccess, setBroadcastSuccess] = useState<string | null>(null)
   const [broadcastError, setBroadcastError] = useState<string | null>(null)
 
+  // Add-to-community modal state
+  const [showAddToCommunityModal, setShowAddToCommunityModal] = useState(false)
+  const [addToCommunityId, setAddToCommunityId] = useState<number | null>(null)
+  const [addToCommunityUsername, setAddToCommunityUsername] = useState('')
+  const [addToCommunityLoading, setAddToCommunityLoading] = useState(false)
+  const [addToCommunityError, setAddToCommunityError] = useState('')
+  const [addToCommunitySuccess, setAddToCommunitySuccess] = useState(false)
+
   // Content Review state
   type ReportedPost = {
     report_id: number
@@ -706,6 +714,37 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleAddToCommunity = async () => {
+    if (!addToCommunityId || !addToCommunityUsername.trim()) return
+    setAddToCommunityLoading(true)
+    setAddToCommunityError('')
+    setAddToCommunitySuccess(false)
+    try {
+      const body = new URLSearchParams({
+        community_id: String(addToCommunityId),
+        username: addToCommunityUsername.trim(),
+      })
+      const res = await fetch('/add_community_member', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      })
+      const data = await res.json()
+      if (data.success) {
+        setAddToCommunitySuccess(true)
+        setAddToCommunityUsername('')
+        loadAdminData()
+      } else {
+        setAddToCommunityError(data.error || 'Failed to add user')
+      }
+    } catch {
+      setAddToCommunityError('Network error')
+    } finally {
+      setAddToCommunityLoading(false)
+    }
+  }
+
   const handleInviteUser = (communityId: number, communityName: string) => {
     setInviteCommunityId(communityId)
     setInviteCommunityName(communityName)
@@ -1179,12 +1218,24 @@ export default function AdminDashboard() {
             {/* Quick Actions */}
               <div className="bg-white/5 backdrop-blur rounded-xl p-4 border border-white/10">
                 <h3 className="text-sm font-semibold mb-3">Quick Actions</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button 
                     onClick={() => { setActiveTab('users'); setShowAddUserModal(true) }}
                     className="py-2 px-3 bg-[#4db6ac]/20 text-[#4db6ac] rounded-lg text-sm font-medium hover:bg-[#4db6ac]/30 transition-colors"
                   >
                     Add New User
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAddToCommunityId(flatCommunities[0]?.id ?? null)
+                      setAddToCommunityUsername('')
+                      setAddToCommunityError('')
+                      setAddToCommunitySuccess(false)
+                      setShowAddToCommunityModal(true)
+                    }}
+                    className="py-2 px-3 bg-blue-500/20 text-blue-400 rounded-lg text-sm font-medium hover:bg-blue-500/30 transition-colors"
+                  >
+                    Add to Community
                   </button>
                   <button 
                     onClick={() => navigate('/communities')}
@@ -1463,6 +1514,18 @@ export default function AdminDashboard() {
                             <div className="flex gap-1">
                               <span className="text-xs text-white/50">{child.member_count} members</span>
                               <button
+                                onClick={() => {
+                                  setAddToCommunityId(child.id)
+                                  setAddToCommunityUsername('')
+                                  setAddToCommunityError('')
+                                  setAddToCommunitySuccess(false)
+                                  setShowAddToCommunityModal(true)
+                                }}
+                                className="px-2 py-0.5 text-xs bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded hover:bg-blue-500/20"
+                              >
+                                Add User
+                              </button>
+                              <button
                                 onClick={() => navigate(`/community_feed_react/${child.id}`)}
                                 className="px-2 py-0.5 text-xs bg-white/5 border border-white/10 rounded hover:bg-white/10"
                               >
@@ -1476,6 +1539,18 @@ export default function AdminDashboard() {
                   )}
                   
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setAddToCommunityId(community.id)
+                        setAddToCommunityUsername('')
+                        setAddToCommunityError('')
+                        setAddToCommunitySuccess(false)
+                        setShowAddToCommunityModal(true)
+                      }}
+                      className="px-2 py-1 text-xs rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20"
+                    >
+                      Add User
+                    </button>
                     <button
                       onClick={() => handleInviteUser(community.id, community.name)}
                       className="px-2 py-1 text-xs rounded-lg bg-[#4db6ac]/10 border border-[#4db6ac]/20 text-[#4db6ac] hover:bg-[#4db6ac]/20"
@@ -1766,6 +1841,79 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Add User to Community Modal */}
+      {showAddToCommunityModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1a1a1a] rounded-xl p-6 w-full max-w-md border border-white/10">
+            <h2 className="text-lg font-semibold mb-1">Add User to Community</h2>
+            <p className="text-xs text-white/50 mb-4">
+              {(() => {
+                const c = flatCommunities.find(x => x.id === addToCommunityId)
+                return c ? c.name : `Community #${addToCommunityId}`
+              })()}
+            </p>
+
+            {addToCommunitySuccess && (
+              <div className="mb-3 p-2 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
+                User added successfully!
+              </div>
+            )}
+            {addToCommunityError && (
+              <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+                {addToCommunityError}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-white/60 mb-1">Community</label>
+                <select
+                  value={addToCommunityId ?? ''}
+                  onChange={(e) => {
+                    setAddToCommunityId(Number(e.target.value))
+                    setAddToCommunityError('')
+                    setAddToCommunitySuccess(false)
+                  }}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#4db6ac]"
+                >
+                  {flatCommunities.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.parent_community_id ? '  └─ ' : ''}{c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-white/60 mb-1">Username</label>
+                <input
+                  type="text"
+                  value={addToCommunityUsername}
+                  onChange={(e) => { setAddToCommunityUsername(e.target.value); setAddToCommunityError(''); setAddToCommunitySuccess(false) }}
+                  placeholder="Enter username"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddToCommunity() } }}
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={handleAddToCommunity}
+                  disabled={addToCommunityLoading || !addToCommunityUsername.trim()}
+                  className="flex-1 py-2 bg-[#4db6ac] text-black rounded-lg font-medium hover:bg-[#45a099] disabled:opacity-50"
+                >
+                  {addToCommunityLoading ? 'Adding...' : 'Add User'}
+                </button>
+                <button
+                  onClick={() => setShowAddToCommunityModal(false)}
+                  className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/15"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add User Modal */}
       {showAddUserModal && (

@@ -209,10 +209,7 @@ export default function Communities(){
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string|null>(null)
   const [swipedCommunity, setSwipedCommunity] = useState<number|null>(null)
-  const [activeTab, setActiveTab] = useState<'timeline'|'management'|'groups'|'training'>(() => {
-    const qs = new URLSearchParams(location.search)
-    return qs.get('parent_id') ? 'timeline' : 'management'
-  })
+  const [activeTab, setActiveTab] = useState<'timeline'|'management'|'groups'|'training'>('management')
   const [joinedGroups, setJoinedGroups] = useState<Array<{ group_id: number; name: string; community_id: number; status: string; community_name: string }>>([])
   const [availableGroups, setAvailableGroups] = useState<Array<{ group_id: number; name: string; community_id: number; approval_required: boolean; community_name: string }>>([])
   const [groupCommunities, setGroupCommunities] = useState<Array<{ id: number; name: string; parent_community_id?: number | null }>>([])
@@ -221,14 +218,7 @@ export default function Communities(){
   const [availableFilter, setAvailableFilter] = useState<string>('all')
   const [joiningGroupId, setJoiningGroupId] = useState<number | null>(null)
   
-  // Update activeTab when URL changes (e.g., navigating from sub-community feed)
-  useEffect(() => {
-    const qs = new URLSearchParams(location.search)
-    const hasParentId = qs.get('parent_id')
-    if (hasParentId) {
-      setActiveTab('timeline')
-    }
-  }, [location.search])
+  // No auto-tab switch on URL change — user always lands on Sub-communities tab
   
   // Sub-community creation state
   const [showCreateSubModal, setShowCreateSubModal] = useState(false)
@@ -517,6 +507,14 @@ export default function Communities(){
           <div className="flex-1 flex items-center justify-center gap-8 overflow-x-auto no-scrollbar" style={{ WebkitOverflowScrolling: 'touch' as any }}>
             <button 
               type="button" 
+              className={`text-sm font-medium ${activeTab==='management' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+              onClick={()=> setActiveTab('management')}
+            >
+              <div className="pt-2 whitespace-nowrap text-center">Sub-communities</div>
+              <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+            </button>
+            <button 
+              type="button" 
               className={`text-sm font-medium ${activeTab==='timeline' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} 
               onClick={()=> {
                 const pidLocal = new URLSearchParams(location.search).get('parent_id')
@@ -528,14 +526,6 @@ export default function Communities(){
             >
               <div className="pt-2 whitespace-nowrap text-center">Home Timeline</div>
               <div className={`h-0.5 ${activeTab==='timeline' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
-            </button>
-            <button 
-              type="button" 
-              className={`text-sm font-medium ${activeTab==='management' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
-              onClick={()=> setActiveTab('management')}
-            >
-              <div className="pt-2 whitespace-nowrap text-center">Sub-communities</div>
-              <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
             <button 
               type="button" 

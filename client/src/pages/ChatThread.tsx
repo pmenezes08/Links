@@ -2999,7 +2999,7 @@ export default function ChatThread(){
                 }}
                 onBlur={() => {
                   // #region agent log
-                  try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'CT:BLUR',s:new Error().stack?.split('\n').slice(1,4).join('|')});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l))}catch{}
+                  try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'CT:BLUR',s:new Error().stack?.split('\n').slice(1,4).join('|')});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l));fetch('/api/debug/kb_log',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({entries:l})}).catch(()=>{})}catch{}
                   // #endregion
                 }}
                 onPointerDown={() => {
