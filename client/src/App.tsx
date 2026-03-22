@@ -15,6 +15,8 @@ import { HeaderContext } from './contexts/HeaderContext'
 import { UserProfileContext, type UserProfile } from './contexts/UserProfileContext'
 import PushInit from './components/PushInit'
 import NotificationPrompt from './components/NotificationPrompt'
+import { NetworkProvider } from './contexts/NetworkContext'
+import OfflineBanner from './components/OfflineBanner'
 // import NativePushInit from './components/NativePushInit' // Disabled - conflicts with PushInit
 import BrandAssetsInit from './components/BrandAssetsInit'
 // Encryption removed — not in use
@@ -713,12 +715,15 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <BrandAssetsInit />
-        <PushInit />
-        <NotificationPrompt />
-        <AppRoutes />
-      </BrowserRouter>
+      <NetworkProvider>
+        <BrowserRouter>
+          <OfflineBanner />
+          <BrandAssetsInit />
+          <PushInit />
+          <NotificationPrompt />
+          <AppRoutes />
+        </BrowserRouter>
+      </NetworkProvider>
     </QueryClientProvider>
   )
 }

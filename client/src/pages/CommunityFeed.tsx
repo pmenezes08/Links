@@ -21,6 +21,7 @@ import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import LazyVideo from '../components/LazyVideo'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
+import { cacheFeed, getCachedFeed } from '../utils/offlineDb'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { handleLogoutClick } from '../utils/logout'
 
@@ -482,18 +483,21 @@ export default function CommunityFeed() {
 
   useEffect(() => {
     if (!deviceFeedCacheKey) return
-    // Skip cache read if we're navigating back with a refresh signal
     const state = routerLocation.state as { refresh?: number } | null
-    if (state?.refresh) {
-      // Don't read from cache - we'll fetch fresh data
-      return
-    }
+    if (state?.refresh) return
     const cached = readDeviceCache<any>(deviceFeedCacheKey, COMMUNITY_FEED_CACHE_VERSION)
     if (cached?.success) {
       setData(cached)
       setLoading(false)
+    } else if (community_id) {
+      getCachedFeed(community_id).then(idbCached => {
+        if ((idbCached as any)?.success) {
+          setData((prev: any) => prev ?? idbCached)
+          setLoading(false)
+        }
+      })
     }
-  }, [deviceFeedCacheKey, routerLocation.state])
+  }, [deviceFeedCacheKey, routerLocation.state, community_id])
 
   const [isRefreshing, setIsRefreshing] = useState(false)
   const lastRefreshRef = useRef(0)
@@ -676,7 +680,8 @@ export default function CommunityFeed() {
     if (!deviceFeedCacheKey) return
     if (!data?.success) return
     writeDeviceCache(deviceFeedCacheKey, data, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_FEED_CACHE_VERSION)
-  }, [data, deviceFeedCacheKey])
+    if (community_id) cacheFeed(community_id, data)
+  }, [data, deviceFeedCacheKey, community_id])
 
   // Ads removed
 

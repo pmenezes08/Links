@@ -43,6 +43,7 @@ import {
   CHAT_CACHE_VERSION,
   MessageBubble,
 } from '../chat'
+import { cacheMessages, getCachedMessages } from '../utils/offlineDb'
 
 type Message = ChatMessage
 
@@ -697,12 +698,20 @@ export default function ChatThread(){
     const cached = readDeviceCache<{ messages: any[]; otherUserId: number }>(chatCacheKey, CHAT_CACHE_VERSION)
     if (cached?.messages && cached.otherUserId) {
       setOtherUserId(cached.otherUserId)
-      // Process cached messages (no await needed since they're already decrypted in cache)
       processRawMessages(cached.messages).then(processed => {
         setMessages(processed)
       })
+    } else if (username) {
+      // Fallback: try IndexedDB (survives localStorage eviction, no TTL expiry)
+      getCachedMessages(`dm:${username}`).then(idbMsgs => {
+        if (idbMsgs?.length) {
+          processRawMessages(idbMsgs).then(processed => {
+            setMessages(prev => prev.length ? prev : processed)
+          })
+        }
+      })
     }
-  }, [chatCacheKey, processRawMessages])
+  }, [chatCacheKey, processRawMessages, username])
 
   // Initial load of messages and other user info (fresh fetch)
   useEffect(() => {
@@ -747,6 +756,9 @@ export default function ChatThread(){
               messages: msgResponse.messages, 
               otherUserId: userId 
             }, CHAT_CACHE_TTL_MS, CHAT_CACHE_VERSION)
+          }
+          if (username) {
+            cacheMessages(`dm:${username}`, msgResponse.messages)
           }
           
           // Clear the chat threads cache so Messages list shows updated unread counts
@@ -1067,6 +1079,9 @@ export default function ChatThread(){
               if (!isNaN(msgId) && msgId > maxId) maxId = msgId
             })
             lastKnownMessageIdRef.current = maxId
+            
+            // Persist to IndexedDB for offline access
+            if (username) cacheMessages(`dm:${username}`, j.messages)
             
             const decryptedMessages = j.messages
             

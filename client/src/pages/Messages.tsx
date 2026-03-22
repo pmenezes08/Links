@@ -7,6 +7,7 @@ import Avatar from '../components/Avatar'
 import ParentCommunityPicker from '../components/ParentCommunityPicker'
 import GroupChatCreator from '../components/GroupChatCreator'
 import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
+import { cacheConversations, getCachedConversations, cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 
 type Thread = {
   other_username: string
@@ -72,6 +73,17 @@ export default function Messages(){
     const cached = readDeviceCache<Thread[]>(THREADS_CACHE_KEY, CACHE_VERSION)
     return !cached || cached.length === 0
   })
+
+  // Fallback: load from IndexedDB if localStorage was empty/expired
+  useEffect(() => {
+    if (threads.length > 0) return
+    getCachedConversations().then(idbThreads => {
+      if (idbThreads?.length) {
+        setThreads(prev => prev.length ? prev : idbThreads as Thread[])
+        setLoading(false)
+      }
+    })
+  }, [])
   const [activeTab, setActiveTab] = useState<'chats'|'new'>('chats')
   const [swipeId, setSwipeId] = useState<string|null>(null)
   const [dragX, setDragX] = useState(0)
@@ -109,6 +121,14 @@ export default function Messages(){
   const [groupChats, setGroupChats] = useState<GroupChat[]>([])
   const [_groupChatsLoading, setGroupChatsLoading] = useState(false)
   void _groupChatsLoading // Suppress unused warning - reserved for future loading state
+
+  // Fallback: load group chats from IndexedDB
+  useEffect(() => {
+    if (groupChats.length > 0) return
+    getCachedKeyVal<GroupChat[]>('group-chats-list').then(cached => {
+      if (cached?.length) setGroupChats(prev => prev.length ? prev : cached)
+    })
+  }, [])
   
   // Group chat swipe state
   const [groupSwipeId, setGroupSwipeId] = useState<number | null>(null)
@@ -131,8 +151,8 @@ export default function Messages(){
       .then(j => {
         if (j?.success && Array.isArray(j.threads)) {
           const newThreads = j.threads as Thread[]
-          // Cache the fresh data
           writeDeviceCache(THREADS_CACHE_KEY, newThreads, CACHE_TTL_MS, CACHE_VERSION)
+          cacheConversations(newThreads)
           
           setThreads(prev => {
             const a = prev
@@ -174,6 +194,7 @@ export default function Messages(){
       .then(j => {
         if (j?.success && Array.isArray(j.groups)) {
           setGroupChats(j.groups)
+          cacheKeyVal('group-chats-list', j.groups)
         }
       })
       .catch(() => {})
