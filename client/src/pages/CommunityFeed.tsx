@@ -634,19 +634,36 @@ export default function CommunityFeed() {
 
   useEffect(() => {
     let isMounted = true
+    let hasCache = false
     
     // CACHE-FIRST STRATEGY: Show cached data immediately, then fetch fresh in background
     if (deviceFeedCacheKey) {
       const cachedData = readDeviceCache<any>(deviceFeedCacheKey, COMMUNITY_FEED_CACHE_VERSION)
       if (cachedData?.success) {
-        // Show cached data immediately - no loading spinner!
         setData(cachedData)
         setLoading(false)
-      } else {
-        setLoading(true)
+        hasCache = true
       }
-    } else {
-      setLoading(true)
+    }
+    
+    // If no localStorage cache, try IndexedDB before going to network
+    if (!hasCache && community_id) {
+      getCachedFeed(community_id).then(idbCached => {
+        if (!isMounted) return
+        if ((idbCached as any)?.success) {
+          setData((prev: any) => prev ?? idbCached)
+          setLoading(false)
+          hasCache = true
+        }
+      })
+    }
+    
+    if (!hasCache) setLoading(true)
+    
+    // Skip network fetch when offline — cached data is all we have
+    if (!navigator.onLine) {
+      setLoading(false)
+      return () => { isMounted = false }
     }
     
     // Fetch fresh data in background
@@ -662,15 +679,21 @@ export default function CommunityFeed() {
             writeDeviceCache(deviceFeedCacheKey, json, COMMUNITY_FEED_CACHE_TTL_MS, COMMUNITY_FEED_CACHE_VERSION)
           }
         }
-        else if (!data) {
-          // Only set error if we don't have cached data to show
-          setError(json?.error || 'Error loading feed')
+        else {
+          setData((prev: any) => {
+            if (prev) return prev
+            setError(json?.error || 'Error loading feed')
+            return prev
+          })
         }
       })
       .catch(() => { 
-        if (isMounted && !data){
+        if (!isMounted) return
+        setData((prev: any) => {
+          if (prev) return prev
           setError('Error loading feed')
-        }
+          return prev
+        })
       })
       .finally(() => isMounted && setLoading(false))
     return () => { isMounted = false }

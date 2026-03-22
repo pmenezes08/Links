@@ -3,6 +3,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useNavigate } from 'react-router-dom'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
+import { cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 import {
   DASHBOARD_CACHE_TTL_MS,
   DASHBOARD_CACHE_VERSION,
@@ -89,7 +90,17 @@ export default function PremiumDashboard() {
 
   useEffect(() => {
     const { data: cached } = readDeviceCacheStale<DashboardCachePayload>(DASHBOARD_DEVICE_CACHE_KEY, DASHBOARD_CACHE_VERSION)
-    if (!cached) return
+    if (cached) {
+      applyDashboardCache(cached)
+      return
+    }
+    // Fallback: try IndexedDB
+    getCachedKeyVal<DashboardCachePayload>('dashboard-data').then(idbCached => {
+      if (idbCached) applyDashboardCache(idbCached)
+    })
+  }, [])
+
+  function applyDashboardCache(cached: DashboardCachePayload) {
     const profile = cached.profile
     if (profile) {
       setEmailVerified(profile.emailVerified)
@@ -101,7 +112,6 @@ export default function PremiumDashboard() {
       setHasProfilePic(profile.hasProfilePic)
       setExistingProfilePic(profile.existingProfilePic || '')
       setPicPreview(prev => prev || profile.existingProfilePic || '')
-      // If we have cached profile, we can show UI immediately
       setInitialLoading(false)
     }
     if (Array.isArray(cached.communities)) {
@@ -110,7 +120,7 @@ export default function PremiumDashboard() {
     }
     setHasGymAccess(!!cached.hasGymAccess)
     setIsAppAdmin(!!cached.isAppAdmin)
-  }, [])
+  }
 
   const clearPendingInviteTarget = () => {
     setPendingInviteTarget(null)
@@ -291,22 +301,18 @@ export default function PremiumDashboard() {
       setCommunitiesLoaded(true)
 
       if (profileSnapshot) {
-        writeDeviceCache(
-          DASHBOARD_DEVICE_CACHE_KEY,
-          {
-            profile: profileSnapshot,
-            communities: cachedCommunities,
-            hasGymAccess: hasGymAccessFlag,
-            isAppAdmin: isAdminFlag,
-          },
-          DASHBOARD_CACHE_TTL_MS,
-          DASHBOARD_CACHE_VERSION
-        )
+        const payload = {
+          profile: profileSnapshot,
+          communities: cachedCommunities,
+          hasGymAccess: hasGymAccessFlag,
+          isAppAdmin: isAdminFlag,
+        }
+        writeDeviceCache(DASHBOARD_DEVICE_CACHE_KEY, payload, DASHBOARD_CACHE_TTL_MS, DASHBOARD_CACHE_VERSION)
+        cacheKeyVal('dashboard-data', payload)
       }
     } catch (error) {
       console.error('Error loading user data:', error)
-      setHasGymAccess(false)
-      setCommunities([])
+      // Don't overwrite cached data when offline — leave whatever the cache loaded
     } finally {
       setInitialLoading(false)
     }

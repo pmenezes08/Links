@@ -19,6 +19,7 @@ import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
+import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 
 type Message = {
   id: number
@@ -487,21 +488,41 @@ export default function GroupChatThread() {
   }, [scrollToBottom])
 
   const loadGroup = useCallback(async () => {
+    if (!navigator.onLine) {
+      // Offline: load from IndexedDB
+      const cached = await getCachedKeyVal<any>(`group-info:${group_id}`)
+      if (cached) setGroup(prev => prev || cached)
+      return
+    }
     try {
       const response = await fetch(`/api/group_chat/${group_id}`, { credentials: 'include' })
       const data = await response.json()
       if (data.success) {
         setGroup(data.group)
+        cacheKeyVal(`group-info:${group_id}`, data.group)
       } else {
         setError(data.error || 'Failed to load group')
       }
     } catch (err) {
       console.error('Error loading group:', err)
-      setError('Failed to load group')
+      const cached = await getCachedKeyVal<any>(`group-info:${group_id}`)
+      if (cached) setGroup(prev => prev || cached)
+      else setError('Failed to load group')
     }
   }, [group_id])
 
   const loadMessages = useCallback(async (silent = false) => {
+    if (!navigator.onLine) {
+      // Offline: load from IndexedDB on initial load only
+      if (!silent) {
+        const cached = await getCachedMessages(`group:${group_id}`)
+        if (cached?.length) {
+          setServerMessages(cached as Message[])
+        }
+        setLoading(false)
+      }
+      return
+    }
     if (!silent) setLoading(true)
     try {
       const response = await fetch(`/api/group_chat/${group_id}/messages?limit=50`, { credentials: 'include' })
@@ -511,6 +532,9 @@ export default function GroupChatThread() {
           m => !pendingDeletions.current.has(m.id)
         )
         const newMaxId = newServerMessages.length > 0 ? Math.max(...newServerMessages.map(m => m.id)) : 0
+        
+        // Persist to IndexedDB for offline access
+        cacheMessages(`group:${group_id}`, newServerMessages)
 
         if (!silent) setHasMoreMessages(!!data.has_more)
 
@@ -624,8 +648,9 @@ export default function GroupChatThread() {
     loadMessages()
     updatePresence()  // Initial presence ping
 
-    // Poll messages and update presence
+    // Poll messages and update presence (skip when offline)
     pollingRef.current = setInterval(() => {
+      if (!navigator.onLine) return
       loadMessages(true)
       updatePresence()
     }, 3000)

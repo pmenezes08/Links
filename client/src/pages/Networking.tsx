@@ -7,6 +7,7 @@ import { useHeader } from '../contexts/HeaderContext'
 import Avatar from '../components/Avatar'
 import { useNavigate } from 'react-router-dom'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
+import { useNetwork } from '../contexts/NetworkContext'
 
 type Community = { id: number; name: string }
 type MemberProfile = {
@@ -36,6 +37,7 @@ const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
 export default function Networking() {
   const { setTitle } = useHeader()
   const navigate = useNavigate()
+  const { isOnline } = useNetwork()
   useEffect(() => { setTitle('Networking') }, [setTitle])
 
   const [activeSection, setActiveSection] = useState<SectionKey>('steve')
@@ -312,6 +314,11 @@ export default function Networking() {
 
   const sendSteveMessage = async () => {
     if (!steveInput.trim() || !steveCommunity || steveSending) return
+    if (!isOnline) {
+      setSteveMessages(prev => [...prev, { role: 'user', text: steveInput.trim() }, { role: 'steve', text: "It looks like you're offline right now. Please reconnect to the internet and I'll be happy to help you! 🌐" }])
+      setSteveInput('')
+      return
+    }
     const msg = steveInput.trim()
     setSteveInput('')
     setSteveMessages(prev => [...prev, { role: 'user', text: msg }])
@@ -334,6 +341,10 @@ export default function Networking() {
 
   const triggerAutoMatch = async () => {
     if (!steveCommunity || autoMatching) return
+    if (!isOnline) {
+      setSteveMessages(prev => [...prev, { role: 'steve', text: "It looks like you're offline right now. Please reconnect to the internet so I can find your best matches! 🌐" }])
+      return
+    }
     setAutoMatching(true)
     const userMsg = '✨ Find me the best matches based on my profile'
     setSteveMessages(prev => [...prev, { role: 'user', text: userMsg }])

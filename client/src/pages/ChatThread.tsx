@@ -43,7 +43,8 @@ import {
   CHAT_CACHE_VERSION,
   MessageBubble,
 } from '../chat'
-import { cacheMessages, getCachedMessages } from '../utils/offlineDb'
+import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
+import { useNetwork } from '../contexts/NetworkContext'
 
 type Message = ChatMessage
 
@@ -51,6 +52,7 @@ export default function ChatThread(){
   const { setTitle } = useHeader()
   const { username } = useParams()
   const navigate = useNavigate()
+  const { isOnline } = useNetwork()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
   
   
@@ -703,7 +705,11 @@ export default function ChatThread(){
       })
     } else if (username) {
       // Fallback: try IndexedDB (survives localStorage eviction, no TTL expiry)
-      getCachedMessages(`dm:${username}`).then(idbMsgs => {
+      Promise.all([
+        getCachedMessages(`dm:${username}`),
+        getCachedKeyVal<number>(`dm-user-id:${username}`),
+      ]).then(([idbMsgs, idbUserId]) => {
+        if (idbUserId) setOtherUserId(prev => prev || idbUserId)
         if (idbMsgs?.length) {
           processRawMessages(idbMsgs).then(processed => {
             setMessages(prev => prev.length ? prev : processed)
@@ -716,6 +722,8 @@ export default function ChatThread(){
   // Initial load of messages and other user info (fresh fetch)
   useEffect(() => {
     if (!username) return
+    // Skip network fetches when offline — rely on cached data above
+    if (!isOnline) return
     
     // Helper to fetch messages and profile once we have user ID
     const fetchMessagesAndProfile = (userId: number) => {
@@ -759,6 +767,7 @@ export default function ChatThread(){
           }
           if (username) {
             cacheMessages(`dm:${username}`, msgResponse.messages)
+            cacheKeyVal(`dm-user-id:${username}`, userId)
           }
           
           // Clear the chat threads cache so Messages list shows updated unread counts
@@ -1045,6 +1054,7 @@ export default function ChatThread(){
     if (!username || !otherUserId) return
     
     async function poll(){
+      if (!navigator.onLine) return
       // Skip polling if we're waiting for server confirmation after sending
       if (Date.now() < skipNextPollsUntil.current) {
         return
