@@ -650,9 +650,12 @@ export default function GroupChatThread() {
   }, [group_id])
 
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'GroupChatThread.tsx:init-effect',message:'init effect firing',data:{online:navigator.onLine,group_id},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
     loadGroup()
     loadMessages()
-    updatePresence()  // Initial presence ping
+    if (navigator.onLine) updatePresence()
 
     // Poll messages and update presence (skip when offline)
     pollingRef.current = setInterval(() => {
