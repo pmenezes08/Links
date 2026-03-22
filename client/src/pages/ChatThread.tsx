@@ -186,14 +186,20 @@ export default function ChatThread(){
     const el = listRef.current
     if (!el) return
     
-    // Direct scroll - no animation
+    // #region agent log
+    const wasFocused = document.activeElement === textareaRef.current
+    // #endregion
     el.scrollTop = el.scrollHeight
     
-    // Backup: use scroll anchor
     const anchor = el.querySelector('.scroll-anchor')
     if (anchor) {
       anchor.scrollIntoView({ behavior: 'instant', block: 'end' })
     }
+    // #region agent log
+    if (wasFocused && document.activeElement !== textareaRef.current) {
+      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:scrollToBottom',message:'scrollToBottom STOLE FOCUS',data:{newActiveEl:document.activeElement?.tagName},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    }
+    // #endregion
   }, [])
 
   useEffect(() => {
@@ -382,6 +388,9 @@ export default function ChatThread(){
     if (document.activeElement === textareaRef.current) {
       if (Date.now() - lastFocusTimeRef.current < 550) return
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:handleContentPointerUp',message:'DISMISS blur() called',data:{dx:deltaX,dy:deltaY,targetTag:(event.target as HTMLElement)?.tagName,timeSinceFocus:Date.now()-lastFocusTimeRef.current},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
     textareaRef.current?.blur()
   }, [])
 
@@ -2985,12 +2994,12 @@ export default function ChatThread(){
                 onFocus={() => {
                   lastFocusTimeRef.current = Date.now()
                   // #region agent log
-                  try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CT:textarea-focus',msg:'textarea FOCUS',h:'H2'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
+                  fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:textarea-onFocus',message:'textarea FOCUS',data:{time:Date.now(),activeEl:document.activeElement?.tagName},timestamp:Date.now()})}).catch(()=>{});
                   // #endregion
                 }}
                 onBlur={() => {
                   // #region agent log
-                  try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CT:textarea-blur',msg:'textarea BLUR',d:{stack:new Error().stack?.split('\n').slice(1,4).join('|')},h:'H2'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
+                  fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:textarea-onBlur',message:'textarea BLUR',data:{time:Date.now(),stack:new Error().stack?.split('\n').slice(1,5).join(' | ')},timestamp:Date.now()})}).catch(()=>{});
                   // #endregion
                 }}
                 onPointerDown={() => {
