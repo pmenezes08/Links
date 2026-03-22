@@ -2939,7 +2939,17 @@ export default function ChatThread(){
                   pointerEvents: 'auto'
                 } as CSSProperties}
                 onPaste={handlePaste}
-                onFocus={() => { lastFocusTimeRef.current = Date.now() }}
+                onFocus={() => {
+                  lastFocusTimeRef.current = Date.now()
+                  // #region agent log
+                  try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CT:textarea-focus',msg:'textarea FOCUS',h:'H2'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
+                  // #endregion
+                }}
+                onBlur={() => {
+                  // #region agent log
+                  try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CT:textarea-blur',msg:'textarea BLUR',d:{stack:new Error().stack?.split('\n').slice(1,4).join('|')},h:'H2'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
+                  // #endregion
+                }}
                 onPointerDown={() => {
                   if (document.activeElement !== textareaRef.current) {
                     focusTextarea()

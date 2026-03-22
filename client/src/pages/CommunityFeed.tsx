@@ -487,7 +487,7 @@ export default function CommunityFeed() {
     if (state?.refresh) return
     const cached = readDeviceCache<any>(deviceFeedCacheKey, COMMUNITY_FEED_CACHE_VERSION)
     // #region agent log
-    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'CommunityFeed.tsx:cache-read-effect',message:'cache read effect',data:{online:navigator.onLine,community_id,hasLsCache:!!cached?.success,deviceFeedCacheKey},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+    try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CF:cache-read',msg:'cache read effect',d:{online:navigator.onLine,community_id,hasLs:!!cached?.success,key:deviceFeedCacheKey},h:'H4'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
     // #endregion
     if (cached?.success) {
       setData(cached)
@@ -495,7 +495,7 @@ export default function CommunityFeed() {
     } else if (community_id) {
       getCachedFeed(community_id).then(idbCached => {
         // #region agent log
-        fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'CommunityFeed.tsx:cache-read-idb',message:'IDB cache result in effect1',data:{hasIdbData:!!(idbCached as any)?.success,community_id},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+        try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CF:idb-effect1',msg:'IDB result effect1',d:{hasIdb:!!(idbCached as any)?.success,community_id},h:'H4'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
         // #endregion
         if ((idbCached as any)?.success) {
           setData((prev: any) => prev ?? idbCached)
@@ -656,7 +656,7 @@ export default function CommunityFeed() {
     if (!hasCache && community_id) {
       getCachedFeed(community_id).then(idbCached => {
         // #region agent log
-        fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'CommunityFeed.tsx:main-load-idb',message:'IDB result in main load',data:{isMounted,hasIdbData:!!(idbCached as any)?.success,community_id,online:navigator.onLine},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+        try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CF:idb-mainLoad',msg:'IDB result mainLoad',d:{mounted:isMounted,hasIdb:!!(idbCached as any)?.success,community_id,online:navigator.onLine},h:'H4'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
         // #endregion
         if (!isMounted) return
         if ((idbCached as any)?.success) {
@@ -672,7 +672,7 @@ export default function CommunityFeed() {
     // Skip network fetch when offline — cached data is all we have
     if (!navigator.onLine) {
       // #region agent log
-      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'CommunityFeed.tsx:offline-bailout',message:'offline bailout in main load',data:{hasCache,community_id},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+      try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CF:offline-bail',msg:'offline bailout',d:{hasCache,community_id},h:'H4'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
       // #endregion
       setLoading(false)
       return () => { isMounted = false }

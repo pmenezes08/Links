@@ -198,7 +198,7 @@ export async function getCachedFeed(communityId: string): Promise<unknown | null
     const db = await getDb()
     const row = await db.get('feeds', communityId)
     // #region agent log
-    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'offlineDb.ts:getCachedFeed',message:'getCachedFeed result',data:{communityId,hasRow:!!row,hasData:!!(row?.data),success:!!(row?.data as any)?.success},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
+    try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'offlineDb:getCachedFeed',msg:'getCachedFeed',d:{communityId,hasRow:!!row,hasData:!!(row?.data),success:!!(row?.data as any)?.success},h:'H5'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
     // #endregion
     return row?.data ?? null
   } catch {

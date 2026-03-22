@@ -651,7 +651,7 @@ export default function GroupChatThread() {
 
   useEffect(() => {
     // #region agent log
-    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'GroupChatThread.tsx:init-effect',message:'init effect firing',data:{online:navigator.onLine,group_id},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+    try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'GCT:init',msg:'init effect',d:{online:navigator.onLine,group_id},h:'H3'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
     // #endregion
     loadGroup()
     loadMessages()
@@ -2571,7 +2571,17 @@ export default function GroupChatThread() {
                     userSelect: 'text',
                     pointerEvents: 'auto'
                   } as CSSProperties}
-                  onFocus={() => { lastFocusTimeRef.current = Date.now() }}
+                  onFocus={() => {
+                    lastFocusTimeRef.current = Date.now()
+                    // #region agent log
+                    try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'GCT:textarea-focus',msg:'textarea FOCUS',h:'H2'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
+                    // #endregion
+                  }}
+                  onBlur={() => {
+                    // #region agent log
+                    try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'GCT:textarea-blur',msg:'textarea BLUR',d:{stack:new Error().stack?.split('\n').slice(1,4).join('|')},h:'H2'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
+                    // #endregion
+                  }}
                   onPointerDown={() => {
                     if (document.activeElement !== textareaRef.current) {
                       focusTextarea()

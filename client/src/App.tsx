@@ -489,7 +489,7 @@ function AppRoutes(){
       return null
     } catch (err) {
       // #region agent log
-      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'App.tsx:loadProfile-catch',message:'loadProfile failed',data:{online:navigator.onLine,error:String(err)},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+      try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'App.tsx:loadProfile-catch',msg:'loadProfile FAILED',d:{online:navigator.onLine,err:String(err)},h:'H1'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
       // #endregion
       setProfileData(null)
       setProfileError('Failed to load profile')
@@ -512,7 +512,7 @@ function AppRoutes(){
 
   useEffect(() => {
     // #region agent log
-    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'App.tsx:loadProfile-effect',message:'loadProfile effect firing',data:{online:navigator.onLine,path:locationRef.current},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+    try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'App.tsx:loadProfile-effect',msg:'loadProfile firing',d:{online:navigator.onLine,path:locationRef.current},h:'H1'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
     // #endregion
     loadProfile(locationRef.current)
   }, [loadProfile])
