@@ -861,15 +861,12 @@ export default function ChatThread(){
     
     // During initial load window, always scroll to bottom if user hasn't manually scrolled
     if (isInitialLoadWindow && !userHasScrolledRef.current) {
-      // Mark as initial scroll done (for the reveal)
       if (!didInitialAutoScrollRef.current) {
         didInitialAutoScrollRef.current = true
       }
       
-      // Scroll immediately
       scrollToBottom()
       
-      // Use RAF to ensure DOM is painted
       requestAnimationFrame(() => {
         scrollToBottom()
         requestAnimationFrame(() => {
@@ -879,11 +876,14 @@ export default function ChatThread(){
           scrollToBottom()
         })
       })
+    } else if (!isScrollReady && messages.length > 0) {
+      // Safety: force visibility if messages loaded outside initial window (e.g. from IndexedDB)
+      scrollToBottom()
+      setIsScrollReady(true)
     }
     
     // After initial load, handle new messages
     if (!isInitialLoadWindow && messages.length > lastCountRef.current) {
-      // Check if user is near bottom
       const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
       if (nearBottom || !userHasScrolledRef.current) {
         scrollToBottom()

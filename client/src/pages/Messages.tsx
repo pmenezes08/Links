@@ -82,9 +82,9 @@ export default function Messages(){
           if (prev.length >= (idbThreads as Thread[]).length) return prev
           return idbThreads as Thread[]
         })
-        setLoading(false)
       }
-    })
+      setLoading(false)
+    }).catch(() => setLoading(false))
   }, [])
   const [activeTab, setActiveTab] = useState<'chats'|'new'>('chats')
   const [swipeId, setSwipeId] = useState<string|null>(null)

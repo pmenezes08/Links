@@ -1620,10 +1620,19 @@ export default function GroupChatThread() {
 
   if (loading && !group) {
     return (
-      <div className="min-h-screen chat-thread-bg text-white flex items-center justify-center">
-        <div className="text-[#9fb0b5]">
-          <i className="fa-solid fa-spinner fa-spin mr-2" />
-          Loading...
+      <div className="min-h-screen chat-thread-bg text-white flex flex-col">
+        <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
+          <div className="h-12 flex items-center px-3">
+            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label="Back">
+              <i className="fa-solid fa-arrow-left text-white" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-[#9fb0b5]">
+            <i className="fa-solid fa-spinner fa-spin mr-2" />
+            Loading...
+          </div>
         </div>
       </div>
     )
@@ -1631,15 +1640,24 @@ export default function GroupChatThread() {
 
   if (error) {
     return (
-      <div className="min-h-screen chat-thread-bg text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-red-400 mb-4">{error}</div>
-          <button
-            onClick={() => navigate('/user_chat')}
-            className="px-4 py-2 bg-white/10 rounded-lg hover:bg-white/20"
-          >
-            Back to Messages
-          </button>
+      <div className="min-h-screen chat-thread-bg text-white flex flex-col">
+        <div style={{ paddingTop: 'env(safe-area-inset-top, 0px)', background: '#000' }}>
+          <div className="h-12 flex items-center px-3">
+            <button className="p-2 rounded-full hover:bg-white/10" onClick={() => navigate('/user_chat')} aria-label="Back">
+              <i className="fa-solid fa-arrow-left text-white" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-red-400 mb-4">{error}</div>
+            <button
+              onClick={() => navigate('/user_chat')}
+              className="px-4 py-2 bg-white/10 rounded-lg hover:bg-white/20"
+            >
+              Back to Messages
+            </button>
+          </div>
         </div>
       </div>
     )

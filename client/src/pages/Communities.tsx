@@ -294,20 +294,43 @@ export default function Communities(){
       }
       return
     }
-    // Fallback: IndexedDB
-    getCachedKeyVal<CommunityManagementCache>(`communities:${communityDeviceCacheKey}`).then(idb => {
-      if (!idb) return
-      if (idb.userData) setData(prev => prev || idb.userData!)
-      if (Array.isArray(idb.communities) && idb.communities.length > 0) {
+    // Fallback: IndexedDB (exact key match)
+    getCachedKeyVal<CommunityManagementCache>(`communities:${communityDeviceCacheKey}`).then(async (idb) => {
+      if (idb && Array.isArray(idb.communities) && idb.communities.length > 0) {
+        if (idb.userData) setData(prev => prev || idb.userData!)
         setCommunities(prev => prev.length ? prev : idb.communities)
         setLoading(false)
+        if (idb.meta) {
+          setParentName(prev => prev || idb.meta.parentName || '')
+          setParentType(prev => prev || idb.meta.parentType || '')
+        }
+        return
       }
-      if (idb.meta) {
-        setParentName(prev => prev || idb.meta.parentName || '')
-        setParentType(prev => prev || idb.meta.parentType || '')
+      // Cross-cache fallback: extract from full hierarchy
+      const qs = new URLSearchParams(location.search)
+      const parentIdParam = qs.get('parent_id')
+      const hierarchyCache = await getCachedKeyVal<{ communities: Community[]; userData?: CommunityManagementCache['userData'] }>('communities:all-hierarchy')
+      if (!hierarchyCache?.communities?.length) {
+        setLoading(false)
+        return
       }
+      if (hierarchyCache.userData) setData(prev => prev || hierarchyCache.userData!)
+      if (parentIdParam) {
+        const pid = Number(parentIdParam)
+        const parent = hierarchyCache.communities.find((c: Community) => c.id === pid)
+        if (parent) {
+          setCommunities([{ ...parent, children: parent.children || [] }])
+          setParentName(parent.name || '')
+          setParentType(parent.type || '')
+        } else {
+          setCommunities(hierarchyCache.communities)
+        }
+      } else {
+        setCommunities(hierarchyCache.communities)
+      }
+      setLoading(false)
     })
-  }, [communityDeviceCacheKey])
+  }, [communityDeviceCacheKey, location.search])
   useEffect(() => {
     if (!showNested){
       setExpandedNestedParentId(null)
@@ -359,6 +382,7 @@ export default function Communities(){
     let inflight = false
     let latestUserMeta: CommunityManagementCache['userData'] | null = null
     let latestCommunitiesSnapshot: Community[] = []
+    let fullHierarchy: Community[] = []
     let latestParentNameSnapshot = ''
     let latestParentTypeSnapshot = ''
     async function load(){
@@ -383,6 +407,7 @@ export default function Communities(){
           const qs = new URLSearchParams(location.search)
           const parentIdParam = qs.get('parent_id')
           const all: Community[] = jc.communities || []
+          fullHierarchy = all
           if (parentIdParam) {
             const pid = Number(parentIdParam)
             const parent = all.find(c => c.id === pid)
@@ -442,6 +467,20 @@ export default function Communities(){
           }
           writeDeviceCache(communityDeviceCacheKey, cachePayload, COMMUNITY_MGMT_CACHE_TTL_MS, COMMUNITY_DEVICE_CACHE_VERSION)
           cacheKeyVal(`communities:${communityDeviceCacheKey}`, cachePayload)
+          // Pre-cache the full hierarchy so sub-community pages work offline
+          const hierarchy = fullHierarchy.length ? fullHierarchy : latestCommunitiesSnapshot
+          cacheKeyVal('communities:all-hierarchy', { communities: hierarchy, userData: latestUserMeta || undefined })
+          // Pre-cache each parent's sub-community view
+          for (const c of hierarchy) {
+            if (c.children && c.children.length > 0) {
+              const subKey = `communities:community-management:?parent_id=${c.id}`
+              cacheKeyVal(subKey, {
+                communities: [{ ...c, children: c.children }],
+                meta: { parentName: c.name || '', parentType: c.type || '' },
+                userData: latestUserMeta || undefined,
+              })
+            }
+          }
         }
       }
     }
