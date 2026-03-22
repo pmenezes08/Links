@@ -376,8 +376,11 @@ export default function ChatThread(){
     const deltaX = event.clientX - start.x
     const deltaY = event.clientY - start.y
     if (Math.hypot(deltaX, deltaY) > 10) return
-    // Guard: don't blur if focus happened very recently (prevents flicker)
-    if (Date.now() - lastFocusTimeRef.current < 300) return
+    const t = event.target as Node | null
+    if (t && composerRef.current?.contains(t)) return
+    if (document.activeElement === textareaRef.current) {
+      if (Date.now() - lastFocusTimeRef.current < 550) return
+    }
     textareaRef.current?.blur()
   }, [])
 
@@ -2906,6 +2909,7 @@ export default function ChatThread(){
                   pointerEvents: 'auto'
                 } as CSSProperties}
                 onPaste={handlePaste}
+                onFocus={() => { lastFocusTimeRef.current = Date.now() }}
                 onPointerDown={() => {
                   if (document.activeElement !== textareaRef.current) {
                     focusTextarea()

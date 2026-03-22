@@ -2666,7 +2666,9 @@ export default function CommunityFeed() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    className="text-xs text-white/80 flex items-center gap-1 hover:text-white transition-colors px-2 py-1"
+                    className="text-xs text-white/80 flex items-center gap-1 hover:text-white transition-colors px-3 py-2"
+                    style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => openStoryViewers(currentStory.id)}
                   >
                     <i className="fa-regular fa-eye" />
@@ -2860,7 +2862,9 @@ export default function CommunityFeed() {
 
                     <button
                       type="button"
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 relative flex-shrink-0"
+                      className="w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 relative flex-shrink-0"
+                      style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={() => setStoryCommentPanelOpen(true)}
                     >
                       <i className="fa-regular fa-comment text-lg" />
@@ -2871,7 +2875,9 @@ export default function CommunityFeed() {
 
                     <button
                       type="button"
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 flex-shrink-0"
+                      className="w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 flex-shrink-0"
+                      style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={() => { setStoryPrivateReplyOpen(true); setTimeout(() => storyPrivateReplyInputRef.current?.focus(), 100) }}
                       title="Send private message"
                     >
@@ -2903,10 +2909,12 @@ export default function CommunityFeed() {
                     )}
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center gap-4 text-white/70 text-sm">
+                  <div className="flex items-center justify-center gap-2 text-white/70 text-sm">
                     <button
                       type="button"
-                      className="flex items-center gap-2 hover:text-white transition"
+                      className="flex items-center gap-2 hover:text-white transition py-3 px-4"
+                      style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={() => openStoryViewers(currentStory.id)}
                     >
                       <i className="fa-regular fa-eye" />
@@ -2914,7 +2922,9 @@ export default function CommunityFeed() {
                     </button>
                     <button
                       type="button"
-                      className="flex items-center gap-2 hover:text-white transition"
+                      className="flex items-center gap-2 hover:text-white transition py-3 px-4"
+                      style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={() => setStoryCommentPanelOpen(true)}
                     >
                       <i className="fa-regular fa-comment" />

@@ -2509,13 +2509,14 @@ export default function GroupChatThread() {
                     userSelect: 'text',
                     pointerEvents: 'auto'
                   } as CSSProperties}
+                  onFocus={() => { lastFocusTimeRef.current = Date.now() }}
                   onPointerDown={() => {
                     if (document.activeElement !== textareaRef.current) {
                       focusTextarea()
                     }
                   }}
                   onTouchEnd={(e) => {
-                    if (document.activeElement !== textareaRef.current) {
+                    if (Capacitor.getPlatform() === 'ios' && document.activeElement !== textareaRef.current) {
                       e.preventDefault()
                       focusTextarea()
                     }
