@@ -243,7 +243,6 @@ export default function ChatThread(){
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60 // ignore tiny keyboard deltas on iOS app
   const KEYBOARD_OFFSET_EPSILON = 6
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
-  const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
   
   const composerRef = useRef<HTMLDivElement | null>(null)
@@ -280,37 +279,8 @@ export default function ChatThread(){
     }
   }, [])
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return
-    const probe = document.createElement('div')
-    probe.style.position = 'fixed'
-    probe.style.bottom = '0'
-    probe.style.left = '0'
-    probe.style.width = '0'
-    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
-    probe.style.pointerEvents = 'none'
-    probe.style.opacity = '0'
-    probe.style.zIndex = '-1'
-    document.body.appendChild(probe)
-
-    const updateSafeBottom = () => {
-      const rect = probe.getBoundingClientRect()
-      const next = rect.height || 0
-      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
-    }
-
-    updateSafeBottom()
-    window.addEventListener('resize', updateSafeBottom)
-
-    return () => {
-      window.removeEventListener('resize', updateSafeBottom)
-      probe.remove()
-    }
-  }, [])
-
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
-  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   // Use higher threshold to prevent toggling from small viewport fluctuations
   const showKeyboardRaw = liftSource > 50
   // Hysteresis: transition to false only after a brief delay to prevent transitional flicker
@@ -327,12 +297,10 @@ export default function ChatThread(){
   }
   const showKeyboard = showKeyboardRaw || showKeyboardStableRef.current
   const composerGapPx = 4
-  const listPaddingBottom = `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx + keyboardLift}px)`
-  const listScrollPaddingBottom = `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
-  // Scroll button positioned above the composer
-  const scrollButtonBottom = showKeyboard
-    ? `${keyboardLift + effectiveComposerHeight + 12}px`
-    : `calc(${safeBottom} + ${(effectiveComposerHeight + composerGapPx + 12).toFixed(2)}px)`
+  const composerBottomPx = `max(${safeBottom}, ${liftSource}px)`
+  const listPaddingBottom = `calc(${composerBottomPx} + ${effectiveComposerHeight + composerGapPx}px)`
+  const listScrollPaddingBottom = `calc(${composerBottomPx} + ${(effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
+  const scrollButtonBottom = `calc(${composerBottomPx} + ${(effectiveComposerHeight + 12).toFixed(2)}px)`
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!showKeyboard) {
@@ -2688,7 +2656,7 @@ export default function ChatThread(){
       ref={composerRef}
       className="fixed left-0 right-0"
       style={{
-        bottom: `calc(${safeBottom} + ${keyboardLift}px)`,
+        bottom: `max(${safeBottom}, ${liftSource}px)`,
         zIndex: 1000,
         width: '100%',
         display: 'flex',
