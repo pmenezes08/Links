@@ -185,21 +185,7 @@ export default function ChatThread(){
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (!el) return
-    
-    // #region agent log
-    const wasFocused = document.activeElement === textareaRef.current
-    // #endregion
     el.scrollTop = el.scrollHeight
-    
-    const anchor = el.querySelector('.scroll-anchor')
-    if (anchor) {
-      anchor.scrollIntoView({ behavior: 'instant', block: 'end' })
-    }
-    // #region agent log
-    if (wasFocused && document.activeElement !== textareaRef.current) {
-      try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'CT:SCROLL_STOLE',newEl:document.activeElement?.tagName});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l))}catch{}
-    }
-    // #endregion
   }, [])
 
   useEffect(() => {
@@ -388,9 +374,6 @@ export default function ChatThread(){
     if (document.activeElement === textareaRef.current) {
       if (Date.now() - lastFocusTimeRef.current < 550) return
     }
-    // #region agent log
-    try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'CT:DISMISS',dx:Math.round(deltaX),dy:Math.round(deltaY),tgt:(event.target as HTMLElement)?.tagName,tsf:Date.now()-lastFocusTimeRef.current});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l))}catch{}
-    // #endregion
     textareaRef.current?.blur()
   }, [])
 
@@ -484,41 +467,12 @@ export default function ChatThread(){
 
   useEffect(() => {
     if (liftSource < 0) return
-    scrollToBottom()
-    const t1 = setTimeout(scrollToBottom, 120)
-    const t2 = setTimeout(scrollToBottom, 260)
-    return () => {
-      clearTimeout(t1)
-      clearTimeout(t2)
-    }
+    requestAnimationFrame(scrollToBottom)
   }, [liftSource, scrollToBottom])
 
   useEffect(() => {
-    const timer = setTimeout(scrollToBottom, 80)
-    return () => clearTimeout(timer)
+    requestAnimationFrame(scrollToBottom)
   }, [composerHeight, scrollToBottom])
-
-  // Scroll to bottom when window resizes (Capacitor native keyboard resize)
-  useEffect(() => {
-    let lastHeight = window.innerHeight
-    
-    const handleResize = () => {
-      const newHeight = window.innerHeight
-      // Keyboard opened (height decreased) or closed (height increased)
-      if (newHeight !== lastHeight) {
-        lastHeight = newHeight
-        // Always scroll to bottom when keyboard state changes
-        if (listRef.current) {
-          setTimeout(scrollToBottom, 50)
-          setTimeout(scrollToBottom, 150)
-          setTimeout(scrollToBottom, 300)
-        }
-      }
-    }
-    
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [scrollToBottom])
   
   async function commitEdit(){
     if (!editingId) return
@@ -2993,14 +2947,6 @@ export default function ChatThread(){
                 onPaste={handlePaste}
                 onFocus={() => {
                   lastFocusTimeRef.current = Date.now()
-                  // #region agent log
-                  try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'CT:FOCUS'});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l))}catch{}
-                  // #endregion
-                }}
-                onBlur={() => {
-                  // #region agent log
-                  try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'CT:BLUR',s:new Error().stack?.split('\n').slice(1,4).join('|')});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l));fetch('/api/debug/kb_log',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({entries:l})}).catch(()=>{})}catch{}
-                  // #endregion
                 }}
                 onPointerDown={() => {
                   if (document.activeElement !== textareaRef.current) {

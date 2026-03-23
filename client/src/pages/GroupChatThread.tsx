@@ -325,15 +325,7 @@ export default function GroupChatThread() {
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
     if (!el) return
-    // #region agent log
-    const wasFocused = document.activeElement === textareaRef.current
-    // #endregion
     el.scrollTop = el.scrollHeight
-    // #region agent log
-    if (wasFocused && document.activeElement !== textareaRef.current) {
-      try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'GCT:SCROLL_STOLE',newEl:document.activeElement?.tagName});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l))}catch{}
-    }
-    // #endregion
   }, [])
   
   // Always keep latest message visible - scroll instantly whenever messages change
@@ -463,36 +455,12 @@ export default function GroupChatThread() {
   // Scroll on keyboard change
   useEffect(() => {
     if (liftSource < 0) return
-    scrollToBottom()
-    const t1 = setTimeout(scrollToBottom, 120)
-    const t2 = setTimeout(scrollToBottom, 260)
-    return () => {
-      clearTimeout(t1)
-      clearTimeout(t2)
-    }
+    requestAnimationFrame(scrollToBottom)
   }, [liftSource, scrollToBottom])
 
   useEffect(() => {
-    const timer = setTimeout(scrollToBottom, 80)
-    return () => clearTimeout(timer)
+    requestAnimationFrame(scrollToBottom)
   }, [composerHeight, scrollToBottom])
-
-  // Window resize handling
-  useEffect(() => {
-    let lastHeight = window.innerHeight
-
-    const handleResize = () => {
-      const newHeight = window.innerHeight
-      if (newHeight !== lastHeight) {
-        lastHeight = newHeight
-        setTimeout(scrollToBottom, 50)
-        setTimeout(scrollToBottom, 150)
-      }
-    }
-
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [scrollToBottom])
 
   const loadGroup = useCallback(async () => {
     if (!navigator.onLine) {
@@ -657,9 +625,6 @@ export default function GroupChatThread() {
   }, [group_id])
 
   useEffect(() => {
-    // #region agent log
-    try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'GCT:init',msg:'init effect',d:{online:navigator.onLine,group_id},h:'H3'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
-    // #endregion
     loadGroup()
     loadMessages()
     if (navigator.onLine) updatePresence()
@@ -2580,14 +2545,6 @@ export default function GroupChatThread() {
                   } as CSSProperties}
                   onFocus={() => {
                     lastFocusTimeRef.current = Date.now()
-                    // #region agent log
-                    try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'GCT:FOCUS'});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l))}catch{}
-                    // #endregion
-                  }}
-                  onBlur={() => {
-                    // #region agent log
-                    try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'GCT:BLUR',s:new Error().stack?.split('\n').slice(1,4).join('|')});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l));fetch('/api/debug/kb_log',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({entries:l})}).catch(()=>{})}catch{}
-                    // #endregion
                   }}
                   onPointerDown={() => {
                     if (document.activeElement !== textareaRef.current) {

@@ -197,9 +197,6 @@ export async function getCachedFeed(communityId: string): Promise<unknown | null
   try {
     const db = await getDb()
     const row = await db.get('feeds', communityId)
-    // #region agent log
-    try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'offlineDb:getCachedFeed',msg:'getCachedFeed',d:{communityId,hasRow:!!row,hasData:!!(row?.data),success:!!(row?.data as any)?.success},h:'H5'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
-    // #endregion
     return row?.data ?? null
   } catch {
     return null

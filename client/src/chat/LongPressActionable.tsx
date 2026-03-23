@@ -133,9 +133,6 @@ export default function LongPressActionable({
 
   function handleStart(e?: React.MouseEvent | React.TouchEvent) {
     if (disabled) return
-    // #region agent log
-    try{const l=JSON.parse(localStorage.getItem('__kbdebug')||'[]');l.push({t:Date.now(),e:'LPA:START',type:e?.type,aEl:document.activeElement?.tagName});if(l.length>60)l.splice(0,l.length-60);localStorage.setItem('__kbdebug',JSON.stringify(l))}catch{}
-    // #endregion
     try {
       if (e && typeof e.preventDefault === 'function') {
         e.preventDefault()

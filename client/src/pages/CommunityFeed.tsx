@@ -486,17 +486,11 @@ export default function CommunityFeed() {
     const state = routerLocation.state as { refresh?: number } | null
     if (state?.refresh) return
     const cached = readDeviceCache<any>(deviceFeedCacheKey, COMMUNITY_FEED_CACHE_VERSION)
-    // #region agent log
-    try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CF:cache-read',msg:'cache read effect',d:{online:navigator.onLine,community_id,hasLs:!!cached?.success,key:deviceFeedCacheKey},h:'H4'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
-    // #endregion
     if (cached?.success) {
       setData(cached)
       setLoading(false)
     } else if (community_id) {
       getCachedFeed(community_id).then(idbCached => {
-        // #region agent log
-        try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CF:idb-effect1',msg:'IDB result effect1',d:{hasIdb:!!(idbCached as any)?.success,community_id},h:'H4'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
-        // #endregion
         if ((idbCached as any)?.success) {
           setData((prev: any) => prev ?? idbCached)
           setLoading(false)
@@ -655,9 +649,6 @@ export default function CommunityFeed() {
     // If no localStorage cache, try IndexedDB before going to network
     if (!hasCache && community_id) {
       getCachedFeed(community_id).then(idbCached => {
-        // #region agent log
-        try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CF:idb-mainLoad',msg:'IDB result mainLoad',d:{mounted:isMounted,hasIdb:!!(idbCached as any)?.success,community_id,online:navigator.onLine},h:'H4'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
-        // #endregion
         if (!isMounted) return
         if ((idbCached as any)?.success) {
           setData((prev: any) => prev ?? idbCached)
@@ -671,9 +662,6 @@ export default function CommunityFeed() {
     
     // Skip network fetch when offline — cached data is all we have
     if (!navigator.onLine) {
-      // #region agent log
-      try{const l=JSON.parse(localStorage.getItem('__dbg057209')||'[]');l.push({t:Date.now(),loc:'CF:offline-bail',msg:'offline bailout',d:{hasCache,community_id},h:'H4'});localStorage.setItem('__dbg057209',JSON.stringify(l))}catch{}
-      // #endregion
       setLoading(false)
       return () => { isMounted = false }
     }
