@@ -2688,7 +2688,7 @@ export default function ChatThread(){
       ref={composerRef}
       className="fixed left-0 right-0"
       style={{
-        bottom: `${keyboardLift}px`,
+        bottom: `calc(${safeBottom} + ${keyboardLift}px)`,
         zIndex: 1000,
         width: '100%',
         display: 'flex',
