@@ -322,15 +322,12 @@ export default function ChatThread(){
       showKeyboardTimerRef.current = setTimeout(() => {
         showKeyboardStableRef.current = false
         showKeyboardTimerRef.current = null
-      }, 150)
+      }, 400)
     }
   }
   const showKeyboard = showKeyboardRaw || showKeyboardStableRef.current
-  const composerGapPx = 4  // Tighter gap between messages and composer
-  // Padding to ensure messages don't hide behind the composer
-  const listPaddingBottom = showKeyboard
-    ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
-    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
+  const composerGapPx = 4
+  const listPaddingBottom = `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx + keyboardLift}px)`
   const listScrollPaddingBottom = `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
   // Scroll button positioned above the composer
   const scrollButtonBottom = showKeyboard
@@ -372,7 +369,7 @@ export default function ChatThread(){
     const t = event.target as Node | null
     if (t && composerRef.current?.contains(t)) return
     if (document.activeElement === textareaRef.current) {
-      if (Date.now() - lastFocusTimeRef.current < 550) return
+      if (Date.now() - lastFocusTimeRef.current < 1000) return
     }
     textareaRef.current?.blur()
   }, [])
@@ -403,9 +400,8 @@ export default function ChatThread(){
       // Only use height difference, ignore offsetTop to prevent scroll-induced shifts
       const nextOffset = Math.max(0, baseHeight - currentHeight)
       const normalizedOffset = nextOffset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : nextOffset
-      // Only update if change is significant (> 5px) to prevent micro-adjustments
-      if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 5) return
-      setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 5 ? prev : normalizedOffset))
+      if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 15) return
+      setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 15 ? prev : normalizedOffset))
       keyboardOffsetRef.current = normalizedOffset
       setKeyboardOffset(normalizedOffset)
       if (normalizedOffset > 0) {
@@ -2692,7 +2688,7 @@ export default function ChatThread(){
       ref={composerRef}
       className="fixed left-0 right-0"
       style={{
-        bottom: showKeyboard ? `${keyboardLift}px` : 0,
+        bottom: `${keyboardLift}px`,
         zIndex: 1000,
         width: '100%',
         display: 'flex',

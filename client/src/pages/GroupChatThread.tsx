@@ -311,15 +311,12 @@ export default function GroupChatThread() {
       showKeyboardTimerRef.current = setTimeout(() => {
         showKeyboardStableRef.current = false
         showKeyboardTimerRef.current = null
-      }, 150)
+      }, 400)
     }
   }
   const showKeyboard = showKeyboardRaw || showKeyboardStableRef.current
   const composerGapPx = 4
-
-  const listPaddingBottom = showKeyboard
-    ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
-    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
+  const listPaddingBottom = `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx + keyboardLift}px)`
 
   // Instant scroll - only used for initial load
   const scrollToBottom = useCallback(() => {
@@ -391,8 +388,8 @@ export default function GroupChatThread() {
       const baseHeight = viewportBaseRef.current ?? currentHeight
       const nextOffset = Math.max(0, baseHeight - currentHeight)
       const normalizedOffset = nextOffset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : nextOffset
-      if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 5) return
-      setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 5 ? prev : normalizedOffset))
+      if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 15) return
+      setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 15 ? prev : normalizedOffset))
       keyboardOffsetRef.current = normalizedOffset
       setKeyboardOffset(normalizedOffset)
       if (normalizedOffset > 0) {
@@ -2269,7 +2266,7 @@ export default function GroupChatThread() {
         ref={composerRef}
         className="fixed left-0 right-0"
         style={{
-          bottom: showKeyboard ? `${keyboardLift}px` : 0,
+          bottom: `${keyboardLift}px`,
           zIndex: 1000,
           width: '100%',
           display: 'flex',
