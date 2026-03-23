@@ -217,6 +217,7 @@ export default function GroupChatThread() {
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60
   const KEYBOARD_OFFSET_EPSILON = 6
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
+  const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
 
@@ -269,6 +270,31 @@ export default function GroupChatThread() {
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    const probe = document.createElement('div')
+    probe.style.position = 'fixed'
+    probe.style.bottom = '0'
+    probe.style.left = '0'
+    probe.style.width = '0'
+    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
+    probe.style.pointerEvents = 'none'
+    probe.style.opacity = '0'
+    probe.style.zIndex = '-1'
+    document.body.appendChild(probe)
+    const updateSafeBottom = () => {
+      const rect = probe.getBoundingClientRect()
+      const next = rect.height || 0
+      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
+    }
+    updateSafeBottom()
+    window.addEventListener('resize', updateSafeBottom)
+    return () => {
+      window.removeEventListener('resize', updateSafeBottom)
+      probe.remove()
+    }
+  }, [])
+
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const showKeyboardRaw = liftSource > 50
@@ -284,9 +310,11 @@ export default function GroupChatThread() {
     }
   }
   const showKeyboard = showKeyboardRaw || showKeyboardStableRef.current
+  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const composerGapPx = 4
-  const composerBottomPx = `max(${safeBottom}, ${liftSource}px)`
-  const listPaddingBottom = `calc(${composerBottomPx} + ${effectiveComposerHeight + composerGapPx}px)`
+  const listPaddingBottom = showKeyboard
+    ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
+    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
 
   // Instant scroll - only used for initial load
   const scrollToBottom = useCallback(() => {
@@ -2236,7 +2264,7 @@ export default function GroupChatThread() {
         ref={composerRef}
         className="fixed left-0 right-0"
         style={{
-          bottom: `max(${safeBottom}, ${liftSource}px)`,
+          bottom: showKeyboard ? `${keyboardLift}px` : 0,
           zIndex: 1000,
           width: '100%',
           display: 'flex',

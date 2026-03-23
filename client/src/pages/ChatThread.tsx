@@ -243,6 +243,7 @@ export default function ChatThread(){
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60 // ignore tiny keyboard deltas on iOS app
   const KEYBOARD_OFFSET_EPSILON = 6
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
+  const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
   
   const composerRef = useRef<HTMLDivElement | null>(null)
@@ -279,6 +280,31 @@ export default function ChatThread(){
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    const probe = document.createElement('div')
+    probe.style.position = 'fixed'
+    probe.style.bottom = '0'
+    probe.style.left = '0'
+    probe.style.width = '0'
+    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
+    probe.style.pointerEvents = 'none'
+    probe.style.opacity = '0'
+    probe.style.zIndex = '-1'
+    document.body.appendChild(probe)
+    const updateSafeBottom = () => {
+      const rect = probe.getBoundingClientRect()
+      const next = rect.height || 0
+      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
+    }
+    updateSafeBottom()
+    window.addEventListener('resize', updateSafeBottom)
+    return () => {
+      window.removeEventListener('resize', updateSafeBottom)
+      probe.remove()
+    }
+  }, [])
+
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
   // Use higher threshold to prevent toggling from small viewport fluctuations
@@ -296,16 +322,15 @@ export default function ChatThread(){
     }
   }
   const showKeyboard = showKeyboardRaw || showKeyboardStableRef.current
+  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
   const composerGapPx = 4
-  const composerBottomPx = `max(${safeBottom}, ${liftSource}px)`
-  // #region agent log
-  if (liftSource > 0 || composerRef.current) {
-    fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:render',message:'composer bottom render',data:{liftSource,composerBottomCss:composerBottomPx,composerElBottom:composerRef.current?window.getComputedStyle(composerRef.current).bottom:'no-ref',composerElBg:composerRef.current?window.getComputedStyle(composerRef.current).backgroundColor:'no-ref',keyboardOffset,viewportLift},timestamp:Date.now(),hypothesisId:'H-A,H-B,H-C'})}).catch(()=>{})
-  }
-  // #endregion
-  const listPaddingBottom = `calc(${composerBottomPx} + ${effectiveComposerHeight + composerGapPx}px)`
-  const listScrollPaddingBottom = `calc(${composerBottomPx} + ${(effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
-  const scrollButtonBottom = `calc(${composerBottomPx} + ${(effectiveComposerHeight + 12).toFixed(2)}px)`
+  const listPaddingBottom = showKeyboard
+    ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
+    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
+  const listScrollPaddingBottom = `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
+  const scrollButtonBottom = showKeyboard
+    ? `${keyboardLift + effectiveComposerHeight + 12}px`
+    : `calc(${safeBottom} + ${(effectiveComposerHeight + composerGapPx + 12).toFixed(2)}px)`
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!showKeyboard) {
@@ -374,9 +399,6 @@ export default function ChatThread(){
       const nextOffset = Math.max(0, baseHeight - currentHeight)
       const normalizedOffset = nextOffset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : nextOffset
       if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 15) return
-      // #region agent log
-      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:updateOffset',message:'viewport lift update',data:{currentHeight,baseHeight,nextOffset,normalizedOffset,windowInnerHeight:window.innerHeight},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{})
-      // #endregion
       setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 15 ? prev : normalizedOffset))
       keyboardOffsetRef.current = normalizedOffset
       setKeyboardOffset(normalizedOffset)
@@ -409,9 +431,6 @@ export default function ChatThread(){
   
     const handleShow = (info: KeyboardInfo) => {
       const height = normalizeHeight(info?.keyboardHeight ?? 0)
-      // #region agent log
-      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:keyboardWillShow',message:'Capacitor keyboard show',data:{rawHeight:info?.keyboardHeight,normalizedHeight:height,windowInnerHeight:window.innerHeight,state:'show'},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{})
-      // #endregion
       if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
       keyboardOffsetRef.current = height
       setKeyboardOffset(height)
@@ -419,9 +438,6 @@ export default function ChatThread(){
     }
   
     const handleHide = () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7388/ingest/a0f98a1d-2770-43b7-b929-ab781e6aebe5',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'057209'},body:JSON.stringify({sessionId:'057209',location:'ChatThread.tsx:keyboardWillHide',message:'Capacitor keyboard hide',data:{windowInnerHeight:window.innerHeight,state:'hide'},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{})
-      // #endregion
       if (Math.abs(keyboardOffsetRef.current) < KEYBOARD_OFFSET_EPSILON) return
       keyboardOffsetRef.current = 0
       setKeyboardOffset(0)
@@ -2670,7 +2686,7 @@ export default function ChatThread(){
       ref={composerRef}
       className="fixed left-0 right-0"
       style={{
-        bottom: `max(${safeBottom}, ${liftSource}px)`,
+        bottom: showKeyboard ? `${keyboardLift}px` : 0,
         zIndex: 1000,
         width: '100%',
         display: 'flex',
