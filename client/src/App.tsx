@@ -17,6 +17,7 @@ import PushInit from './components/PushInit'
 import NotificationPrompt from './components/NotificationPrompt'
 import { NetworkProvider } from './contexts/NetworkContext'
 import OfflineBanner from './components/OfflineBanner'
+import OutboxDrainer from './components/OutboxDrainer'
 // import NativePushInit from './components/NativePushInit' // Disabled - conflicts with PushInit
 import BrandAssetsInit from './components/BrandAssetsInit'
 // Encryption removed — not in use
@@ -748,6 +749,7 @@ export default function App() {
       <NetworkProvider>
         <BrowserRouter>
           <OfflineBanner />
+          <OutboxDrainer />
           <BrandAssetsInit />
           <PushInit />
           <NotificationPrompt />

@@ -43,7 +43,7 @@ import {
   CHAT_CACHE_VERSION,
   MessageBubble,
 } from '../chat'
-import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
+import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 
 type Message = ChatMessage
 
@@ -813,6 +813,58 @@ export default function ChatThread(){
       }).catch(()=>{})
     }
   }, [username, chatCacheKey, profileCacheKey, processRawMessages])
+
+  // Hydrate pending/failed outbox entries so they survive app restarts
+  useEffect(() => {
+    if (!username) return
+    getOutboxEntries().then(entries => {
+      const myEntries = entries.filter(e => e.type === 'dm' && e.recipient === String(otherUserId || '') && (e.status === 'pending' || e.status === 'failed'))
+      if (!myEntries.length) return
+      setMessages(prev => {
+        const existingKeys = new Set(prev.map(m => m.clientKey).filter(Boolean))
+        const toAdd: Message[] = myEntries
+          .filter(e => !existingKeys.has(e.clientKey))
+          .map(e => ({
+            id: e.clientKey,
+            text: e.content.replace(/^\[REPLY:[^\]]*\]\n/, ''),
+            sent: true,
+            time: new Date(e.createdAt).toISOString(),
+            isOptimistic: true,
+            sendFailed: e.status === 'failed',
+            _originalMessage: e.content,
+            clientKey: e.clientKey,
+            is_encrypted: false,
+            signal_protocol: false,
+          }))
+        return toAdd.length ? [...prev, ...toAdd] : prev
+      })
+    }).catch(() => {})
+  }, [username, otherUserId])
+
+  // Re-fetch messages when outbox drainer completes
+  useEffect(() => {
+    const handler = () => {
+      if (!otherUserId) return
+      const fd = new URLSearchParams({ other_user_id: String(otherUserId) })
+      fetch('/get_messages', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fd })
+        .then(r => r.json())
+        .then(j => {
+          if (j?.success && Array.isArray(j.messages)) {
+            processRawMessages(j.messages).then(processed => {
+              setMessages(prev => {
+                const pendingMsgs = prev.filter(m => m.isOptimistic)
+                const serverIds = new Set(processed.map(m => m.id))
+                const unresolvedPending = pendingMsgs.filter(m => !serverIds.has(m.id))
+                return [...processed, ...unresolvedPending]
+              })
+            })
+          }
+        })
+        .catch(() => {})
+    }
+    window.addEventListener('outbox-drained', handler)
+    return () => window.removeEventListener('outbox-drained', handler)
+  }, [otherUserId, processRawMessages])
   
   // Main scroll effect - handles initial load and new messages
   useEffect(() => {
@@ -1451,16 +1503,37 @@ export default function ChatThread(){
       try{ localStorage.setItem(storageKey, JSON.stringify(metaRef.current)) }catch{}
     }
 
+    let outboxId = -1
+    try {
+      outboxId = await addToOutbox({
+        type: 'dm',
+        recipient: String(resolvedUserId || otherUserId),
+        content: formattedMessage,
+        clientKey: tempId,
+        createdAt: Date.now(),
+        status: 'pending',
+        retries: 0,
+      })
+    } catch { /* IndexedDB unavailable */ }
+
     const markFailed = (key: string) => {
       setMessages(prev => prev.map(m =>
         (m.clientKey || m.id) === key ? { ...m, sendFailed: true, isOptimistic: true } : m
       ))
+      if (outboxId >= 0) updateOutboxStatus(outboxId, 'failed').catch(() => {})
+    }
+
+    if (!navigator.onLine) {
+      markFailed(tempId)
+      sendingLockRef.current = false
+      return
     }
 
     const sendTimeout = setTimeout(() => markFailed(tempId), 10000)
     
     const fd = new URLSearchParams({ recipient_id: String(resolvedUserId || otherUserId) })
     fd.append('message', formattedMessage)
+    fd.append('client_key', tempId)
     
     fetch('/send_message', { 
       method:'POST', 
@@ -1472,6 +1545,8 @@ export default function ChatThread(){
       .then(j => {
         clearTimeout(sendTimeout)
         if (j?.success) {
+          if (outboxId >= 0) removeFromOutbox(outboxId).catch(() => {})
+
           fetch('/api/typing', { 
             method:'POST', 
             credentials:'include', 
@@ -1532,14 +1607,21 @@ export default function ChatThread(){
       (m.clientKey || m.id) === clientKey ? { ...m, sendFailed: false, isOptimistic: true } : m
     ))
 
-    const retryTimeout = setTimeout(() => {
+    const markRetryFailed = () => {
       setMessages(prev => prev.map(m =>
         (m.clientKey || m.id) === clientKey ? { ...m, sendFailed: true } : m
       ))
-    }, 10000)
+      getOutboxEntries().then(entries => {
+        const e = entries.find(x => x.clientKey === clientKey)
+        if (e?.id != null) updateOutboxStatus(e.id, 'failed', (e.retries || 0) + 1).catch(() => {})
+      }).catch(() => {})
+    }
+
+    const retryTimeout = setTimeout(markRetryFailed, 10000)
 
     const fd = new URLSearchParams({ recipient_id: String(resolvedId) })
     fd.append('message', originalMessage)
+    fd.append('client_key', clientKey)
 
     fetch('/send_message', {
       method: 'POST',
@@ -1551,6 +1633,11 @@ export default function ChatThread(){
       .then(j => {
         clearTimeout(retryTimeout)
         if (j?.success && j.message_id) {
+          getOutboxEntries().then(entries => {
+            const e = entries.find(x => x.clientKey === clientKey)
+            if (e?.id != null) removeFromOutbox(e.id).catch(() => {})
+          }).catch(() => {})
+
           idBridgeRef.current.tempToServer.set(clientKey, j.message_id)
           idBridgeRef.current.serverToTemp.set(j.message_id, clientKey)
           setMessages(prev => {
@@ -1568,16 +1655,12 @@ export default function ChatThread(){
           setTimeout(() => recentOptimisticRef.current.delete(clientKey), 1000)
         } else {
           clearTimeout(retryTimeout)
-          setMessages(prev => prev.map(m =>
-            (m.clientKey || m.id) === clientKey ? { ...m, sendFailed: true } : m
-          ))
+          markRetryFailed()
         }
       })
       .catch(() => {
         clearTimeout(retryTimeout)
-        setMessages(prev => prev.map(m =>
-          (m.clientKey || m.id) === clientKey ? { ...m, sendFailed: true } : m
-        ))
+        markRetryFailed()
       })
   }
 

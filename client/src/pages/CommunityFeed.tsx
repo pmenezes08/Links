@@ -999,6 +999,10 @@ export default function CommunityFeed() {
   const openStoryIdHandledRef = useRef(false)
 
   const handleStoryUploadClick = useCallback(() => {
+    if (!navigator.onLine) {
+      alert('Go back online to upload a story')
+      return
+    }
     if (!community_id){
       alert('Select a community before sharing a story.')
       return
@@ -1106,6 +1110,10 @@ export default function CommunityFeed() {
   }, [storyEditorOpen, activeStoryPointer])
 
   const handleStoryEditorPublish = useCallback(async () => {
+    if (!navigator.onLine) {
+      alert('Go back online to upload a story')
+      return
+    }
     if (!community_id || storyEditorFiles.length === 0) return
 
     setStoryUploading(true)
@@ -2461,7 +2469,10 @@ export default function CommunityFeed() {
                   Be the first to share something with this community!
                 </p>
                 <button
-                  onClick={() => navigate(`/compose?community_id=${community_id}`)}
+                  onClick={() => {
+                    if (!navigator.onLine) { alert('Go back online to create a post'); return }
+                    navigate(`/compose?community_id=${community_id}`)
+                  }}
                   className="px-4 py-2 bg-[#4db6ac] text-black rounded-lg text-sm font-medium hover:brightness-110"
                 >
                   <i className="fa-solid fa-plus mr-2" />
@@ -3398,7 +3409,8 @@ export default function CommunityFeed() {
           <button 
               className={`w-10 h-10 rounded-md bg-[#4db6ac] text-black hover:brightness-110 grid place-items-center transition-all ${highlightStep === 'post' ? 'ring-[6px] ring-[#4db6ac] shadow-[0_0_40px_rgba(77,182,172,0.8)] animate-pulse scale-125 z-[40] relative' : ''}`}
             aria-label="New Post" 
-            onClick={()=> { 
+            onClick={()=> {
+              if (!navigator.onLine) { alert('Go back online to create a post'); return }
               const isFromOnboarding = highlightStep === 'post'
               if (isFromOnboarding) {
                 setHighlightStep(null);
@@ -4792,6 +4804,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                             onClick={async (ev)=>{
                               ev.stopPropagation()
                               if (sendingChildReply || (!childReplyText.trim() && !childReplyGif)) return
+                              if (!navigator.onLine) { alert('Go back online to reply'); return }
                               try{
                                 setSendingChildReply(true)
                                 const fd = new FormData()
@@ -4919,6 +4932,7 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
                 disabled={sendingReply || (!replyText.trim() && !replyGif)}
                 onClick={async ()=>{
                   if (sendingReply || (!replyText.trim() && !replyGif)) return
+                  if (!navigator.onLine) { alert('Go back online to reply'); return }
                     try{
                       setSendingReply(true)
                       const fd = new FormData()

@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb'
 
 const DB_NAME = 'cpoint-offline'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 export interface OfflineDB {
   messages: {
@@ -46,11 +46,16 @@ export interface OfflineDB {
       id?: number
       type: 'dm' | 'group'
       recipient: string
+      groupId?: string
       content: string
       clientKey: string
       createdAt: number
       status: 'pending' | 'sending' | 'failed'
       retries: number
+      replyTo?: string
+      imagePath?: string
+      voicePath?: string
+      videoPath?: string
     }
   }
   keyval: {
@@ -68,26 +73,27 @@ let dbPromise: Promise<IDBPDatabase<OfflineDB>> | null = null
 function getDb(): Promise<IDBPDatabase<OfflineDB>> {
   if (dbPromise) return dbPromise
   dbPromise = openDB<OfflineDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains('messages')) {
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
         const msgStore = db.createObjectStore('messages', { keyPath: 'id' })
         msgStore.createIndex('conversation', 'conversationKey')
-      }
-      if (!db.objectStoreNames.contains('conversations')) {
         db.createObjectStore('conversations', { keyPath: 'username' })
-      }
-      if (!db.objectStoreNames.contains('posts')) {
         const postStore = db.createObjectStore('posts', { keyPath: 'id' })
         postStore.createIndex('community', 'communityId')
-      }
-      if (!db.objectStoreNames.contains('feeds')) {
         db.createObjectStore('feeds', { keyPath: 'communityId' })
-      }
-      if (!db.objectStoreNames.contains('outbox')) {
         db.createObjectStore('outbox', { keyPath: 'id', autoIncrement: true })
-      }
-      if (!db.objectStoreNames.contains('keyval')) {
         db.createObjectStore('keyval', { keyPath: 'key' })
+      }
+      if (oldVersion < 2) {
+        // v2: extended outbox fields (groupId, replyTo, media paths) are optional —
+        // no structural migration needed since the outbox store is schemaless.
+        // Flush any stale outbox entries from v1 to avoid type mismatches.
+        if (db.objectStoreNames.contains('outbox')) {
+          try {
+            db.deleteObjectStore('outbox')
+          } catch { /* ignore */ }
+          db.createObjectStore('outbox', { keyPath: 'id', autoIncrement: true })
+        }
       }
     },
   }).catch((err) => {
@@ -224,7 +230,9 @@ export async function getCachedKeyVal<T = unknown>(key: string): Promise<T | nul
 
 // ---------- Outbox ----------
 
-export async function addToOutbox(entry: Omit<OfflineDB['outbox']['value'], 'id'>): Promise<number> {
+export type OutboxEntry = OfflineDB['outbox']['value']
+
+export async function addToOutbox(entry: Omit<OutboxEntry, 'id'>): Promise<number> {
   const db = await getDb()
   return db.add('outbox', entry as OfflineDB['outbox']['value']) as Promise<number>
 }

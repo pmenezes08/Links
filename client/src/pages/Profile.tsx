@@ -370,6 +370,7 @@ export default function Profile() {
   }, [navigate])
 
   const handleSaveAndLeave = useCallback(async () => {
+    if (!navigator.onLine) { alert('Go back online to save changes'); setShowLeaveModal(false); return }
     setSavingPersonal(true)
     try {
       const form = new FormData()
@@ -770,6 +771,7 @@ export default function Profile() {
 
   async function handlePersonalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!navigator.onLine) { alert('Go back online to save changes'); return }
     if (savingPersonal) return
     setSavingPersonal(true)
     try {
@@ -811,6 +813,7 @@ export default function Profile() {
 
   async function handleProfessionalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!navigator.onLine) { alert('Go back online to save changes'); return }
     if (savingProfessional) return
     setSavingProfessional(true)
     try {
@@ -849,6 +852,7 @@ export default function Profile() {
 
   async function handleInterestsSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!navigator.onLine) { alert('Go back online to save changes'); return }
     if (savingInterests) return
     setSavingInterests(true)
     try {
@@ -908,6 +912,7 @@ export default function Profile() {
   const justUploadedPicRef = useRef<string | null>(null)
 
   async function handlePhotoUpload(file: File) {
+    if (!navigator.onLine) { alert('Go back online to upload a photo'); return }
     // Show immediate local preview
     const previewUrl = URL.createObjectURL(file)
     setLocalPhotoPreview(previewUrl)

@@ -2708,6 +2708,26 @@ def add_missing_tables():
                 except Exception as ae:
                     logger.warning(f"Could not ensure {col_name} column on messages: {ae}")
 
+            # client_key for outbox idempotency
+            try:
+                exists = False
+                try:
+                    c.execute("SHOW COLUMNS FROM messages LIKE 'client_key'")
+                    exists = c.fetchone() is not None
+                except Exception:
+                    exists = False
+                if not exists:
+                    c.execute("ALTER TABLE messages ADD COLUMN client_key VARCHAR(100)")
+                    conn.commit()
+                    logger.info("Added client_key column to messages table")
+                    try:
+                        c.execute("CREATE INDEX idx_messages_client_key ON messages (client_key)")
+                        conn.commit()
+                    except Exception:
+                        pass
+            except Exception as ae:
+                logger.warning(f"Could not ensure client_key column on messages: {ae}")
+
             # Typing status table for realtime UX
             c.execute('''CREATE TABLE IF NOT EXISTS typing_status (
                              id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -11425,6 +11445,7 @@ def send_message():
     username = session.get('username')
     recipient_id = request.form.get('recipient_id')
     message = request.form.get('message', '')
+    client_key = request.form.get('client_key', '').strip() or None
     
     # Encryption fields
     is_encrypted = request.form.get('is_encrypted', '0') == '1'
@@ -11463,6 +11484,21 @@ def send_message():
             except Exception as block_check_err:
                 logger.warning(f"Could not check blocked status: {block_check_err}")
             
+            # Idempotency: if client_key provided, check for existing message
+            if client_key:
+                try:
+                    if USE_MYSQL:
+                        c.execute("SELECT id, timestamp FROM messages WHERE client_key = %s AND sender = %s LIMIT 1", (client_key, username))
+                    else:
+                        c.execute("SELECT id, timestamp FROM messages WHERE client_key = ? AND sender = ? LIMIT 1", (client_key, username))
+                    existing = c.fetchone()
+                    if existing:
+                        eid = existing['id'] if hasattr(existing, 'keys') else existing[0]
+                        etime = existing['timestamp'] if hasattr(existing, 'keys') else existing[1]
+                        return jsonify({'success': True, 'message': 'Message already sent', 'message_id': eid, 'time': etime})
+                except Exception as ik_err:
+                    logger.warning(f"client_key idempotency check failed (non-fatal): {ik_err}")
+            
             # Check for duplicate message in last 5 seconds to prevent double-sends
             if USE_MYSQL:
                 c.execute("""
@@ -11486,18 +11522,18 @@ def send_message():
             # Insert message with optional encryption support
             if USE_MYSQL:
                 c.execute("""
-                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, encrypted_body_for_sender, client_key, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
                 """, (username, recipient_username, message if not is_encrypted else '', 1 if is_encrypted else 0, 
-                     encrypted_body if is_encrypted else None, encrypted_body_for_sender if is_encrypted else None))
+                     encrypted_body if is_encrypted else None, encrypted_body_for_sender if is_encrypted else None, client_key))
             else:
                 # SQLite: store as text 'YYYY-MM-DD HH:MM:SS'
                 _ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 c.execute("""
-                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO messages (sender, receiver, message, is_encrypted, encrypted_body, encrypted_body_for_sender, client_key, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (username, recipient_username, message if not is_encrypted else '', 1 if is_encrypted else 0, 
-                     encrypted_body if is_encrypted else None, encrypted_body_for_sender if is_encrypted else None, _ts))
+                     encrypted_body if is_encrypted else None, encrypted_body_for_sender if is_encrypted else None, client_key, _ts))
             
             conn.commit()
             # Fetch inserted id and timestamp for immediate client update

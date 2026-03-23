@@ -128,6 +128,26 @@ def _ensure_audio_summary_column(cursor):
             logger.warning(f"Could not add audio_summary column: {e}")
 
 
+def _ensure_client_key_column(cursor):
+    """Ensure client_key column exists in group_chat_messages for outbox idempotency."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT client_key FROM group_chat_messages LIMIT 1")
+    except Exception:
+        try:
+            if USE_MYSQL:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN client_key VARCHAR(100)")
+                try:
+                    cursor.execute("CREATE INDEX idx_gcm_client_key ON group_chat_messages (client_key)")
+                except Exception:
+                    pass
+            else:
+                cursor.execute("ALTER TABLE group_chat_messages ADD COLUMN client_key TEXT")
+            logger.info("Added client_key column to group_chat_messages")
+        except Exception as e:
+            logger.warning(f"Could not add client_key column: {e}")
+
+
 def _ensure_group_message_reactions_table(cursor):
     """Ensure group_message_reactions table exists."""
     from backend.services.database import USE_MYSQL
@@ -216,6 +236,7 @@ def _ensure_group_chat_tables(cursor):
         _ensure_community_id_column(cursor)  # Ensure community_id column exists
         _ensure_is_edited_column(cursor)  # Ensure is_edited column exists
         _ensure_audio_summary_column(cursor)  # Ensure audio_summary column exists for voice transcriptions
+        _ensure_client_key_column(cursor)  # Ensure client_key column exists for outbox idempotency
         _ensure_group_message_reactions_table(cursor)  # Ensure reactions table exists
         _ensure_steve_personality_column(cursor)  # Ensure steve_personality columns exist
         return  # Table exists, no need to create
@@ -1282,6 +1303,7 @@ def send_group_message(group_id: int):
     data = request.get_json() or {}
     
     message_text = data.get("message", "").strip()
+    client_key = (data.get("client_key") or "").strip() or None
     # Support both "image_path" and "image" keys for compatibility
     image_path = data.get("image_path", "").strip() or data.get("image", "").strip() or None
     # Support voice messages
@@ -1322,12 +1344,26 @@ def send_group_message(group_id: int):
             if not c.fetchone():
                 return jsonify({"success": False, "error": "Access denied"}), 403
             
-            # Insert message with audio_summary
+            # Idempotency: if client_key provided, check for existing message
+            if client_key:
+                try:
+                    c.execute(f"SELECT id, created_at FROM group_chat_messages WHERE client_key = {ph} AND sender_username = {ph} LIMIT 1", (client_key, username))
+                    existing = c.fetchone()
+                    if existing:
+                        eid = existing['id'] if hasattr(existing, 'keys') else existing[0]
+                        eat = existing['created_at'] if hasattr(existing, 'keys') else existing[1]
+                        c.execute(f"SELECT profile_picture FROM user_profiles WHERE username = {ph}", (username,))
+                        pp_row = c.fetchone()
+                        pp = (pp_row["profile_picture"] if hasattr(pp_row, "keys") else pp_row[0]) if pp_row else None
+                        return jsonify({"success": True, "message": {"id": eid, "sender": username, "text": message_text, "image": image_path, "voice": voice_path, "video": video_path, "audio_summary": None, "created_at": eat, "profile_picture": pp}})
+                except Exception as ik_err:
+                    logger.warning(f"client_key idempotency check failed (non-fatal): {ik_err}")
+            
             now = datetime.now().isoformat()
             c.execute(f"""
-                INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, voice_path, video_path, audio_summary, created_at)
-                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
-            """, (group_id, username, message_text or None, image_path, voice_path, video_path, audio_summary, now))
+                INSERT INTO group_chat_messages (group_id, sender_username, message_text, image_path, voice_path, video_path, audio_summary, client_key, created_at)
+                VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph})
+            """, (group_id, username, message_text or None, image_path, voice_path, video_path, audio_summary, client_key, now))
             
             message_id = c.lastrowid
             

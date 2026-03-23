@@ -221,6 +221,11 @@ export default function CreatePost(){
 
 
   async function submit(){
+    if (!navigator.onLine) {
+      alert('Go back online to create a post')
+      return
+    }
+
     // If user is still recording, stop and wait briefly for preview to finalize
     if (recording) await ensurePreview(5000)
     

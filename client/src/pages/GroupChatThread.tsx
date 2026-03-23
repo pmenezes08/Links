@@ -19,7 +19,7 @@ import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
-import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
+import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 
 type Message = {
   id: number
@@ -643,6 +643,41 @@ export default function GroupChatThread() {
     }
   }, [loadGroup, loadMessages, updatePresence])
 
+  // Hydrate pending/failed outbox entries so they survive app restarts
+  useEffect(() => {
+    if (!group_id) return
+    getOutboxEntries().then(entries => {
+      const myEntries = entries.filter(e => e.type === 'group' && e.groupId === String(group_id) && (e.status === 'pending' || e.status === 'failed'))
+      if (!myEntries.length) return
+      setServerMessages(prev => {
+        const existingKeys = new Set(prev.map(m => (m as any).clientKey).filter(Boolean))
+        const toAdd = myEntries
+          .filter(e => !existingKeys.has(e.clientKey))
+          .map(e => ({
+            id: -e.createdAt,
+            sender: currentUsername || 'You',
+            text: e.content.replace(/^\[REPLY:[^\]]*\]\n/, ''),
+            image: null,
+            voice: null,
+            created_at: new Date(e.createdAt).toISOString(),
+            profile_picture: null,
+            clientKey: e.clientKey,
+            isOptimistic: true,
+            sendFailed: e.status === 'failed',
+            _originalMessage: e.content,
+          }))
+        return toAdd.length ? [...prev, ...toAdd as any[]] : prev
+      })
+    }).catch(() => {})
+  }, [group_id, currentUsername])
+
+  // Re-fetch messages when outbox drainer completes
+  useEffect(() => {
+    const handler = () => { loadMessages() }
+    window.addEventListener('outbox-drained', handler)
+    return () => window.removeEventListener('outbox-drained', handler)
+  }, [loadMessages])
+
   const handleSend = useCallback(() => {
     // Get text directly from textarea (uncontrolled)
     const text = (textareaRef.current?.value || '').trim()
@@ -701,10 +736,29 @@ export default function GroupChatThread() {
     // Add optimistic message directly to serverMessages (same pattern as DMs)
     setServerMessages(prev => [...prev, optimisticMessage as any])
 
+    let outboxId = -1
+    addToOutbox({
+      type: 'group',
+      recipient: '',
+      groupId: String(group_id),
+      content: formattedMessage,
+      clientKey: tempId,
+      createdAt: Date.now(),
+      status: 'pending',
+      retries: 0,
+    }).then(id => { outboxId = id }).catch(() => {})
+
     const markFailed = (key: string) => {
       setServerMessages(prev => prev.map(m =>
         (m as any).clientKey === key ? { ...m, sendFailed: true, isOptimistic: true } : m
       ))
+      if (outboxId >= 0) updateOutboxStatus(outboxId, 'failed').catch(() => {})
+    }
+
+    if (!navigator.onLine) {
+      markFailed(tempId)
+      sendingLockRef.current = false
+      return
     }
 
     const sendTimeout = setTimeout(() => markFailed(tempId), 10000)
@@ -713,12 +767,14 @@ export default function GroupChatThread() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ message: formattedMessage }),
+      body: JSON.stringify({ message: formattedMessage, client_key: tempId }),
     })
       .then(response => response.json())
       .then(data => {
         clearTimeout(sendTimeout)
         if (data.success) {
+          if (outboxId >= 0) removeFromOutbox(outboxId).catch(() => {})
+
           setServerMessages(prev => {
             let found = false
             const updated = prev.map(m => {
@@ -753,25 +809,37 @@ export default function GroupChatThread() {
     const msg = serverMessages.find(m => (m as any).clientKey === clientKey)
     if (!msg) return
     const originalMessage = (msg as any)._originalMessage || msg.text || ''
-    // Reset to pending
     setServerMessages(prev => prev.map(m =>
       (m as any).clientKey === clientKey ? { ...m, sendFailed: false, isOptimistic: true } : m
     ))
-    const retryTimeout = setTimeout(() => {
+
+    const markRetryFailed = () => {
       setServerMessages(prev => prev.map(m =>
         (m as any).clientKey === clientKey ? { ...m, sendFailed: true } : m
       ))
-    }, 10000)
+      getOutboxEntries().then(entries => {
+        const e = entries.find(x => x.clientKey === clientKey)
+        if (e?.id != null) updateOutboxStatus(e.id, 'failed', (e.retries || 0) + 1).catch(() => {})
+      }).catch(() => {})
+    }
+
+    const retryTimeout = setTimeout(markRetryFailed, 10000)
+
     fetch(`/api/group_chat/${group_id}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ message: originalMessage }),
+      body: JSON.stringify({ message: originalMessage, client_key: clientKey }),
     })
       .then(r => r.json())
       .then(data => {
         clearTimeout(retryTimeout)
         if (data.success) {
+          getOutboxEntries().then(entries => {
+            const e = entries.find(x => x.clientKey === clientKey)
+            if (e?.id != null) removeFromOutbox(e.id).catch(() => {})
+          }).catch(() => {})
+
           setServerMessages(prev => {
             let found = false
             const updated = prev.map(m => {
@@ -784,16 +852,12 @@ export default function GroupChatThread() {
           lastMessageIdRef.current = Math.max(lastMessageIdRef.current, data.message.id)
         } else {
           clearTimeout(retryTimeout)
-          setServerMessages(prev => prev.map(m =>
-            (m as any).clientKey === clientKey ? { ...m, sendFailed: true } : m
-          ))
+          markRetryFailed()
         }
       })
       .catch(() => {
         clearTimeout(retryTimeout)
-        setServerMessages(prev => prev.map(m =>
-          (m as any).clientKey === clientKey ? { ...m, sendFailed: true } : m
-        ))
+        markRetryFailed()
       })
   }, [group_id, serverMessages])
 
