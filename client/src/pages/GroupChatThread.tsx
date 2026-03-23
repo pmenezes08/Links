@@ -68,6 +68,7 @@ export default function GroupChatThread() {
   const [group, setGroup] = useState<GroupInfo | null>(null)
   const [serverMessages, setServerMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
+  const [isScrollReady, setIsScrollReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   // Server messages are already in chronological order from the API; just append optimistic at the end
@@ -184,6 +185,8 @@ export default function GroupChatThread() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const userHasScrolledRef = useRef(false)
+  const didInitialScrollRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
@@ -220,13 +223,13 @@ export default function GroupChatThread() {
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [showKeyboard, setShowKeyboard] = useState(false)
 
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
   const keyboardOffsetRef = useRef(0)
   const viewportBaseRef = useRef<number | null>(null)
   const lastFocusTimeRef = useRef(0)
-  const showKeyboardStableRef = useRef(false)
   const showKeyboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Format recording time
@@ -297,20 +300,25 @@ export default function GroupChatThread() {
 
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
-  const showKeyboardRaw = liftSource > 50
-  if (showKeyboardRaw && !showKeyboardStableRef.current) {
-    showKeyboardStableRef.current = true
-    if (showKeyboardTimerRef.current) { clearTimeout(showKeyboardTimerRef.current); showKeyboardTimerRef.current = null }
-  } else if (!showKeyboardRaw && showKeyboardStableRef.current) {
-    if (!showKeyboardTimerRef.current) {
-      showKeyboardTimerRef.current = setTimeout(() => {
-        showKeyboardStableRef.current = false
-        showKeyboardTimerRef.current = null
-      }, 400)
-    }
-  }
-  const showKeyboard = showKeyboardRaw || showKeyboardStableRef.current
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
+
+  useEffect(() => {
+    const raw = liftSource > 50
+    if (raw) {
+      if (showKeyboardTimerRef.current) {
+        clearTimeout(showKeyboardTimerRef.current)
+        showKeyboardTimerRef.current = null
+      }
+      setShowKeyboard(true)
+    } else {
+      if (!showKeyboardTimerRef.current) {
+        showKeyboardTimerRef.current = setTimeout(() => {
+          showKeyboardTimerRef.current = null
+          setShowKeyboard(false)
+        }, 400)
+      }
+    }
+  }, [liftSource])
   const composerGapPx = 4
   const listPaddingBottom = showKeyboard
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
@@ -323,29 +331,38 @@ export default function GroupChatThread() {
     el.scrollTop = el.scrollHeight
   }, [])
   
-  // Always keep latest message visible - scroll instantly whenever messages change
-  // Using useLayoutEffect to scroll BEFORE browser paints (prevents flicker)
   const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
-  
+
+  // Pre-paint scroll — fires before browser paints to avoid visible jump
   useLayoutEffect(() => {
     if (messages.length === 0) return
-    
-    // Get the last message ID to detect changes
+    const el = listRef.current
+    if (!el) return
     const lastMsg = messages[messages.length - 1]
     const lastMsgKey = (lastMsg as any).clientKey || lastMsg.id
-    
-    // Only scroll if the last message changed (new message arrived)
-    if (lastMsgKey !== lastVisibleMsgKeyRef.current) {
-      lastVisibleMsgKeyRef.current = lastMsgKey
-      // Instant scroll - no animation, happens before paint
-      const el = listRef.current
-      if (el) {
-        el.scrollTop = el.scrollHeight
-      }
-    }
+    if (lastMsgKey === lastVisibleMsgKeyRef.current) return
+    lastVisibleMsgKeyRef.current = lastMsgKey
+    el.scrollTop = el.scrollHeight
   }, [messages])
-  
-  // No scroll when sending messages - message just appears, older ones shift up
+
+  // Initial load reveal: hide content until scrolled, then fade in
+  useEffect(() => {
+    if (messages.length === 0) return
+    if (isScrollReady) return
+    const el = listRef.current
+    if (!el) return
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true
+    }
+    el.scrollTop = el.scrollHeight
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight
+      setIsScrollReady(true)
+      // Retry scrolls for images/media that load after initial render
+      setTimeout(() => { if (!userHasScrolledRef.current) el.scrollTop = el.scrollHeight }, 200)
+      setTimeout(() => { if (!userHasScrolledRef.current) el.scrollTop = el.scrollHeight }, 500)
+    })
+  }, [messages, isScrollReady])
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -1850,9 +1867,14 @@ export default function GroupChatThread() {
               overscrollBehaviorY: 'auto',
               paddingBottom: listPaddingBottom,
               minHeight: 0,
+              opacity: isScrollReady ? 1 : 0,
+              transition: 'opacity 150ms ease-out',
             } as CSSProperties}
             onScroll={(e) => {
               const el = e.currentTarget
+              const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+              if (distFromBottom > 80) userHasScrolledRef.current = true
+              else userHasScrolledRef.current = false
               if (el.scrollTop < 100 && !loadingOlderRef.current && hasMoreMessages) {
                 loadOlderMessages()
               }

@@ -178,9 +178,11 @@ export default function ChatThread(){
   // Auto-scroll logic - declared early so it can be used in useEffects
   const lastCountRef = useRef(0)
   const didInitialAutoScrollRef = useRef(false)
+  const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [isScrollReady, setIsScrollReady] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [showKeyboard, setShowKeyboard] = useState(false)
   
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -251,7 +253,6 @@ export default function ChatThread(){
   const keyboardOffsetRef = useRef(0)
   const viewportBaseRef = useRef<number | null>(null)
   const lastFocusTimeRef = useRef(0)
-  const showKeyboardStableRef = useRef(false)
   const showKeyboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const touchDismissRef = useRef<{ active: boolean; x: number; y: number; pointerId: number | null }>({
     active: false,
@@ -307,22 +308,27 @@ export default function ChatThread(){
 
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
-  // Use higher threshold to prevent toggling from small viewport fluctuations
-  const showKeyboardRaw = liftSource > 50
-  // Hysteresis: transition to false only after a brief delay to prevent transitional flicker
-  if (showKeyboardRaw && !showKeyboardStableRef.current) {
-    showKeyboardStableRef.current = true
-    if (showKeyboardTimerRef.current) { clearTimeout(showKeyboardTimerRef.current); showKeyboardTimerRef.current = null }
-  } else if (!showKeyboardRaw && showKeyboardStableRef.current) {
-    if (!showKeyboardTimerRef.current) {
-      showKeyboardTimerRef.current = setTimeout(() => {
-        showKeyboardStableRef.current = false
-        showKeyboardTimerRef.current = null
-      }, 400)
-    }
-  }
-  const showKeyboard = showKeyboardRaw || showKeyboardStableRef.current
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
+
+  // showKeyboard: driven by state so it only changes when React schedules it,
+  // preventing render-loop flicker from liftSource oscillations during animation.
+  useEffect(() => {
+    const raw = liftSource > 50
+    if (raw) {
+      if (showKeyboardTimerRef.current) {
+        clearTimeout(showKeyboardTimerRef.current)
+        showKeyboardTimerRef.current = null
+      }
+      setShowKeyboard(true)
+    } else {
+      if (!showKeyboardTimerRef.current) {
+        showKeyboardTimerRef.current = setTimeout(() => {
+          showKeyboardTimerRef.current = null
+          setShowKeyboard(false)
+        }, 400)
+      }
+    }
+  }, [liftSource])
   const composerGapPx = 4
   const listPaddingBottom = showKeyboard
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
@@ -860,46 +866,48 @@ export default function ChatThread(){
     return () => window.removeEventListener('outbox-drained', handler)
   }, [otherUserId, processRawMessages])
   
-  // Main scroll effect - handles initial load and new messages
+  // Pre-paint scroll for new messages — fires before browser paints, no visible jump
+  useLayoutEffect(() => {
+    if (messages.length === 0) return
+    const el = listRef.current
+    if (!el) return
+    const lastMsg = messages[messages.length - 1]
+    const lastMsgKey = (lastMsg as any).clientKey || lastMsg.id
+    if (lastMsgKey === lastVisibleMsgKeyRef.current) return
+    lastVisibleMsgKeyRef.current = lastMsgKey
+    // Only auto-scroll for new messages if near bottom or user hasn't scrolled away
+    const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
+    if (nearBottom || !userHasScrolledRef.current) {
+      el.scrollTop = el.scrollHeight
+      setShowScrollDown(false)
+    } else {
+      setShowScrollDown(true)
+    }
+  }, [messages])
+
+  // Main scroll effect - handles initial load reveal
   useEffect(() => {
     const el = listRef.current
     if (!el || messages.length === 0) return
     
     const timeSinceChatOpen = Date.now() - chatOpenTimeRef.current
-    const isInitialLoadWindow = timeSinceChatOpen < 3000 // 3 second window for initial loading
+    const isInitialLoadWindow = timeSinceChatOpen < 3000
     
-    // During initial load window, always scroll to bottom if user hasn't manually scrolled
     if (isInitialLoadWindow && !userHasScrolledRef.current) {
       if (!didInitialAutoScrollRef.current) {
         didInitialAutoScrollRef.current = true
       }
-      
       scrollToBottom()
-      
       requestAnimationFrame(() => {
         scrollToBottom()
         requestAnimationFrame(() => {
-          if (!isScrollReady) {
-            setIsScrollReady(true)
-          }
+          if (!isScrollReady) setIsScrollReady(true)
           scrollToBottom()
         })
       })
     } else if (!isScrollReady && messages.length > 0) {
-      // Safety: force visibility if messages loaded outside initial window (e.g. from IndexedDB)
       scrollToBottom()
       setIsScrollReady(true)
-    }
-    
-    // After initial load, handle new messages
-    if (!isInitialLoadWindow && messages.length > lastCountRef.current) {
-      const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
-      if (nearBottom || !userHasScrolledRef.current) {
-        scrollToBottom()
-        setShowScrollDown(false)
-      } else {
-        setShowScrollDown(true)
-      }
     }
     
     lastCountRef.current = messages.length
