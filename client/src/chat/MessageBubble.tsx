@@ -114,7 +114,7 @@ function MessageBubbleInner({
       disabled={isEditing || !!m.isOptimistic}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-        <div className={`relative inline-block max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-6' : ''}`}>
+        <div className={`flex flex-col ${m.sent ? 'items-end' : 'items-start'} max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-6' : ''}`}>
           <div
             className={`${
               m.isOptimistic
@@ -430,14 +430,14 @@ function MessageBubbleInner({
         {m.sendFailed && m.sent && (
           <button
             onClick={(e) => { e.stopPropagation(); onRetry?.() }}
-            className="flex items-center gap-1.5 mt-1 text-[11px] text-red-400 hover:text-red-300 self-end"
+            className="flex items-center gap-1.5 mt-1 text-[11px] text-red-400 hover:text-red-300"
           >
             <i className="fa-solid fa-circle-exclamation text-[10px]" />
             Not delivered — tap to retry
           </button>
         )}
         {m.isOptimistic && !m.sendFailed && m.sent && (
-          <div className="flex items-center gap-1 mt-0.5 self-end">
+          <div className="flex items-center gap-1 mt-0.5">
             <i className="fa-solid fa-clock text-[9px] text-white/30" />
             <span className="text-[10px] text-white/30">Sending…</span>
           </div>

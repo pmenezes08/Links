@@ -551,11 +551,12 @@ function AppRoutes(){
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
+    if (isChatRoute) return
     const raf = window.requestAnimationFrame(() => {
       resetScrollPosition()
     })
     return () => window.cancelAnimationFrame(raf)
-  }, [location.pathname, location.search, resetScrollPosition])
+  }, [location.pathname, location.search, resetScrollPosition, isChatRoute])
 
   useEffect(() => {
     if (profileData) {
