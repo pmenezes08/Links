@@ -114,7 +114,7 @@ function MessageBubbleInner({
       disabled={isEditing || !!m.isOptimistic}
     >
       <div className={`flex ${m.sent ? 'justify-end' : 'justify-start'}`}>
-        <div className={`flex flex-col ${m.sent ? 'items-end' : 'items-start'} max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-6' : ''}`}>
+        <div className={`relative flex flex-col ${m.sent ? 'items-end' : 'items-start'} max-w-[82%] md:max-w-[65%] ${m.reaction ? 'mb-6' : ''}`}>
           <div
             className={`${
               m.isOptimistic
@@ -426,7 +426,6 @@ function MessageBubbleInner({
               <span className="text-sm select-none">{m.reaction}</span>
             </div>
           )}
-        </div>
         {m.sendFailed && m.sent && (
           <button
             onClick={(e) => { e.stopPropagation(); onRetry?.() }}
@@ -442,6 +441,7 @@ function MessageBubbleInner({
             <span className="text-[10px] text-white/30">Sending…</span>
           </div>
         )}
+        </div>
       </div>
     </LongPressActionable>
   )

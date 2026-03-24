@@ -401,9 +401,9 @@ export default function ChatThread(){
         viewportBaseRef.current = currentHeight
       }
       const baseHeight = viewportBaseRef.current ?? currentHeight
-      // Only use height difference, ignore offsetTop to prevent scroll-induced shifts
       const nextOffset = Math.max(0, baseHeight - currentHeight)
       const normalizedOffset = nextOffset < VISUAL_VIEWPORT_KEYBOARD_THRESHOLD ? 0 : nextOffset
+      if (normalizedOffset > 0 && document.activeElement !== textareaRef.current) return
       if (Math.abs(keyboardOffsetRef.current - normalizedOffset) < 15) return
       setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 15 ? prev : normalizedOffset))
       keyboardOffsetRef.current = normalizedOffset
@@ -436,6 +436,7 @@ export default function ChatThread(){
     const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
   
     const handleShow = (info: KeyboardInfo) => {
+      if (document.activeElement !== textareaRef.current) return
       const height = normalizeHeight(info?.keyboardHeight ?? 0)
       if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
       keyboardOffsetRef.current = height
