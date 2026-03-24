@@ -2037,16 +2037,16 @@ export default function GroupChatThread() {
                                           <div className="text-[10px] text-[#4db6ac] font-medium truncate">
                                             {replySender}
                                           </div>
-                                          <div className="text-[11px] text-white/60 truncate">
+                                          <div className="text-[11px] text-white/60 whitespace-pre-wrap break-words leading-[1.25]">
                                             {replySnippet.startsWith('📷|') ? (
-                                              <span className="flex items-center gap-1">
+                                              <span className="inline-flex items-center gap-1">
                                                 <i className="fa-solid fa-image text-[9px]" /> Photo
                                               </span>
                                             ) : replySnippet.startsWith('🎤|') ? (
-                                              <span className="flex items-center gap-1">
+                                              <>
                                                 <i className="fa-solid fa-microphone text-[9px]" />
                                                 {replySnippet.length > 2 ? replySnippet.slice(2) : 'Voice message'}
-                                              </span>
+                                              </>
                                             ) : (
                                               replySnippet
                                             )}
@@ -2394,7 +2394,7 @@ export default function GroupChatThread() {
             <div className="mb-2 flex items-stretch gap-0 bg-white/5 rounded-lg overflow-hidden">
               {/* Left accent bar */}
               <div className="w-1 bg-[#4db6ac] flex-shrink-0" />
-              <div className="flex-1 px-3 py-2 min-w-0 flex items-center gap-2">
+              <div className="flex-1 px-3 py-2 min-w-0 flex items-start gap-2">
                 {/* Media thumbnail preview */}
                 {replyTo.image && (
                   <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
@@ -2414,7 +2414,7 @@ export default function GroupChatThread() {
                   <div className="text-[12px] text-[#4db6ac] font-medium truncate">
                     {replyTo.sender}
                   </div>
-                  <div className="text-[13px] text-white/70 truncate mt-0.5 overflow-hidden">
+                  <div className="mt-0.5 text-[13px] text-white/70 whitespace-pre-wrap break-words leading-[1.25]">
                     {replyTo.voice ? (
                       <><i className="fa-solid fa-microphone text-xs mr-1" />{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</>
                     ) : replyTo.image && !replyTo.text ? (

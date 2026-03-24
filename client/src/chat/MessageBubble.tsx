@@ -149,7 +149,7 @@ function MessageBubbleInner({
               >
                 {/* Story indicator accent bar with gradient */}
                 <div className="w-1 flex-shrink-0 bg-gradient-to-b from-purple-400 to-pink-400" />
-                <div className="flex-1 px-2.5 py-1.5 min-w-0 flex items-center gap-2">
+                <div className="flex-1 px-2.5 py-1.5 min-w-0 flex items-start gap-2">
                   {/* Story thumbnail */}
                   {mediaPath && !isVideo && (
                     <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
@@ -227,7 +227,7 @@ function MessageBubbleInner({
               <div className="mb-2 flex items-stretch gap-0 bg-black/20 rounded-lg overflow-hidden">
                 {/* WhatsApp-style left accent bar */}
                 <div className={`w-1 flex-shrink-0 ${m.sent ? 'bg-white/40' : 'bg-[#4db6ac]'}`} />
-                <div className="flex-1 px-2.5 py-1.5 min-w-0 flex items-center gap-2">
+                <div className="flex-1 px-2.5 py-1.5 min-w-0 flex items-start gap-2">
                   {/* Media thumbnail for image/video replies */}
                   {mediaPath && isImageReply && (
                     <div className="w-9 h-9 rounded overflow-hidden flex-shrink-0 bg-black/30">
@@ -252,7 +252,7 @@ function MessageBubbleInner({
                     <div className={`text-[11px] font-medium truncate ${m.sent ? 'text-white/70' : 'text-[#4db6ac]'}`}>
                       {m.sent ? otherDisplayName : 'You'}
                     </div>
-                    <div className="text-[12px] text-white/60 truncate mt-0.5">
+                    <div className="mt-0.5 text-[12px] text-white/60 whitespace-pre-wrap break-words leading-[1.25]">
                       {isImageReply && <i className="fa-solid fa-camera text-[10px] text-white/40 mr-1" />}
                       {isVideoReply && <i className="fa-solid fa-video text-[10px] text-white/40 mr-1" />}
                       {displayText}

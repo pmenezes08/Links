@@ -2807,7 +2807,7 @@ export default function ChatThread(){
             <div className="mb-2 flex items-stretch gap-0 bg-white/5 rounded-lg overflow-hidden">
               {/* WhatsApp-style left accent bar */}
               <div className="w-1 bg-[#4db6ac] flex-shrink-0" />
-              <div className="flex-1 px-3 py-2 min-w-0 flex items-center gap-2">
+              <div className="flex-1 px-3 py-2 min-w-0 flex items-start gap-2">
                 {/* Media thumbnail preview */}
                 {replyTo.image_path && (
                   <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-black/30">
@@ -2832,7 +2832,7 @@ export default function ChatThread(){
                   <div className="text-[12px] text-[#4db6ac] font-medium truncate">
                     {replyTo.sender === 'You' ? 'You' : (otherProfile?.display_name || username || 'User')}
                   </div>
-                  <div className="text-[13px] text-white/70 truncate mt-0.5 overflow-hidden">
+                  <div className="mt-0.5 text-[13px] text-white/70 whitespace-pre-wrap break-words leading-[1.25]">
                     {replyTo.image_path ? (
                       <><i className="fa-solid fa-camera text-[11px] text-white/50 mr-1" />{(replyTo.text || 'Photo').slice(0, 80)}</>
                     ) : replyTo.video_path ? (
