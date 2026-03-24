@@ -224,14 +224,12 @@ export default function GroupChatThread() {
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
-  const [showKeyboard, setShowKeyboard] = useState(false)
 
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
   const keyboardOffsetRef = useRef(0)
   const viewportBaseRef = useRef<number | null>(null)
   const lastFocusTimeRef = useRef(0)
-  const showKeyboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Format recording time
   const formatRecordingTime = (ms: number) => {
@@ -306,27 +304,8 @@ export default function GroupChatThread() {
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
 
-  useEffect(() => {
-    const raw = liftSource > 50
-    if (raw) {
-      if (showKeyboardTimerRef.current) {
-        clearTimeout(showKeyboardTimerRef.current)
-        showKeyboardTimerRef.current = null
-      }
-      setShowKeyboard(true)
-    } else {
-      if (!showKeyboardTimerRef.current) {
-        showKeyboardTimerRef.current = setTimeout(() => {
-          showKeyboardTimerRef.current = null
-          setShowKeyboard(false)
-        }, 400)
-      }
-    }
-  }, [liftSource])
   const composerGapPx = 4
-  const listPaddingBottom = showKeyboard
-    ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
-    : `${safeBottomPx + effectiveComposerHeight + composerGapPx}px`
+  const listPaddingBottom = `${safeBottomPx + keyboardLift + effectiveComposerHeight + composerGapPx}px`
 
   // Instant scroll - only used for initial load
   const scrollToBottom = useCallback(() => {
@@ -2425,17 +2404,11 @@ export default function GroupChatThread() {
                   <div className="text-[12px] text-[#4db6ac] font-medium truncate">
                     {replyTo.sender}
                   </div>
-                  <div className="text-[13px] text-white/70 line-clamp-1 mt-0.5">
+                  <div className="text-[13px] text-white/70 truncate mt-0.5">
                     {replyTo.voice ? (
-                      <span className="flex items-center gap-1">
-                        <i className="fa-solid fa-microphone text-xs" />
-                        {replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}
-                      </span>
+                      <><i className="fa-solid fa-microphone text-xs mr-1" />{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</>
                     ) : replyTo.image && !replyTo.text ? (
-                      <span className="flex items-center gap-1">
-                        <i className="fa-solid fa-image text-xs" />
-                        Photo
-                      </span>
+                      <><i className="fa-solid fa-image text-xs mr-1" />Photo</>
                     ) : (
                       replyTo.text
                     )}
@@ -2829,7 +2802,7 @@ export default function GroupChatThread() {
         {/* Safe area spacer */}
         <div
           style={{
-            height: showKeyboard ? '4px' : `${safeBottomPx}px`,
+            height: `${safeBottomPx}px`,
             background: '#000',
             flexShrink: 0,
           }}

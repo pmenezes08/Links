@@ -182,7 +182,6 @@ export default function ChatThread(){
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [isScrollReady, setIsScrollReady] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
-  const [showKeyboard, setShowKeyboard] = useState(false)
   
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -254,7 +253,6 @@ export default function ChatThread(){
   const keyboardOffsetRef = useRef(0)
   const viewportBaseRef = useRef<number | null>(null)
   const lastFocusTimeRef = useRef(0)
-  const showKeyboardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const touchDismissRef = useRef<{ active: boolean; x: number; y: number; pointerId: number | null }>({
     active: false,
     x: 0,
@@ -314,36 +312,14 @@ export default function ChatThread(){
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const keyboardLift = Math.max(0, liftSource - safeBottomPx)
 
-  // showKeyboard: driven by state so it only changes when React schedules it,
-  // preventing render-loop flicker from liftSource oscillations during animation.
-  useEffect(() => {
-    const raw = liftSource > 50
-    if (raw) {
-      if (showKeyboardTimerRef.current) {
-        clearTimeout(showKeyboardTimerRef.current)
-        showKeyboardTimerRef.current = null
-      }
-      setShowKeyboard(true)
-    } else {
-      if (!showKeyboardTimerRef.current) {
-        showKeyboardTimerRef.current = setTimeout(() => {
-          showKeyboardTimerRef.current = null
-          setShowKeyboard(false)
-        }, 400)
-      }
-    }
-  }, [liftSource])
   const composerGapPx = 4
-  const listPaddingBottom = showKeyboard
-    ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
-    : `${safeBottomPx + effectiveComposerHeight + composerGapPx}px`
-  const listScrollPaddingBottom = `${safeBottomPx + keyboardLift + effectiveComposerHeight + composerGapPx}px`
-  const scrollButtonBottom = showKeyboard
-    ? `${keyboardLift + effectiveComposerHeight + 12}px`
-    : `${safeBottomPx + effectiveComposerHeight + composerGapPx + 12}px`
+  const listPaddingBottom = `${safeBottomPx + keyboardLift + effectiveComposerHeight + composerGapPx}px`
+  const listScrollPaddingBottom = listPaddingBottom
+  const scrollButtonBottom = `${safeBottomPx + keyboardLift + effectiveComposerHeight + 12}px`
+  const keyboardIsOpen = keyboardLift > 0
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (!showKeyboard) {
+      if (!keyboardIsOpen) {
         touchDismissRef.current.active = false
         return
       }
@@ -363,7 +339,7 @@ export default function ChatThread(){
         pointerId: event.pointerId ?? null,
       }
     },
-    [showKeyboard]
+    [keyboardIsOpen]
   )
 
   const handleContentPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -2303,6 +2279,7 @@ export default function ChatThread(){
         right: 0,
         top: 0,
         bottom: 0,
+        padding: 0,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -2845,25 +2822,15 @@ export default function ChatThread(){
                   <div className="text-[12px] text-[#4db6ac] font-medium truncate">
                     {replyTo.sender === 'You' ? 'You' : (otherProfile?.display_name || username || 'User')}
                   </div>
-                  <div className="text-[13px] text-white/70 line-clamp-1 mt-0.5 flex items-center gap-1">
-                    {/* Show media type icon + label for media messages */}
+                  <div className="text-[13px] text-white/70 truncate mt-0.5">
                     {replyTo.image_path ? (
-                      <>
-                        <i className="fa-solid fa-camera text-[11px] text-white/50" />
-                        <span>{replyTo.text || 'Photo'}</span>
-                      </>
+                      <><i className="fa-solid fa-camera text-[11px] text-white/50 mr-1" />{replyTo.text || 'Photo'}</>
                     ) : replyTo.video_path ? (
-                      <>
-                        <i className="fa-solid fa-video text-[11px] text-white/50" />
-                        <span>{replyTo.text || 'Video'}</span>
-                      </>
+                      <><i className="fa-solid fa-video text-[11px] text-white/50 mr-1" />{replyTo.text || 'Video'}</>
                     ) : replyTo.audio_path ? (
-                      <>
-                        <i className="fa-solid fa-microphone text-[11px] text-white/50" />
-                        <span>{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</span>
-                      </>
+                      <><i className="fa-solid fa-microphone text-[11px] text-white/50 mr-1" />{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</>
                     ) : (
-                      <span>{replyTo.text.length > 80 ? replyTo.text.slice(0, 80) + '…' : replyTo.text}</span>
+                      replyTo.text
                     )}
                   </div>
                 </div>
@@ -3228,7 +3195,7 @@ export default function ChatThread(){
       {/* Safe area spacer - black area below composer */}
       <div 
         style={{
-          height: showKeyboard ? '4px' : `${safeBottomPx}px`,
+          height: `${safeBottomPx}px`,
           background: '#000',
           flexShrink: 0,
         }}

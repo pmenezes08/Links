@@ -251,10 +251,10 @@ function MessageBubbleInner({
                     <div className={`text-[11px] font-medium truncate ${m.sent ? 'text-white/70' : 'text-[#4db6ac]'}`}>
                       {m.sent ? otherDisplayName : 'You'}
                     </div>
-                    <div className="text-[12px] text-white/60 line-clamp-1 mt-0.5 flex items-center gap-1">
-                      {isImageReply && <i className="fa-solid fa-camera text-[10px] text-white/40" />}
-                      {isVideoReply && <i className="fa-solid fa-video text-[10px] text-white/40" />}
-                      <span className="truncate">{displayText}</span>
+                    <div className="text-[12px] text-white/60 truncate mt-0.5">
+                      {isImageReply && <i className="fa-solid fa-camera text-[10px] text-white/40 mr-1" />}
+                      {isVideoReply && <i className="fa-solid fa-video text-[10px] text-white/40 mr-1" />}
+                      {displayText}
                     </div>
                   </div>
                 </div>
