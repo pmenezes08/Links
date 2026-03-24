@@ -20,7 +20,7 @@ export default function EditGroup(){
     let mounted = true
     async function init(){
       try {
-        const r = await fetch(`/api/group_settings/${group_id}`, { credentials: 'include' })
+        const r = await fetch(`/api/group_settings/${group_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const j = await r.json()
         if (!mounted) return
         if (j?.success) {

@@ -32,7 +32,7 @@ export default function Signup(){
       } catch {}
       return
     }
-    fetch(`/api/invitation/verify?token=${inviteToken}`, { credentials: 'include' })
+    fetch(`/api/invitation/verify?token=${inviteToken}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(j => {
         if (j?.success) {

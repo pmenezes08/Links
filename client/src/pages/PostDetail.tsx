@@ -281,7 +281,7 @@ export default function PostDetail(){
         }
       } catch {}
       try {
-        const n = await fetch('/api/notifications', { credentials: 'include' })
+        const n = await fetch('/api/notifications', { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const nj = await n.json().catch(() => null)
         if (mounted && nj?.success && Array.isArray(nj.notifications)) {
           const cnt = nj.notifications.filter((x: any) => x && x.is_read === false && x.type !== 'message' && x.type !== 'reaction').length
@@ -321,7 +321,8 @@ export default function PostDetail(){
     
     try {
       const response = await fetch(`/api/post/${post.id}/summary`, {
-        credentials: 'include'
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' }
       })
       const data = await response.json()
       
@@ -692,7 +693,7 @@ export default function PostDetail(){
 
   const refreshPost = useCallback(async () => {
     try{
-      let r = await fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include' })
+      let r = await fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       let j = await r.json().catch(()=>null)
       if (j?.success){
         setPost(j.post); setIsGroupPost(true)
@@ -756,7 +757,7 @@ export default function PostDetail(){
     let mounted = true
     async function load(){
       try{
-        let r = await fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include' })
+        let r = await fetch(`/api/group_post?post_id=${post_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
         let j = await r.json().catch(()=>null)
         let groupPost = false
         if (j?.success){
@@ -783,7 +784,7 @@ export default function PostDetail(){
     let mounted = true
     async function loadUser(){
       try{
-        const r = await fetch('/api/home_timeline', { credentials:'include' })
+        const r = await fetch('/api/home_timeline', { credentials:'include', headers: { 'Accept': 'application/json' } })
         const j = await r.json().catch(()=>null)
         if (!mounted) return
         if (j?.success && j.username) {

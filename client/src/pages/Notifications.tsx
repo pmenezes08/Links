@@ -115,7 +115,7 @@ export default function Notifications(){
   async function load(){
     try{
       setLoading(true)
-      const r = await fetch('/api/notifications?all=true', { credentials:'include' })
+      const r = await fetch('/api/notifications?all=true', { credentials:'include', headers: { 'Accept': 'application/json' } })
       console.log('📋 Notifications API status:', r.status)
       const j = await r.json()
       console.log('📋 Raw notifications response:', j)
@@ -156,7 +156,7 @@ export default function Notifications(){
   async function loadEvents() {
     try {
       setEventsLoading(true)
-      const r = await fetch('/api/all_calendar_events', { credentials: 'include' })
+      const r = await fetch('/api/all_calendar_events', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const j = await r.json()
       if (j?.success) {
         setEvents(j.events || [])
@@ -171,7 +171,7 @@ export default function Notifications(){
   async function loadPolls() {
     try {
       setPollsLoading(true)
-      const r = await fetch('/api/all_active_polls', { credentials: 'include' })
+      const r = await fetch('/api/all_active_polls', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const j = await r.json()
       if (j?.success) {
         setPolls(j.polls || [])
@@ -186,7 +186,7 @@ export default function Notifications(){
   async function loadTasks() {
     try {
       setTasksLoading(true)
-      const r = await fetch('/api/all_my_tasks', { credentials: 'include' })
+      const r = await fetch('/api/all_my_tasks', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const j = await r.json()
       if (j?.success) {
         setTasks(j.tasks || [])

@@ -273,7 +273,7 @@ export default function CommunityFeed() {
 
   useEffect(() => {
     if (!community_id) return
-    fetch(`/api/community/mute_status?community_id=${community_id}`, { credentials: 'include' })
+    fetch(`/api/community/mute_status?community_id=${community_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(d => { if (d?.success) setCommunityMuted(d.muted) })
       .catch(() => {})
@@ -292,7 +292,7 @@ export default function CommunityFeed() {
         }
       } catch {}
       try {
-        const n = await fetch('/api/notifications', { credentials: 'include' })
+        const n = await fetch('/api/notifications', { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const nj = await n.json().catch(() => null)
         if (mounted && nj?.success && Array.isArray(nj.notifications)) {
           const cnt = nj.notifications.filter((x: any) => x && x.is_read === false && x.type !== 'message' && x.type !== 'reaction').length
@@ -377,7 +377,7 @@ export default function CommunityFeed() {
       loading: true,
       error: null,
     })
-    fetch(`/api/community_stories/${storyId}/viewers`, { credentials: 'include' })
+    fetch(`/api/community_stories/${storyId}/viewers`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(res => res.json())
       .then(json => {
         if (json?.success) {
@@ -519,7 +519,8 @@ export default function CommunityFeed() {
       // Fetch fresh data
       const r = await fetch(`/api/community_feed/${community_id}`, { 
         credentials: 'include',
-        cache: 'reload'
+        cache: 'reload',
+        headers: { 'Accept': 'application/json' }
       })
       const json = await r.json().catch(() => null)
       
@@ -668,7 +669,8 @@ export default function CommunityFeed() {
     
     // Fetch fresh data in background
     fetch(`/api/community_feed/${community_id}`, { 
-      credentials: 'include'
+      credentials: 'include',
+      headers: { 'Accept': 'application/json' }
     })
       .then(r => r.json().catch(() => ({ success: false, error: 'Invalid response' })))
       .then(json => { 
@@ -768,7 +770,7 @@ export default function CommunityFeed() {
     async function checkPendingRsvps(){
       if (!community_id) return
       try{
-        const r = await fetch(`/api/calendar_events/${community_id}`, { credentials: 'include' })
+        const r = await fetch(`/api/calendar_events/${community_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const j = await r.json()
         if (!mounted) return
         if (j?.success){
@@ -968,7 +970,7 @@ export default function CommunityFeed() {
       setStoriesLoading(true)
       setStoryError(null)
       try{
-        const res = await fetch(`/api/community_stories/${community_id}`, { credentials: 'include' })
+        const res = await fetch(`/api/community_stories/${community_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const json = await res.json().catch(() => null)
         if (!active) return
         if (!json?.success){
@@ -1263,7 +1265,7 @@ export default function CommunityFeed() {
       try {
         const response = await fetch(
           `/api/geocode/reverse?lat=${latitude}&lng=${longitude}`,
-          { credentials: 'include' }
+          { credentials: 'include', headers: { 'Accept': 'application/json' } }
         )
         const data = await response.json()
         if (data.success && data.location) {
@@ -1279,7 +1281,7 @@ export default function CommunityFeed() {
         if (Math.abs(hiLat - latitude) > 0.001 || Math.abs(hiLon - longitude) > 0.001) {
           const resp2 = await fetch(
             `/api/geocode/reverse?lat=${hiLat}&lng=${hiLon}`,
-            { credentials: 'include' }
+            { credentials: 'include', headers: { 'Accept': 'application/json' } }
           )
           const d2 = await resp2.json()
           if (d2.success && d2.location) {
@@ -1366,7 +1368,7 @@ export default function CommunityFeed() {
   const fetchStoryComments = useCallback(async (storyId: number) => {
     setStoryCommentsLoading(true)
     try {
-      const r = await fetch(`/api/community_stories/${storyId}/comments`, { credentials: 'include' })
+      const r = await fetch(`/api/community_stories/${storyId}/comments`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const j = await r.json().catch(() => null)
       if (j?.success) setStoryComments(j.comments || [])
     } catch { /* ignore */ } finally {
@@ -1410,7 +1412,7 @@ export default function CommunityFeed() {
     if (story.username.toLowerCase() === data.username.toLowerCase()) return
     setStoryPrivateReplySending(true)
     try {
-      const idRes = await fetch(`/api/user_id/${story.username}`, { credentials: 'include' })
+      const idRes = await fetch(`/api/user_id/${story.username}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const idJson = await idRes.json()
       if (!idJson?.success || !idJson.user_id) return
       const storyMediaUrl = story.media_url || normalizeMediaPath(story.media_path)
@@ -2207,7 +2209,7 @@ export default function CommunityFeed() {
     const term = (q || '').trim()
     if (!term || !community_id) { setResults([]); return }
     try{
-      const r = await fetch(`/api/community_posts_search?community_id=${community_id}&q=${encodeURIComponent(term)}`, { credentials:'include' })
+      const r = await fetch(`/api/community_posts_search?community_id=${community_id}&q=${encodeURIComponent(term)}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
       const j = await r.json().catch(()=>null)
       if (j?.success) setResults(j.posts||[])
       else setResults([])
@@ -3859,7 +3861,8 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
     
     try {
       const response = await fetch(`/api/post/${post.id}/summary`, {
-        credentials: 'include'
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' }
       })
       const data = await response.json()
       

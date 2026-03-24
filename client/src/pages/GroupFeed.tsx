@@ -77,7 +77,7 @@ export default function GroupFeed(){
       if (!group_id) return
       setLoading(true)
       try{
-        const feedResp = await fetch(`/api/group_feed?group_id=${group_id}`, { credentials:'include' })
+        const feedResp = await fetch(`/api/group_feed?group_id=${group_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
         const fj = await feedResp.json().catch(()=>null)
         if (!ok) return
         if (fj?.success){
@@ -131,7 +131,7 @@ export default function GroupFeed(){
     let mounted = true
     async function check(){
       try{
-        const r = await fetch(`/api/calendar_events/${communityId}?group_id=${group_id}`, { credentials: 'include' })
+        const r = await fetch(`/api/calendar_events/${communityId}?group_id=${group_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const j = await r.json()
         if (!mounted) return
         if (j?.success){
@@ -185,7 +185,7 @@ export default function GroupFeed(){
     setShowMembers(true)
     setMembersLoading(true)
     try {
-      const r = await fetch(`/api/group_members/${group_id}`, { credentials: 'include' })
+      const r = await fetch(`/api/group_members/${group_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const j = await r.json()
       if (j?.success) {
         setGroupMembers(j.members || [])
@@ -240,7 +240,7 @@ export default function GroupFeed(){
     setSelectedInvites(new Set())
     setInviteSearch('')
     try {
-      const r = await fetch(`/api/group_members/${group_id}/available`, { credentials: 'include' })
+      const r = await fetch(`/api/group_members/${group_id}/available`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const j = await r.json()
       if (j?.success) setAvailableMembers(j.available || [])
     } catch {}

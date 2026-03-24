@@ -33,7 +33,8 @@ export default function EncryptionSettings() {
       // Check server status
       try {
         const response = await fetch('/api/encryption/has-keys', {
-          credentials: 'include'
+          credentials: 'include',
+          headers: { 'Accept': 'application/json' }
         })
         if (response.ok) {
           const data = await response.json()

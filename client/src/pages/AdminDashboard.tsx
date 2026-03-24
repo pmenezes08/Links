@@ -246,7 +246,7 @@ export default function AdminDashboard() {
 
   const checkAdminAccess = async () => {
     try {
-      const response = await fetch('/api/check_admin', { credentials: 'include' })
+      const response = await fetch('/api/check_admin', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await response.json()
       if (!data.is_admin) {
         navigate('/')
@@ -260,7 +260,7 @@ export default function AdminDashboard() {
   const loadAdminData = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/admin/dashboard', { credentials: 'include' })
+      const response = await fetch('/api/admin/dashboard', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await response.json()
 
       if (data.success) {
@@ -377,7 +377,8 @@ export default function AdminDashboard() {
     setReportsLoading(true)
     try {
       const response = await fetch(`/api/admin/reported_posts?status=${status}`, {
-        credentials: 'include'
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' }
       })
       const data = await response.json()
       if (data?.success) {
@@ -397,7 +398,8 @@ export default function AdminDashboard() {
     setBlockedUsersLoading(true)
     try {
       const response = await fetch('/api/admin/all_blocked_users', {
-        credentials: 'include'
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' }
       })
       const data = await response.json()
       if (data?.success) {

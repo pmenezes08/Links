@@ -339,7 +339,7 @@ export default function Communities(){
     let mounted = true
     async function loadUser(){
       try{
-        const r = await fetch('/api/profile_me', { credentials:'include' })
+        const r = await fetch('/api/profile_me', { credentials:'include', headers: { 'Accept': 'application/json' } })
         const j = await r.json().catch(()=>null)
         if (mounted && j?.success && j.profile){
           const u = String(j.profile.username || '')
@@ -381,7 +381,7 @@ export default function Communities(){
       setLoading(true)
       try{
         try{
-          const r = await fetch(`/api/profile_me`, { credentials:'include' })
+          const r = await fetch(`/api/profile_me`, { credentials:'include', headers: { 'Accept': 'application/json' } })
           const j = await r.json().catch(()=>null)
           if (mounted && j?.success && j.profile){
             const meta = { username: j.profile.username, current_user_profile_picture: j.profile.profile_picture }
@@ -390,7 +390,7 @@ export default function Communities(){
           }
         }catch{}
 
-        const rc = await fetch('/api/user_communities_hierarchical', { credentials:'include' })
+        const rc = await fetch('/api/user_communities_hierarchical', { credentials:'include', headers: { 'Accept': 'application/json' } })
         const jc = await rc.json()
         if (!mounted) return
         if (jc?.success){
@@ -533,7 +533,7 @@ export default function Communities(){
               onClick={()=> {
                 setActiveTab('groups')
                 setMyGroupsLoading(true)
-                fetch('/api/groups/my', { credentials: 'include' })
+                fetch('/api/groups/my', { credentials: 'include', headers: { 'Accept': 'application/json' } })
                   .then(r => r.json())
                   .then(j => {
                     if (j?.success) {
@@ -747,7 +747,7 @@ export default function Communities(){
                                               const j = await r.json()
                                               if (j?.success) {
                                                 // Refresh the lists
-                                                const r2 = await fetch('/api/groups/my', { credentials: 'include' })
+                                                const r2 = await fetch('/api/groups/my', { credentials: 'include', headers: { 'Accept': 'application/json' } })
                                                 const j2 = await r2.json()
                                                 if (j2?.success) {
                                                   setJoinedGroups(j2.joined || [])
@@ -1158,7 +1158,7 @@ function GroupsModal({ open, onClose, communityId }:{ open:boolean, onClose: ()=
       if (!open || !communityId) return
       setLoading(true)
       try{
-        const r = await fetch(`/api/groups?community_id=${communityId}&include_ancestors=0`, { credentials:'include' })
+        const r = await fetch(`/api/groups?community_id=${communityId}&include_ancestors=0`, { credentials:'include', headers: { 'Accept': 'application/json' } })
         if (r.status === 403){ setIsMember(false); setItems([]); return }
         const j = await r.json().catch(()=>null)
         if (!ok) return
@@ -1317,7 +1317,8 @@ function ParentTimeline({ parentId }:{ parentId:number }){
       // Fetch fresh data
       const r = await fetch(`/api/community_group_feed/${parentId}`, { 
         credentials: 'include',
-        cache: 'reload'
+        cache: 'reload',
+        headers: { 'Accept': 'application/json' }
       })
       const j = await r.json()
       
@@ -1430,7 +1431,7 @@ function ParentTimeline({ parentId }:{ parentId:number }){
       setLoading(true)
       try{
         const promise = (async () => {
-          const r = await fetch(`/api/community_group_feed/${parentId}`, { credentials:'include' })
+          const r = await fetch(`/api/community_group_feed/${parentId}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
           return await r.json()
         })()
         inflightRef.set(parentId, promise)

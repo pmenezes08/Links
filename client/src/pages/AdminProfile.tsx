@@ -34,11 +34,11 @@ export default function AdminProfile(){
     setLoading(true)
     try{
       // Ensure only admin can access
-      const a = await fetch('/api/check_admin', { credentials:'include' })
+      const a = await fetch('/api/check_admin', { credentials:'include', headers: { 'Accept': 'application/json' } })
       const aj = await a.json()
       if (!aj?.is_admin){ navigate('/'); return }
 
-      const r = await fetch('/api/admin/profile', { credentials:'include' })
+      const r = await fetch('/api/admin/profile', { credentials:'include', headers: { 'Accept': 'application/json' } })
       const j = await r.json()
       if (j?.success){
         setAdmin(j.admin)

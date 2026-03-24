@@ -122,6 +122,7 @@ class SimpleEncryptionService {
       const response = await fetch('/api/encryption/restore', {
         method: 'GET',
         credentials: 'include',
+        headers: { 'Accept': 'application/json' },
       })
       
       if (!response.ok) {
@@ -241,6 +242,7 @@ class SimpleEncryptionService {
       const response = await fetch('/api/encryption/has-keys', {
         method: 'GET',
         credentials: 'include',
+        headers: { 'Accept': 'application/json' },
       })
       
       if (!response.ok) {
@@ -567,6 +569,7 @@ class SimpleEncryptionService {
       const response = await fetch(`/api/encryption/get-public-key/${username}`, {
         method: 'GET',
         credentials: 'include',
+        headers: { 'Accept': 'application/json' },
         signal: controller.signal,
       })
 

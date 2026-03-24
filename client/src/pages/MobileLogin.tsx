@@ -30,7 +30,7 @@ export default function MobileLogin() {
       } catch {}
       return
     }
-    fetch(`/api/invitation/verify?token=${inviteToken}`, { credentials: 'include' })
+    fetch(`/api/invitation/verify?token=${inviteToken}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(j => {
         if (j?.success) {
@@ -70,7 +70,7 @@ export default function MobileLogin() {
           headers: { 'Content-Type': 'application/json' }
         })
         
-        const r = await fetch('/api/profile_me', { credentials:'include' })
+        const r = await fetch('/api/profile_me', { credentials:'include', headers: { 'Accept': 'application/json' } })
         if (r.status === 403){
           setAuthCheckDone(true)
           navigate('/verify_required', { replace: true })
@@ -106,7 +106,7 @@ export default function MobileLogin() {
             
             // Normal flow
             try{
-              const ht = await fetch('/api/home_timeline', { credentials:'include' })
+              const ht = await fetch('/api/home_timeline', { credentials:'include', headers: { 'Accept': 'application/json' } })
               const hj = await ht.json().catch(()=>null)
               const hasCommunities = Boolean(hj?.admin_communities?.length || hj?.communities_list?.length)
               if (!hasCommunities){
@@ -143,6 +143,7 @@ export default function MobileLogin() {
       fetch('/api/check_pending_login', { 
         credentials: 'include',
         headers: {
+          'Accept': 'application/json',
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         }

@@ -47,7 +47,7 @@ export default function EventDetail(){
     let mounted = true
     async function loadUser(){
       try{
-        const r = await fetch('/api/home_timeline', { credentials:'include' })
+        const r = await fetch('/api/home_timeline', { credentials:'include', headers: { 'Accept': 'application/json' } })
         const j = await r.json().catch(()=>null)
         if (!mounted) return
         if (j?.success && j.username) {

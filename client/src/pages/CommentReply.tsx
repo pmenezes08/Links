@@ -347,7 +347,7 @@ export default function CommentReply() {
 
   // Fetch current user
   useEffect(() => {
-    fetch('/api/profile_me', { credentials: 'include' })
+    fetch('/api/profile_me', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then((r) => r.json())
       .then((d) => {
         if (d?.success && d.profile?.username) {
@@ -362,7 +362,7 @@ export default function CommentReply() {
     if (!reply_id) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/reply/${reply_id}`, { credentials: 'include' })
+      const res = await fetch(`/api/reply/${reply_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await res.json()
       if (data.success) {
         setReply(data.reply)

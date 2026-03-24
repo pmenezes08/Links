@@ -482,7 +482,7 @@ export default function GroupChatThread() {
       return
     }
     try {
-      const response = await fetch(`/api/group_chat/${group_id}`, { credentials: 'include' })
+      const response = await fetch(`/api/group_chat/${group_id}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await response.json()
       if (data.success) {
         setGroup(data.group)
@@ -512,7 +512,7 @@ export default function GroupChatThread() {
     }
     if (!silent) setLoading(true)
     try {
-      const response = await fetch(`/api/group_chat/${group_id}/messages?limit=50`, { credentials: 'include' })
+      const response = await fetch(`/api/group_chat/${group_id}/messages?limit=50`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const data = await response.json()
       if (data.success) {
         const newServerMessages = (data.messages as Message[]).filter(
@@ -605,7 +605,7 @@ export default function GroupChatThread() {
       const currentMsgs = serverMessages.filter(m => m.id > 0)
       const oldestId = currentMsgs.length > 0 ? Math.min(...currentMsgs.map(m => m.id)) : 0
       if (oldestId <= 0) { loadingOlderRef.current = false; setLoadingOlder(false); return }
-      const r = await fetch(`/api/group_chat/${group_id}/messages?before_id=${oldestId}&limit=50`, { credentials: 'include' })
+      const r = await fetch(`/api/group_chat/${group_id}/messages?before_id=${oldestId}&limit=50`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const j = await r.json()
       if (j?.success && Array.isArray(j.messages) && j.messages.length > 0) {
         const el = listRef.current
@@ -1335,6 +1335,7 @@ export default function GroupChatThread() {
     try {
       const response = await fetch(`/api/group_chat/${group_id}/available_members`, {
         credentials: 'include',
+        headers: { 'Accept': 'application/json' },
       })
       const data = await response.json()
       
@@ -1824,7 +1825,7 @@ export default function GroupChatThread() {
                       setRenameText(group?.name || '')
                       setShowManageGroup(true)
                       // Load Steve personality
-                      fetch(`/api/group_chat/${group_id}/steve_personality`, { credentials: 'include' })
+                      fetch(`/api/group_chat/${group_id}/steve_personality`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
                         .then(r => r.json())
                         .then(d => { if (d?.success) setStevePersonality(d.personality || 'default') })
                         .catch(() => {})

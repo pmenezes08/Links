@@ -30,7 +30,7 @@ export default function GroupChatMedia() {
     async function load() {
       setLoading(true)
       try {
-        const r = await fetch(`/api/group_chat/${group_id}/media`, { credentials: 'include' })
+        const r = await fetch(`/api/group_chat/${group_id}/media`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const j = await r.json()
         if (!mounted) return
         if (j?.success) {

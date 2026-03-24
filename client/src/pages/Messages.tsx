@@ -150,7 +150,7 @@ export default function Messages(){
   const loadThreads = useCallback((silent: boolean = false) => {
     if (!navigator.onLine) return
     if (!silent) setLoading(true)
-    fetch('/api/chat_threads', { credentials: 'include' })
+    fetch('/api/chat_threads', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(j => {
         if (j?.success && Array.isArray(j.threads)) {
@@ -180,7 +180,7 @@ export default function Messages(){
   const loadArchivedThreads = useCallback(() => {
     if (!navigator.onLine) return
     setArchivedLoading(true)
-    fetch('/api/archived_chats', { credentials: 'include' })
+    fetch('/api/archived_chats', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(j => {
         if (j?.success && Array.isArray(j.threads)) {
@@ -195,7 +195,7 @@ export default function Messages(){
   const loadGroupChats = useCallback((silent = false) => {
     if (!navigator.onLine) return
     if (!silent) setGroupChatsLoading(true)
-    fetch('/api/group_chat/list', { credentials: 'include' })
+    fetch('/api/group_chat/list', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(j => {
         if (j?.success && Array.isArray(j.groups)) {
@@ -346,6 +346,7 @@ export default function Messages(){
       }).then(r => r.json()).catch(() => null),
       fetch(appendParam('/api/user_communities_hierarchical'), { 
         credentials: 'include',
+        headers: { 'Accept': 'application/json' },
         ...(forceRefresh ? { cache: 'no-store' as const } : {})
       }).then(r => r.json()).catch(() => null),
     ])
@@ -964,7 +965,7 @@ export default function Messages(){
                                 })
                               } catch {}
                               // Refetch thread list
-                              fetch('/api/chat_threads', { credentials:'include' })
+                              fetch('/api/chat_threads', { credentials:'include', headers: { 'Accept': 'application/json' } })
                                 .then(rr=> rr.json()).then(jj=>{
                                   if (jj?.success && Array.isArray(jj.threads)){
                                     setThreads(jj.threads)

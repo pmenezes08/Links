@@ -764,7 +764,7 @@ export default function ChatThread(){
       }).catch(()=>{})
       
       // Load user profile (in parallel)
-      fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include' })
+      fetch(`/api/get_user_profile_brief?username=${encodeURIComponent(username)}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
         .then(r => r.json())
         .then(profileResponse => {
           if (profileResponse?.success) {
@@ -1380,7 +1380,7 @@ export default function ChatThread(){
         // This reduces network calls while still providing reasonable feedback
         if (pollCountRef.current % 5 === 0) {
           try{
-            const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include' })
+            const t = await fetch(`/api/typing?peer=${encodeURIComponent(username!)}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
             const tj = await t.json().catch(()=>null)
             setTyping(!!tj?.is_typing)
           }catch{}
@@ -2580,7 +2580,7 @@ export default function ChatThread(){
                         return
                       }
                       
-                      const res = await fetch(`/api/story/${cleanStoryId}`, { credentials: 'include' })
+                      const res = await fetch(`/api/story/${cleanStoryId}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
                       console.log('🎬 Story response status:', res.status)
                       
                       if (!res.ok) {

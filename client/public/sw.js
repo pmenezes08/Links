@@ -1,4 +1,4 @@
-const SW_VERSION = '2.63.0'
+const SW_VERSION = '2.64.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
@@ -23,6 +23,13 @@ const STALE_API_ENDPOINTS = new Set([
   '/get_user_communities_with_members',
   '/api/premium_dashboard_summary',
   '/api/user_parent_community',
+  '/api/chat_threads',
+  '/api/group_chat/list',
+  '/api/notifications',
+  '/api/profile_me',
+  '/api/check_gym_membership',
+  '/api/check_admin',
+  '/api/home_timeline',
 ])
 
 self.addEventListener('install', (event) => {

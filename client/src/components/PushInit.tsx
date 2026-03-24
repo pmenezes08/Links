@@ -215,7 +215,7 @@ export default function PushInit(){
 
         async function subscribeAndRegister(){
           try{
-            const vapidRes = await fetch('/api/push/public_key', { credentials:'include' })
+            const vapidRes = await fetch('/api/push/public_key', { credentials:'include', headers: { 'Accept': 'application/json' } })
             const { publicKey } = await vapidRes.json()
             if (!publicKey) return
             let subscription = await reg.pushManager.getSubscription()

@@ -150,6 +150,7 @@ export default function Followers() {
         const response = await fetch(`/api/followers?tab=${tab}`, {
           credentials: 'include',
           signal: controller.signal,
+          headers: { 'Accept': 'application/json' },
         })
         const data = await response.json().catch(() => null)
         if (!isCurrent) return
@@ -202,7 +203,7 @@ export default function Followers() {
       setFeedLoading(true)
       setFeedError(null)
       try {
-        const resp = await fetch('/api/followers_feed', { credentials: 'include' })
+        const resp = await fetch('/api/followers_feed', { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const data = await resp.json().catch(() => null)
         if (cancelled) return
         if (data?.success) {

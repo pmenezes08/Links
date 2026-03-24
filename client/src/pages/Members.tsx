@@ -104,7 +104,7 @@ export default function Members(){
     let mounted = true
     async function loadHierarchy() {
       try {
-        const response = await fetch('/api/user_communities_hierarchical', { credentials: 'include' })
+        const response = await fetch('/api/user_communities_hierarchical', { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const data = await response.json()
         if (!mounted) return
         if (data?.success) {
@@ -287,7 +287,7 @@ export default function Members(){
     setInviteSelectedParentIds(parentOptions.map(option => option.id))
 
     // Load invite settings
-    fetch(`/api/community/${numericCommunityId}/invite_settings`, { credentials: 'include' })
+    fetch(`/api/community/${numericCommunityId}/invite_settings`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(d => { if (d?.success) setInviteSingleUse(d.invite_single_use) })
       .catch(() => {})

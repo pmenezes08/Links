@@ -37,8 +37,8 @@ export default function CommunityTasks(){
       setLoading(true)
       try{
         const [ct, mt] = await Promise.all([
-          fetch(`/api/community_tasks?community_id=${community_id}`, { credentials:'include' }).then(r=>r.json()).catch(()=>null),
-          fetch(`/api/my_tasks?community_id=${community_id}`, { credentials:'include' }).then(r=>r.json()).catch(()=>null),
+          fetch(`/api/community_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
+          fetch(`/api/my_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
         ])
         if (!mounted) return
         if (ct?.success) setCommunityTasks(ct.tasks||[])
@@ -66,8 +66,8 @@ export default function CommunityTasks(){
     // Refresh lists
     try{
       const [ct, mt] = await Promise.all([
-        fetch(`/api/community_tasks?community_id=${community_id}`, { credentials:'include' }).then(r=>r.json()).catch(()=>null),
-        fetch(`/api/my_tasks?community_id=${community_id}`, { credentials:'include' }).then(r=>r.json()).catch(()=>null),
+        fetch(`/api/community_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
+        fetch(`/api/my_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
       ])
       if (ct?.success) setCommunityTasks(ct.tasks||[])
       if (mt?.success) setMyTasks(mt.tasks||[])
@@ -100,8 +100,8 @@ export default function CommunityTasks(){
     // Reload
     try{
       const [ct, mt] = await Promise.all([
-        fetch(`/api/community_tasks?community_id=${community_id}`, { credentials:'include' }).then(r=>r.json()).catch(()=>null),
-        fetch(`/api/my_tasks?community_id=${community_id}`, { credentials:'include' }).then(r=>r.json()).catch(()=>null),
+        fetch(`/api/community_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
+        fetch(`/api/my_tasks?community_id=${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } }).then(r=>r.json()).catch(()=>null),
       ])
       if (ct?.success) setCommunityTasks(ct.tasks||[])
       if (mt?.success) setMyTasks(mt.tasks||[])

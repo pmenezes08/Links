@@ -72,7 +72,7 @@ export default function AccountSettings(){
 
   function loadProfile() {
     setLoading(true)
-    fetch('/api/profile_me', { credentials: 'include' })
+    fetch('/api/profile_me', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(j => {
         if (j?.success && j.profile) {

@@ -30,7 +30,7 @@ export default function ChatMedia() {
     async function load() {
       setLoading(true)
       try {
-        const r = await fetch(`/api/chat/media?peer=${encodeURIComponent(username || '')}`, { credentials: 'include' })
+        const r = await fetch(`/api/chat/media?peer=${encodeURIComponent(username || '')}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const j = await r.json()
         if (!mounted) return
         if (j?.success) { setItems(j.media || []); setError(null) }

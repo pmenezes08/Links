@@ -212,7 +212,7 @@ export default function HomeTimeline(){
     
     async function load(){
       try{
-        const r = await fetch('/api/home_timeline', { credentials:'include' })
+        const r = await fetch('/api/home_timeline', { credentials:'include', headers: { 'Accept': 'application/json' } })
         const j = await r.json()
         if (!mounted) return
         if (j?.success){ 

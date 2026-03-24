@@ -43,7 +43,7 @@ export default function AccountSecurity() {
   const loadBlockedUsers = useCallback(async () => {
     setBlockedUsersLoading(true)
     try {
-      const res = await fetch('/api/blocked_users', { credentials: 'include' })
+      const res = await fetch('/api/blocked_users', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const j = await res.json()
       if (j?.success) {
         setBlockedUsers(j.blocked_users || [])
@@ -58,7 +58,7 @@ export default function AccountSecurity() {
   const loadHiddenPosts = useCallback(async () => {
     setHiddenPostsLoading(true)
     try {
-      const res = await fetch('/api/hidden_posts', { credentials: 'include' })
+      const res = await fetch('/api/hidden_posts', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       const j = await res.json()
       if (j?.success) {
         setHiddenPosts(j.hidden_posts || [])

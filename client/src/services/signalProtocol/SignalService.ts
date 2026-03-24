@@ -261,6 +261,7 @@ class SignalService {
   async getUserDevices(username: string): Promise<DeviceInfo[]> {
     const response = await fetch(`/api/signal/devices/${encodeURIComponent(username)}`, {
       credentials: 'include',
+      headers: { 'Accept': 'application/json' },
     })
 
     if (!response.ok) {
@@ -305,7 +306,7 @@ class SignalService {
   async getPreKeyBundle(username: string, deviceId: number): Promise<PreKeyBundle | null> {
     const response = await fetch(
       `/api/signal/prekey-bundle/${encodeURIComponent(username)}/${deviceId}`,
-      { credentials: 'include' }
+      { credentials: 'include', headers: { 'Accept': 'application/json' } }
     )
 
     if (!response.ok) {
@@ -676,6 +677,7 @@ class SignalService {
 
     const response = await fetch('/api/signal/prekey-count', {
       credentials: 'include',
+      headers: { 'Accept': 'application/json' },
     })
 
     if (!response.ok) return

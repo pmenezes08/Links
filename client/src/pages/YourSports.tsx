@@ -16,7 +16,8 @@ export default function YourSports(){
         // Always check gym membership API first (it has Paulo's special access built in)
         const response = await fetch('/api/check_gym_membership', {
           method: 'GET',
-          credentials: 'include'
+          credentials: 'include',
+          headers: { 'Accept': 'application/json' }
         })
         const data = await response.json()
         console.log('YourSports: gym membership check result:', data)

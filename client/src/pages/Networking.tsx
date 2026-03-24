@@ -150,7 +150,7 @@ export default function Networking() {
   const [memberSearch, setMemberSearch] = useState('')
 
   useEffect(() => {
-    fetch('/api/networking/communities', { credentials: 'include' })
+    fetch('/api/networking/communities', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(data => {
         if (data.success && data.communities?.length) {
@@ -165,7 +165,7 @@ export default function Networking() {
 
   const loadSessions = useCallback((communityId: number) => {
     setSessionsLoading(true)
-    fetch(`/api/networking/steve_sessions?community_id=${communityId}`, { credentials: 'include' })
+    fetch(`/api/networking/steve_sessions?community_id=${communityId}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(data => {
         if (data.success) {
@@ -173,7 +173,7 @@ export default function Networking() {
           if (data.sessions?.length > 0) {
             const latest = data.sessions[0]
             setSteveSessionId(latest.id)
-            fetch(`/api/networking/steve_session/${latest.id}/messages`, { credentials: 'include' })
+            fetch(`/api/networking/steve_session/${latest.id}/messages`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
               .then(r => r.json())
               .then(d => { if (d.success) setSteveMessages(d.messages || []) })
               .catch(() => {})
@@ -212,7 +212,7 @@ export default function Networking() {
   const loadSession = useCallback((sessionId: number) => {
     setSteveSessionId(sessionId)
     setShowSessionList(false)
-    fetch(`/api/networking/steve_session/${sessionId}/messages`, { credentials: 'include' })
+    fetch(`/api/networking/steve_session/${sessionId}/messages`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(d => { if (d.success) setSteveMessages(d.messages || []) })
       .catch(() => {})
@@ -231,7 +231,7 @@ export default function Networking() {
   useEffect(() => {
     if (!personalCommunity) return
     setPersonalLoading(true)
-    fetch(`/api/networking/community_members/${personalCommunity}`, { credentials: 'include' })
+    fetch(`/api/networking/community_members/${personalCommunity}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(data => {
         if (data.success) {
@@ -251,7 +251,7 @@ export default function Networking() {
     if (selectedLocation) params.set('location', selectedLocation)
     if (selectedIndustry) params.set('industry', selectedIndustry)
     if (selectedInterest) params.set('interests', selectedInterest)
-    fetch(`/api/networking/community_members/${personalCommunity}?${params}`, { credentials: 'include' })
+    fetch(`/api/networking/community_members/${personalCommunity}?${params}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(data => { if (data.success) setPersonalMembers(data.members || []) })
       .catch(() => {})

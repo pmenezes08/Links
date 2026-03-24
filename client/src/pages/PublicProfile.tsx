@@ -82,7 +82,7 @@ export default function PublicProfile() {
     async function load() {
       setLoading(true)
       try {
-        const response = await fetch(`/api/profile/${encodeURIComponent(username)}`, { credentials: 'include' })
+        const response = await fetch(`/api/profile/${encodeURIComponent(username)}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const payload = await response.json().catch(() => null)
         if (!cancelled) {
           if (payload?.success && payload.profile) {

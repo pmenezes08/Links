@@ -41,7 +41,7 @@ export default function EditCommunity(){
         setIsOwner(!!owner)
         if (!can){ setError('You do not have permission to manage this community.'); setLoading(false); return }
         // Load current community info
-        const rc = await fetch(`/api/community_feed/${community_id}`, { credentials:'include' })
+        const rc = await fetch(`/api/community_feed/${community_id}`, { credentials:'include', headers: { 'Accept': 'application/json' } })
         const jc = await rc.json().catch(()=>null)
         if (jc?.success && jc.community){
           setName(jc.community.name || '')
@@ -61,7 +61,7 @@ export default function EditCommunity(){
         
         // Load AI personalities list
         try {
-          const persResp = await fetch('/api/ai/personalities', { credentials: 'include' })
+          const persResp = await fetch('/api/ai/personalities', { credentials: 'include', headers: { 'Accept': 'application/json' } })
           const persData = await persResp.json()
           if (persData?.success && Array.isArray(persData.personalities)) {
             setAiPersonalities(persData.personalities)
@@ -70,7 +70,7 @@ export default function EditCommunity(){
         
         // Load current AI personality for this community
         try {
-          const aiResp = await fetch(`/api/community/${community_id}/ai_personality`, { credentials: 'include' })
+          const aiResp = await fetch(`/api/community/${community_id}/ai_personality`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
           const aiData = await aiResp.json()
           if (aiData?.success && aiData.ai_personality) {
             setAiPersonality(aiData.ai_personality)

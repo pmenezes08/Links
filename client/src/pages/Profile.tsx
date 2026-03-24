@@ -656,7 +656,7 @@ export default function Profile() {
         }
       } catch {}
       try {
-        const response = await fetch('/api/geo/countries', { credentials: 'include' })
+        const response = await fetch('/api/geo/countries', { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const payload = await response.json().catch(() => null)
         if (!cancelled) {
           if (payload?.success && Array.isArray(payload.countries)) {
@@ -705,7 +705,7 @@ export default function Profile() {
     async function loadCities() {
       setCitiesLoading(true)
       try {
-        const response = await fetch(`/api/geo/cities?country=${encodeURIComponent(exactMatch)}`, { credentials: 'include' })
+        const response = await fetch(`/api/geo/cities?country=${encodeURIComponent(exactMatch)}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
         const payload = await response.json().catch(() => null)
         if (!cancelled) {
           if (payload?.success && Array.isArray(payload.cities)) {

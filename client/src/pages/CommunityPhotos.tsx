@@ -33,7 +33,7 @@ export default function CommunityPhotos(){
         const url = groupId
           ? `/api/group_photos/${groupId}`
           : `/api/community_photos?community_id=${community_id}`
-        const r = await fetch(url, { credentials:'include' })
+        const r = await fetch(url, { credentials:'include', headers: { 'Accept': 'application/json' } })
         const j = await r.json()
         if (!mounted) return
         if (j?.success){ setItems(j.photos || j.media || []); setError(null) }

@@ -34,7 +34,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
       }catch{}
       try{
         // Unread notifications (exclude message-type and reaction-type)
-        const n = await fetch('/api/notifications', { credentials:'include' })
+        const n = await fetch('/api/notifications', { credentials:'include', headers: { 'Accept': 'application/json' } })
         const nj = await n.json().catch(()=>null)
         if (nj?.success && Array.isArray(nj.notifications)){
           const cnt = nj.notifications.filter((x:any)=> x && x.is_read === false && x.type !== 'message' && x.type !== 'reaction').length

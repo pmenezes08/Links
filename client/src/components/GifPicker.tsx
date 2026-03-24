@@ -78,7 +78,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
       if (useProxy || !apiKey) {
         const params = new URLSearchParams({ endpoint, limit: '24', rating: 'pg-13' })
         if (searchTerm) params.set('q', searchTerm)
-        res = await fetch(`/api/giphy/search?${params.toString()}`, { signal, credentials: 'include' })
+        res = await fetch(`/api/giphy/search?${params.toString()}`, { signal, credentials: 'include', headers: { 'Accept': 'application/json' } })
       } else {
         const params = new URLSearchParams({ api_key: apiKey, limit: '24', rating: 'pg-13' })
         if (searchTerm) params.set('q', searchTerm)
@@ -128,7 +128,7 @@ export default function GifPicker({ isOpen, onClose, onSelect }: GifPickerProps)
     let cancelled = false
     setKeyLoading(true)
     setError(null)
-    fetch('/api/config/giphy_key', { credentials: 'include' })
+    fetch('/api/config/giphy_key', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json().catch(() => null)

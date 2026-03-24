@@ -134,7 +134,7 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
       return cached
     }
     if (!userFetchPromiseRef.current) {
-      userFetchPromiseRef.current = fetch('/api/profile_me', { credentials: 'include' })
+      userFetchPromiseRef.current = fetch('/api/profile_me', { credentials: 'include', headers: { 'Accept': 'application/json' } })
         .then(async (res) => {
           if (!res.ok) return null
           const data = await res.json().catch(() => null)
@@ -284,6 +284,7 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
         const encodedId = encodeURIComponent(String(messageId))
         const response = await fetch(`/api/signal/get-ciphertext/${encodedId}?deviceId=${deviceId}`, {
           credentials: 'include',
+          headers: { 'Accept': 'application/json' },
         })
         if (!response.ok) {
           const error: any = new Error(`Failed to fetch ciphertext: ${response.status}`)
@@ -563,6 +564,7 @@ export function useSignalDecryption({ messages, setMessages }: UseSignalDecrypti
               // Check if there's a ciphertext entry for our device (meaning another device sent it)
               const response = await fetch(`/api/signal/get-ciphertext/${message.id}?deviceId=${deviceId}`, {
                 credentials: 'include',
+                headers: { 'Accept': 'application/json' },
               })
               if (response.ok) {
                 // There's a ciphertext for us - try to decrypt (this means another device sent it)
