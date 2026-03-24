@@ -218,9 +218,19 @@ export default function ChatThread(){
     const el = textareaRef.current
     if (!el) return
     lastFocusTimeRef.current = Date.now()
-    el.focus()
-    const length = el.value.length
-    el.setSelectionRange(length, length)
+    try {
+      el.focus({ preventScroll: true })
+    } catch {
+      el.focus()
+    }
+    requestAnimationFrame(() => {
+      const length = el.value.length
+      try {
+        el.setSelectionRange(length, length)
+      } catch {
+        // iOS can reject selection updates during focus transitions.
+      }
+    })
   }, [recording])
   
   // Cleanup preview audio when recording preview changes
@@ -2671,8 +2681,7 @@ export default function ChatThread(){
       ref={composerRef}
       className="fixed left-0 right-0 bottom-0"
       style={{
-        transform: keyboardLift > 0 ? `translateY(-${keyboardLift}px)` : undefined,
-        willChange: 'transform',
+        bottom: keyboardLift > 0 ? `${keyboardLift}px` : '0',
         zIndex: 1000,
         width: '100%',
         display: 'flex',
@@ -3000,17 +3009,6 @@ export default function ChatThread(){
                 onPaste={handlePaste}
                 onFocus={() => {
                   lastFocusTimeRef.current = Date.now()
-                }}
-                onPointerDown={() => {
-                  if (document.activeElement !== textareaRef.current) {
-                    focusTextarea()
-                  }
-                }}
-                onTouchEnd={(e) => {
-                  if (Capacitor.getPlatform() === 'ios' && document.activeElement !== textareaRef.current) {
-                    e.preventDefault()
-                    focusTextarea()
-                  }
                 }}
                 onInput={(e) => {
                   const textarea = e.target as HTMLTextAreaElement

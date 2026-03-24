@@ -353,9 +353,19 @@ export default function GroupChatThread() {
     const el = textareaRef.current
     if (!el) return
     lastFocusTimeRef.current = Date.now()
-    el.focus()
-    const len = el.value.length
-    el.setSelectionRange(len, len)
+    try {
+      el.focus({ preventScroll: true })
+    } catch {
+      el.focus()
+    }
+    requestAnimationFrame(() => {
+      const len = el.value.length
+      try {
+        el.setSelectionRange(len, len)
+      } catch {
+        // iOS can reject selection updates during focus transitions.
+      }
+    })
   }, [recording])
 
   function adjustTextareaHeight(){
@@ -2266,8 +2276,7 @@ export default function GroupChatThread() {
         ref={composerRef}
         className="fixed left-0 right-0 bottom-0"
         style={{
-          transform: keyboardLift > 0 ? `translateY(-${keyboardLift}px)` : undefined,
-          willChange: 'transform',
+          bottom: keyboardLift > 0 ? `${keyboardLift}px` : '0',
           zIndex: 1000,
           width: '100%',
           display: 'flex',
@@ -2601,17 +2610,6 @@ export default function GroupChatThread() {
                   } as CSSProperties}
                   onFocus={() => {
                     lastFocusTimeRef.current = Date.now()
-                  }}
-                  onPointerDown={() => {
-                    if (document.activeElement !== textareaRef.current) {
-                      focusTextarea()
-                    }
-                  }}
-                  onTouchEnd={(e) => {
-                    if (Capacitor.getPlatform() === 'ios' && document.activeElement !== textareaRef.current) {
-                      e.preventDefault()
-                      focusTextarea()
-                    }
                   }}
                   onInput={(e) => {
                     const textarea = e.target as HTMLTextAreaElement
