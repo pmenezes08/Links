@@ -223,6 +223,7 @@ export default function PremiumDashboard() {
       const fetchUrl = bypassCache ? `${url}${url.includes('?') ? '&' : '?'}_nocache=${Date.now()}` : url
       const r = await fetch(fetchUrl, { 
         credentials:'include',
+        headers: { 'Accept': 'application/json' },
         cache: bypassCache ? 'no-store' : 'default'
       })
       const ct = r.headers.get('content-type')||''
@@ -250,7 +251,7 @@ export default function PremiumDashboard() {
         (async () => {
           if (!forceRefresh && contextProfile) return { success: true, profile: contextProfile }
           const profileUrl = forceRefresh ? `/api/profile_me?_nocache=${Date.now()}` : '/api/profile_me'
-          const r = await fetch(profileUrl, { credentials:'include', cache: forceRefresh ? 'no-store' : 'default' })
+          const r = await fetch(profileUrl, { credentials:'include', headers: { 'Accept': 'application/json' }, cache: forceRefresh ? 'no-store' : 'default' })
           if (r.status === 403) return { _forbidden: true } as any
           return await r.json().catch(() => null)
         })(),
@@ -416,7 +417,7 @@ export default function PremiumDashboard() {
     let cancelled = false
     async function refresh(){
       try{
-        const pr = await fetch('/api/profile_me', { credentials:'include' })
+        const pr = await fetch('/api/profile_me', { credentials:'include', headers: { 'Accept': 'application/json' } })
         const pj = await pr.json().catch(()=>null)
         if (cancelled) return
         if (pj?.success && pj.profile){
@@ -432,7 +433,7 @@ export default function PremiumDashboard() {
           setSubscription((pj.profile.subscription || 'free') as string)
         }
         // Also refresh communities snapshot
-        const parentDataResp = await fetch('/api/user_parent_community', { credentials:'include' })
+        const parentDataResp = await fetch('/api/user_parent_community', { credentials:'include', headers: { 'Accept': 'application/json' } })
         const parentData = await parentDataResp.json().catch(()=>null)
         if (cancelled) return
         const fetchedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []

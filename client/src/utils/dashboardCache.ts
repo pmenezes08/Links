@@ -1,7 +1,7 @@
 import { clearDeviceCache, readDeviceCacheStale, writeDeviceCache } from './deviceCache'
 
 export const DASHBOARD_DEVICE_CACHE_KEY = 'dashboard-device-cache'
-export const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000
+export const DASHBOARD_CACHE_TTL_MS = 30 * 60 * 1000
 export const DASHBOARD_CACHE_VERSION = 'dashboard-v2'
 
 export type DashboardCommunity = { id: number; name: string; type: string }
@@ -47,6 +47,7 @@ export async function refreshDashboardCommunities(communities?: DashboardCommuni
         : '/api/user_parent_community'
       const resp = await fetch(url, { 
         credentials: 'include',
+        headers: { 'Accept': 'application/json' },
         cache: forceRefresh ? 'no-store' : 'default'
       })
       const data = await resp.json().catch(() => null)

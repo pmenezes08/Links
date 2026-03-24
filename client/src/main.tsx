@@ -5,6 +5,10 @@ import App from './App'
 
 import('@fortawesome/fontawesome-free/css/all.min.css')
 
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {})
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

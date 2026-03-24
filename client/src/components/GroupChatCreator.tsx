@@ -81,7 +81,7 @@ export default function GroupChatCreator() {
       try {
         let list: Community[] = []
         try {
-          const r = await fetch('/api/user_parent_community', { credentials: 'include' })
+          const r = await fetch('/api/user_parent_community', { credentials: 'include', headers: { 'Accept': 'application/json' } })
           const j = await r.json().catch(() => null)
           if (j?.success) list = normalizeCommunities(j.communities)
         } catch {
