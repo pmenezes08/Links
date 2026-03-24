@@ -285,6 +285,7 @@ export default function GroupChatThread() {
     probe.style.zIndex = '-1'
     document.body.appendChild(probe)
     const updateSafeBottom = () => {
+      if (keyboardOffsetRef.current > 0) return
       const rect = probe.getBoundingClientRect()
       const next = rect.height || 0
       setSafeBottomPx(prev => {
@@ -419,8 +420,8 @@ export default function GroupChatThread() {
     const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
 
     const handleShow = (info: KeyboardInfo) => {
-      if (document.activeElement !== textareaRef.current) return
       const height = normalizeHeight(info?.keyboardHeight ?? 0)
+      if (height === 0) return
       if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
       keyboardOffsetRef.current = height
       setKeyboardOffset(height)
@@ -431,7 +432,6 @@ export default function GroupChatThread() {
       if (Math.abs(keyboardOffsetRef.current) < KEYBOARD_OFFSET_EPSILON) return
       keyboardOffsetRef.current = 0
       setKeyboardOffset(0)
-      requestAnimationFrame(scrollToBottom)
     }
 
     const showEvent = Capacitor.getPlatform() === 'android' ? 'keyboardDidShow' : 'keyboardWillShow'
@@ -2264,9 +2264,10 @@ export default function GroupChatThread() {
       {/* ====== COMPOSER - FIXED AT BOTTOM ====== */}
       <div
         ref={composerRef}
-        className="fixed left-0 right-0"
+        className="fixed left-0 right-0 bottom-0"
         style={{
-          bottom: `${keyboardLift}px`,
+          transform: keyboardLift > 0 ? `translateY(-${keyboardLift}px)` : undefined,
+          willChange: 'transform',
           zIndex: 1000,
           width: '100%',
           display: 'flex',
@@ -2404,13 +2405,13 @@ export default function GroupChatThread() {
                   <div className="text-[12px] text-[#4db6ac] font-medium truncate">
                     {replyTo.sender}
                   </div>
-                  <div className="text-[13px] text-white/70 truncate mt-0.5">
+                  <div className="text-[13px] text-white/70 truncate mt-0.5 overflow-hidden">
                     {replyTo.voice ? (
                       <><i className="fa-solid fa-microphone text-xs mr-1" />{replyTo.audio_summary ? replyTo.audio_summary.slice(0, 80) + (replyTo.audio_summary.length > 80 ? '…' : '') : 'Voice message'}</>
                     ) : replyTo.image && !replyTo.text ? (
                       <><i className="fa-solid fa-image text-xs mr-1" />Photo</>
                     ) : (
-                      replyTo.text
+                      replyTo.text && replyTo.text.length > 80 ? replyTo.text.slice(0, 80) + '…' : replyTo.text
                     )}
                   </div>
                 </div>
