@@ -466,11 +466,6 @@ export default function ChatThread(){
   }, [scrollToBottom, KEYBOARD_OFFSET_EPSILON])
 
   useEffect(() => {
-    if (liftSource < 0) return
-    requestAnimationFrame(scrollToBottom)
-  }, [liftSource, scrollToBottom])
-
-  useEffect(() => {
     requestAnimationFrame(scrollToBottom)
   }, [composerHeight, scrollToBottom])
   

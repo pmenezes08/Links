@@ -464,12 +464,6 @@ export default function GroupChatThread() {
     }
   }, [scrollToBottom])
 
-  // Scroll on keyboard change
-  useEffect(() => {
-    if (liftSource < 0) return
-    requestAnimationFrame(scrollToBottom)
-  }, [liftSource, scrollToBottom])
-
   useEffect(() => {
     requestAnimationFrame(scrollToBottom)
   }, [composerHeight, scrollToBottom])

@@ -81,6 +81,7 @@ function AppRoutes(){
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const isChatRoute = location.pathname.startsWith('/user_chat/chat/') || location.pathname.startsWith('/group_chat/')
 
   const locationRef = useRef(location.pathname)
   const scrollRegionRef = useRef<HTMLDivElement | null>(null)
@@ -97,6 +98,10 @@ function AppRoutes(){
   }, [])
 
   useLayoutEffect(() => {
+    if (isChatRoute) {
+      applyKeyboardOffset(0)
+      return
+    }
     if (typeof window === 'undefined' || typeof document === 'undefined') return
     const viewport = window.visualViewport
     if (!viewport) return
@@ -126,13 +131,15 @@ function AppRoutes(){
         delete document.body.dataset.keyboard
       }
     }
-  }, [applyKeyboardOffset])
+  }, [applyKeyboardOffset, isChatRoute])
 
   useEffect(() => {
     if (Capacitor.getPlatform() === 'web') return
 
     Keyboard.setResizeMode({ mode: KeyboardResize.None }).catch(() => {})
     Keyboard.setScroll({ isDisabled: true }).catch(() => {})
+
+    if (isChatRoute) return
 
     let showSub: PluginListenerHandle | undefined
     let hideSub: PluginListenerHandle | undefined
@@ -158,7 +165,7 @@ function AppRoutes(){
       hideSub?.remove()
       applyKeyboardOffset(0)
     }
-  }, [applyKeyboardOffset])
+  }, [applyKeyboardOffset, isChatRoute])
 
   // State for deep link join modal
   const [deepLinkJoin, setDeepLinkJoin] = useState<{ name: string; id: number } | null>(null)
@@ -610,7 +617,7 @@ function AppRoutes(){
   const mainStyle = {
     paddingTop: contentOffsetValue,
     minHeight: '100%',
-    paddingBottom: `calc(env(safe-area-inset-bottom, 0px) + ${keyboardOffset}px)`,
+    paddingBottom: isChatRoute ? '0px' : `calc(env(safe-area-inset-bottom, 0px) + ${keyboardOffset}px)`,
     '--app-header-offset': contentOffsetValue,
     '--app-header-height': headerHeightValue,
     '--app-subnav-height': '40px',
