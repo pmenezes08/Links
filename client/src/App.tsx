@@ -426,7 +426,7 @@ function AppRoutes(){
       const response = await fetch(`/api/profile_me?_t=${Date.now()}`, { 
         credentials: 'include',
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
+        headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' }
       })
       if (response.status === 401) {
         setProfileData(null)
@@ -445,9 +445,7 @@ function AppRoutes(){
         return null
       }
       if (!response.ok) {
-        setProfileData(null)
-        setProfileError('Failed to load profile')
-        return null
+        throw new Error(`Profile fetch failed: ${response.status}`)
       }
       const json = await response.json().catch(() => null)
       if (json?.success && json.profile) {
@@ -513,9 +511,7 @@ function AppRoutes(){
         return profile
       }
 
-      setProfileData(null)
-      setProfileError(json?.error || 'Failed to load profile')
-      return null
+      throw new Error(json?.error || 'Profile response invalid')
     } catch (err) {
       try {
         const cached = JSON.parse(localStorage.getItem('cached_profile') || '')
@@ -702,7 +698,7 @@ function AppRoutes(){
         {requireVerification && authLoaded && isVerified === false && (
           <VerifyOverlay onRecheck={async ()=>{
             try{
-              const r = await fetch('/api/profile_me', { credentials:'include' })
+              const r = await fetch('/api/profile_me', { credentials:'include', headers: { 'Accept': 'application/json' } })
               const j = await r.json().catch(()=>null)
               const v = !!(j?.profile?.email_verified)
               setIsVerified(v)

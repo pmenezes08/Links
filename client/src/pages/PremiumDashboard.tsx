@@ -247,14 +247,13 @@ export default function PremiumDashboard() {
     let isAdminFlag = false
     try {
       const [profileResult, gymData, adminCheck, parentData] = await Promise.all([
-        // Profile
         (async () => {
           if (!forceRefresh && contextProfile) return { success: true, profile: contextProfile }
           const profileUrl = forceRefresh ? `/api/profile_me?_nocache=${Date.now()}` : '/api/profile_me'
           const r = await fetch(profileUrl, { credentials:'include', headers: { 'Accept': 'application/json' }, cache: forceRefresh ? 'no-store' : 'default' })
           if (r.status === 403) return { _forbidden: true } as any
           return await r.json().catch(() => null)
-        })(),
+        })().catch(() => null),
         fetchJson('/api/check_gym_membership', forceRefresh),
         fetchJson('/api/check_admin', forceRefresh).catch(() => null),
         fetchJson('/api/user_parent_community', forceRefresh),
@@ -296,10 +295,11 @@ export default function PremiumDashboard() {
       isAdminFlag = !!(adminCheck?.is_admin)
       setIsAppAdmin(isAdminFlag)
 
-      const resolvedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
-      cachedCommunities = resolvedCommunities
-      setCommunities(resolvedCommunities)
-      setCommunitiesLoaded(true)
+      if (parentData?.success && Array.isArray(parentData.communities)) {
+        cachedCommunities = parentData.communities
+        setCommunities(parentData.communities)
+        setCommunitiesLoaded(true)
+      }
 
       if (profileSnapshot) {
         const payload = {
@@ -433,12 +433,13 @@ export default function PremiumDashboard() {
           setSubscription((pj.profile.subscription || 'free') as string)
         }
         // Also refresh communities snapshot
-        const parentDataResp = await fetch('/api/user_parent_community', { credentials:'include', headers: { 'Accept': 'application/json' } })
-        const parentData = await parentDataResp.json().catch(()=>null)
+        const parentDataResp = await fetch('/api/user_parent_community', { credentials:'include', headers: { 'Accept': 'application/json' } }).catch(() => null)
+        const parentData = parentDataResp ? await parentDataResp.json().catch(()=>null) : null
         if (cancelled) return
-        const fetchedCommunities = (parentData?.success && Array.isArray(parentData.communities)) ? parentData.communities : []
-        setCommunities(fetchedCommunities)
-        setCommunitiesLoaded(true)
+        if (parentData?.success && Array.isArray(parentData.communities)) {
+          setCommunities(parentData.communities)
+          setCommunitiesLoaded(true)
+        }
       }catch{}
     }
     const onFocus = () => refresh()

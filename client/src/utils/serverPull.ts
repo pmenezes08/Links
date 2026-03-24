@@ -48,7 +48,7 @@ async function fallbackNetworkFetch(urls: string[]) {
       try {
         // Add cache-busting query parameter
         const bustUrl = `${url}${url.includes('?') ? '&' : '?'}_nocache=${timestamp}`
-        await fetch(bustUrl, { credentials: 'include', cache: 'no-store' })
+        await fetch(bustUrl, { credentials: 'include', headers: { 'Accept': 'application/json' }, cache: 'no-store' })
       } catch {
         // ignore
       }
