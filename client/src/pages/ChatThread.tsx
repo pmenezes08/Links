@@ -239,7 +239,8 @@ export default function ChatThread(){
   }, [recordingPreview])
   
   // Layout helpers
-  const safeBottom = 'env(safe-area-inset-bottom, 0px)'
+  // safeBottomPx (JS-probed) used everywhere instead of CSS env() to avoid
+  // WKWebView repaint glitches on iOS warm resume
   const defaultComposerPadding = 64
   const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48 // ignore tiny viewport jitters
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60 // ignore tiny keyboard deltas on iOS app
@@ -296,7 +297,10 @@ export default function ChatThread(){
     const updateSafeBottom = () => {
       const rect = probe.getBoundingClientRect()
       const next = rect.height || 0
-      setSafeBottomPx(prev => (Math.abs(prev - next) < 1 ? prev : next))
+      setSafeBottomPx(prev => {
+        if (next < 1 && prev > 1) return prev
+        return Math.abs(prev - next) < 1 ? prev : next
+      })
     }
     updateSafeBottom()
     window.addEventListener('resize', updateSafeBottom)
@@ -332,11 +336,11 @@ export default function ChatThread(){
   const composerGapPx = 4
   const listPaddingBottom = showKeyboard
     ? `${effectiveComposerHeight + composerGapPx + keyboardLift}px`
-    : `calc(${safeBottom} + ${effectiveComposerHeight + composerGapPx}px)`
-  const listScrollPaddingBottom = `calc(${safeBottom} + ${(keyboardLift + effectiveComposerHeight + composerGapPx).toFixed(2)}px)`
+    : `${safeBottomPx + effectiveComposerHeight + composerGapPx}px`
+  const listScrollPaddingBottom = `${safeBottomPx + keyboardLift + effectiveComposerHeight + composerGapPx}px`
   const scrollButtonBottom = showKeyboard
     ? `${keyboardLift + effectiveComposerHeight + 12}px`
-    : `calc(${safeBottom} + ${(effectiveComposerHeight + composerGapPx + 12).toFixed(2)}px)`
+    : `${safeBottomPx + effectiveComposerHeight + composerGapPx + 12}px`
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!showKeyboard) {
@@ -2690,7 +2694,7 @@ export default function ChatThread(){
       ref={composerRef}
       className="fixed left-0 right-0"
       style={{
-        bottom: showKeyboard ? `${keyboardLift}px` : 0,
+        bottom: `${keyboardLift}px`,
         zIndex: 1000,
         width: '100%',
         display: 'flex',
@@ -3224,7 +3228,7 @@ export default function ChatThread(){
       {/* Safe area spacer - black area below composer */}
       <div 
         style={{
-          height: showKeyboard ? '4px' : 'env(safe-area-inset-bottom, 0px)',
+          height: showKeyboard ? '4px' : `${safeBottomPx}px`,
           background: '#000',
           flexShrink: 0,
         }}
