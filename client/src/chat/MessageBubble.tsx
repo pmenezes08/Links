@@ -120,7 +120,7 @@ function MessageBubbleInner({
               m.isOptimistic
                 ? 'bg-[#4db6ac]/40 border border-[#4db6ac]/30'
                 : `liquid-glass-bubble ${m.sent ? 'liquid-glass-bubble--sent' : 'liquid-glass-bubble--received'}`
-            } text-white px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words overflow-hidden ${
+            } text-white px-2.5 py-1.5 rounded-2xl text-[14px] leading-tight whitespace-pre-wrap break-words overflow-hidden max-w-full min-w-0 ${
               m.sent ? 'rounded-br-xl' : 'rounded-bl-xl'
             } ${m.sendFailed ? 'opacity-60' : m.isOptimistic ? 'opacity-70' : 'opacity-100'}`}
           >
@@ -224,7 +224,7 @@ function MessageBubbleInner({
             if (displayText.length > 80) displayText = displayText.slice(0, 80) + '…'
             
             return (
-              <div className="mb-2 flex items-stretch gap-0 bg-black/20 rounded-lg overflow-hidden">
+              <div className="mb-2 w-full min-w-0 flex items-stretch gap-0 bg-black/20 rounded-lg overflow-hidden">
                 {/* WhatsApp-style left accent bar */}
                 <div className={`w-1 flex-shrink-0 ${m.sent ? 'bg-white/40' : 'bg-[#4db6ac]'}`} />
                 <div className="flex-1 px-2.5 py-1.5 min-w-0 flex items-start gap-2">
