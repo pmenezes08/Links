@@ -1851,7 +1851,7 @@ export default function GroupChatThread() {
           {/* Messages List */}
           <div
             ref={listRef}
-            className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-1 sm:px-2"
+            className="flex-1 space-y-[9px] overflow-y-auto overflow-x-hidden text-white px-2.5 sm:px-3"
             style={{
               WebkitOverflowScrolling: 'touch',
               overscrollBehaviorY: 'auto',
