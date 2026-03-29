@@ -2649,6 +2649,22 @@ def add_missing_tables():
             except Exception as e:
                 logger.warning(f"Could not ensure video_path column on messages: {e}")
 
+            # Ensure messages table has media_paths column for grouped media
+            try:
+                exists = False
+                try:
+                    if USE_MYSQL:
+                        c.execute("SHOW COLUMNS FROM messages LIKE 'media_paths'")
+                        exists = c.fetchone() is not None
+                except Exception:
+                    exists = False
+                if not exists:
+                    c.execute("ALTER TABLE messages ADD COLUMN media_paths TEXT")
+                    conn.commit()
+                    logger.info("Added media_paths column to messages table")
+            except Exception as e:
+                logger.warning(f"Could not ensure media_paths column on messages: {e}")
+
             # Ensure messages table has audio columns for voice messages
             for col_name, col_type in [
                 ('audio_path', 'TEXT'),
@@ -11255,11 +11271,12 @@ def get_messages():
             
             has_audio_summary = True
             has_reactions = True
+            has_media_paths = True
             try:
                 c.execute(
                     f"""
                     SELECT id, sender, receiver, message, image_path, video_path, audio_path, audio_duration_seconds, audio_mime, 
-                           is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary, reaction, reaction_by
+                           is_encrypted, encrypted_body, encrypted_body_for_sender, timestamp, edited_at, audio_summary, reaction, reaction_by, media_paths
                     FROM messages
                     WHERE ((sender = ? AND receiver = ?)
                        OR (sender = ? AND receiver = ?)){since_clause}{deleted_at_clause}
@@ -11268,6 +11285,7 @@ def get_messages():
                     query_params,
                 )
             except Exception:
+                has_media_paths = False
                 # Fallback without reaction fields
                 has_reactions = False
                 try:
@@ -11367,6 +11385,15 @@ def get_messages():
                 else:
                     utc_time = str(raw_time) if raw_time else None
                 
+                media_paths_val = None
+                if has_media_paths:
+                    raw_mp = msg.get('media_paths') if hasattr(msg, 'get') else None
+                    if raw_mp:
+                        try:
+                            media_paths_val = json.loads(raw_mp) if isinstance(raw_mp, str) else raw_mp
+                        except (json.JSONDecodeError, TypeError):
+                            media_paths_val = None
+
                 msg_dict = {
                     'id': msg['id'],
                     'text': msg['message'],
@@ -11381,6 +11408,7 @@ def get_messages():
                     'edited_at': edited_at_val,
                     'reaction': reaction_val,
                     'reaction_by': reaction_by_val,
+                    'media_paths': media_paths_val,
                 }
                 
                 # Add encryption fields if available
@@ -12190,6 +12218,188 @@ def send_photo_message():
     except Exception as e:
         logger.error(f"Error sending photo message: {str(e)}")
         return jsonify({'success': False, 'error': 'Failed to send photo'})
+
+
+@app.route('/send_dm_media', methods=['POST'])
+@login_required
+def send_dm_media():
+    """Upload and send one or more photos/videos as a single grouped DM message."""
+    username = session.get('username')
+    recipient_id = request.form.get('recipient_id')
+
+    if not recipient_id:
+        return jsonify({'success': False, 'error': 'Recipient required'}), 400
+
+    upload_only = request.form.get('upload_only', '').lower() in ('1', 'true', 'yes')
+
+    files_to_upload = []
+    for f in request.files.getlist('media'):
+        if f and f.filename:
+            if f.mimetype and f.mimetype.startswith('video/'):
+                files_to_upload.append(('video', f))
+            else:
+                files_to_upload.append(('photo', f))
+
+    media_urls = []
+    try:
+        urls_json = request.form.get('media_urls', '')
+        if urls_json:
+            parsed = json.loads(urls_json)
+            if isinstance(parsed, list):
+                media_urls = [u for u in parsed if isinstance(u, str) and u.startswith('http')]
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    if not files_to_upload and not media_urls:
+        return jsonify({'success': False, 'error': 'No media provided'}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            c.execute(f"SELECT username FROM users WHERE id = {ph}", (recipient_id,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({'success': False, 'error': 'Recipient not found'}), 404
+            recipient_username = row['username'] if hasattr(row, 'keys') else row[0]
+
+            try:
+                c.execute(f"""
+                    SELECT 1 FROM blocked_users
+                    WHERE (blocker_username = {ph} AND blocked_username = {ph})
+                    OR (blocker_username = {ph} AND blocked_username = {ph})
+                """, (username, recipient_username, recipient_username, username))
+                if c.fetchone():
+                    return jsonify({'success': False, 'error': 'Unable to send message to this user'}), 403
+            except Exception:
+                pass
+
+            uploaded_paths = []
+            for media_type, f in files_to_upload:
+                if media_type == 'photo':
+                    allowed_ext = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+                    subfolder = 'message_photos'
+                else:
+                    allowed_ext = {'mp4', 'mov', 'm4v', 'webm', 'avi'}
+                    subfolder = 'message_videos'
+                try:
+                    stored = save_uploaded_file(f, subfolder=subfolder, allowed_extensions=allowed_ext)
+                    if stored:
+                        uploaded_paths.append(stored)
+                except Exception as ue:
+                    logger.warning(f"send_dm_media upload error: {ue}")
+
+            for url in media_urls:
+                uploaded_paths.append(url)
+
+            if not uploaded_paths:
+                return jsonify({'success': False, 'error': 'All uploads failed'}), 400
+
+            if upload_only:
+                return jsonify({'success': True, 'media_paths': uploaded_paths})
+
+            media_paths_json = json.dumps(uploaded_paths)
+            first_image = next((p for p in uploaded_paths if any(p.lower().endswith(e) for e in ('.png', '.jpg', '.jpeg', '.gif', '.webp'))), None)
+            first_video = next((p for p in uploaded_paths if any(p.lower().endswith(e) for e in ('.mp4', '.mov', '.m4v', '.webm', '.avi'))), None)
+
+            if USE_MYSQL:
+                c.execute("""
+                    INSERT INTO messages (sender, receiver, message, image_path, video_path, media_paths, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                """, (username, recipient_username, '', first_image, first_video, media_paths_json))
+            else:
+                c.execute("""
+                    INSERT INTO messages (sender, receiver, message, image_path, video_path, media_paths, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                """, (username, recipient_username, '', first_image, first_video, media_paths_json))
+
+            conn.commit()
+            inserted_id = getattr(c, 'lastrowid', None)
+            inserted_time = None
+            if inserted_id:
+                try:
+                    c.execute(f"SELECT timestamp FROM messages WHERE id = {ph}", (inserted_id,))
+                    ts_row = c.fetchone()
+                    if ts_row:
+                        inserted_time = ts_row['timestamp'] if hasattr(ts_row, 'keys') else ts_row[0]
+                except Exception:
+                    pass
+
+            try:
+                from backend.services.firestore_writes import write_dm_message
+                write_dm_message(sender=username, receiver=recipient_username, message_id=inserted_id, text='', image_path=first_image, video_path=first_video, media_paths=uploaded_paths)
+            except Exception:
+                pass
+
+            invalidate_message_cache(username, recipient_username)
+
+            try:
+                c.execute(f"""
+                    INSERT INTO notifications (user_id, from_user, type, message, created_at, is_read)
+                    VALUES ({ph}, {ph}, 'message', {ph}, NOW(), 0)
+                    ON DUPLICATE KEY UPDATE
+                        created_at = NOW(),
+                        message = VALUES(message),
+                        is_read = 0
+                """, (recipient_username, username, f"You have new messages from {username}"))
+                conn.commit()
+            except Exception:
+                pass
+
+            try:
+                should_push = True
+                try:
+                    with get_db_connection() as conn2:
+                        c2 = conn2.cursor()
+                        if USE_MYSQL:
+                            c2.execute(f"""
+                                SELECT 1 FROM active_chat_status
+                                WHERE user={ph} AND peer={ph} AND updated_at > DATE_SUB(NOW(), INTERVAL 20 SECOND)
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        else:
+                            c2.execute(f"""
+                                SELECT 1 FROM active_chat_status
+                                WHERE user={ph} AND peer={ph} AND datetime(updated_at) > datetime('now','-20 seconds')
+                                LIMIT 1
+                            """, (recipient_username, username))
+                        if c2.fetchone():
+                            should_push = False
+                except Exception:
+                    pass
+                if should_push:
+                    try:
+                        with get_db_connection() as conn3:
+                            c3 = conn3.cursor()
+                            c3.execute(f"SELECT 1 FROM user_muted_chats WHERE username={ph} AND chat_key={ph}", (recipient_username, f"dm:{username}"))
+                            if c3.fetchone():
+                                should_push = False
+                    except Exception:
+                        pass
+                if should_push:
+                    count = len(uploaded_paths)
+                    label = f'{count} media files' if count > 1 else ('a photo' if first_image else 'a video')
+                    send_push_to_user(recipient_username, {
+                        'title': f'Media from {username}',
+                        'body': f'{username} sent you {label}',
+                        'url': f'/user_chat/chat/{username}',
+                        'tag': f'message-{username}-{inserted_id}',
+                    })
+            except Exception:
+                pass
+
+            return jsonify({
+                'success': True,
+                'id': inserted_id,
+                'media_paths': uploaded_paths,
+                'time': inserted_time,
+            })
+
+    except Exception as e:
+        logger.error(f"Error in send_dm_media: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to send media'}), 500
+
 
 # Message videos served via /uploads/message_videos mapping
 

@@ -62,6 +62,8 @@ export interface MessageBubbleProps {
   onCancelEdit: () => void
   /** Handler for image preview */
   onImageClick: (imagePath: string) => void
+  /** Handler for grouped media preview */
+  onMediaGroupClick?: (urls: string[], index: number) => void
   /** Handler for editing AI summary */
   onEditSummary?: (messageId: number | string, currentSummary: string) => void
   /** Handler for translating AI summary */
@@ -94,6 +96,7 @@ function MessageBubbleInner({
   onCommitEdit,
   onCancelEdit,
   onImageClick,
+  onMediaGroupClick,
   onEditSummary,
   onTranslateSummary,
   translatedSummaries,
@@ -315,27 +318,77 @@ function MessageBubbleInner({
             </>
           ) : null}
 
-          {/* Image display */}
-          {m.image_path ? (
-            <div className="mb-1.5">
-              <MessageImage
-                src={normalizeMediaPath(m.image_path)}
-                alt="Shared photo"
-                className="max-w-full max-h-64 cursor-pointer"
-                onClick={() => onImageClick(normalizeMediaPath(m.image_path!))}
-              />
+          {/* Grouped media display */}
+          {m.media_paths && m.media_paths.length > 0 ? (
+            <div className="mb-1.5 max-w-[280px]">
+              <div
+                className="relative cursor-pointer"
+                onClick={() => {
+                  const urls = m.media_paths!.map(normalizeMediaPath)
+                  if (onMediaGroupClick) {
+                    onMediaGroupClick(urls, 0)
+                  } else {
+                    onImageClick(urls[0])
+                  }
+                }}
+              >
+                {m.media_paths[0].match(/\.(mp4|mov|webm|m4v)$/i) ? (
+                  <div className="relative">
+                    <video
+                      src={normalizeMediaPath(m.media_paths[0]) + '#t=0.1'}
+                      className="w-full rounded-lg"
+                      style={{ border: '0.5px solid rgba(77, 182, 172, 0.4)' }}
+                      muted
+                      preload="metadata"
+                      playsInline
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-12 h-12 rounded-full bg-black/50 flex items-center justify-center">
+                        <i className="fa-solid fa-play text-white text-lg ml-0.5" />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <MessageImage
+                    src={normalizeMediaPath(m.media_paths[0])}
+                    alt="Media"
+                    className="w-full rounded-lg"
+                  />
+                )}
+                {m.media_paths.length > 1 && (
+                  <div className="absolute inset-0 bg-black/30 rounded-lg flex items-center justify-center">
+                    <span className="text-white text-2xl font-semibold">
+                      +{m.media_paths.length - 1}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
-          ) : null}
+          ) : (
+            <>
+              {/* Image display */}
+              {m.image_path ? (
+                <div className="mb-1.5">
+                  <MessageImage
+                    src={normalizeMediaPath(m.image_path)}
+                    alt="Shared photo"
+                    className="max-w-full max-h-64 cursor-pointer"
+                    onClick={() => onImageClick(normalizeMediaPath(m.image_path!))}
+                  />
+                </div>
+              ) : null}
 
-          {/* Video display */}
-          {m.video_path ? (
-            <div className="mb-1.5" onClick={(e) => e.stopPropagation()}>
-              <MessageVideo
-                src={normalizeMediaPath(m.video_path)}
-                className="max-h-64"
-              />
-            </div>
-          ) : null}
+              {/* Video display */}
+              {m.video_path ? (
+                <div className="mb-1.5" onClick={(e) => e.stopPropagation()}>
+                  <MessageVideo
+                    src={normalizeMediaPath(m.video_path)}
+                    className="max-h-64"
+                  />
+                </div>
+              ) : null}
+            </>
+          )}
 
           {/* Encryption indicator */}
           {Boolean(m.is_encrypted) && !m.decryption_error && (

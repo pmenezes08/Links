@@ -23,7 +23,7 @@ import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
 import { gifSelectionToFile } from '../utils/gif'
 import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
-import { sendImageMessage, sendVideoMessage, type UploadProgress } from '../chat/mediaSenders'
+import { sendImageMessage, sendVideoMessage, sendMultiMediaMessage, type UploadProgress } from '../chat/mediaSenders'
 import type { ChatMessage } from '../types/chat'
 import { isInternalLink, isLandingPageLink, extractInviteToken, extractInternalPath, joinCommunityWithInvite } from '../utils/internalLinkHandler'
 
@@ -163,6 +163,9 @@ export default function ChatThread(){
   const lastFetchTime = useRef<number>(0)
   const [pastedImage, setPastedImage] = useState<File | null>(null)
   const [videoUploadProgress, setVideoUploadProgress] = useState<UploadProgress | null>(null)
+  const [pendingMedia, setPendingMedia] = useState<Array<{ file: File; previewUrl: string; type: 'image' | 'video' }>>([])
+  const [previewIndex, setPreviewIndex] = useState(0)
+  const [viewingMedia, setViewingMedia] = useState<{ urls: string[]; index: number } | null>(null)
   const pendingDeletions = useRef<Set<number|string>>(new Set())
   const headerMenuRef = useRef<HTMLDivElement | null>(null)
   // Bridge between temp ids and server ids to avoid flicker and keep stable keys
@@ -1389,15 +1392,18 @@ export default function ChatThread(){
       }
     }
     
-    // PERFORMANCE: Faster initial poll (200ms vs 500ms) for quicker first load
-    setTimeout(poll, 200)
+    poll()
     
-    // PERFORMANCE: Faster polling interval (1500ms vs 2500ms) for snappier message delivery
-    // This makes receiving messages feel more real-time
     pollTimer.current = setInterval(poll, 1500)
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') poll()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
     
     return () => { 
-      if (pollTimer.current) clearInterval(pollTimer.current) 
+      if (pollTimer.current) clearInterval(pollTimer.current)
+      document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [username, otherUserId])
 
@@ -1670,24 +1676,102 @@ export default function ChatThread(){
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const files = event.target.files
     if (!files || files.length === 0) return
-    const cleanup = () => {
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      if (cameraInputRef.current) cameraInputRef.current.value = ''
-    }
-    Array.from(files).forEach((file, i) => {
-      setTimeout(() => handleImageFile(file, 'photo', i === 0 ? cleanup : undefined), i * 200)
+    const newMedia: Array<{ file: File; previewUrl: string; type: 'image' | 'video' }> = []
+    Array.from(files).forEach(file => {
+      if (file.type.startsWith('image/')) {
+        newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'image' })
+      } else if (file.type.startsWith('video/')) {
+        newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: 'video' })
+      }
     })
+    if (newMedia.length > 0) {
+      setPendingMedia(prev => [...prev, ...newMedia])
+      setPreviewIndex(0)
+    }
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
 
   function handleVideoFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const files = event.target.files
     if (!files || files.length === 0) return
-    const cleanup = () => {
-      if (videoInputRef.current) videoInputRef.current.value = ''
-    }
-    Array.from(files).forEach((file, i) => {
-      setTimeout(() => handleVideoFile(file, i === 0 ? cleanup : undefined), i * 200)
+    const newMedia: Array<{ file: File; previewUrl: string; type: 'image' | 'video' }> = []
+    Array.from(files).forEach(file => {
+      if (file.type.startsWith('video/') || file.type.startsWith('image/')) {
+        newMedia.push({ file, previewUrl: URL.createObjectURL(file), type: file.type.startsWith('video/') ? 'video' : 'image' })
+      }
     })
+    if (newMedia.length > 0) {
+      setPendingMedia(prev => [...prev, ...newMedia])
+      setPreviewIndex(0)
+    }
+    if (videoInputRef.current) videoInputRef.current.value = ''
+  }
+
+  function removeMediaFromPreview(index: number) {
+    setPendingMedia(prev => {
+      const item = prev[index]
+      if (item?.previewUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(item.previewUrl) } catch {}
+      }
+      const newMedia = prev.filter((_, i) => i !== index)
+      if (previewIndex >= newMedia.length && newMedia.length > 0) {
+        setPreviewIndex(newMedia.length - 1)
+      }
+      return newMedia
+    })
+  }
+
+  async function confirmSendMedia() {
+    if (pendingMedia.length === 0 || !otherUserId) return
+    const mediaToSend = [...pendingMedia]
+    setPendingMedia([])
+    setPreviewIndex(0)
+
+    if (mediaToSend.length === 1) {
+      const item = mediaToSend[0]
+      if (item.type === 'image') {
+        handleImageFile(item.file, 'photo')
+      } else {
+        handleVideoFile(item.file)
+      }
+      if (item.previewUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(item.previewUrl) } catch {}
+      }
+      return
+    }
+
+    await sendMultiMediaMessage({
+      files: mediaToSend.map(item => ({ file: item.file, type: item.type })),
+      otherUserId,
+      username,
+      setMessages,
+      scrollToBottom,
+      recentOptimisticRef,
+      idBridgeRef,
+      setSending,
+      onProgress: (progress) => {
+        setVideoUploadProgress(progress)
+        if (progress.stage === 'done' || progress.stage === 'error') {
+          setTimeout(() => setVideoUploadProgress(null), 2000)
+        }
+      },
+    })
+    mediaToSend.forEach(item => {
+      if (item.previewUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(item.previewUrl) } catch {}
+      }
+    })
+  }
+
+  function cancelMediaPreview() {
+    pendingMedia.forEach(item => {
+      if (item.previewUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(item.previewUrl) } catch {}
+      }
+    })
+    setPendingMedia([])
+    setPreviewIndex(0)
   }
 
   async function handleGifSelection(gif: GifSelection) {
@@ -2540,6 +2624,7 @@ export default function ChatThread(){
                     setEditText('')
                   }}
                   onImageClick={(imagePath) => setPreviewImage(imagePath)}
+                  onMediaGroupClick={(urls, index) => setViewingMedia({ urls, index })}
                   onEditSummary={(msgId, currentSummary) => {
                     setEditingSummaryId(msgId)
                     setEditSummaryText(currentSummary)
@@ -2691,10 +2776,12 @@ export default function ChatThread(){
       {/* Composer card - sits above the safe area */}
       <div
         ref={composerCardRef}
-        className="relative max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3"
+        className="relative w-full rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3"
         style={{
           background: '#0a0a0c',
           marginBottom: 0,
+          paddingLeft: 'max(10px, env(safe-area-inset-left, 0px))',
+          paddingRight: 'max(10px, env(safe-area-inset-right, 0px))',
         }}
       >
           {/* Attachment menu - positioned above the entire composer */}
@@ -3611,6 +3698,197 @@ export default function ChatThread(){
                 {blockSubmitting ? 'Blocking...' : 'Block User'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grouped media viewer */}
+      {viewingMedia && (
+        <div
+          className="fixed inset-0 bg-black z-[9999] flex flex-col"
+          onClick={() => setViewingMedia(null)}
+        >
+          <div
+            className="flex items-center justify-between px-4 py-3 bg-black/80"
+            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+          >
+            <button onClick={() => setViewingMedia(null)} className="text-white p-2 -ml-2">
+              <i className="fa-solid fa-arrow-left text-lg" />
+            </button>
+            <span className="text-white font-medium">
+              {viewingMedia.urls.length > 1 ? `${viewingMedia.index + 1} of ${viewingMedia.urls.length}` : 'Media'}
+            </span>
+            <div className="w-10" />
+          </div>
+          <div
+            className="flex-1 flex items-center justify-center overflow-hidden relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {viewingMedia.urls.length > 1 && viewingMedia.index > 0 && (
+              <button
+                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
+                onClick={() => setViewingMedia(prev => prev ? { ...prev, index: prev.index - 1 } : null)}
+              >
+                <i className="fa-solid fa-chevron-left" />
+              </button>
+            )}
+            <div className="w-full h-full flex items-center justify-center" style={{ maxHeight: 'calc(100vh - 10rem)' }}>
+              {viewingMedia.urls[viewingMedia.index]?.match(/\.(mp4|mov|webm|m4v)($|\?)/i) ? (
+                <video
+                  src={viewingMedia.urls[viewingMedia.index]}
+                  controls
+                  playsInline
+                  autoPlay
+                  className="max-w-full max-h-full object-contain"
+                />
+              ) : (
+                <ZoomableImage
+                  src={viewingMedia.urls[viewingMedia.index]}
+                  alt="Media"
+                  className="w-full h-full"
+                  onRequestClose={() => setViewingMedia(null)}
+                />
+              )}
+            </div>
+            {viewingMedia.urls.length > 1 && viewingMedia.index < viewingMedia.urls.length - 1 && (
+              <button
+                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
+                onClick={() => setViewingMedia(prev => prev ? { ...prev, index: prev.index + 1 } : null)}
+              >
+                <i className="fa-solid fa-chevron-right" />
+              </button>
+            )}
+          </div>
+          {viewingMedia.urls.length > 1 && (
+            <div className="flex justify-center gap-2 px-4 py-3 bg-black/80 overflow-x-auto"
+              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+            >
+              {viewingMedia.urls.map((url, i) => (
+                <button
+                  key={i}
+                  onClick={(e) => { e.stopPropagation(); setViewingMedia(prev => prev ? { ...prev, index: i } : null) }}
+                  className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${
+                    i === viewingMedia.index ? 'border-[#4db6ac]' : 'border-transparent opacity-60'
+                  }`}
+                >
+                  {url.match(/\.(mp4|mov|webm|m4v)($|\?)/i) ? (
+                    <div className="w-full h-full bg-black/50 flex items-center justify-center">
+                      <i className="fa-solid fa-video text-white/60 text-xs" />
+                    </div>
+                  ) : (
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Multi-media preview modal */}
+      {pendingMedia.length > 0 && (
+        <div
+          className="fixed inset-0 bg-black z-[9999] flex flex-col"
+          onClick={cancelMediaPreview}
+        >
+          <div
+            className="flex items-center justify-between px-4 py-3 bg-black/80"
+            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}
+          >
+            <button onClick={cancelMediaPreview} className="text-white p-2 -ml-2">
+              <i className="fa-solid fa-xmark text-xl" />
+            </button>
+            <span className="text-white font-medium">
+              {pendingMedia.length > 1 ? `${previewIndex + 1} of ${pendingMedia.length}` : 'Preview'}
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); removeMediaFromPreview(previewIndex) }}
+              className="text-white/60 p-2 -mr-2 hover:text-white"
+            >
+              <i className="fa-solid fa-trash text-sm" />
+            </button>
+          </div>
+
+          <div
+            className="flex-1 flex items-center justify-center overflow-hidden relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {pendingMedia.length > 1 && previewIndex > 0 && (
+              <button
+                className="absolute left-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
+                onClick={() => setPreviewIndex(i => i - 1)}
+              >
+                <i className="fa-solid fa-chevron-left" />
+              </button>
+            )}
+
+            <div className="w-full h-full flex items-center justify-center" style={{ maxHeight: 'calc(100vh - 10rem)' }}>
+              {pendingMedia[previewIndex]?.type === 'video' ? (
+                <video
+                  src={pendingMedia[previewIndex]?.previewUrl}
+                  controls
+                  playsInline
+                  className="max-w-full max-h-full object-contain"
+                />
+              ) : (
+                <ZoomableImage
+                  src={pendingMedia[previewIndex]?.previewUrl || ''}
+                  alt="Preview"
+                  className="w-full h-full"
+                  onRequestClose={cancelMediaPreview}
+                />
+              )}
+            </div>
+
+            {pendingMedia.length > 1 && previewIndex < pendingMedia.length - 1 && (
+              <button
+                className="absolute right-2 z-10 w-10 h-10 rounded-full bg-black/50 flex items-center justify-center text-white hover:bg-black/70"
+                onClick={() => setPreviewIndex(i => i + 1)}
+              >
+                <i className="fa-solid fa-chevron-right" />
+              </button>
+            )}
+          </div>
+
+          {pendingMedia.length > 1 && (
+            <div className="flex justify-center gap-2 px-4 py-2 bg-black/80 overflow-x-auto">
+              {pendingMedia.map((item, i) => (
+                <button
+                  key={i}
+                  onClick={(e) => { e.stopPropagation(); setPreviewIndex(i) }}
+                  className={`w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border-2 transition ${
+                    i === previewIndex ? 'border-[#4db6ac]' : 'border-transparent opacity-60'
+                  }`}
+                >
+                  {item.type === 'video' ? (
+                    <div className="w-full h-full bg-black/50 flex items-center justify-center">
+                      <i className="fa-solid fa-video text-white/60 text-xs" />
+                    </div>
+                  ) : (
+                    <img src={item.previewUrl} alt="" className="w-full h-full object-cover" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div
+            className="flex items-center justify-center gap-4 px-4 py-4 bg-black/80"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); cancelMediaPreview() }}
+              className="px-6 py-3 bg-white/10 text-white rounded-full font-medium hover:bg-white/20 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); confirmSendMedia() }}
+              className="px-8 py-3 bg-[#4db6ac] text-black rounded-full font-medium hover:bg-[#45a89c] transition flex items-center gap-2"
+            >
+              <i className="fa-solid fa-paper-plane" />
+              Send {pendingMedia.length > 1 ? `(${pendingMedia.length})` : ''}
+            </button>
           </div>
         </div>
       )}

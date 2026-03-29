@@ -1129,6 +1129,8 @@ def send_group_media(group_id: int):
     except (json.JSONDecodeError, TypeError):
         media_urls = []
     
+    upload_only = request.form.get('upload_only', '').lower() in ('1', 'true', 'yes')
+
     if not files_to_upload and not media_urls:
         return jsonify({"success": False, "error": "No photo or video provided"}), 400
     
@@ -1186,6 +1188,9 @@ def send_group_media(group_id: int):
                 error_detail = "; ".join(upload_errors) if upload_errors else "No files could be saved"
                 logger.error(f"All uploads failed for group {group_id}: {error_detail}")
                 return jsonify({"success": False, "error": f"Failed to upload files: {error_detail}"}), 400
+
+            if upload_only:
+                return jsonify({"success": True, "media_paths": uploaded_paths})
             
             # Insert message with grouped media
             now = datetime.now().isoformat()

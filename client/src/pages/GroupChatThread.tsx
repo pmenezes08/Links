@@ -630,17 +630,24 @@ export default function GroupChatThread() {
     loadMessages()
     if (navigator.onLine) updatePresence()
 
-    // Poll messages and update presence (skip when offline)
     pollingRef.current = setInterval(() => {
       if (!navigator.onLine) return
       loadMessages(true)
       updatePresence()
     }, 3000)
 
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        loadMessages(true)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
     return () => {
       if (pollingRef.current) {
         clearInterval(pollingRef.current)
       }
+      document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [loadGroup, loadMessages, updatePresence])
 
@@ -2286,8 +2293,12 @@ export default function GroupChatThread() {
         {/* Selection action bar - shown when in selection mode */}
         {selectionMode ? (
           <div
-            className="max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-4 py-3 flex items-center justify-between gap-3"
-            style={{ background: '#0a0a0c' }}
+            className="w-full rounded-[16px] px-4 py-3 flex items-center justify-between gap-3"
+            style={{
+              background: '#0a0a0c',
+              paddingLeft: 'max(10px, env(safe-area-inset-left, 0px))',
+              paddingRight: 'max(10px, env(safe-area-inset-right, 0px))',
+            }}
           >
             <button
               onClick={exitSelectionMode}
@@ -2312,9 +2323,11 @@ export default function GroupChatThread() {
         /* Composer card */
         <div
           ref={composerCardRef}
-          className="relative max-w-3xl w-[calc(100%-24px)] mx-auto rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3"
+          className="relative w-full rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3"
           style={{
             background: '#0a0a0c',
+            paddingLeft: 'max(10px, env(safe-area-inset-left, 0px))',
+            paddingRight: 'max(10px, env(safe-area-inset-right, 0px))',
             marginBottom: 0,
           }}
         >

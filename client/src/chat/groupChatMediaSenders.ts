@@ -334,47 +334,81 @@ export async function sendGroupMultiMedia(options: MultiMediaOptions): Promise<b
       preUploadedUrls.push(urlData.public_url)
     }
     
-    // Step 2: Send remaining files + pre-uploaded URLs to backend
-    onProgress?.({ stage: 'uploading', progress: 50, message: 'Sending...' })
-    
-    const formData = new FormData()
-    formUploadFiles.forEach((item, index) => {
-      console.log(`[GroupMedia] Adding file ${index}: ${item.file.name}, type: ${item.type}, size: ${item.file.size}`)
-      formData.append('media', item.file)
-    })
-    
-    if (preUploadedUrls.length > 0) {
-      formData.append('media_urls', JSON.stringify(preUploadedUrls))
+    // Step 2: Upload form-uploadable files in sequential batches (max 3 files / ~15MB per batch)
+    const MAX_BATCH_FILES = 3
+    const MAX_BATCH_BYTES = 15 * 1024 * 1024
+    const allUploadedUrls: string[] = [...preUploadedUrls]
+
+    const batches: Array<Array<{ file: File; type: 'image' | 'video' }>> = []
+    let currentBatch: Array<{ file: File; type: 'image' | 'video' }> = []
+    let currentBatchSize = 0
+
+    for (const item of formUploadFiles) {
+      if (currentBatch.length >= MAX_BATCH_FILES || (currentBatch.length > 0 && currentBatchSize + item.file.size > MAX_BATCH_BYTES)) {
+        batches.push(currentBatch)
+        currentBatch = []
+        currentBatchSize = 0
+      }
+      currentBatch.push(item)
+      currentBatchSize += item.file.size
     }
-    
-    console.log('[GroupMedia] Sending', formUploadFiles.length, 'files +', preUploadedUrls.length, 'pre-uploaded URLs to group', groupId)
-    
-    const response = await fetch(`/api/group_chat/${groupId}/send_media`, {
-      method: 'POST',
-      credentials: 'include',
-      body: formData,
-    })
-    
-    const payload = await response.json().catch(() => null)
-    console.log('[GroupMedia] Multi-media response:', payload)
-    
-    if (!payload?.success) {
-      throw new Error(payload?.error || 'Failed to send media')
+    if (currentBatch.length > 0) batches.push(currentBatch)
+
+    const progressBase = 50
+    const progressRange = 45
+    for (let bi = 0; bi < batches.length; bi++) {
+      const batch = batches[bi]
+      const isLastBatch = bi === batches.length - 1
+      const batchProgress = progressBase + (bi / Math.max(batches.length, 1)) * progressRange
+      onProgress?.({ stage: 'uploading', progress: batchProgress, message: `Uploading batch ${bi + 1}/${batches.length}...` })
+
+      const fd = new FormData()
+      for (const item of batch) {
+        fd.append('media', item.file)
+      }
+
+      if (isLastBatch && allUploadedUrls.length > 0) {
+        fd.append('media_urls', JSON.stringify(allUploadedUrls))
+      }
+      if (!isLastBatch) {
+        fd.append('upload_only', '1')
+      }
+
+      console.log(`[GroupMedia] Batch ${bi + 1}/${batches.length}: ${batch.length} files${isLastBatch && allUploadedUrls.length > 0 ? ` + ${allUploadedUrls.length} pre-uploaded URLs` : ''}${!isLastBatch ? ' (upload_only)' : ''}`)
+
+      const res = await fetch(`/api/group_chat/${groupId}/send_media`, {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      })
+
+      const batchPayload = await res.json().catch(() => null)
+      if (!batchPayload?.success) {
+        throw new Error(batchPayload?.error || `Batch ${bi + 1} failed`)
+      }
+
+      if (!isLastBatch) {
+        const batchUrls: string[] = batchPayload.media_paths || []
+        allUploadedUrls.push(...batchUrls)
+      }
     }
-    
+
+    if (batches.length === 0 && allUploadedUrls.length > 0) {
+      const fd = new FormData()
+      fd.append('media_urls', JSON.stringify(allUploadedUrls))
+      const res = await fetch(`/api/group_chat/${groupId}/send_media`, {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      })
+      const payload = await res.json().catch(() => null)
+      if (!payload?.success) throw new Error(payload?.error || 'Failed to send media')
+    }
+
     onProgress?.({ stage: 'done', progress: 100, message: 'Sent!' })
 
-    // Replace optimistic in-place if server returned the message
-    if (payload.message) {
-      setServerMessages(prev => prev.map(m =>
-        (m as any).clientKey === tempId
-          ? { ...payload.message, clientKey: tempId, isOptimistic: false }
-          : m
-      ))
-    } else {
-      // No message returned — remove optimistic, poll will pick it up
-      setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
-    }
+    // Remove optimistic message — polling will pick up the real one
+    setServerMessages(prev => prev.filter(m => (m as any).clientKey !== tempId))
     
     loadMessages(true)
     setTimeout(() => loadMessages(true), 2000)

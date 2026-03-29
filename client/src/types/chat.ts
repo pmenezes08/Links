@@ -3,6 +3,7 @@ export interface ChatMessage {
   text: string
   image_path?: string
   video_path?: string
+  media_paths?: string[]
   audio_path?: string
   audio_duration_seconds?: number
   audio_summary?: string | null
