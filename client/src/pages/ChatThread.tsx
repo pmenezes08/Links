@@ -49,7 +49,7 @@ type Message = ChatMessage
 
 export default function ChatThread(){
   const { setTitle } = useHeader()
-  const { refreshBadges, adjustBadges } = useBadges()
+  const { refreshBadges } = useBadges()
   const { username } = useParams()
   const navigate = useNavigate()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
