@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Capacitor } from '@capacitor/core'
-import { PushNotifications } from '@capacitor/push-notifications'
 import { useHeader } from '../contexts/HeaderContext'
+import { useBadges } from '../contexts/BadgeContext'
 
 type Notif = {
   id: number
@@ -94,6 +93,7 @@ function timeAgo(ts?: string){
 
 export default function Notifications(){
   const { setTitle } = useHeader()
+  const { refreshBadges } = useBadges()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabType>('notifications')
   const [items, setItems] = useState<Notif[]|null>(null)
@@ -138,8 +138,7 @@ export default function Notifications(){
 
   useEffect(() => { 
     load()
-    // Clear badge when viewing notifications page
-    clearIOSNotifications()
+    refreshBadges()
   }, [])
   
   // Load events, polls, tasks when switching tabs
@@ -198,32 +197,9 @@ export default function Notifications(){
     }
   }
 
-  // Clear iOS notification center and badge
-  async function clearIOSNotifications() {
-    if (Capacitor.isNativePlatform()) {
-      try {
-        // Remove all delivered notifications from iOS Notification Center
-        await PushNotifications.removeAllDeliveredNotifications()
-        console.log('✅ Cleared iOS notification center')
-      } catch (e) {
-        console.warn('Could not clear iOS notifications:', e)
-      }
-    }
-    // Tell server to reset badge count via silent push
-    try {
-      console.log('📛 Calling /api/notifications/clear-badge...')
-      const resp = await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
-      const result = await resp.json()
-      console.log('📛 Clear badge response:', result)
-    } catch (e) {
-      console.warn('Could not clear badge via server:', e)
-    }
-  }
-
   async function markAll(){
     await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
-    // Clear iOS notification center when marking all as read
-    await clearIOSNotifications()
+    refreshBadges()
     load()
   }
 

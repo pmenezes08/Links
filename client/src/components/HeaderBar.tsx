@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import Avatar from './Avatar'
 import { handleLogoutClick } from '../utils/logout'
+import { useBadges } from '../contexts/BadgeContext'
 
 type HeaderBarProps = {
   title: string
@@ -14,51 +15,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
   const navigate = useNavigate()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
-  const [unreadMsgs, setUnreadMsgs] = useState<number>(0)
-  const [unreadNotifs, setUnreadNotifs] = useState<number>(0)
-  
-  // PWA install state handled on login page now
-
-  // Light polling for unread counts
-  // Using window.setInterval to avoid importing useEffect here per minimal diff constraints
-  if (typeof window !== 'undefined' && !(window as any).__header_poll){
-    ;(window as any).__header_poll = true
-    const poll = async () => {
-      let msgs = 0
-      let notifs = 0
-      try{
-        // Unread messages
-        const m = await fetch('/check_unread_messages', { credentials:'include' })
-        const mj = await m.json().catch(()=>null)
-        if (mj && typeof mj.unread_count === 'number') { msgs = mj.unread_count; setUnreadMsgs(mj.unread_count) }
-      }catch{}
-      try{
-        // Unread notifications (exclude message-type and reaction-type)
-        const n = await fetch('/api/notifications', { credentials:'include', headers: { 'Accept': 'application/json' } })
-        const nj = await n.json().catch(()=>null)
-        if (nj?.success && Array.isArray(nj.notifications)){
-          const cnt = nj.notifications.filter((x:any)=> x && x.is_read === false && x.type !== 'message' && x.type !== 'reaction').length
-          notifs = cnt
-          setUnreadNotifs(cnt)
-        }
-      }catch{}
-      // Update app icon badge where supported (Android/desktop). iOS currently does not support Badging API for PWAs.
-      try{
-        const total = msgs + notifs
-        const navAny: any = navigator as any
-        if (total > 0){
-          if (typeof navAny.setAppBadge === 'function') navAny.setAppBadge(total)
-          else if (typeof navAny.setExperimentalAppBadge === 'function') navAny.setExperimentalAppBadge(total)
-        }else{
-          if (typeof navAny.clearAppBadge === 'function') navAny.clearAppBadge()
-          else if (typeof navAny.setExperimentalAppBadge === 'function') navAny.setExperimentalAppBadge(0)
-        }
-      }catch{}
-    }
-    ;(window as any).__header_do_poll = poll
-    poll()
-    setInterval(poll, 5000)
-  }
+  const { unreadMsgs, unreadNotifs } = useBadges()
 
   // PWA install prompt wiring
   // PWA install hooks removed here

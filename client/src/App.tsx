@@ -16,6 +16,7 @@ import { UserProfileContext, type UserProfile } from './contexts/UserProfileCont
 import PushInit from './components/PushInit'
 import NotificationPrompt from './components/NotificationPrompt'
 import { NetworkProvider } from './contexts/NetworkContext'
+import { BadgeProvider } from './contexts/BadgeContext'
 import OfflineBanner from './components/OfflineBanner'
 import OutboxDrainer from './components/OutboxDrainer'
 // import NativePushInit from './components/NativePushInit' // Disabled - conflicts with PushInit
@@ -625,7 +626,7 @@ function AppRoutes(){
 
   return (
     <UserProfileContext.Provider value={userProfileValue}>
-      {/* <NativePushInit /> */}
+      <BadgeProvider>
       <HeaderContext.Provider value={{ setTitle }}>
         {showHeader && (
           <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
@@ -724,6 +725,7 @@ function AppRoutes(){
           </div>
         )}
       </HeaderContext.Provider>
+      </BadgeProvider>
     </UserProfileContext.Provider>
   )
 }

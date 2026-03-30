@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
+import { useBadges } from '../contexts/BadgeContext'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Capacitor } from '@capacitor/core'
-import { PushNotifications } from '@capacitor/push-notifications'
 import Avatar from '../components/Avatar'
 import ParentCommunityPicker from '../components/ParentCommunityPicker'
 import GroupChatCreator from '../components/GroupChatCreator'
@@ -56,6 +55,7 @@ function formatLastMessagePreview(text: string | null): string {
 
 export default function Messages(){
   const { setTitle } = useHeader()
+  const { refreshBadges } = useBadges()
   const navigate = useNavigate()
   const location = useLocation()
   useEffect(() => {
@@ -281,32 +281,13 @@ export default function Messages(){
     // Also load archived chats count on mount
     loadArchivedThreads()
     
-    // Sync badge when viewing messages list (ensures badge reflects actual unread count)
-    const syncBadge = async () => {
-      if (Capacitor.isNativePlatform()) {
-        try {
-          await PushNotifications.removeAllDeliveredNotifications()
-          console.log('✅ Cleared iOS notifications on messages page')
-        } catch (e) {
-          console.warn('Could not clear iOS notifications:', e)
-        }
-      }
-      // Sync badge with server
-      try {
-        const resp = await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
-        const result = await resp.json()
-        console.log('📛 Badge sync on messages page:', result)
-      } catch (e) {
-        console.warn('Badge sync failed:', e)
-      }
-    }
-    syncBadge()
+    refreshBadges()
     
     const onVis = () => {
       if (!document.hidden) {
         loadThreads(true)
         loadGroupChats(true)
-        syncBadge() // Also sync badge when returning to app
+        refreshBadges()
       }
     }
     document.addEventListener('visibilitychange', onVis)
@@ -971,12 +952,7 @@ export default function Messages(){
                                     setThreads(jj.threads)
                                   }
                                 }).catch(()=>{})
-                              try{
-                                const pollFn = (window as any).__header_do_poll
-                                if (typeof pollFn === 'function') {
-                                  pollFn()
-                                }
-                              }catch{}
+                              refreshBadges()
                             }
                           }).catch(()=>{})
                       }}
@@ -991,12 +967,7 @@ export default function Messages(){
                   <button
                     onClick={() => {
                       setThreads(prev => prev.map(x => x.other_username===t.other_username ? { ...x, unread_count: 0 } : x))
-                      try{
-                        const pollFn = (window as any).__header_do_poll
-                        if (typeof pollFn === 'function') {
-                          pollFn()
-                        }
-                      }catch{}
+                      refreshBadges()
                       navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}`)
                     }}
                     onTouchStart={(e) => {

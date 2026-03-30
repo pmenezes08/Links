@@ -16,6 +16,7 @@ import { PushNotifications } from '@capacitor/push-notifications'
 import { useAudioRecorder } from '../components/useAudioRecorder'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
+import { useBadges } from '../contexts/BadgeContext'
 import Avatar from '../components/Avatar'
 import ZoomableImage from '../components/ZoomableImage'
 // Encryption removed — not in use
@@ -49,6 +50,7 @@ type Message = ChatMessage
 
 export default function ChatThread(){
   const { setTitle } = useHeader()
+  const { refreshBadges } = useBadges()
   const { username } = useParams()
   const navigate = useNavigate()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
@@ -735,32 +737,9 @@ export default function ChatThread(){
           // Clear the chat threads cache so Messages list shows updated unread counts
           clearDeviceCache('chat-threads-list')
           
-          // Clear iOS badge after reading messages (server already marked them as read)
-          // Do this aggressively - multiple calls to ensure badge clears quickly
-          const clearBadge = async () => {
-            if (Capacitor.isNativePlatform()) {
-              try {
-                await PushNotifications.removeAllDeliveredNotifications()
-                console.log('✅ Cleared iOS notifications after opening chat')
-              } catch (e) {
-                console.warn('Could not clear iOS notifications:', e)
-              }
-            }
-            // Sync badge count with server (this sends silent push to update badge)
-            try {
-              const resp = await fetch('/api/notifications/clear-badge', { method: 'POST', credentials: 'include' })
-              const result = await resp.json()
-              console.log('📛 Badge sync result:', result)
-            } catch (e) {
-              console.warn('Badge sync failed:', e)
-            }
-          }
-          
-          // Clear immediately
-          clearBadge()
-          // And again after a short delay (in case of race condition)
-          setTimeout(clearBadge, 500)
-          setTimeout(clearBadge, 2000)
+          refreshBadges()
+          setTimeout(refreshBadges, 500)
+          setTimeout(refreshBadges, 2000)
         }
       }).catch(()=>{})
       

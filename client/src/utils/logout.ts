@@ -38,19 +38,7 @@ export async function performLogout(): Promise<void> {
   // 0b. Clear Capacitor native storage first (critical for iOS apps)
   await clearCapacitorStorage()
   
-  // 1. Stop any polling intervals
-  try {
-    if ((window as any).__header_poll) {
-      delete (window as any).__header_poll
-    }
-    if ((window as any).__header_do_poll) {
-      delete (window as any).__header_do_poll
-    }
-  } catch (e) {
-    console.warn('Error clearing polling:', e)
-  }
-
-  // 2. Clear localStorage items related to the session
+  // 1. Clear localStorage items related to the session
   const keysToRemove = [
     'signal_device_id',
     'current_username',
