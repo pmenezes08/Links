@@ -261,6 +261,7 @@ export default function ChatThread(){
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
+  const [androidVpOffset, setAndroidVpOffset] = useState(0)
   
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
@@ -325,7 +326,11 @@ export default function ChatThread(){
 
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
-  const keyboardLift = Math.max(0, liftSource - safeBottomPx)
+  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
+  const keyboardLift = Math.max(0, isAndroid
+    ? liftSource - safeBottomPx - androidVpOffset
+    : liftSource - safeBottomPx
+  )
 
   const composerGapPx = 4
   const listPaddingBottom = `${safeBottomPx + keyboardLift + effectiveComposerHeight + composerGapPx}px`
@@ -391,6 +396,8 @@ export default function ChatThread(){
     
     let rafId: number | null = null
     
+    const isAndroid = platform === 'android'
+
     const updateOffset = () => {
       const currentHeight = viewport.height
       if (
@@ -407,6 +414,9 @@ export default function ChatThread(){
       setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 15 ? prev : normalizedOffset))
       keyboardOffsetRef.current = normalizedOffset
       setKeyboardOffset(normalizedOffset)
+      if (isAndroid) {
+        setAndroidVpOffset(viewport.offsetTop ?? 0)
+      }
       if (normalizedOffset > 0) {
         requestAnimationFrame(scrollToBottom)
       }
@@ -418,11 +428,13 @@ export default function ChatThread(){
     }
     
     viewport.addEventListener('resize', handleChange)
+    viewport.addEventListener('scroll', handleChange)
     handleChange()
     
     return () => {
       if (rafId) cancelAnimationFrame(rafId)
       viewport.removeEventListener('resize', handleChange)
+      viewport.removeEventListener('scroll', handleChange)
     }
   }, [isMobile, scrollToBottom])
 
@@ -2380,6 +2392,11 @@ export default function ChatThread(){
         top: 0,
         bottom: 0,
         padding: 0,
+        ...(isAndroid && keyboardLift > 0 ? {
+          height: `${window.visualViewport?.height ?? window.innerHeight}px`,
+          top: `${window.visualViewport?.offsetTop ?? 0}px`,
+          bottom: 'auto',
+        } : {}),
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
