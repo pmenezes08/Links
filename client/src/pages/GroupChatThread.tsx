@@ -82,6 +82,7 @@ export default function GroupChatThread() {
   const [draftDisplay, setDraftDisplay] = useState('') // Only for UI updates (button visibility)
   const [sending, setSendingState] = useState(false)
   const sendingLockRef = useRef(false)
+  const justSentRef = useRef(false)
   
   // Sync ref and state for reliable double-click prevention
   const setSending = useCallback((value: boolean) => {
@@ -695,6 +696,8 @@ export default function GroupChatThread() {
 
     // Lock immediately (synchronous) to prevent double-clicks
     sendingLockRef.current = true
+    justSentRef.current = true
+    setTimeout(() => { justSentRef.current = false }, 400)
     
     // Capture reply state before clearing
     const replySnapshot = replyTo
@@ -2675,11 +2678,13 @@ export default function GroupChatThread() {
               <button
                 className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
                 onPointerDown={(e) => {
+                  if (justSentRef.current) return
                   e.preventDefault()
                   e.stopPropagation()
                   checkMicrophonePermission()
                 }}
                 onClick={(e) => {
+                  if (justSentRef.current) return
                   e.preventDefault()
                   e.stopPropagation()
                   checkMicrophonePermission()
@@ -2811,10 +2816,10 @@ export default function GroupChatThread() {
           </div>
         </div>
         )}
-        {/* Safe area spacer */}
+        {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
         <div
           style={{
-            height: `${safeBottomPx}px`,
+            height: keyboardLift > 0 ? '0px' : `${safeBottomPx}px`,
             background: '#000',
             flexShrink: 0,
           }}

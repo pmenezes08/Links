@@ -11071,10 +11071,12 @@ def get_chat_media():
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute(f"""
-                SELECT id, sender, image_path, video_path, timestamp
+                SELECT id, sender, image_path, video_path, media_paths, timestamp
                 FROM messages
                 WHERE ((sender = {ph} AND receiver = {ph}) OR (sender = {ph} AND receiver = {ph}))
-                  AND (image_path IS NOT NULL AND image_path != '' OR video_path IS NOT NULL AND video_path != '')
+                  AND (image_path IS NOT NULL AND image_path != ''
+                       OR video_path IS NOT NULL AND video_path != ''
+                       OR media_paths IS NOT NULL AND media_paths != '')
                 ORDER BY timestamp DESC
             """, (username, peer, peer, username))
             media = []
@@ -11084,11 +11086,23 @@ def get_chat_media():
                 sender = row['sender'] if hasattr(row, 'keys') else row[1]
                 img = row['image_path'] if hasattr(row, 'keys') else row[2]
                 vid = row['video_path'] if hasattr(row, 'keys') else row[3]
-                ts = row['timestamp'] if hasattr(row, 'keys') else row[4]
-                if img:
+                media_paths_raw = row['media_paths'] if hasattr(row, 'keys') else row[4]
+                ts = row['timestamp'] if hasattr(row, 'keys') else row[5]
+                seen_urls = set()
+                if media_paths_raw:
+                    try:
+                        paths = json.loads(media_paths_raw)
+                        for path in paths:
+                            mid += 1
+                            is_video = any(path.lower().endswith(ext) for ext in ['.mp4', '.mov', '.webm', '.m4v'])
+                            media.append({'id': mid, 'message_id': msg_id, 'sender': sender, 'url': path, 'type': 'video' if is_video else 'image', 'created_at': ts})
+                            seen_urls.add(path)
+                    except Exception:
+                        pass
+                if img and img not in seen_urls:
                     mid += 1
                     media.append({'id': mid, 'message_id': msg_id, 'sender': sender, 'url': img, 'type': 'image', 'created_at': ts})
-                if vid:
+                if vid and vid not in seen_urls:
                     mid += 1
                     media.append({'id': mid, 'message_id': msg_id, 'sender': sender, 'url': vid, 'type': 'video', 'created_at': ts})
             return jsonify({'success': True, 'media': media})

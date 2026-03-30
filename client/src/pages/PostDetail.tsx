@@ -17,6 +17,7 @@ import { formatSmartTime } from '../utils/time'
 import VideoEmbed from '../components/VideoEmbed'
 import { extractVideoEmbed, removeVideoUrlFromText } from '../utils/videoEmbed'
 import EditableAISummary from '../components/EditableAISummary'
+import { clearDeviceCache } from '../utils/deviceCache'
 
 type Reply = { id: number; username: string; content: string; timestamp: string; reactions: Record<string, number>; user_reaction: string|null, parent_reply_id?: number|null, children?: Reply[], profile_picture?: string|null, image_path?: string|null, video_path?: string|null, reply_count?: number, view_count?: number }
 type MediaItem = { type: 'image' | 'video'; path: string }
@@ -1044,6 +1045,11 @@ export default function PostDetail(){
         clearEditMedia()
         setRemoveMedia(false)
         setIsEditingPost(false)
+        clearDeviceCache('home-timeline')
+        try {
+          const invalidateFn = (window as any).__invalidateParentTimelineCache
+          if (typeof invalidateFn === 'function') invalidateFn()
+        } catch {}
       } else {
         alert(j?.error || 'Failed to update post')
       }

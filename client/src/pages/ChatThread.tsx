@@ -121,6 +121,7 @@ export default function ChatThread(){
   const pollTimer = useRef<any>(null)
   const pollInFlight = useRef(false)
   const sendingLockRef = useRef(false)
+  const justSentRef = useRef(false)
   // Optimize polling - track poll count for debouncing auxiliary calls
   const pollCountRef = useRef(0)
   // Track last known message ID for faster incremental polling
@@ -1422,6 +1423,8 @@ export default function ChatThread(){
     if (!messageText || sendingLockRef.current) return
     
     sendingLockRef.current = true
+    justSentRef.current = true
+    setTimeout(() => { justSentRef.current = false }, 400)
     
     let resolvedUserId = otherUserId
     if (!resolvedUserId) {
@@ -3136,11 +3139,13 @@ export default function ChatThread(){
             <button
               className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-[14px] bg-white/12 hover:bg-white/22 active:bg-white/28 active:scale-95 text-white/80 transition-all cursor-pointer select-none"
               onPointerDown={(e) => {
+                if (justSentRef.current) return
                 e.preventDefault()
                 e.stopPropagation()
                 checkMicrophonePermission()
               }}
               onClick={(e) => {
+                if (justSentRef.current) return
                 e.preventDefault()
                 e.stopPropagation()
                 checkMicrophonePermission()
@@ -3278,10 +3283,10 @@ export default function ChatThread(){
           )}
         </div>
       </div>
-      {/* Safe area spacer - black area below composer */}
+      {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
       <div 
         style={{
-          height: `${safeBottomPx}px`,
+          height: keyboardLift > 0 ? '0px' : `${safeBottomPx}px`,
           background: '#000',
           flexShrink: 0,
         }}

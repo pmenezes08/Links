@@ -4103,7 +4103,11 @@ function PostCard({ post, idx, currentUser, isAdmin, highlightStep, onOpen, onTo
         setRemoveMedia(false)
         setIsEditing(false)
         if (communityId) clearDeviceCache(`community-feed:${communityId}`)
-        // Reload to show updated content
+        clearDeviceCache('home-timeline')
+        try {
+          const invalidateFn = (window as any).__invalidateParentTimelineCache
+          if (typeof invalidateFn === 'function') invalidateFn()
+        } catch {}
         try { (window as any).location.reload() } catch {}
       } else {
         alert(j?.error || 'Failed to update post')
