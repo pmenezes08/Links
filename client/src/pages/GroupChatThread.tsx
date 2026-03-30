@@ -377,10 +377,14 @@ export default function GroupChatThread() {
     ta.style.height = Math.min(ta.scrollHeight, maxPx) + 'px'
   }
 
-  // Visual viewport keyboard handling (web)
+  // Visual viewport keyboard handling (web + Android native)
+  // On Android with adjustNothing, the Capacitor Keyboard plugin often over-reports
+  // keyboardHeight (including the system nav bar), causing a gap. Using visualViewport
+  // as the sole source of truth on Android avoids this entirely.
   useEffect(() => {
     if (!isMobile) return
-    if (Capacitor.getPlatform() !== 'web') return
+    const platform = Capacitor.getPlatform()
+    if (platform !== 'web' && platform !== 'android') return
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
     if (!viewport) return
@@ -422,9 +426,10 @@ export default function GroupChatThread() {
     }
   }, [isMobile, scrollToBottom])
 
-  // Native keyboard handling (Capacitor)
+  // Native keyboard handling (Capacitor — iOS only)
+  // Android uses visualViewport above; the Capacitor plugin over-reports on some devices.
   useEffect(() => {
-    if (Capacitor.getPlatform() === 'web') return
+    if (Capacitor.getPlatform() !== 'ios') return
     let showSub: PluginListenerHandle | undefined
     let hideSub: PluginListenerHandle | undefined
 
@@ -445,12 +450,10 @@ export default function GroupChatThread() {
       setKeyboardOffset(0)
     }
 
-    const showEvent = Capacitor.getPlatform() === 'android' ? 'keyboardDidShow' : 'keyboardWillShow'
-    const hideEvent = Capacitor.getPlatform() === 'android' ? 'keyboardDidHide' : 'keyboardWillHide'
-    Keyboard.addListener(showEvent as 'keyboardWillShow', handleShow).then(handle => {
+    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
       showSub = handle
     })
-    Keyboard.addListener(hideEvent as 'keyboardWillHide', handleHide).then(handle => {
+    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
       hideSub = handle
     })
 
