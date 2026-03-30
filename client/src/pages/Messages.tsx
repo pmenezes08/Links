@@ -55,7 +55,7 @@ function formatLastMessagePreview(text: string | null): string {
 
 export default function Messages(){
   const { setTitle } = useHeader()
-  const { refreshBadges } = useBadges()
+  const { refreshBadges, adjustBadges } = useBadges()
   const navigate = useNavigate()
   const location = useLocation()
   useEffect(() => {
@@ -966,8 +966,9 @@ export default function Messages(){
                   {/* Swipeable content */}
                   <button
                     onClick={() => {
+                      const count = t.unread_count || 0
                       setThreads(prev => prev.map(x => x.other_username===t.other_username ? { ...x, unread_count: 0 } : x))
-                      refreshBadges()
+                      if (count > 0) adjustBadges({ msgs: -count })
                       navigate(`/user_chat/chat/${encodeURIComponent(t.other_username)}`)
                     }}
                     onTouchStart={(e) => {

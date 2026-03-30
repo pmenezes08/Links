@@ -49,7 +49,7 @@ type Message = ChatMessage
 
 export default function ChatThread(){
   const { setTitle } = useHeader()
-  const { refreshBadges } = useBadges()
+  const { refreshBadges, adjustBadges } = useBadges()
   const { username } = useParams()
   const navigate = useNavigate()
   const profilePath = username ? `/profile/${encodeURIComponent(username)}` : null
@@ -737,8 +737,6 @@ export default function ChatThread(){
           clearDeviceCache('chat-threads-list')
           
           refreshBadges()
-          setTimeout(refreshBadges, 500)
-          setTimeout(refreshBadges, 2000)
         }
       }).catch(()=>{})
       

@@ -93,7 +93,7 @@ function timeAgo(ts?: string){
 
 export default function Notifications(){
   const { setTitle } = useHeader()
-  const { refreshBadges } = useBadges()
+  const { refreshBadges, adjustBadges } = useBadges()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabType>('notifications')
   const [items, setItems] = useState<Notif[]|null>(null)
@@ -198,6 +198,7 @@ export default function Notifications(){
   }
 
   async function markAll(){
+    adjustBadges({ notifs: -Infinity })
     await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
     refreshBadges()
     load()
@@ -208,6 +209,7 @@ export default function Notifications(){
     if (!confirm('Clear all notifications? This cannot be undone.')) return
     try{
       setClearing(true)
+      adjustBadges({ notifs: -Infinity })
       await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
       await fetch('/api/notifications/delete-read', { method:'POST', credentials:'include' })
       refreshBadges()
@@ -218,7 +220,7 @@ export default function Notifications(){
   }
 
   async function onClick(n: Notif){
-    // Mark read (fire and forget)
+    if (!n.is_read) adjustBadges({ notifs: -1 })
     fetch(`/api/notifications/${n.id}/read`, { method:'POST', credentials:'include' }).catch(()=>{})
     
     // For poll notifications, navigate to polls page

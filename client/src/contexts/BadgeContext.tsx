@@ -6,12 +6,14 @@ type BadgeContextType = {
   unreadMsgs: number
   unreadNotifs: number
   refreshBadges: () => void
+  adjustBadges: (delta: { msgs?: number; notifs?: number }) => void
 }
 
 const BadgeContext = createContext<BadgeContextType>({
   unreadMsgs: 0,
   unreadNotifs: 0,
   refreshBadges: () => {},
+  adjustBadges: () => {},
 })
 
 export function useBadges() {
@@ -90,8 +92,13 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     poll()
   }, [poll])
 
+  const adjustBadges = useCallback(({ msgs, notifs }: { msgs?: number; notifs?: number }) => {
+    if (msgs !== undefined) setUnreadMsgs(prev => Math.max(0, prev + msgs))
+    if (notifs !== undefined) setUnreadNotifs(prev => Math.max(0, prev + notifs))
+  }, [])
+
   return (
-    <BadgeContext.Provider value={{ unreadMsgs, unreadNotifs, refreshBadges }}>
+    <BadgeContext.Provider value={{ unreadMsgs, unreadNotifs, refreshBadges, adjustBadges }}>
       {children}
     </BadgeContext.Provider>
   )
