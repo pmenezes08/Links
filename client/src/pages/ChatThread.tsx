@@ -327,16 +327,18 @@ export default function ChatThread(){
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
-  const keyboardLift = Math.max(0, isAndroid
-    ? liftSource - safeBottomPx - androidVpOffset
-    : liftSource - safeBottomPx
-  )
+  const androidKeyboardOpen = isAndroid && liftSource > 0
+
+  const androidComposerBottom = androidKeyboardOpen
+    ? Math.max(0, window.innerHeight - ((window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight)))
+    : 0
+  const keyboardLift = androidKeyboardOpen ? androidComposerBottom : Math.max(0, liftSource - safeBottomPx)
 
   const composerGapPx = 4
-  const listPaddingBottom = `${safeBottomPx + keyboardLift + effectiveComposerHeight + composerGapPx}px`
+  const listPaddingBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + keyboardLift + effectiveComposerHeight + composerGapPx}px`
   const listScrollPaddingBottom = listPaddingBottom
-  const scrollButtonBottom = `${safeBottomPx + keyboardLift + effectiveComposerHeight + 12}px`
-  const keyboardIsOpen = keyboardLift > 0
+  const scrollButtonBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + keyboardLift + effectiveComposerHeight + 12}px`
+  const keyboardIsOpen = keyboardLift > 0 || androidKeyboardOpen
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!keyboardIsOpen) {
@@ -2392,11 +2394,6 @@ export default function ChatThread(){
         top: 0,
         bottom: 0,
         padding: 0,
-        ...(isAndroid && keyboardLift > 0 ? {
-          height: `${window.visualViewport?.height ?? window.innerHeight}px`,
-          top: `${window.visualViewport?.offsetTop ?? 0}px`,
-          bottom: 'auto',
-        } : {}),
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -2500,6 +2497,9 @@ export default function ChatThread(){
         className="flex-1 flex flex-col min-h-0 px-0"
         style={{
           paddingTop: 'calc(env(safe-area-inset-top, 0px) + 48px)',
+          ...(androidKeyboardOpen ? {
+            maxHeight: `${(window.visualViewport?.height ?? window.innerHeight)}px`,
+          } : {}),
         }}
       >
         <div className="mx-auto flex max-w-3xl w-full flex-1 flex-col min-h-0">
@@ -3306,7 +3306,7 @@ export default function ChatThread(){
       {/* Safe area spacer — hidden when keyboard is open to avoid double spacing */}
       <div 
         style={{
-          height: keyboardLift > 0 ? '0px' : `${safeBottomPx}px`,
+          height: (keyboardLift > 0 || androidKeyboardOpen) ? '0px' : `${safeBottomPx}px`,
           background: '#000',
           flexShrink: 0,
         }}
