@@ -210,8 +210,7 @@ export default function Notifications(){
       setClearing(true)
       await fetch('/api/notifications/mark-all-read', { method:'POST', credentials:'include' })
       await fetch('/api/notifications/delete-read', { method:'POST', credentials:'include' })
-      // Clear iOS notification center when clearing all
-      await clearIOSNotifications()
+      refreshBadges()
       await load()
     } finally {
       setClearing(false)
