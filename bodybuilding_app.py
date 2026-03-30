@@ -21665,10 +21665,12 @@ def edit_post():
     if not post_id:
         return jsonify({'success': False, 'error': 'Post ID is required!'}), 400
     
+    placeholder = get_sql_placeholder()
+    
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT username, community_id, image_path, video_path FROM posts WHERE id = ?", (post_id,))
+            c.execute(f"SELECT username, community_id, image_path, video_path FROM posts WHERE id = {placeholder}", (post_id,))
             row = c.fetchone()
             if not row:
                 return jsonify({'success': False, 'error': 'Post not found!'}), 404
@@ -21702,15 +21704,15 @@ def edit_post():
             params = []
             
             if new_content:
-                updates.append("content = ?")
+                updates.append(f"content = {placeholder}")
                 params.append(new_content)
             
             if new_image_path:
-                updates.append("image_path = ?")
+                updates.append(f"image_path = {placeholder}")
                 updates.append("video_path = NULL")
                 params.append(new_image_path)
             elif new_video_path:
-                updates.append("video_path = ?")
+                updates.append(f"video_path = {placeholder}")
                 updates.append("image_path = NULL")
                 params.append(new_video_path)
             elif remove_media:
@@ -21719,7 +21721,7 @@ def edit_post():
             
             if updates:
                 params.append(post_id)
-                c.execute(f"UPDATE posts SET {', '.join(updates)} WHERE id = ?", params)
+                c.execute(f"UPDATE posts SET {', '.join(updates)} WHERE id = {placeholder}", params)
                 conn.commit()
         
         # Invalidate community feed cache
@@ -21728,6 +21730,19 @@ def edit_post():
                 invalidate_community_cache(post_community_id)
             except Exception as cache_err:
                 logger.warning(f"Failed to invalidate cache after edit for community {post_community_id}: {cache_err}")
+        
+        # Dual-write: update Firestore so PostDetail reads fresh content
+        try:
+            from backend.services.firestore_writes import update_post
+            update_post(
+                post_id=post_id,
+                content=new_content or None,
+                image_path=new_image_path,
+                video_path=new_video_path,
+                remove_media=remove_media,
+            )
+        except Exception as fs_err:
+            logger.warning(f"Firestore post update after edit failed (non-fatal): {fs_err}")
         
         return jsonify({'success': True, 'image_path': new_image_path, 'video_path': new_video_path})
     except Exception as e:
@@ -21754,7 +21769,8 @@ def update_audio_summary():
         c = conn.cursor()
         
         # Check if user owns the post or is admin
-        c.execute("SELECT username FROM posts WHERE id = ?", (post_id,))
+        ph = get_sql_placeholder()
+        c.execute(f"SELECT username FROM posts WHERE id = {ph}", (post_id,))
         row = c.fetchone()
         
         if not row:
@@ -21767,7 +21783,7 @@ def update_audio_summary():
             return jsonify({'success': False, 'error': 'Not authorized to edit this summary'}), 403
         
         # Update the audio summary
-        c.execute("UPDATE posts SET audio_summary = ? WHERE id = ?", (new_summary, post_id))
+        c.execute(f"UPDATE posts SET audio_summary = {ph} WHERE id = {ph}", (new_summary, post_id))
         conn.commit()
         
         logger.info(f"User {username} updated audio summary for post {post_id}")
@@ -22340,7 +22356,6 @@ def format_steve_response_links(response_text: str) -> str:
     formatted = re.sub(std_md_pattern, clean_markdown_link, formatted)
     
     # Step 3: Add spacing between consecutive markdown links so they render separately
-    # Turns )[  into ) [  (adds space between adjacent links)
     formatted = re.sub(r'\)\[', ') [', formatted)
     
     # Step 4: Convert any remaining bare URLs to [domain](url)
@@ -22351,6 +22366,12 @@ def format_steve_response_links(response_text: str) -> str:
         return f'[{domain}]({url})'
     
     formatted = re.sub(bare_url_pattern, replace_bare_url, formatted)
+    
+    # Step 5: Ensure a space before and after every markdown link so tap targets don't merge with text
+    formatted = re.sub(r'(?<=[^\s\n])\[([^\]]+)\]\(', r' [\1](', formatted)
+    formatted = re.sub(r'\)\(([^\)]+)\)(?=[^\s\n.,;:!?])', r')(\1) ', formatted)
+    # Space after closing paren of markdown link if followed by a non-space, non-punctuation char
+    formatted = re.sub(r'\)(?=[a-zA-Z0-9À-ž])', r') ', formatted)
     
     return formatted
 

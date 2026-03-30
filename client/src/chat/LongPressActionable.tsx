@@ -62,50 +62,34 @@ export default function LongPressActionable({
     const rect = containerRef.current.getBoundingClientRect()
     const viewportHeight = window.innerHeight
     const viewportWidth = window.innerWidth
-    const menuHeight = 260 // Menu height (reactions + buttons)
-    const menuWidth = 200 // Menu width
-    const padding = 16 // Padding from edges
+    const menuHeight = 260
+    const padding = 12
     const safeAreaTop = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sat') || '0') || 50
     const safeAreaBottom = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sab') || '0') || 80
+
+    // Measure actual menu width: 8 reaction emojis + plus button + gaps + padding
+    const menuWidth = Math.min(viewportWidth - padding * 2, 300)
     
     // Available space
     const minTop = safeAreaTop + padding
     const maxBottom = viewportHeight - safeAreaBottom - padding
     const availableHeight = maxBottom - minTop
-    
-    // If menu is taller than available space, we'll need to constrain it
     const effectiveMenuHeight = Math.min(menuHeight, availableHeight)
     
-    // Calculate vertical position - try to center on the message
+    // Vertical — center on message, clamped to safe area
     const messageCenterY = rect.top + rect.height / 2
     let top = messageCenterY - effectiveMenuHeight / 2
-    
-    // Clamp to stay within safe area
-    if (top < minTop) {
-      top = minTop
-    }
-    if (top + effectiveMenuHeight > maxBottom) {
-      top = maxBottom - effectiveMenuHeight
-    }
-    
-    // Final safety check
     top = Math.max(minTop, Math.min(top, maxBottom - effectiveMenuHeight))
     
-    // Calculate horizontal position - center on message but keep within viewport
+    // Horizontal — center on message, clamped to viewport
     let left = rect.left + rect.width / 2 - menuWidth / 2
-    
-    // Clamp horizontally
-    if (left < padding) {
-      left = padding
-    }
-    if (left + menuWidth > viewportWidth - padding) {
-      left = viewportWidth - menuWidth - padding
-    }
+    left = Math.max(padding, Math.min(left, viewportWidth - menuWidth - padding))
     
     return {
       position: 'fixed',
       top,
       left,
+      width: menuWidth,
       zIndex: 9999,
       maxHeight: effectiveMenuHeight,
       overflowY: 'auto' as const,
@@ -189,21 +173,21 @@ export default function LongPressActionable({
         <>
           <div className="fixed inset-0 z-40" onClick={() => { if (Date.now() - menuOpenTimeRef.current < 400) return; setShowMenu(false); setShowEmojiPicker(false) }} onTouchEnd={(e) => { if (Date.now() - menuOpenTimeRef.current < 400) { e.preventDefault(); e.stopPropagation() } }} />
           <div 
-            className="bg-[#111] border border-white/15 rounded-lg shadow-xl px-2 py-2 min-w-[160px]"
+            className="bg-[#111] border border-white/15 rounded-lg shadow-xl px-2 py-2"
             style={menuStyle}
           >
-            <div className="flex items-center gap-2 px-2 pb-2 border-b border-white/10">
+            <div className="flex items-center justify-between gap-1 px-1 pb-2 border-b border-white/10 overflow-hidden">
               {QUICK_REACTIONS.map(e => (
                 <button 
                   key={e} 
-                  className="text-lg hover:scale-110 transition-transform" 
+                  className="text-[17px] flex-shrink-0 hover:scale-110 transition-transform" 
                   onClick={() => safeAction(() => { setShowMenu(false); setShowEmojiPicker(false); onReact(e) })}
                 >
                   {e}
                 </button>
               ))}
               <button 
-                className="w-7 h-7 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+                className="w-6 h-6 flex-shrink-0 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 rounded-full transition-colors"
                 onClick={() => safeAction(() => setShowEmojiPicker(true))}
                 title="More reactions"
               >

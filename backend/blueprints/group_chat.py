@@ -2383,6 +2383,123 @@ def _send_group_add_notification(cursor, ph, recipient_username: str, added_by: 
         logger.warning(f"Push notification failed for group add: {push_err}")
 
 
+def _build_community_intelligence(group_id: int) -> str:
+    """
+    Query MySQL for mutual communities among group members and return a
+    context string Steve can reference (members, recent posts, community names).
+    Fast: 2-3 indexed queries, typically <20ms total.
+    """
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            # 1. Get all human members of the group (exclude steve, admin)
+            c.execute(f"""
+                SELECT username FROM group_chat_members
+                WHERE group_id = {ph}
+            """, (group_id,))
+            members = [r["username"] if hasattr(r, "keys") else r[0] for r in c.fetchall()]
+            members = [m for m in members if m.lower() not in ('steve', 'admin')]
+            if len(members) < 2:
+                return ""
+
+            # 2. Find communities each member belongs to
+            member_ph = ','.join([ph] * len(members))
+            c.execute(f"""
+                SELECT u.username, uc.community_id, c.name
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                JOIN communities c ON uc.community_id = c.id
+                WHERE u.username IN ({member_ph})
+            """, tuple(members))
+
+            from collections import defaultdict
+            user_comms = defaultdict(set)      # username -> set of community_ids
+            comm_names = {}                     # community_id -> name
+            for row in c.fetchall():
+                uname = row["username"] if hasattr(row, "keys") else row[0]
+                cid = row["community_id"] if hasattr(row, "keys") else row[1]
+                cname = row["name"] if hasattr(row, "keys") else row[2]
+                user_comms[uname].add(cid)
+                comm_names[cid] = cname
+
+            # 3. Compute mutual communities (communities ALL human members share)
+            if not user_comms:
+                return ""
+            mutual_ids = set.intersection(*user_comms.values()) if user_comms else set()
+            if not mutual_ids:
+                return ""
+
+            mutual_list = sorted(mutual_ids)
+            mutual_ph = ','.join([ph] * len(mutual_list))
+
+            # 4. Get member profiles from mutual communities (excluding group members and steve/admin)
+            c.execute(f"""
+                SELECT DISTINCT u.username, COALESCE(p.display_name, u.username) AS display_name,
+                       u.city, u.country, u.industry, u.role, u.company
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE uc.community_id IN ({mutual_ph})
+                  AND LOWER(u.username) NOT IN ('admin', 'steve')
+                ORDER BY u.username
+                LIMIT 100
+            """, tuple(mutual_list))
+            community_members = []
+            for row in c.fetchall():
+                uname = row["username"] if hasattr(row, "keys") else row[0]
+                dname = row["display_name"] if hasattr(row, "keys") else row[1]
+                city = row["city"] if hasattr(row, "keys") else row[2]
+                country = row["country"] if hasattr(row, "keys") else row[3]
+                industry = row["industry"] if hasattr(row, "keys") else row[4]
+                role = row["role"] if hasattr(row, "keys") else row[5]
+                company = row["company"] if hasattr(row, "keys") else row[6]
+                community_members.append(
+                    f"@{uname} ({dname}) — {role or '?'} at {company or '?'}, {city or '?'}, {country or '?'} [{industry or '?'}]"
+                )
+
+            # 5. Get recent posts from mutual communities (last 15)
+            c.execute(f"""
+                SELECT p.id, p.username, SUBSTR(p.content, 1, 200) AS snippet,
+                       p.timestamp, c.name AS community_name
+                FROM posts p
+                JOIN communities c ON p.community_id = c.id
+                WHERE p.community_id IN ({mutual_ph})
+                ORDER BY p.timestamp DESC
+                LIMIT 15
+            """, tuple(mutual_list))
+            recent_posts = []
+            for row in c.fetchall():
+                pid = row["id"] if hasattr(row, "keys") else row[0]
+                author = row["username"] if hasattr(row, "keys") else row[1]
+                snippet = row["snippet"] if hasattr(row, "keys") else row[2]
+                ts = row["timestamp"] if hasattr(row, "keys") else row[3]
+                cname = row["community_name"] if hasattr(row, "keys") else row[4]
+                recent_posts.append(f"[{cname}] @{author}: {snippet} ({ts})")
+
+            # 6. Build context block
+            parts = []
+            parts.append(f"COMMUNITY INTELLIGENCE — Mutual communities shared by ALL group members:")
+            for cid in mutual_list:
+                parts.append(f"  • {comm_names.get(cid, 'Unknown')} (ID {cid})")
+
+            if community_members:
+                parts.append(f"\nMembers across these communities ({len(community_members)}):")
+                parts.extend(f"  {m}" for m in community_members[:60])
+                if len(community_members) > 60:
+                    parts.append(f"  ... and {len(community_members) - 60} more")
+
+            if recent_posts:
+                parts.append(f"\nRecent posts from these communities:")
+                parts.extend(f"  {p}" for p in recent_posts)
+
+            return "\n".join(parts)
+    except Exception as e:
+        logger.warning(f"Community intelligence query failed (non-fatal): {e}")
+        return ""
+
+
 def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str, sender_username: str, reply_to_message_id: int):
     """
     Generate and post Steve's AI reply to a group chat message.
@@ -2417,6 +2534,11 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                     context_reset_at = (settings_row["steve_context_reset_at"] if hasattr(settings_row, "keys") else settings_row[1]) or None
         except Exception as settings_err:
             logger.warning(f"Could not load Steve settings for group {group_id}: {settings_err}")
+        
+        # Build community intelligence context from MySQL
+        community_context = _build_community_intelligence(group_id)
+        if community_context:
+            logger.info(f"Steve community intelligence loaded for group {group_id} ({len(community_context)} chars)")
         
         # Load full conversation context from Firestore (fall back to MySQL)
         recent_messages = []
@@ -2494,6 +2616,9 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         context += f"\n\n[Current date and time: {current_date}]"
         context += context_reset_note
         
+        if community_context:
+            context += f"\n\n{community_context}"
+        
         # Only attach images if the user's message explicitly references them
         image_keywords = ['image', 'photo', 'picture', 'pic', 'imagem', 'foto', 'see', 'look', 'show', 'what is this', 'what\'s this', 'o que é', 'vê', 'olha']
         msg_lower = user_message.lower()
@@ -2523,6 +2648,20 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                     personality_modifier = f"\n\nPERSONALITY: {AI_PERSONALITIES[steve_personality]['description']}\n{AI_PERSONALITIES[steve_personality].get('rules', '')}"
             except Exception:
                 pass
+        
+        community_intel_prompt = ""
+        if community_context:
+            community_intel_prompt = """
+
+COMMUNITY INTELLIGENCE:
+You have access to information about communities that the members of this group chat have in common.
+This includes: community names, member profiles, and recent posts from those communities.
+Use this information naturally when relevant:
+- If someone asks about people, connections, or networking — reference community members you know about using @username.
+- If someone discusses a topic related to a recent post — mention it and credit the author.
+- If asked who is in a community, who works in X industry, who lives in Y city, etc. — use the member data.
+- Do NOT dump the full member list unprompted. Only reference specific members when contextually useful.
+- When mentioning a community member, always use @username format."""
         
         system_prompt = f"""You are Steve, a highly capable AI assistant in a group chat with real-time knowledge and web search capabilities. You have access to the FULL conversation history of this group.{personality_modifier}
 
@@ -2566,7 +2705,7 @@ CONVERSATION INTELLIGENCE:
 - You have the FULL conversation history. Reference previous discussions when relevant.
 - Remember what users said earlier — connect dots across the conversation.
 - If someone asks a direct question, answer it fully.
-- If images are attached, only describe them when explicitly asked. Do NOT proactively reference images.
+- If images are attached, only describe them when explicitly asked. Do NOT proactively reference images.{community_intel_prompt}
 
 RESPONSE FORMAT:
 - For casual chat: 2-4 sentences, conversational
@@ -2655,9 +2794,6 @@ RESPONSE FORMAT:
                 del _steve_typing_status[group_id]
             
             logger.info(f"Steve replied to group {group_id} with message ID {steve_message_id}")
-            
-            # Note: No notifications for Steve's messages - users see them in the chat
-            # without push notifications or bell icon updates
             
             conn.commit()
             

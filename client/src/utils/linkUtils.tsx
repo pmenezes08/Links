@@ -142,7 +142,8 @@ function SmartLink({
     <a
       href={href}
       onClick={handleClick}
-      className={`text-[#4db6ac] hover:underline ${processing ? 'opacity-50 cursor-wait' : ''}`}
+      className={`text-[#4db6ac] underline inline-block py-0.5 ${processing ? 'opacity-50 cursor-wait' : ''}`}
+      style={{ minHeight: '32px', lineHeight: '1.6' }}
     >
       {displayText}
       {processing && <span className="ml-1 inline-block animate-spin">⏳</span>}
@@ -263,7 +264,8 @@ export function renderTextWithSourceLinks(
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-[#4db6ac] hover:underline"
+        className="text-[#4db6ac] underline inline-block py-0.5"
+        style={{ minHeight: '32px', lineHeight: '1.6' }}
         title={shortenUrls ? url : undefined}
         onClick={handleLinkClick}
       >

@@ -217,6 +217,34 @@ def write_post(post_id: int, username: str, content: str = '', community_id=None
         logger.warning(f"Firestore post write failed (non-fatal): {e}")
 
 
+def update_post(post_id: int, content: str = None, image_path: str = None,
+                video_path: str = None, remove_media: bool = False,
+                post_type: str = 'community'):
+    """Update an existing post in Firestore after MySQL edit."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        doc_id = f"gp_{post_id}" if post_type == 'group' else str(post_id)
+        updates = {}
+        if content is not None:
+            updates['content'] = content
+        if image_path is not None:
+            updates['image_path'] = image_path
+            updates['video_path'] = None
+        elif video_path is not None:
+            updates['video_path'] = video_path
+            updates['image_path'] = None
+        elif remove_media:
+            updates['image_path'] = None
+            updates['video_path'] = None
+        if updates:
+            fs.collection('posts').document(doc_id).update(updates)
+            logger.debug(f"Firestore post update: {doc_id}")
+    except Exception as e:
+        logger.warning(f"Firestore post update failed (non-fatal): {e}")
+
+
 def write_reply(post_id: int, reply_id: int, username: str, content: str = '',
                 parent_reply_id: int = None, image_path: str = None,
                 post_type: str = 'community', timestamp=None):
