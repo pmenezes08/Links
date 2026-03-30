@@ -223,6 +223,39 @@ def _ensure_steve_personality_column(cursor):
             logger.warning(f"Could not add steve_context_reset_at column: {e}")
 
 
+def _ensure_steve_suppressed_topics_table(cursor):
+    """Ensure steve_suppressed_topics table exists."""
+    from backend.services.database import USE_MYSQL
+    try:
+        cursor.execute("SELECT 1 FROM steve_suppressed_topics LIMIT 1")
+    except Exception:
+        try:
+            if USE_MYSQL:
+                cursor.execute("""
+                    CREATE TABLE steve_suppressed_topics (
+                        id INT PRIMARY KEY AUTO_INCREMENT,
+                        group_id INT NOT NULL,
+                        topic VARCHAR(255) NOT NULL,
+                        suppressed_by VARCHAR(100),
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        INDEX idx_sst_group (group_id)
+                    )
+                """)
+            else:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS steve_suppressed_topics (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        group_id INTEGER NOT NULL,
+                        topic TEXT NOT NULL,
+                        suppressed_by TEXT,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+            logger.info("Created steve_suppressed_topics table")
+        except Exception as e:
+            logger.warning(f"Could not create steve_suppressed_topics table: {e}")
+
+
 def _ensure_group_chat_tables(cursor):
     """Ensure group chat tables exist."""
     from backend.services.database import USE_MYSQL
@@ -239,6 +272,7 @@ def _ensure_group_chat_tables(cursor):
         _ensure_client_key_column(cursor)  # Ensure client_key column exists for outbox idempotency
         _ensure_group_message_reactions_table(cursor)  # Ensure reactions table exists
         _ensure_steve_personality_column(cursor)  # Ensure steve_personality columns exist
+        _ensure_steve_suppressed_topics_table(cursor)  # Ensure suppressed topics table exists
         return  # Table exists, no need to create
     except Exception:
         pass  # Table doesn't exist, create it
@@ -2516,6 +2550,93 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         logger.warning("XAI_API_KEY not configured, Steve cannot reply")
         return
     
+    # Detect "forget topic" commands before doing anything else
+    import re
+    forget_pattern = re.compile(
+        r'@steve\s+(?:forget|stop|drop|ignore|skip|don\'?t\s+mention|don\'?t\s+talk\s+about|esqueç[ae]|para\s+de\s+falar|não\s+fales)\s+(?:about\s+|topic\s+|de\s+|sobre\s+)?(.+)',
+        re.IGNORECASE,
+    )
+    forget_match = forget_pattern.search(user_message)
+    if forget_match:
+        topic = forget_match.group(1).strip().rstrip('.!?')
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                _ensure_steve_suppressed_topics_table(c)
+                c.execute(
+                    f"INSERT INTO steve_suppressed_topics (group_id, topic, suppressed_by) VALUES ({ph}, {ph}, {ph})",
+                    (group_id, topic, sender_username),
+                )
+                conn.commit()
+            # Post a short confirmation directly
+            from datetime import datetime as _dt
+            now = _dt.now().isoformat()
+            confirm_text = f"Got it, I won't bring up \"{topic}\" again unless you ask me to. 👍"
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(
+                    f"INSERT INTO group_chat_messages (group_id, sender_username, message_text, created_at) VALUES ({ph}, {ph}, {ph}, {ph})",
+                    (group_id, AI_USERNAME, confirm_text, now),
+                )
+                steve_msg_id = c.lastrowid
+                c.execute(f"UPDATE group_chats SET updated_at = {ph} WHERE id = {ph}", (now, group_id))
+                conn.commit()
+                try:
+                    from backend.services.firestore_writes import write_group_chat_message
+                    write_group_chat_message(group_id=group_id, message_id=steve_msg_id, sender=AI_USERNAME, text=confirm_text)
+                except Exception:
+                    pass
+            if group_id in _steve_typing_status:
+                del _steve_typing_status[group_id]
+            logger.info(f"Steve suppressed topic '{topic}' in group {group_id} by {sender_username}")
+            return
+        except Exception as forget_err:
+            logger.error(f"Error suppressing topic for Steve: {forget_err}")
+    
+    # Also detect "remember topic" / "unsuppress" commands
+    remember_pattern = re.compile(
+        r'@steve\s+(?:remember|bring\s+back|unsuppress|you\s+can\s+talk\s+about|volta\s+a\s+falar)\s+(?:about\s+|topic\s+|de\s+|sobre\s+)?(.+)',
+        re.IGNORECASE,
+    )
+    remember_match = remember_pattern.search(user_message)
+    if remember_match:
+        topic = remember_match.group(1).strip().rstrip('.!?')
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(
+                    f"DELETE FROM steve_suppressed_topics WHERE group_id = {ph} AND topic = {ph}",
+                    (group_id, topic),
+                )
+                conn.commit()
+            from datetime import datetime as _dt
+            now = _dt.now().isoformat()
+            confirm_text = f"No problem, \"{topic}\" is back on the table. 🔓"
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(
+                    f"INSERT INTO group_chat_messages (group_id, sender_username, message_text, created_at) VALUES ({ph}, {ph}, {ph}, {ph})",
+                    (group_id, AI_USERNAME, confirm_text, now),
+                )
+                steve_msg_id = c.lastrowid
+                c.execute(f"UPDATE group_chats SET updated_at = {ph} WHERE id = {ph}", (now, group_id))
+                conn.commit()
+                try:
+                    from backend.services.firestore_writes import write_group_chat_message
+                    write_group_chat_message(group_id=group_id, message_id=steve_msg_id, sender=AI_USERNAME, text=confirm_text)
+                except Exception:
+                    pass
+            if group_id in _steve_typing_status:
+                del _steve_typing_status[group_id]
+            logger.info(f"Steve unsuppressed topic '{topic}' in group {group_id} by {sender_username}")
+            return
+        except Exception as remember_err:
+            logger.error(f"Error unsuppressing topic for Steve: {remember_err}")
+    
     current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
     
     try:
@@ -2602,19 +2723,49 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
                         except Exception:
                             pass
         
-        # Use last 200 messages max to stay within token limits
-        context_messages = recent_messages[-200:]
+        # Split messages into recency-weighted sections
+        all_messages = recent_messages[-200:]
+        CURRENT_WINDOW = 30
+        if len(all_messages) > CURRENT_WINDOW:
+            older_messages = all_messages[:-CURRENT_WINDOW]
+            current_messages = all_messages[-CURRENT_WINDOW:]
+        else:
+            older_messages = []
+            current_messages = all_messages
         
-        # Apply context reset: Steve sees full history but is instructed to focus on recent
+        # Apply context reset: filter older messages if reset was requested
         context_reset_note = ""
         if context_reset_at:
-            context_reset_note = f"\n\nIMPORTANT: Your conversation context was reset on {context_reset_at}. While you can see the full chat history above for reference, treat messages before the reset as old context. Do NOT reference or bring up topics from before the reset unless the user explicitly asks about them. Focus on the current conversation after the reset."
+            context_reset_note = f"\n\nIMPORTANT: Your conversation context was reset on {context_reset_at}. Treat messages in OLDER CONTEXT that predate this reset as background only. Focus on the CURRENT CONVERSATION."
+        
+        # Load suppressed topics
+        suppressed_topics = []
+        try:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(f"SELECT topic FROM steve_suppressed_topics WHERE group_id = {ph}", (group_id,))
+                suppressed_topics = [
+                    (row["topic"] if hasattr(row, "keys") else row[0])
+                    for row in c.fetchall()
+                ]
+        except Exception as st_err:
+            logger.warning(f"Could not load suppressed topics: {st_err}")
         
         context = f"Group chat: {group_name}\n"
-        context += f"Full conversation history ({len(context_messages)} messages):\n" + "\n".join(context_messages)
+        if older_messages:
+            context += f"=== OLDER CONTEXT ({len(older_messages)} messages — background reference only) ===\n"
+            context += "\n".join(older_messages)
+            context += "\n\n"
+        context += f"=== CURRENT CONVERSATION (last {len(current_messages)} messages — focus here) ===\n"
+        context += "\n".join(current_messages)
         context += f"\n\n{sender_username} mentioned you (@Steve)."
         context += f"\n\n[Current date and time: {current_date}]"
         context += context_reset_note
+        
+        if suppressed_topics:
+            topics_list = ", ".join(f'"{t}"' for t in suppressed_topics)
+            context += f"\n\nSUPPRESSED TOPICS — Do NOT reference, bring up, or discuss the following topics unless a user EXPLICITLY asks about them: {topics_list}"
         
         if community_context:
             context += f"\n\n{community_context}"
@@ -2702,10 +2853,15 @@ PROBLEM-SOLVING: If a challenge or problem is being discussed:
 - Be thorough and specific
 
 CONVERSATION INTELLIGENCE:
-- You have the FULL conversation history. Reference previous discussions when relevant.
-- Remember what users said earlier — connect dots across the conversation.
+- You have two context sections: OLDER CONTEXT (background) and CURRENT CONVERSATION (active).
+- Always maintain full awareness of the conversation history and flow.
+- When responding, focus on the topic and direction of the CURRENT CONVERSATION messages.
+- Do NOT loop back to or re-reference earlier topics unless the user explicitly brings them up again or they are directly relevant to the current question.
+- If the conversation has clearly moved on from a topic, do not revisit it unprompted.
+- You CAN reference older context when it genuinely connects to what is being discussed now.
 - If someone asks a direct question, answer it fully.
-- If images are attached, only describe them when explicitly asked. Do NOT proactively reference images.{community_intel_prompt}
+- If images are attached, only describe them when explicitly asked. Do NOT proactively reference images.
+- If there are SUPPRESSED TOPICS listed, do NOT bring them up under any circumstances unless a user explicitly asks.{community_intel_prompt}
 
 RESPONSE FORMAT:
 - For casual chat: 2-4 sentences, conversational
