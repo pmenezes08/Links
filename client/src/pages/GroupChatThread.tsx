@@ -225,7 +225,6 @@ export default function GroupChatThread() {
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
-  const [androidVpOffset, setAndroidVpOffset] = useState(0)
 
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
@@ -400,8 +399,6 @@ export default function GroupChatThread() {
 
     let rafId: number | null = null
 
-    const isAndroid = platform === 'android'
-
     const updateOffset = () => {
       const currentHeight = viewport.height
       if (
@@ -418,9 +415,6 @@ export default function GroupChatThread() {
       setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 15 ? prev : normalizedOffset))
       keyboardOffsetRef.current = normalizedOffset
       setKeyboardOffset(normalizedOffset)
-      if (isAndroid) {
-        setAndroidVpOffset(viewport.offsetTop ?? 0)
-      }
       if (normalizedOffset > 0) {
         requestAnimationFrame(scrollToBottom)
       }

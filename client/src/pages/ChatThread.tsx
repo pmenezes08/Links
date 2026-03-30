@@ -261,7 +261,6 @@ export default function ChatThread(){
   const [composerHeight, setComposerHeight] = useState(defaultComposerPadding)
   const [safeBottomPx, setSafeBottomPx] = useState(0)
   const [viewportLift, setViewportLift] = useState(0)
-  const [androidVpOffset, setAndroidVpOffset] = useState(0)
   
   const composerRef = useRef<HTMLDivElement | null>(null)
   const composerCardRef = useRef<HTMLDivElement | null>(null)
@@ -397,8 +396,6 @@ export default function ChatThread(){
     if (!viewport) return
     
     let rafId: number | null = null
-    
-    const isAndroid = platform === 'android'
 
     const updateOffset = () => {
       const currentHeight = viewport.height
@@ -416,9 +413,6 @@ export default function ChatThread(){
       setViewportLift(prev => (Math.abs(prev - normalizedOffset) < 15 ? prev : normalizedOffset))
       keyboardOffsetRef.current = normalizedOffset
       setKeyboardOffset(normalizedOffset)
-      if (isAndroid) {
-        setAndroidVpOffset(viewport.offsetTop ?? 0)
-      }
       if (normalizedOffset > 0) {
         requestAnimationFrame(scrollToBottom)
       }
