@@ -334,9 +334,9 @@ export default function ChatThread(){
   const keyboardLift = androidKeyboardOpen ? androidComposerBottom : Math.max(0, liftSource - safeBottomPx)
 
   const composerGapPx = 4
-  const listPaddingBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + keyboardLift + effectiveComposerHeight + composerGapPx}px`
+  const listPaddingBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + (androidKeyboardOpen ? 0 : keyboardLift) + effectiveComposerHeight + composerGapPx}px`
   const listScrollPaddingBottom = listPaddingBottom
-  const scrollButtonBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + keyboardLift + effectiveComposerHeight + 12}px`
+  const scrollButtonBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + (androidKeyboardOpen ? 0 : keyboardLift) + effectiveComposerHeight + 12}px`
   const keyboardIsOpen = keyboardLift > 0 || androidKeyboardOpen
   const handleContentPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {

@@ -315,7 +315,7 @@ export default function GroupChatThread() {
   const keyboardLift = androidKeyboardOpen ? androidComposerBottom : Math.max(0, liftSource - safeBottomPx)
 
   const composerGapPx = 4
-  const listPaddingBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + keyboardLift + effectiveComposerHeight + composerGapPx}px`
+  const listPaddingBottom = `${(androidKeyboardOpen ? 0 : safeBottomPx) + (androidKeyboardOpen ? 0 : keyboardLift) + effectiveComposerHeight + composerGapPx}px`
 
   // Instant scroll - only used for initial load
   const scrollToBottom = useCallback(() => {
