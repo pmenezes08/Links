@@ -34751,9 +34751,10 @@ def api_get_user_id_by_username():
         username = request.form.get('username','').strip()
         if not username:
             return jsonify({ 'success': False, 'error': 'username required' }), 400
+        ph = get_sql_placeholder()
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("SELECT id FROM users WHERE username=?", (username,))
+            c.execute(f"SELECT id FROM users WHERE username={ph}", (username,))
             row = c.fetchone()
             if not row:
                 return jsonify({ 'success': False, 'error': 'user not found' }), 404

@@ -239,7 +239,7 @@ export default function CommunityFeed() {
   const [storyPrivateReplyOpen, setStoryPrivateReplyOpen] = useState(false)
   const [storyPrivateReplyText, setStoryPrivateReplyText] = useState('')
   const [storyPrivateReplySending, setStoryPrivateReplySending] = useState(false)
-  const storyPrivateReplyInputRef = useRef<HTMLInputElement | null>(null)
+  const storyPrivateReplyInputRef = useRef<HTMLTextAreaElement | null>(null)
   // DnD sensors for story thumbnail reordering
   const dndPointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   const dndTouchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
@@ -1412,7 +1412,9 @@ export default function CommunityFeed() {
     if (story.username.toLowerCase() === data.username.toLowerCase()) return
     setStoryPrivateReplySending(true)
     try {
-      const idRes = await fetch(`/api/user_id/${story.username}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      const idFd = new FormData()
+      idFd.append('username', story.username)
+      const idRes = await fetch('/api/get_user_id_by_username', { method: 'POST', credentials: 'include', body: idFd })
       const idJson = await idRes.json()
       if (!idJson?.success || !idJson.user_id) return
       const storyMediaUrl = story.media_url || normalizeMediaPath(story.media_path)
@@ -2861,26 +2863,32 @@ export default function CommunityFeed() {
             
             {/* Private reply inline input */}
             {storyPrivateReplyOpen && currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() && (
-              <div className="px-4 py-2 flex items-center gap-2 border-b border-white/10">
-                <input
+              <div className="px-4 py-2 flex items-end gap-2 border-b border-white/10">
+                <textarea
                   ref={storyPrivateReplyInputRef}
-                  type="text"
                   value={storyPrivateReplyText}
-                  onChange={(e) => setStoryPrivateReplyText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && storyPrivateReplyText.trim()) { e.preventDefault(); handleSendPrivateReply(currentStory) } }}
+                  onChange={(e) => {
+                    setStoryPrivateReplyText(e.target.value)
+                    const el = e.target
+                    el.style.height = 'auto'
+                    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && storyPrivateReplyText.trim()) { e.preventDefault(); handleSendPrivateReply(currentStory) } }}
                   placeholder={`Message @${currentStory.username} privately...`}
-                  className="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac]"
+                  className="flex-1 bg-white/10 border border-white/20 rounded-2xl px-4 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto"
+                  style={{ minHeight: '36px', maxHeight: '120px' }}
+                  rows={1}
                   disabled={storyPrivateReplySending}
                   autoFocus
                 />
                 <button
                   onClick={() => handleSendPrivateReply(currentStory)}
                   disabled={!storyPrivateReplyText.trim() || storyPrivateReplySending}
-                  className="w-9 h-9 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-40 flex-shrink-0"
+                  className="w-9 h-9 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-40 flex-shrink-0 mb-0.5"
                 >
                   {storyPrivateReplySending ? <i className="fa-solid fa-spinner fa-spin text-xs" /> : <i className="fa-solid fa-paper-plane text-xs" />}
                 </button>
-                <button onClick={() => { setStoryPrivateReplyOpen(false); setStoryPrivateReplyText('') }} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 text-xs flex-shrink-0"><i className="fa-solid fa-xmark" /></button>
+                <button onClick={() => { setStoryPrivateReplyOpen(false); setStoryPrivateReplyText('') }} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/70 text-xs flex-shrink-0 mb-0.5"><i className="fa-solid fa-xmark" /></button>
               </div>
             )}
 
