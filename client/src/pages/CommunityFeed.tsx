@@ -227,13 +227,14 @@ export default function CommunityFeed() {
   const [locationLoading, setLocationLoading] = useState(false)
   // Story reply / comments state
   const [, setStoryReplyText] = useState('')
-  const storyReplyInputRef = useRef<HTMLInputElement | null>(null)
+  const storyReplyInputRef = useRef<HTMLTextAreaElement | null>(null)
   const [storyComments, setStoryComments] = useState<StoryComment[]>([])
   const [storyCommentsLoading, setStoryCommentsLoading] = useState(false)
   const [storyCommentText, setStoryCommentText] = useState('')
   const [storyCommentSending, setStoryCommentSending] = useState(false)
   const [storyCommentPanelOpen, setStoryCommentPanelOpen] = useState(false)
-  const storyCommentInputRef = useRef<HTMLInputElement | null>(null)
+  const [storyCommentFocused, setStoryCommentFocused] = useState(false)
+  const storyCommentInputRef = useRef<HTMLTextAreaElement | null>(null)
   const storyViewerHistoryPushedRef = useRef(false)
   const storyEditorHistoryPushedRef = useRef(false)
   const [storyPrivateReplyOpen, setStoryPrivateReplyOpen] = useState(false)
@@ -1390,6 +1391,8 @@ export default function CommunityFeed() {
       if (j?.success && j.comment) {
         setStoryComments(prev => [...prev, j.comment])
         setStoryCommentText('')
+        if (storyReplyInputRef.current) storyReplyInputRef.current.style.height = 'auto'
+        if (storyCommentInputRef.current) storyCommentInputRef.current.style.height = 'auto'
       }
     } catch (err) {
       console.error('Failed to post story comment:', err)
@@ -2813,15 +2816,21 @@ export default function CommunityFeed() {
                   </div>
                 ))}
               </div>
-              <div className="flex items-center gap-2 px-4 py-3 border-t border-white/10 flex-shrink-0" style={{ paddingBottom: keyboardHeight > 0 ? '8px' : 'max(12px, env(safe-area-inset-bottom, 0px))' }}>
-                <input
+              <div className="flex items-end gap-2 px-4 py-3 border-t border-white/10 flex-shrink-0" style={{ paddingBottom: keyboardHeight > 0 ? '8px' : 'max(12px, env(safe-area-inset-bottom, 0px))' }}>
+                <textarea
                   ref={storyCommentInputRef}
-                  type="text"
                   value={storyCommentText}
-                  onChange={(e) => setStoryCommentText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && storyCommentText.trim()) { e.preventDefault(); handleSubmitStoryComment(currentStory.id) } }}
+                  onChange={(e) => {
+                    setStoryCommentText(e.target.value)
+                    const el = e.target
+                    el.style.height = 'auto'
+                    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && storyCommentText.trim()) { e.preventDefault(); handleSubmitStoryComment(currentStory.id) } }}
                   placeholder="Add a comment..."
-                  className="flex-1 bg-white/10 border border-white/20 rounded-full px-4 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac]"
+                  className="flex-1 bg-white/10 border border-white/20 rounded-2xl px-4 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto"
+                  style={{ minHeight: '36px', maxHeight: '120px' }}
+                  rows={1}
                   disabled={storyCommentSending}
                 />
                 <button
@@ -2896,68 +2905,82 @@ export default function CommunityFeed() {
             {!storyPrivateReplyOpen && (
               <div className="px-4 py-3">
                 {currentStory.username?.toLowerCase() !== data?.username?.toLowerCase() ? (
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 relative">
-                      <input
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1 relative min-w-0">
+                      <textarea
                         ref={storyReplyInputRef}
-                        type="text"
                         value={storyCommentText}
-                        onChange={(e) => setStoryCommentText(e.target.value)}
+                        onChange={(e) => {
+                          setStoryCommentText(e.target.value)
+                          const el = e.target
+                          el.style.height = 'auto'
+                          el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+                        }}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter' && storyCommentText.trim()) {
+                          if (e.key === 'Enter' && !e.shiftKey && storyCommentText.trim()) {
                             e.preventDefault()
                             handleSubmitStoryComment(currentStory.id)
                           }
                         }}
+                        onFocus={() => setStoryCommentFocused(true)}
+                        onBlur={() => { setTimeout(() => setStoryCommentFocused(false), 150) }}
                         placeholder="Add a comment..."
-                        className="w-full bg-white/10 border border-white/20 rounded-full px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac]"
+                        className={`w-full bg-white/10 border border-white/20 px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto transition-all duration-200 ${
+                          storyCommentFocused || storyCommentText.trim() ? 'rounded-2xl' : 'rounded-full'
+                        }`}
+                        style={{ minHeight: '40px', maxHeight: '120px' }}
+                        rows={1}
                         disabled={storyCommentSending}
                       />
                     </div>
 
-                    <button
-                      type="button"
-                      className="w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 relative flex-shrink-0"
-                      style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={() => setStoryCommentPanelOpen(true)}
-                    >
-                      <i className="fa-regular fa-comment text-lg" />
-                      {storyComments.length > 0 && (
-                        <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#4db6ac] text-[9px] text-black font-bold flex items-center justify-center">{storyComments.length > 9 ? '9+' : storyComments.length}</span>
-                      )}
-                    </button>
+                    {!storyCommentFocused && !storyCommentText.trim() && (
+                      <>
+                        <button
+                          type="button"
+                          className="w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 relative flex-shrink-0"
+                          style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={() => setStoryCommentPanelOpen(true)}
+                        >
+                          <i className="fa-regular fa-comment text-lg" />
+                          {storyComments.length > 0 && (
+                            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#4db6ac] text-[9px] text-black font-bold flex items-center justify-center">{storyComments.length > 9 ? '9+' : storyComments.length}</span>
+                          )}
+                        </button>
 
-                    <button
-                      type="button"
-                      className="w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 flex-shrink-0"
-                      style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={() => { setStoryPrivateReplyOpen(true); setTimeout(() => storyPrivateReplyInputRef.current?.focus(), 100) }}
-                      title="Send private message"
-                    >
-                      <i className="fa-regular fa-paper-plane text-lg" />
-                    </button>
-                    
-                    {['❤️', '🔥', '😂'].map(emoji => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        className={`w-10 h-10 rounded-full flex items-center justify-center text-xl transition-transform active:scale-90 flex-shrink-0 ${
-                          currentStory.user_reaction === emoji ? 'bg-white/20 scale-110' : 'hover:bg-white/10'
-                        }`}
-                        onClick={() => handleStoryReaction(currentStory, emoji)}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
+                        <button
+                          type="button"
+                          className="w-11 h-11 rounded-full flex items-center justify-center text-white/70 hover:bg-white/10 flex-shrink-0"
+                          style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={() => { setStoryPrivateReplyOpen(true); setTimeout(() => storyPrivateReplyInputRef.current?.focus(), 100) }}
+                          title="Send private message"
+                        >
+                          <i className="fa-regular fa-paper-plane text-lg" />
+                        </button>
+                        
+                        {['❤️', '🔥', '😂'].map(emoji => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            className={`w-10 h-10 rounded-full flex items-center justify-center text-xl transition-transform active:scale-90 flex-shrink-0 ${
+                              currentStory.user_reaction === emoji ? 'bg-white/20 scale-110' : 'hover:bg-white/10'
+                            }`}
+                            onClick={() => handleStoryReaction(currentStory, emoji)}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </>
+                    )}
 
-                    {storyCommentText.trim() && (
+                    {(storyCommentFocused || storyCommentText.trim()) && (
                       <button
                         type="button"
                         onClick={() => handleSubmitStoryComment(currentStory.id)}
-                        disabled={storyCommentSending}
-                        className="w-10 h-10 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-50 flex-shrink-0"
+                        disabled={!storyCommentText.trim() || storyCommentSending}
+                        className="w-10 h-10 rounded-full bg-[#4db6ac] text-white flex items-center justify-center disabled:opacity-40 flex-shrink-0 mb-0.5"
                       >
                         {storyCommentSending ? <i className="fa-solid fa-spinner fa-spin text-sm" /> : <i className="fa-solid fa-paper-plane text-sm" />}
                       </button>

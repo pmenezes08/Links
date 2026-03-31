@@ -610,7 +610,7 @@ export default function ChatThread(){
       let storyReply: { id: string; mediaType: string; mediaPath: string } | undefined
       
       // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]
-      const storyReplyMatch = messageText.match(/^\[STORY_REPLY:([^:]+):([^:]+):([^\]]*)\]\n(.*)$/s)
+      const storyReplyMatch = messageText.match(/^\[STORY_REPLY:([^:]+):([^:]+):([^\]]*)\][\r\n\s]*(.*)$/s)
       if (storyReplyMatch) {
         storyReply = {
           id: storyReplyMatch[1],
@@ -620,7 +620,7 @@ export default function ChatThread(){
         messageText = storyReplyMatch[4]
       } else {
         // Check for regular reply format
-        const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+        const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\][\r\n\s]*(.*)$/s)
         if (replyMatch) {
           replySnippet = replyMatch[2]
           messageText = replyMatch[3]
@@ -1118,7 +1118,7 @@ export default function ChatThread(){
                 let storyReply: { id: string; mediaType: string; mediaPath: string } | undefined = undefined
                 
                 // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]
-                const storyReplyMatch = messageText.match(/^\[STORY_REPLY:([^:]+):([^:]+):([^\]]*)\]\n(.*)$/s)
+                const storyReplyMatch = messageText.match(/^\[STORY_REPLY:([^:]+):([^:]+):([^\]]*)\][\r\n\s]*(.*)$/s)
                 if (storyReplyMatch) {
                   storyReply = {
                     id: storyReplyMatch[1],
@@ -1128,7 +1128,7 @@ export default function ChatThread(){
                   messageText = storyReplyMatch[4]
                 } else {
                   // Check for regular reply format
-                  const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\]\n(.*)$/s)
+                  const replyMatch = messageText.match(/^\[REPLY:([^:]+):([^\]]+)\][\r\n\s]*(.*)$/s)
                   if (replyMatch) {
                     replySnippet = replyMatch[2]
                     messageText = replyMatch[3]

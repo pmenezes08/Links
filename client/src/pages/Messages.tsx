@@ -38,14 +38,14 @@ function formatLastMessagePreview(text: string | null): string {
   if (!text) return 'Say hello'
   
   // Check for story reply format: [STORY_REPLY:id:emoji:mediaPath]\n<message>
-  const storyReplyMatch = text.match(/^\[STORY_REPLY:[^\]]+\]\n(.*)$/s)
+  const storyReplyMatch = text.match(/^\[STORY_REPLY:[^\]]+\][\r\n\s]*(.*)$/s)
   if (storyReplyMatch) {
     const actualMessage = storyReplyMatch[1]?.trim()
     return actualMessage ? `Replied to story: ${actualMessage}` : 'Replied to a story'
   }
   
   // Check for regular reply format: [REPLY:sender:snippet]\n<message>
-  const replyMatch = text.match(/^\[REPLY:[^\]]+\]\n(.*)$/s)
+  const replyMatch = text.match(/^\[REPLY:[^\]]+\][\r\n\s]*(.*)$/s)
   if (replyMatch) {
     return replyMatch[1]?.trim() || text
   }

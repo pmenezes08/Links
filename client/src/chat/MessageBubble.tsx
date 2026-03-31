@@ -160,6 +160,16 @@ function MessageBubbleInner({
                         src={normalizeMediaPath(mediaPath)} 
                         alt="Story" 
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const el = e.currentTarget
+                          el.style.display = 'none'
+                          const fallback = el.parentElement
+                          if (fallback) {
+                            fallback.classList.add('flex', 'items-center', 'justify-center')
+                            fallback.style.background = 'linear-gradient(135deg, rgba(168,85,247,0.3), rgba(236,72,153,0.3))'
+                            fallback.innerHTML = '<i class="fa-solid fa-image text-white/50 text-sm"></i>'
+                          }
+                        }}
                       />
                     </div>
                   )}
@@ -170,6 +180,10 @@ function MessageBubbleInner({
                         className="absolute inset-0 w-full h-full object-cover"
                         muted
                         playsInline
+                        onError={(e) => {
+                          const el = e.currentTarget
+                          el.style.display = 'none'
+                        }}
                       />
                       <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                         <i className="fa-solid fa-play text-white/80 text-xs" />
