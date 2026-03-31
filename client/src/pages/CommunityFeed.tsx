@@ -1508,6 +1508,7 @@ export default function CommunityFeed() {
     setActiveStoryPointer(null)
     setStoryViewersState(prev => ({ ...prev, open: false }))
     setStoryReplyText('')
+    setStoryCommentFocused(false)
     if (storyViewerHistoryPushedRef.current) {
       storyViewerHistoryPushedRef.current = false
       // Pop the fake history entry we pushed
@@ -1590,6 +1591,7 @@ export default function CommunityFeed() {
     setStoryCommentPanelOpen(false)
     setStoryCommentText('')
     setStoryComments([])
+    setStoryCommentFocused(false)
     setStoryPrivateReplyOpen(false)
     setStoryPrivateReplyText('')
     setStoryDeleteMenuOpen(false)
@@ -1604,6 +1606,7 @@ export default function CommunityFeed() {
       // Dismiss keyboard when clicking on the story area (outside input)
       if (storyReplyInputRef.current && document.activeElement === storyReplyInputRef.current) {
         storyReplyInputRef.current.blur()
+        setStoryCommentFocused(false)
         return // Don't close the viewer, just dismiss keyboard
       }
       
@@ -1637,9 +1640,15 @@ export default function CommunityFeed() {
       
       // Don't navigate if clicking on interactive elements (buttons, links, etc)
       const target = event.target as HTMLElement
-      if (target.closest('button') || target.closest('a') || target.closest('video[controls]')) {
+      if (target.closest('button') || target.closest('a') || target.closest('video[controls]') || target.closest('textarea')) {
         storySwipeRef.current = null
         return
+      }
+
+      // Tapping on the story area should dismiss the composer focus
+      if (storyCommentFocused) {
+        setStoryCommentFocused(false)
+        storyReplyInputRef.current?.blur()
       }
       
       const dx = event.clientX - swipe.startX
@@ -1662,7 +1671,7 @@ export default function CommunityFeed() {
       
       storySwipeRef.current = null
     },
-    [goToNextStory, goToPrevStory]
+    [goToNextStory, goToPrevStory, storyCommentFocused]
   )
 
   const handleStoryPointerCancel = useCallback(() => {
@@ -2923,8 +2932,8 @@ export default function CommunityFeed() {
                           }
                         }}
                         onFocus={() => setStoryCommentFocused(true)}
-                        onBlur={() => { setTimeout(() => setStoryCommentFocused(false), 150) }}
-                        placeholder="Add a comment..."
+                        onBlur={() => { setTimeout(() => { if (!storyCommentText.trim()) setStoryCommentFocused(false) }, 150) }}
+                        placeholder="Comment..."
                         className={`w-full bg-white/10 border border-white/20 px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto transition-all duration-200 ${
                           storyCommentFocused || storyCommentText.trim() ? 'rounded-2xl' : 'rounded-full'
                         }`}
