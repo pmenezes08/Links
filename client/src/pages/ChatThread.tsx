@@ -64,7 +64,6 @@ export default function ChatThread(){
   
   useEffect(() => {
     userHasScrolledRef.current = false
-    setIsScrollReady(false)
   }, [username])
 
   // Detect mobile device
@@ -178,7 +177,6 @@ export default function ChatThread(){
   // Scroll behavior
   const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
   const [showScrollDown, setShowScrollDown] = useState(false)
-  const [isScrollReady, setIsScrollReady] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   
   const scrollToBottom = useCallback(() => {
