@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
 import Avatar from './Avatar'
 import { handleLogoutClick } from '../utils/logout'
 import { useBadges } from '../contexts/BadgeContext'
@@ -16,6 +17,7 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const { unreadMsgs, unreadNotifs } = useBadges()
+  const isWeb = typeof window !== 'undefined' ? Capacitor.getPlatform() === 'web' : false
 
   // PWA install prompt wiring
   // PWA install hooks removed here
@@ -75,6 +77,70 @@ export default function HeaderBar({ title, username, displayName, avatarUrl }: H
           </button>
         </div>
       </div>
+
+      {/* Persistent left sidebar for web - matches mobile burger menu */}
+      {isWeb && (
+        <div className="fixed left-0 top-14 bottom-0 w-64 hidden lg:flex flex-col z-30 bg-[#0a0a0c] border-r border-white/10 shadow-xl overflow-y-auto">
+          <div className="p-4">
+            <div className="flex items-center gap-2 pb-4 border-b border-white/10 mb-4">
+              <Avatar username={username || ''} url={resolvedAvatar} size={40} />
+              <div className="font-medium truncate text-white">{displayName || username || ''}</div>
+            </div>
+
+            <nav className="space-y-1">
+              {username === 'admin' && (
+                <>
+                  <a href="/admin_profile_react" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
+                    <i className="fa-solid fa-shield-halved w-5" /> Admin Profile
+                  </a>
+                  <a href="/admin" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
+                    <i className="fa-solid fa-chart-line w-5" /> Admin Dashboard
+                  </a>
+                </>
+              )}
+
+              <a href="/premium_dashboard" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
+                <i className="fa-solid fa-house w-5" /> Dashboard
+              </a>
+
+              <button
+                onClick={() => {
+                  if (username) navigate(`/profile/${encodeURIComponent(username)}`)
+                  else navigate('/profile')
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
+              >
+                <i className="fa-solid fa-user w-5" /> My Profile
+              </button>
+
+              <button
+                onClick={() => navigate('/followers')}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
+              >
+                <i className="fa-solid fa-users w-5" /> Followers
+              </button>
+
+              <button
+                onClick={() => navigate('/networking')}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
+              >
+                <i className="fa-solid fa-network-wired w-5" /> Networking
+              </button>
+
+              <button
+                onClick={handleLogoutClick}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors text-left"
+              >
+                <i className="fa-solid fa-right-from-bracket w-5" /> Logout
+              </button>
+
+              <a href="/account_settings" className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-white transition-colors">
+                <i className="fa-solid fa-cog w-5" /> Account Settings
+              </a>
+            </nav>
+          </div>
+        </div>
+      )}
 
         {menuOpen && (
         <div className="fixed inset-0 z-[90] flex bg-black/50" onClick={(e)=> e.currentTarget===e.target && setMenuOpen(false)} style={{ paddingTop: 'env(safe-area-inset-top)' }}>

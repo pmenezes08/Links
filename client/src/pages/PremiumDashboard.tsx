@@ -636,7 +636,7 @@ export default function PremiumDashboard() {
         )}
 
       {/* Main content area with proper positioning */}
-      <div className="min-h-screen md:ml-52 pb-20">
+      <div className={`min-h-screen pb-20 ${isWeb ? 'lg:ml-64' : 'md:ml-52'}`}>
         <div className="app-content max-w-5xl mx-auto px-3 py-6">
           <div 
             className="sticky top-0 z-20 mb-3 flex justify-center pointer-events-none transition-transform duration-150"

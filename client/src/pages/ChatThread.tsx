@@ -319,6 +319,7 @@ export default function ChatThread(){
 
   const effectiveComposerHeight = Math.max(composerHeight, defaultComposerPadding)
   const liftSource = Math.max(keyboardOffset, viewportLift)
+  const isWeb = Capacitor.getPlatform() === 'web'
   const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)
   const androidKeyboardOpen = isAndroid && liftSource > 0
 
@@ -2691,13 +2692,12 @@ export default function ChatThread(){
 
     {/* ====== COMPOSER - FIXED AT BOTTOM ====== */}
     {!isMultiSelectMode && (
-    <div 
+    <div
       ref={composerRef}
-      className="fixed left-0 right-0 bottom-0"
+      className={`fixed bottom-0 ${isWeb ? 'left-1/2 -translate-x-1/2 max-w-3xl w-full' : 'left-0 right-0'}`}
       style={{
         bottom: keyboardLift > 0 ? `${keyboardLift}px` : '0',
         zIndex: 1000,
-        width: '100%',
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -2705,7 +2705,7 @@ export default function ChatThread(){
       {/* Composer card - sits above the safe area */}
       <div
         ref={composerCardRef}
-        className="relative w-full rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3"
+        className={`relative ${isWeb ? 'w-full mx-auto' : 'w-full'} rounded-[16px] px-2 sm:px-2.5 py-2.5 sm:py-3`}
         style={{
           background: '#0a0a0c',
           marginBottom: 0,
