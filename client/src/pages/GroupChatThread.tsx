@@ -68,7 +68,6 @@ export default function GroupChatThread() {
   const [group, setGroup] = useState<GroupInfo | null>(null)
   const [serverMessages, setServerMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
-  const [isScrollReady, setIsScrollReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   // Server messages are already in chronological order from the API; just append optimistic at the end
@@ -187,7 +186,6 @@ export default function GroupChatThread() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const userHasScrolledRef = useRef(false)
-  const didInitialScrollRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
@@ -338,24 +336,8 @@ export default function GroupChatThread() {
     el.scrollTop = el.scrollHeight
   }, [messages])
 
-  // Initial load reveal: hide content until scrolled, then fade in
-  useEffect(() => {
-    if (messages.length === 0) return
-    if (isScrollReady) return
-    const el = listRef.current
-    if (!el) return
-    if (!didInitialScrollRef.current) {
-      didInitialScrollRef.current = true
-    }
-    el.scrollTop = el.scrollHeight
-    requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight
-      setIsScrollReady(true)
-      // Retry scrolls for images/media that load after initial render
-      setTimeout(() => { if (!userHasScrolledRef.current) el.scrollTop = el.scrollHeight }, 200)
-      setTimeout(() => { if (!userHasScrolledRef.current) el.scrollTop = el.scrollHeight }, 500)
-    })
-  }, [messages, isScrollReady])
+  // Simple scroll-to-bottom for new messages only (no aggressive initial load behavior)
+  // This prevents the unwanted scrolling/jumping when opening a chat
 
   const focusTextarea = useCallback(() => {
     if (MIC_ENABLED && recording) return
@@ -1883,8 +1865,7 @@ export default function GroupChatThread() {
               overscrollBehaviorY: 'auto',
               paddingBottom: listPaddingBottom,
               minHeight: 0,
-              opacity: isScrollReady ? 1 : 0,
-              transition: 'opacity 150ms ease-out',
+              // No opacity transition - always visible
             } as CSSProperties}
             onScroll={(e) => {
               const el = e.currentTarget

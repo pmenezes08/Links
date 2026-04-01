@@ -59,16 +59,11 @@ export default function ChatThread(){
   // Hide the main header - we use our own header in this page
   useEffect(() => { setTitle('') }, [setTitle])
   
-  // Reset scroll state when switching to a different chat
-  // Track when this chat was opened (for initial load window)
-  const chatOpenTimeRef = useRef<number>(0)
-  // Track if user has manually scrolled away from bottom
+  // Simple scroll state - reset when switching chats
   const userHasScrolledRef = useRef<boolean>(false)
   
   useEffect(() => {
-    didInitialAutoScrollRef.current = false
     userHasScrolledRef.current = false
-    chatOpenTimeRef.current = Date.now()
     setIsScrollReady(false)
   }, [username])
 
@@ -180,9 +175,7 @@ export default function ChatThread(){
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
 
-  // Auto-scroll logic - declared early so it can be used in useEffects
-  const lastCountRef = useRef(0)
-  const didInitialAutoScrollRef = useRef(false)
+  // Scroll behavior
   const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [isScrollReady, setIsScrollReady] = useState(false)
@@ -862,84 +855,8 @@ export default function ChatThread(){
     }
   }, [messages])
 
-  // Main scroll effect - handles initial load reveal
-  useEffect(() => {
-    const el = listRef.current
-    if (!el || messages.length === 0) return
-    
-    const timeSinceChatOpen = Date.now() - chatOpenTimeRef.current
-    const isInitialLoadWindow = timeSinceChatOpen < 3000
-    
-    if (isInitialLoadWindow && !userHasScrolledRef.current) {
-      if (!didInitialAutoScrollRef.current) {
-        didInitialAutoScrollRef.current = true
-      }
-      scrollToBottom()
-      requestAnimationFrame(() => {
-        scrollToBottom()
-        requestAnimationFrame(() => {
-          if (!isScrollReady) setIsScrollReady(true)
-          scrollToBottom()
-        })
-      })
-    } else if (!isScrollReady && messages.length > 0) {
-      scrollToBottom()
-      setIsScrollReady(true)
-    }
-    
-    lastCountRef.current = messages.length
-  }, [messages, scrollToBottom, isScrollReady])
-  
-  // Separate effect for handling image/media loading that changes scroll height
-  // This effect doesn't depend on messages so it doesn't get canceled when messages update
-  useEffect(() => {
-    const el = listRef.current
-    if (!el) return
-    
-    // Aggressive delayed scrolls for initial load - catches images loading
-    const initialScrollTimers = [100, 250, 500, 800, 1200, 2000, 3000].map(delay =>
-      setTimeout(() => {
-        if (!userHasScrolledRef.current) {
-          scrollToBottom()
-        }
-      }, delay)
-    )
-    
-    // MutationObserver to handle DOM changes from images loading
-    let lastHeight = el.scrollHeight
-    const observer = new MutationObserver(() => {
-      const newHeight = el.scrollHeight
-      if (newHeight !== lastHeight) {
-        lastHeight = newHeight
-        // Only auto-scroll if user hasn't manually scrolled away
-        if (!userHasScrolledRef.current) {
-          scrollToBottom()
-        }
-      }
-    })
-    
-    // Start observing with a slight delay to avoid initial render noise
-    const observerStartTimer = setTimeout(() => {
-      observer.observe(el, { 
-        childList: true, 
-        subtree: true, 
-        attributes: true,
-        attributeFilter: ['src', 'style', 'class'] // Only watch relevant attributes
-      })
-    }, 50)
-    
-    // Keep observer alive for 10 seconds to catch slow-loading images
-    const observerStopTimer = setTimeout(() => {
-      observer.disconnect()
-    }, 10000)
-    
-    return () => {
-      initialScrollTimers.forEach(clearTimeout)
-      clearTimeout(observerStartTimer)
-      clearTimeout(observerStopTimer)
-      observer.disconnect()
-    }
-  }, [username, scrollToBottom]) // Only re-run when chat changes, not on every message update
+  // Simple scroll-to-bottom for new messages only (no aggressive initial load behavior)
+  // This prevents the unwanted scrolling/jumping when opening a chat
 
   // Load older messages when user scrolls to top
   const loadOlderMessages = useCallback(async () => {
@@ -984,10 +901,6 @@ export default function ChatThread(){
     let lastScrollTop = el.scrollTop
     
     const handleScroll = () => {
-      const timeSinceChatOpen = Date.now() - chatOpenTimeRef.current
-      
-      // Ignore scroll events during the first 500ms (from programmatic scrolls)
-      if (timeSinceChatOpen < 500) return
       
       // Check if this is a manual scroll UP (away from bottom)
       const currentScrollTop = el.scrollTop
@@ -2484,9 +2397,7 @@ export default function ChatThread(){
           paddingBottom: listPaddingBottom,
           scrollPaddingBottom: listScrollPaddingBottom,
           minHeight: 0, // Required for flex child scrolling
-          // Hide content until scroll is positioned, then fade in
-          opacity: isScrollReady ? 1 : 0,
-          transition: 'opacity 150ms ease-out',
+          // No opacity transition - always visible
         } as CSSProperties}
         onPointerDown={handleContentPointerDown}
         onPointerUp={handleContentPointerUp}
