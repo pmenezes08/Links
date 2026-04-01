@@ -1334,27 +1334,16 @@ export default function PostDetail(){
             className="p-2 rounded-full hover:bg-white/10 transition-colors"
             onClick={() => {
               const state = location.state || {}
-              const isFromNotification = state.cameFromNotification || state.from === 'notification'
-              const hasCommunityContext = state.returnToCommunity || state.communityId || (post as any)?.community_id
+              const communityId = (post as any)?.community_id || state.communityId
 
-              // COLD START from notification: go to community feed
-              if (isFromNotification && hasCommunityContext) {
-                const communityId = state.communityId || (post as any)?.community_id
-                if (communityId) {
-                  console.log('🧭 Cold start navigation: returning to community feed', communityId)
-                  navigate(`/community_feed_react/${communityId}`)
-                  return
-                }
-              }
-
-              // NORMAL navigation with Option 1 state
-              if (state.returnTo) {
-                console.log('🧭 Normal navigation: using returnTo from state')
-                navigate(state.returnTo)
-              }
-              // Default fallback
-              else {
-                console.log('🧭 Default navigation: using browser history')
+              // Smart context detection: go to community feed when we have community context
+              // This covers: notifications, community feed navigation, and posts with community_id
+              if (communityId) {
+                console.log('🧭 Smart context: returning to community feed', communityId)
+                navigate(`/community_feed_react/${communityId}`)
+              } else {
+                // No community context - use normal back behavior
+                console.log('🧭 No community context - using browser history')
                 navigate(-1)
               }
             }}
