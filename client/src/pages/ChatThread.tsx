@@ -61,11 +61,11 @@ export default function ChatThread(){
   
   // Scroll state - reset when switching chats
   const userHasScrolledRef = useRef<boolean>(false)
-  const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
+  const hasScrolledToBottomRef = useRef(false)
   
   useEffect(() => {
     userHasScrolledRef.current = false
-    lastVisibleMsgKeyRef.current = null
+    hasScrolledToBottomRef.current = false
   }, [username])
 
   // Detect mobile device
@@ -179,6 +179,7 @@ export default function ChatThread(){
   // Scroll behavior
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const hasScrolledToBottomRef = useRef(false)
   
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
@@ -838,22 +839,24 @@ export default function ChatThread(){
   // Initial scroll to bottom when chat loads (handles images and large message lists)
   // This ensures we always open at the last message without flicker
   useEffect(() => {
-    if (messages.length === 0) return
+    if (messages.length === 0 || hasScrolledToBottomRef.current) return
     const el = listRef.current
     if (!el) return
 
-    // Only do initial scroll once per chat
-    if (lastVisibleMsgKeyRef.current === null) {
-      // Give DOM time to render images and content
-      requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight
-        requestAnimationFrame(() => {
-          el.scrollTop = el.scrollHeight
-        })
-      })
-      lastVisibleMsgKeyRef.current = 'initial'
+    // Scroll to bottom on initial load, with delay to allow images to render
+    const scrollToEnd = () => {
+      el.scrollTop = el.scrollHeight
     }
-  }, [messages.length]) // Only depend on message count for initial load
+    
+    // Multiple attempts with increasing delays to handle images loading
+    scrollToEnd()
+    requestAnimationFrame(scrollToEnd)
+    setTimeout(scrollToEnd, 100)
+    setTimeout(scrollToEnd, 300)
+    setTimeout(scrollToEnd, 800)
+    
+    hasScrolledToBottomRef.current = true
+  }, [messages.length, hasScrolledToBottomRef])
 
   // Handle new messages while chat is open (maintains existing behavior)
   useLayoutEffect(() => {
