@@ -59,11 +59,13 @@ export default function ChatThread(){
   // Hide the main header - we use our own header in this page
   useEffect(() => { setTitle('') }, [setTitle])
   
-  // Simple scroll state - reset when switching chats
+  // Scroll state - reset when switching chats
   const userHasScrolledRef = useRef<boolean>(false)
+  const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
   
   useEffect(() => {
     userHasScrolledRef.current = false
+    lastVisibleMsgKeyRef.current = null
   }, [username])
 
   // Detect mobile device
@@ -175,7 +177,6 @@ export default function ChatThread(){
   const skipNextPollsUntil = useRef<number>(0)
 
   // Scroll behavior
-  const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   
@@ -834,15 +835,38 @@ export default function ChatThread(){
     return () => window.removeEventListener('outbox-drained', handler)
   }, [otherUserId, processRawMessages])
   
-  // Pre-paint scroll for new messages — fires before browser paints, no visible jump
+  // Initial scroll to bottom when chat loads (handles images and large message lists)
+  // This ensures we always open at the last message without flicker
+  useEffect(() => {
+    if (messages.length === 0) return
+    const el = listRef.current
+    if (!el) return
+
+    // Only do initial scroll once per chat
+    if (lastVisibleMsgKeyRef.current === null) {
+      // Give DOM time to render images and content
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight
+        requestAnimationFrame(() => {
+          el.scrollTop = el.scrollHeight
+        })
+      })
+      lastVisibleMsgKeyRef.current = 'initial'
+    }
+  }, [messages.length]) // Only depend on message count for initial load
+
+  // Handle new messages while chat is open (maintains existing behavior)
   useLayoutEffect(() => {
     if (messages.length === 0) return
     const el = listRef.current
     if (!el) return
+    
     const lastMsg = messages[messages.length - 1]
     const lastMsgKey = (lastMsg as any).clientKey || lastMsg.id
     if (lastMsgKey === lastVisibleMsgKeyRef.current) return
+    
     lastVisibleMsgKeyRef.current = lastMsgKey
+    
     // Only auto-scroll for new messages if near bottom or user hasn't scrolled away
     const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 150
     if (nearBottom || !userHasScrolledRef.current) {
