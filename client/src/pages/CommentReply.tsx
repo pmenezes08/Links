@@ -537,7 +537,11 @@ export default function CommentReply() {
       const data = await res.json()
       if (data.success) {
         if (targetReplyId === reply?.id) {
-          navigate(-1)
+          if (post) {
+            navigate(`/post/${post.id}`)
+          } else {
+            navigate(-1)
+          }
         } else {
           setReply((prev) => {
             if (!prev) return prev
@@ -617,7 +621,13 @@ export default function CommentReply() {
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center gap-4">
         <p className="text-white/60">Reply not found</p>
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => {
+            if (post) {
+              navigate(`/post/${post.id}`)
+            } else {
+              navigate(-1)
+            }
+          }}
           className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black font-medium"
         >
           Go Back
@@ -659,7 +669,13 @@ export default function CommentReply() {
         <div className="h-14 flex items-center gap-2 px-3">
           <button 
             className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            onClick={() => navigate(-1)} 
+            onClick={() => {
+              if (post) {
+                navigate(`/post/${post.id}`)
+              } else {
+                navigate(-1)
+              }
+            }} 
             aria-label="Back"
           >
             <i className="fa-solid fa-arrow-left text-white text-lg" />
