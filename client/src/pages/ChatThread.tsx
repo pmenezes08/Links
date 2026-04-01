@@ -3120,6 +3120,13 @@ export default function ChatThread(){
                     }).catch(()=>{})
                   }, 1200)
                 }}
+                onKeyDown={(e) => {
+                  // Send on Enter (without Shift for new line) - web only
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    send()
+                  }
+                }}
               />
             )}
           </div>

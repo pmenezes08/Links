@@ -18,6 +18,7 @@ export function extractVideoEmbed(text: string): VideoEmbed | null {
     /(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{11})/,
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/live\/([a-zA-Z0-9_-]{11})/,
   ]
 
   for (const pattern of youtubePatterns) {
@@ -108,6 +109,7 @@ export function removeVideoUrlFromText(text: string, videoEmbed: VideoEmbed | nu
       /https?:\/\/(?:www\.)?youtu\.be\/[a-zA-Z0-9_-]{11}[^\s]*/g,
       /https?:\/\/(?:www\.)?youtube\.com\/embed\/[a-zA-Z0-9_-]{11}[^\s]*/g,
       /https?:\/\/(?:www\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]{11}[^\s]*/g,
+      /https?:\/\/(?:www\.)?youtube\.com\/live\/[a-zA-Z0-9_-]{11}[^\s]*/g,
     ],
     vimeo: [
       /https?:\/\/(?:www\.)?vimeo\.com\/\d+[^\s]*/g,

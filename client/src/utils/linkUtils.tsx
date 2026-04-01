@@ -142,7 +142,7 @@ function SmartLink({
     <a
       href={href}
       onClick={handleClick}
-      className={`text-[#4db6ac] underline inline-block py-0.5 ${processing ? 'opacity-50 cursor-wait' : ''}`}
+      className={`text-[#4db6ac] underline inline py-0.5 break-all ${processing ? 'opacity-50 cursor-wait' : ''}`}
       style={{ minHeight: '32px', lineHeight: '1.6' }}
     >
       {displayText}
