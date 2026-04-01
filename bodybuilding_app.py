@@ -1456,6 +1456,12 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 XAI_API_KEY = os.getenv('XAI_API_KEY', '')  # xAI/Grok API key for Steve
 TYPING_TTL_SECONDS = 5
 
+# Grok model configuration for Steve
+# Using 4.20 multi-agent only for complex networking/community analysis to control costs
+GROK_MODEL_FAST = "grok-4-1-fast-non-reasoning"          # Default for most interactions
+GROK_MODEL_REASONING = "grok-4-1-fast-reasoning"         # For group chat reasoning
+GROK_MODEL_MULTI_AGENT = "grok-4.20-multi-agent-0309"    # Only for networking/community analysis
+
 
 
 # Logging setup
@@ -13042,7 +13048,7 @@ def api_networking_steve_match():
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         response = client.responses.create(
-            model="grok-4-1-fast-non-reasoning",
+            model=GROK_MODEL_MULTI_AGENT,
             input=[
                 {"role": "system", "content": "You are Steve, a networking assistant. Given a user's profile and community members, recommend the best matches for the user's request. Be concise and friendly. Only reference actual members from the list. When mentioning a member, always use their username with @ prefix (e.g. @johndoe), never bold formatting."},
                 {"role": "user", "content": f"My profile:\n{user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"}
@@ -13091,7 +13097,7 @@ def api_networking_steve_auto_match():
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         response = client.responses.create(
-            model="grok-4-1-fast-non-reasoning",
+            model=GROK_MODEL_MULTI_AGENT,
             input=[
                 {"role": "system", "content": "You are Steve, a networking assistant. Analyze the user's profile and all community members' profiles. Suggest the top 3-5 best matches based on shared interests, location, industry, or complementary skills. Be concise and explain why each is a good match. When mentioning a member, always use their username with @ prefix (e.g. @johndoe), never bold formatting."},
                 {"role": "user", "content": f"My profile:\n{user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
@@ -22543,6 +22549,35 @@ def _build_steve_community_context(c, community_id, placeholder, max_doc_chars_t
     return "\n\n".join(parts)
 
 
+def _needs_community_analysis(message: str) -> bool:
+    """Detect if a message requires community/networking analysis.
+    This determines whether to use the expensive multi-agent model.
+    """
+    if not message:
+        return False
+    
+    message_lower = message.lower()
+    
+    # Keywords that indicate community analysis is needed
+    analysis_keywords = [
+        'who should', 'suggest', 'recommend', 'connect with', 'good fit', 
+        'mutual', 'network', 'find someone', 'best match', 'who would',
+        'community', 'group dynamic', 'who knows', 'expert', 'specialist',
+        'looking for', 'opportunity', 'collaboration', 'partner'
+    ]
+    
+    for keyword in analysis_keywords:
+        if keyword in message_lower:
+            return True
+    
+    # Questions about group or community
+    if any(word in message_lower for word in ['?', 'should i', 'can you find', 'tell me about']):
+        if any(word in message_lower for word in ['member', 'person', 'someone', 'people', 'who']):
+            return True
+    
+    return False
+
+
 def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username: str, community_id: int,
                                  image_path: str = None, video_path: str = None, media_paths: str = None):
     """
@@ -23093,8 +23128,14 @@ def ai_steve_reply():
             system_prompt = get_ai_personality_prompt(ai_personality)
             ai_response = None
             
+            # Intelligent routing: use multi-agent only for community analysis queries
+            needs_analysis = _needs_community_analysis(user_message)
+            model_to_use = GROK_MODEL_MULTI_AGENT if needs_analysis else GROK_MODEL_REASONING
+            
+            logger.info(f"Steve routing: {'MULTI-AGENT' if needs_analysis else 'REASONING'} model for: {user_message[:60]}...")
+            
             try:
-                logger.info(f"Steve using Grok 4.1 Fast Reasoning with web+X search ({ai_personality} mode)")
+                logger.info(f"Steve using {model_to_use} with web+X search ({ai_personality} mode)")
                 client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
                 
                 # Build user content - include images if present (Grok supports vision)
@@ -23111,7 +23152,7 @@ def ai_steve_reply():
                     effective_system = system_prompt
                 
                 response = client.responses.create(
-                    model="grok-4-1-fast-reasoning",
+                    model=model_to_use,
                     input=[
                         {"role": "system", "content": effective_system},
                         {"role": "user", "content": user_content}
