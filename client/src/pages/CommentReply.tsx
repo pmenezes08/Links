@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { Keyboard } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import { formatSmartTime } from '../utils/time'
@@ -152,6 +152,7 @@ function colorizeMentions(nodes: Array<React.ReactNode>): Array<React.ReactNode>
 export default function CommentReply() {
   const { reply_id } = useParams<{ reply_id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const mainReplyRef = useRef<HTMLDivElement>(null)
   const [loading, setLoading] = useState(true)
   const [reply, setReply] = useState<Reply | null>(null)
@@ -537,7 +538,21 @@ export default function CommentReply() {
       const data = await res.json()
       if (data.success) {
         if (targetReplyId === reply?.id) {
-          if (post) {
+          const state = location.state || {}
+          const isFromNotification = state.cameFromNotification || state.from === 'notification'
+
+          if (isFromNotification && state.communityId) {
+            // Pass community context when deleting from notification flow
+            navigate(`/post/${post?.id}`, {
+              state: {
+                ...state,
+                fromReply: true,
+                cameFromNotification: true,
+                communityId: state.communityId,
+                returnToCommunity: true
+              }
+            })
+          } else if (post) {
             navigate(`/post/${post.id}`)
           } else {
             navigate(-1)
@@ -622,7 +637,20 @@ export default function CommentReply() {
         <p className="text-white/60">Reply not found</p>
         <button
           onClick={() => {
-            if (post) {
+            const state = location.state || {}
+            const isFromNotification = state.cameFromNotification || state.from === 'notification'
+
+            if (isFromNotification && state.communityId && post) {
+              navigate(`/post/${post.id}`, {
+                state: {
+                  ...state,
+                  fromReply: true,
+                  cameFromNotification: true,
+                  communityId: state.communityId,
+                  returnToCommunity: true
+                }
+              })
+            } else if (post) {
               navigate(`/post/${post.id}`)
             } else {
               navigate(-1)
@@ -667,15 +695,36 @@ export default function CommentReply() {
         }}
       >
         <div className="h-14 flex items-center gap-2 px-3">
-          <button 
-            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
+          <button
+            className="p-2 rounded-full hover:bg-white/10 transition-colors"
             onClick={() => {
-              if (post) {
+              const state = location.state || {}
+              const isFromNotification = state.cameFromNotification || state.from === 'notification'
+
+              // For cold start notifications, pass community context to PostDetail
+              if (isFromNotification && state.communityId && post) {
+                navigate(`/post/${post.id}`, {
+                  state: {
+                    ...state,
+                    fromReply: true,
+                    cameFromNotification: true,
+                    communityId: state.communityId,
+                    returnToCommunity: true,
+                    communityFeedUrl: state.communityFeedUrl || `/community_feed_react/${state.communityId}`
+                  }
+                })
+              }
+              // Normal Option 1 flow
+              else if (state.returnTo) {
+                navigate(state.returnTo)
+              }
+              // Fallback to post or history
+              else if (post) {
                 navigate(`/post/${post.id}`)
               } else {
                 navigate(-1)
               }
-            }} 
+            }}
             aria-label="Back"
           >
             <i className="fa-solid fa-arrow-left text-white text-lg" />

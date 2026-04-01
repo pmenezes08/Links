@@ -9,7 +9,7 @@ import { gifSelectionToFile } from '../utils/gif'
 import type React from 'react'
 import MentionTextarea from '../components/MentionTextarea'
 import { useAudioRecorder } from '../components/useAudioRecorder'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
 import ZoomableImage from '../components/ZoomableImage'
@@ -114,6 +114,7 @@ function normalizePath(p?: string | null): string {
 export default function PostDetail(){
   const { post_id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [post, setPost] = useState<Post|null>(null)
   const [isGroupPost, setIsGroupPost] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -1329,9 +1330,34 @@ export default function PostDetail(){
         }}
       >
         <div className="h-14 flex items-center gap-2 px-3">
-          <button 
-            className="p-2 rounded-full hover:bg-white/10 transition-colors" 
-            onClick={() => navigate(-1)} 
+          <button
+            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            onClick={() => {
+              const state = location.state || {}
+              const isFromNotification = state.cameFromNotification || state.from === 'notification'
+              const hasCommunityContext = state.returnToCommunity || state.communityId || (post as any)?.community_id
+
+              // COLD START from notification: go to community feed
+              if (isFromNotification && hasCommunityContext) {
+                const communityId = state.communityId || (post as any)?.community_id
+                if (communityId) {
+                  console.log('🧭 Cold start navigation: returning to community feed', communityId)
+                  navigate(`/community_feed_react/${communityId}`)
+                  return
+                }
+              }
+
+              // NORMAL navigation with Option 1 state
+              if (state.returnTo) {
+                console.log('🧭 Normal navigation: using returnTo from state')
+                navigate(state.returnTo)
+              }
+              // Default fallback
+              else {
+                console.log('🧭 Default navigation: using browser history')
+                navigate(-1)
+              }
+            }}
             aria-label="Back"
           >
             <i className="fa-solid fa-arrow-left text-white" />

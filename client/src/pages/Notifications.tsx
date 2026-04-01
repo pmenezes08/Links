@@ -232,18 +232,33 @@ export default function Notifications(){
       return
     }
     const isPollNotification = typeKey === 'poll' || typeKey === 'poll_reminder' || typeKey === 'poll_closed'
+    const isReplyNotification = typeKey === 'reply' || typeKey === 'mention_reply'
+
     if (!url && isPollNotification && n.community_id) {
       url = `/community/${n.community_id}/polls_react`
     } else if (!url) {
       url = n.post_id ? `/post/${n.post_id}` : (n.community_id ? `/community_feed_react/${n.community_id}` : '/notifications')
     }
-    
-    console.log('Notification clicked:', { id: n.id, type: n.type, link: n.link, url })
+
+    console.log('Notification clicked:', { id: n.id, type: n.type, link: n.link, url, isReplyNotification })
+
+    // Enhanced navigation with state for better back button behavior
     if (url.startsWith('http') || url.startsWith('/')){
       // Use SPA navigation for known in-app routes
       if (url.startsWith('/post/') || url.startsWith('/reply/') || url.startsWith('/community_feed_react/') || url.startsWith('/community/') || url.startsWith('/event/') || url.includes('/tasks_react') || url.includes('/polls_react') || url.includes('/useful_links_react') || url.startsWith('/admin_dashboard')){
         console.log('Using SPA navigation to:', url)
-        navigate(url)
+
+        const navigationState = {
+          from: 'notification',
+          postId: n.post_id,
+          communityId: n.community_id,
+          isColdStart: true, // Will be overridden by actual navigation context
+          returnToCommunity: isReplyNotification && !!n.community_id,
+          communityFeedUrl: n.community_id ? `/community_feed_react/${n.community_id}` : undefined,
+          cameFromNotification: true
+        }
+
+        navigate(url, { state: navigationState })
       } else {
         console.log('Using window.location.href to:', url)
         window.location.href = url
