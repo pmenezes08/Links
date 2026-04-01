@@ -153,5 +153,11 @@ export async function performLogout(): Promise<void> {
  */
 export function handleLogoutClick(e: React.MouseEvent): void {
   e.preventDefault()
-  performLogout()
+
+  // For web, ensure we wait for cleanup before redirecting
+  if (typeof window !== 'undefined') {
+    performLogout().catch(console.error)
+  } else {
+    performLogout()
+  }
 }

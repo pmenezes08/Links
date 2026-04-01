@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useHeader } from '../contexts/HeaderContext'
 import { useUserProfile } from '../contexts/UserProfileContext'
 import { useNavigate } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
 import { readDeviceCacheStale, writeDeviceCache } from '../utils/deviceCache'
 import { cacheKeyVal, getCachedKeyVal } from '../utils/offlineDb'
 import {
@@ -67,6 +68,7 @@ export default function PremiumDashboard() {
   const { setTitle } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
   const navigate = useNavigate()
+  const isWeb = Capacitor.getPlatform() === 'web'
   const isPremium = (subscription || 'free').toLowerCase() === 'premium'
   const handleCloseCreateModal = () => {
     setShowCreateModal(false)
@@ -575,7 +577,9 @@ export default function PremiumDashboard() {
 
     return (
       <div className="app-content min-h-screen chat-thread-bg text-white pb-safe relative">
-      {/* Desktop sidebar - same menu as mobile burger */}
+      {/* Web uses shared HeaderBar from App.tsx, native platforms use old sidebar */}
+      {!isWeb && (
+      /* Desktop sidebar - only for native platforms (iOS/Android) */
       <div className="fixed left-0 top-14 bottom-0 w-52 hidden md:flex flex-col z-30 liquid-glass-surface border border-white/10 rounded-r-3xl shadow-[0_10px_40px_rgba(0,0,0,0.45)]">
         <nav className="flex-1 overflow-y-auto py-3">
           <a className="block px-5 py-3 text-sm text-white hover:bg-teal-700/20 hover:text-teal-300" href="/premium_dashboard">Dashboard</a>
@@ -600,6 +604,7 @@ export default function PremiumDashboard() {
           </div>
         )}
       </div>
+      )}
 
       {/* page content starts below header via pt-14 */}
 
