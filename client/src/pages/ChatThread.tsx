@@ -179,7 +179,7 @@ export default function ChatThread(){
   // Scroll behavior
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
-  const hasScrolledToBottomRef = useRef(false)
+  const lastVisibleMsgKeyRef = useRef<string | number | null>(null)
   
   const scrollToBottom = useCallback(() => {
     const el = listRef.current
