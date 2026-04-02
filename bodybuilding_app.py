@@ -7035,7 +7035,7 @@ def admin_steve_profiles():
             c = conn.cursor()
             ph = get_sql_placeholder()
             c.execute(f"""
-                SELECT u.username, u.industry, u.skills, u.bio,
+                SELECT u.username, u.industry, u.skills,
                        p.display_name, p.bio as profile_bio, p.location
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
@@ -7085,8 +7085,8 @@ def extract_simple_user_interests(user_row):
 
         industry = get_val(user_row, 'industry') or get_val(user_row, 1, '')
         skills = get_val(user_row, 'skills') or get_val(user_row, 2, '')
-        bio = (get_val(user_row, 'bio') or get_val(user_row, 'profile_bio') or
-               get_val(user_row, 3, '') or get_val(user_row, 5, ''))
+        bio = (get_val(user_row, 'profile_bio') or get_val(user_row, 'bio') or
+               get_val(user_row, 4, '') or get_val(user_row, 3, ''))
 
         text = f"{industry} {skills} {bio}".lower()
 
