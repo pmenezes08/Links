@@ -7113,6 +7113,53 @@ def admin_steve_profile_analyze(target_username):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/admin/steve_profiles/<target_username>/analysis', methods=['DELETE'])
+@login_required
+def admin_steve_profile_delete(target_username):
+    """Delete the entire Grok analysis for a user."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.firestore_writes import write_steve_user_profile
+        write_steve_user_profile(target_username, analysis={})
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting profile for {target_username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/steve_profiles/<target_username>/analysis/sections', methods=['PATCH'])
+@login_required
+def admin_steve_profile_patch(target_username):
+    """Remove specific sections from a user's analysis. Body: { "remove": ["personResearch", "companyIntel", ...] }"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        data = request.get_json(force=True) or {}
+        sections_to_remove = data.get('remove', [])
+        allowed = {'personResearch', 'companyIntel', 'roleContext', 'networkingValue', 'locationContext', 'interests', 'traits', 'observations'}
+        to_remove = [s for s in sections_to_remove if s in allowed]
+        if not to_remove:
+            return jsonify({'success': False, 'error': 'No valid sections specified'}), 400
+
+        from backend.services.firestore_reads import get_steve_user_profile
+        profile = get_steve_user_profile(target_username)
+        if not profile:
+            return jsonify({'success': False, 'error': 'Profile not found'}), 404
+
+        analysis = profile.get('analysis', {})
+        for section in to_remove:
+            analysis[section] = None
+        from backend.services.firestore_writes import write_steve_user_profile
+        write_steve_user_profile(target_username, analysis=analysis)
+        return jsonify({'success': True, 'analysis': analysis})
+    except Exception as e:
+        logger.error(f"Error patching profile for {target_username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 def _build_profile_text_for_grok(user_row) -> str:
     """Assemble all available profile fields into a text block for Grok analysis."""
     def gv(key):
@@ -7185,10 +7232,17 @@ IMPORTANT RULES:
 PERSON RESEARCH:
 - If a full name is provided, USE YOUR WEB SEARCH to look them up.
 - Search for their LinkedIn profile, public social media presence, and any press/media mentions.
-- Cross-reference discovered info with their stated company, role, school, and location to confirm identity.
 - If a LinkedIn URL is provided, search for that profile directly.
-- Include any additional professional background, achievements, or public activity you discover.
-- Only use publicly available information. If you cannot confirm identity, state that clearly.
+- Only use publicly available information.
+- BE VERY CONSERVATIVE with identity matching. You MUST cross-reference what you find online with the CPoint profile data.
+
+PERSON RESEARCH CONFIDENCE RULES (STRICT):
+- "high": You found the person online AND at least 2 data points from CPoint match (e.g. same company AND same city, or same school AND same role, or LinkedIn URL matches).
+- "medium": You found the person online AND exactly 1 data point from CPoint matches (e.g. same company OR same city OR same school).
+- "low": You found someone online but ZERO data points from CPoint could be verified, OR the CPoint profile is too sparse to confirm (e.g. only a name with no company/role/school/city). A name-only match is ALWAYS "low".
+- If you are not sure it's the same person, set confidence to "low" and say so in publicSummary.
+- NEVER set confidence to "high" or "medium" based solely on a name match — you need corroborating profile data.
+- If the CPoint profile has very little data (just a name, or name + 1 field), be extra skeptical. Default to "low" unless you have strong corroboration.
 
 COMPANY & ROLE RESEARCH:
 - If the user lists a company, USE YOUR WEB SEARCH to research it. What does the company do? What sector? What stage/size?
@@ -7260,6 +7314,18 @@ If no location is provided, set locationContext to null."""
         for key in ('companyIntel', 'roleContext', 'networkingValue', 'personResearch', 'locationContext'):
             if key not in analysis:
                 analysis[key] = None
+
+        corroborating_fields = sum(1 for marker in ('Company:', 'Role:', 'School:', 'Location:', 'LinkedIn:', 'Industry:')
+                                   if marker in profile_text)
+        person_research = analysis.get('personResearch')
+        if isinstance(person_research, dict) and person_research.get('confidence'):
+            stated = person_research['confidence'].lower().strip()
+            if corroborating_fields < 2 and stated in ('high', 'medium'):
+                person_research['confidence'] = 'low'
+                logger.info(f"Downgraded personResearch confidence for {username}: only {corroborating_fields} corroborating fields")
+            elif corroborating_fields < 3 and stated == 'high':
+                person_research['confidence'] = 'medium'
+                logger.info(f"Downgraded personResearch confidence for {username} from high to medium: only {corroborating_fields} corroborating fields")
 
         return analysis
     except Exception as e:
