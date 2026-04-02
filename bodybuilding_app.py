@@ -16498,6 +16498,7 @@ def post_status():
     audio_path = None
     video_path = None
     media_paths = []  # For multiple media (JSON array)
+    MAX_MEDIA_PER_POST = 5
     
     files = request.files
     
@@ -16531,6 +16532,10 @@ def post_status():
         except (json.JSONDecodeError, TypeError):
             pass
     
+    if len(media_paths) > MAX_MEDIA_PER_POST:
+        media_paths = media_paths[:MAX_MEDIA_PER_POST]
+        logger.warning(f"Post from {username}: media truncated to {MAX_MEDIA_PER_POST} items")
+
     # Handle legacy single image upload
     if not media_paths and 'image' in files and files['image'].filename:
         file = files['image']

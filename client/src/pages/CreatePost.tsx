@@ -18,7 +18,9 @@ export default function CreatePost(){
   const communityId = params.get('community_id') || ''
   const groupId = params.get('group_id') || ''
   const [content, setContent] = useState('')
+  const MAX_MEDIA = 5
   const [mediaFiles, setMediaFiles] = useState<File[]>([])
+  const [mediaLimitMsg, setMediaLimitMsg] = useState('')
   const [gifPickerOpen, setGifPickerOpen] = useState(false)
   const [selectedGif, setSelectedGif] = useState<GifSelection | null>(null)
   const [gifFile, setGifFile] = useState<File | null>(null)
@@ -497,7 +499,7 @@ export default function CreatePost(){
               <div className="flex items-center gap-2 text-xs text-white/70">
                 <span className="flex items-center gap-1.5 text-[#7fe7df]">
                   <i className={`fa-solid ${mediaPreviewUrls[mediaCarouselIndex]?.type === 'video' ? 'fa-video' : 'fa-image'}`} />
-                  {mediaPreviewUrls.length} {mediaPreviewUrls.length === 1 ? 'item' : 'items'}
+                  {mediaPreviewUrls.length}/{MAX_MEDIA}
                 </span>
               </div>
               {/* Dot indicators */}
@@ -516,6 +518,13 @@ export default function CreatePost(){
             </div>
           </div>
         )}
+        {mediaLimitMsg && (
+          <div className="mx-1 mt-2 px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+            <i className="fa-solid fa-circle-exclamation" />
+            {mediaLimitMsg}
+          </div>
+        )}
+
         {selectedGif ? (
           <div className="mt-3 inline-flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
             <img src={selectedGif.previewUrl} alt="Selected GIF" className="w-16 h-16 rounded object-cover" loading="lazy" />
@@ -633,14 +642,24 @@ export default function CreatePost(){
                   const files = e.target.files
                   if (!files || files.length === 0) return
                   
-                  // Add new files to existing ones (max 10 items)
-                  const newFiles = Array.from(files).slice(0, 10 - mediaFiles.length)
+                  const remaining = MAX_MEDIA - mediaFiles.length
+                  if (remaining <= 0) {
+                    setMediaLimitMsg(`Maximum ${MAX_MEDIA} files per post`)
+                    setTimeout(() => setMediaLimitMsg(''), 3000)
+                    e.target.value = ''
+                    return
+                  }
+                  const newFiles = Array.from(files).slice(0, remaining)
+                  if (newFiles.length < files.length) {
+                    setMediaLimitMsg(`Maximum ${MAX_MEDIA} files per post — ${files.length - newFiles.length} skipped`)
+                    setTimeout(() => setMediaLimitMsg(''), 3000)
+                  }
                   if (newFiles.length > 0) {
-                    setMediaFiles(prev => [...prev, ...newFiles].slice(0, 10))
+                    setMediaFiles(prev => [...prev, ...newFiles].slice(0, MAX_MEDIA))
                     setSelectedGif(null)
                     setGifFile(null)
                   }
-                  e.target.value = '' // Reset input to allow selecting same files again
+                  e.target.value = ''
                 }}
                 style={{ display: 'none' }}
               />
