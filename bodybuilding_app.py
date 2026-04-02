@@ -7017,7 +7017,8 @@ def check_admin():
 @app.route('/api/admin/steve_profiles', methods=['GET'])
 @login_required
 def admin_steve_profiles():
-    """List all users with their existing Firestore profiles (no Grok calls)."""
+    """List all users with their existing Firestore profiles (no Grok calls).
+    Tenant-aware: when g.tenant_id is set, only returns users in that tenant."""
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
@@ -7025,27 +7026,25 @@ def admin_steve_profiles():
     try:
         from backend.services.firestore_reads import list_steve_user_profiles
 
-        # Get all usernames from MySQL
+        tf, tp = _tenant_filter('u.tenant_id')
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("""
+            c.execute(f"""
                 SELECT u.username, COALESCE(p.display_name, u.username) AS display_name
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username NOT IN ('admin', 'steve')
+                WHERE u.username NOT IN ('admin', 'steve'){tf}
                 ORDER BY u.username
-            """)
+            """, tp)
             all_users = [
                 {'username': (r['username'] if hasattr(r, 'keys') else r[0]),
                  'display_name': (r['display_name'] if hasattr(r, 'keys') else r[1])}
                 for r in c.fetchall()
             ]
 
-        # Get existing Firestore profiles
         fs_profiles = list_steve_user_profiles(limit=500)
         fs_map = {p['username']: p for p in fs_profiles}
 
-        # Merge: every user appears, with analysis if it exists
         profiles = []
         for u in all_users:
             existing = fs_map.get(u['username'])
@@ -7065,7 +7064,8 @@ def admin_steve_profiles():
 @app.route('/api/admin/steve_profiles/<target_username>/analyze', methods=['POST'])
 @login_required
 def admin_steve_profile_analyze(target_username):
-    """Analyze a single user's profile with Grok on-demand."""
+    """Analyze a single user's profile with Grok on-demand.
+    Tenant-aware: when g.tenant_id is set, verifies user belongs to that tenant."""
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
@@ -7073,6 +7073,7 @@ def admin_steve_profile_analyze(target_username):
     try:
         from backend.services.firestore_writes import write_steve_user_profile
 
+        tf, tp = _tenant_filter('u.tenant_id')
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
@@ -7083,8 +7084,8 @@ def admin_steve_profile_analyze(target_username):
                        p.display_name, p.bio AS profile_bio, p.location
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username = {ph}
-            """, (target_username,))
+                WHERE u.username = {ph}{tf}
+            """, (target_username,) + tp)
             user = c.fetchone()
 
         if not user:

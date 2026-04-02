@@ -13,6 +13,7 @@ import Broadcast from './pages/Broadcast'
 import Settings from './pages/Settings'
 import FindAdmin from './pages/FindAdmin'
 import Tenants from './pages/Tenants'
+import UserProfiles from './pages/UserProfiles'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <Route index element={<Overview />} />
         <Route path="users" element={<Users />} />
         <Route path="communities" element={<Communities />} />
+        <Route path="profiles" element={<UserProfiles />} />
         <Route path="metrics" element={<Metrics />} />
         <Route path="reports" element={<Reports />} />
         <Route path="blocked" element={<Blocked />} />

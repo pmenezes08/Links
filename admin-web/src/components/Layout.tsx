@@ -6,6 +6,7 @@ const navItems = [
   { to: '/', icon: 'fa-chart-line', label: 'Overview' },
   { to: '/users', icon: 'fa-users', label: 'Users' },
   { to: '/communities', icon: 'fa-people-group', label: 'Communities' },
+  { to: '/profiles', icon: 'fa-brain', label: 'AI Profiles' },
   { to: '/metrics', icon: 'fa-chart-bar', label: 'Metrics' },
   { to: '/reports', icon: 'fa-flag', label: 'Reports' },
   { to: '/blocked', icon: 'fa-ban', label: 'Blocked' },
