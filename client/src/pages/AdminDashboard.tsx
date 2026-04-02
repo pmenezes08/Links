@@ -235,6 +235,9 @@ export default function AdminDashboard() {
       traits?: string[]
       observations?: string
       dataQuality?: string
+      companyIntel?: { name?: string; description?: string; sector?: string; stage?: string } | null
+      roleContext?: { title?: string; seniority?: string; function?: string; implication?: string } | null
+      networkingValue?: string | null
     }
     lastUpdated?: string
   }
@@ -2086,6 +2089,46 @@ export default function AdminDashboard() {
                                 {summary && (
                                   <div className="text-sm text-white/70 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
                                     {summary}
+                                  </div>
+                                )}
+
+                                {/* Company Intel */}
+                                {a.companyIntel?.description && (
+                                  <div>
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Company Intel</div>
+                                    <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1">
+                                      <div className="text-sm text-white font-medium">{a.companyIntel.name}</div>
+                                      <div className="text-xs text-white/60 leading-relaxed">{a.companyIntel.description}</div>
+                                      <div className="flex gap-2 mt-1">
+                                        {a.companyIntel.sector && <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300/80 border border-purple-500/20">{a.companyIntel.sector}</span>}
+                                        {a.companyIntel.stage && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300/80 border border-amber-500/20">{a.companyIntel.stage}</span>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Role Context */}
+                                {a.roleContext?.title && (
+                                  <div>
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Role Context</div>
+                                    <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm text-white">{a.roleContext.title}</span>
+                                        {a.roleContext.seniority && <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-300/80 border border-teal-500/20">{a.roleContext.seniority}</span>}
+                                        {a.roleContext.function && <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/50 border border-white/10">{a.roleContext.function}</span>}
+                                      </div>
+                                      {a.roleContext.implication && <div className="text-xs text-white/50 leading-relaxed">{a.roleContext.implication}</div>}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Networking Value */}
+                                {a.networkingValue && (
+                                  <div>
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Networking Value</div>
+                                    <div className="text-xs text-white/60 leading-relaxed bg-[#4db6ac]/5 rounded-lg px-3.5 py-2.5 border border-[#4db6ac]/15">
+                                      <i className="fa-solid fa-handshake text-[#4db6ac]/50 mr-1.5" />{a.networkingValue}
+                                    </div>
                                   </div>
                                 )}
 

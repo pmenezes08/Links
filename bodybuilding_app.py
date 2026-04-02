@@ -7148,8 +7148,8 @@ def _build_profile_text_for_grok(user_row) -> str:
 
 
 def _analyze_profile_with_grok(username: str, profile_text: str) -> dict:
-    """Call Grok 4.1-fast-reasoning to analyze a user's profile.
-    Returns structured dict with summary, interests, traits, and observations."""
+    """Call Grok multi-agent to analyze a user's profile with web research.
+    Returns structured dict with summary, interests, traits, company intel, role context, and networking value."""
     if not XAI_API_KEY:
         logger.warning("XAI_API_KEY not set, skipping Grok profile analysis")
         return {}
@@ -7157,7 +7157,7 @@ def _analyze_profile_with_grok(username: str, profile_text: str) -> dict:
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
-        system_prompt = """You are an expert people analyst. Given a user's profile data from a private professional network, produce a structured JSON analysis.
+        system_prompt = """You are an expert people analyst with web research capability. Given a user's profile data from a private professional network, produce a structured JSON analysis.
 
 IMPORTANT RULES:
 - Read the FULL text holistically. Understand tone, sarcasm, humor, and career context.
@@ -7167,22 +7167,44 @@ IMPORTANT RULES:
 - Confidence scores (0.0–1.0) should reflect how confident YOU are in the interest, not how much the person cares.
 - If there is very little data, say so honestly in the summary and give fewer interests with lower confidence.
 
+COMPANY & ROLE RESEARCH:
+- If the user lists a company, USE YOUR WEB SEARCH to research it. What does the company do? What sector? What stage/size?
+- If you cannot find the company, say so and use whatever context clues are available.
+- Analyze the user's role in the context of their company. What does this person likely do day-to-day?
+- Provide a networking value assessment: what kind of connections would benefit this person, and who would benefit from meeting them?
+
 Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
 {
   "summary": "1-2 sentence profile summary that Steve can use when talking to or about this person",
   "interests": {"topic_name": 0.85, "another_topic": 0.6},
   "traits": ["trait1", "trait2", "trait3"],
   "observations": "1-2 sentences of deeper insight — what makes this person tick, what they'd value in conversations",
-  "dataQuality": "rich|moderate|sparse"
-}"""
+  "dataQuality": "rich|moderate|sparse",
+  "companyIntel": {
+    "name": "Company name as stated",
+    "description": "What the company does (from your web research)",
+    "sector": "e.g. B2B SaaS, Consumer Fintech, Healthcare",
+    "stage": "e.g. Startup, Series B, Public, Fortune 500"
+  },
+  "roleContext": {
+    "title": "Their role title",
+    "seniority": "junior|mid|senior|executive|founder",
+    "function": "e.g. engineering, product, sales, operations",
+    "implication": "1 sentence on what this role means for networking"
+  },
+  "networkingValue": "1-2 sentences: what kind of introductions would be most valuable for this person, and what unique value do they bring to others?"
+}
+
+If the company or role fields are empty, set companyIntel and roleContext to null instead of guessing."""
 
         response = client.responses.create(
-            model=GROK_MODEL_REASONING,
+            model=GROK_MODEL_MULTI_AGENT,
             input=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Analyze this user's profile (@{username}):\n\n{profile_text}"}
             ],
-            max_output_tokens=600,
+            tools=[{"type": "web_search"}],
+            max_output_tokens=1000,
             temperature=0.3,
         )
 
@@ -7192,17 +7214,18 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
             return {}
 
         import json as _json
-        # Strip markdown fences if Grok wraps them
         if raw.startswith('```'):
             raw = raw.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
         analysis = _json.loads(raw)
 
-        # Validate required keys
         if not isinstance(analysis.get('interests'), dict):
             analysis['interests'] = {}
         for key in ('summary', 'traits', 'observations', 'dataQuality'):
             if key not in analysis:
                 analysis[key] = '' if key != 'traits' else []
+        for key in ('companyIntel', 'roleContext', 'networkingValue'):
+            if key not in analysis:
+                analysis[key] = None
 
         return analysis
     except Exception as e:
@@ -7225,21 +7248,92 @@ def get_steve_context_for_user(username: str) -> str:
         interests = analysis.get('interests', {})
         traits = analysis.get('traits', [])
         observations = analysis.get('observations', '')
+        company_intel = analysis.get('companyIntel') or {}
+        role_ctx = analysis.get('roleContext') or {}
+        networking_value = analysis.get('networkingValue', '')
 
         parts = []
         if summary:
             parts.append(summary)
+        if company_intel and company_intel.get('description'):
+            co = company_intel
+            parts.append(f"Company ({co.get('name','?')}): {co['description']} [{co.get('sector','')} / {co.get('stage','')}]")
+        if role_ctx and role_ctx.get('implication'):
+            parts.append(f"Role: {role_ctx.get('title','')} ({role_ctx.get('seniority','')}) — {role_ctx['implication']}")
         if interests:
             top = sorted(interests.items(), key=lambda x: x[1], reverse=True)[:5]
             parts.append('Interests: ' + ', '.join(f"{k} ({int(v*100)}%)" for k, v in top))
         if traits:
             parts.append('Traits: ' + ', '.join(traits[:4]))
+        if networking_value:
+            parts.append(f"Networking: {networking_value}")
         if observations:
             parts.append(observations)
         return ' | '.join(parts)
     except Exception as e:
         logger.debug(f"Could not load Steve profile for {username}: {e}")
         return ''
+
+
+def _trigger_background_profile_analysis(username: str):
+    """Fetch user profile data from MySQL and run Grok analysis in a background thread.
+    Skips if the profile was analyzed less than 10 minutes ago (debounce)."""
+    def _run():
+        try:
+            from backend.services.firestore_reads import get_steve_user_profile
+            from backend.services.firestore_writes import write_steve_user_profile
+
+            existing = get_steve_user_profile(username)
+            if existing and existing.get('lastUpdated'):
+                from datetime import datetime, timezone
+                last = existing['lastUpdated']
+                if hasattr(last, 'timestamp'):
+                    last_dt = last.replace(tzinfo=timezone.utc) if last.tzinfo is None else last
+                else:
+                    try:
+                        last_dt = datetime.fromisoformat(str(last).replace('Z', '+00:00'))
+                    except Exception:
+                        last_dt = None
+                if last_dt:
+                    age_seconds = (datetime.now(timezone.utc) - last_dt).total_seconds()
+                    if age_seconds < 600:
+                        logger.info(f"Skipping profile analysis for {username}: analyzed {int(age_seconds)}s ago (debounce)")
+                        return
+
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(f"""
+                    SELECT u.username, u.role, u.company, u.industry, u.degree,
+                           u.school, u.skills, u.linkedin, u.experience,
+                           u.professional_about, u.professional_interests,
+                           p.display_name, p.bio AS profile_bio, p.location
+                    FROM users u
+                    LEFT JOIN user_profiles p ON u.username = p.username
+                    WHERE u.username = {ph}
+                """, (username,))
+                user = c.fetchone()
+
+            if not user:
+                logger.warning(f"Background analysis: user {username} not found")
+                return
+
+            profile_text = _build_profile_text_for_grok(user)
+            if not profile_text.strip():
+                logger.info(f"Background analysis: no profile data for {username}")
+                return
+
+            logger.info(f"Background profile analysis starting for {username}")
+            analysis = _analyze_profile_with_grok(username, profile_text)
+            if analysis:
+                write_steve_user_profile(username, analysis=analysis)
+                logger.info(f"Background profile analysis completed for {username}")
+            else:
+                logger.warning(f"Background profile analysis returned empty for {username}")
+        except Exception as e:
+            logger.error(f"Background profile analysis failed for {username}: {e}", exc_info=True)
+
+    _threading.Thread(target=_run, daemon=True).start()
 
 
 @app.route('/health', methods=['GET'])
@@ -10815,11 +10909,11 @@ def update_public_profile():
             
             conn.commit()
             logger.info(f"Profile committed to database for {username}")
-            # Invalidate cached profile so clients see updates immediately
             try:
                 invalidate_user_cache(username)
             except Exception:
                 pass
+            _trigger_background_profile_analysis(username)
             flash('Public profile updated successfully!', 'success')
             
     except Exception as e:
@@ -11039,11 +11133,11 @@ def update_professional():
             ))
             conn.commit()
         
-        # Invalidate user cache so clients see updates immediately
         try:
             invalidate_user_cache(username)
         except Exception as cache_err:
             logger.warning(f"Failed to invalidate user cache for {username}: {cache_err}")
+        _trigger_background_profile_analysis(username)
         
         return jsonify({'success': True})
     except Exception as e:
@@ -11150,6 +11244,7 @@ def update_personal_info():
                 invalidate_user_cache(username)
             except Exception as cache_err:
                 logger.warning(f"Failed to invalidate user cache for {username}: {cache_err}")
+            _trigger_background_profile_analysis(username)
             
             return jsonify({'success': True})
     except Exception as e:
