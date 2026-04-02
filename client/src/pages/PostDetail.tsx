@@ -1431,8 +1431,8 @@ export default function PostDetail(){
                   <i className={`${(post as any).is_community_starred ? 'fa-solid' : 'fa-regular'} fa-star`} style={{ color: (post as any).is_community_starred ? '#ffd54f' : '#6c757d' }} />
                 </button>
               )}
-              {/* Delete button for owner/admin */}
-              {(currentUser?.username === post.username || currentUser?.username === 'admin') && (
+              {/* Delete button for owner/admin/community admin */}
+              {(currentUser?.username === post.username || currentUser?.username === 'admin' || (post as any).is_community_admin) && (
                 <button 
                   className="px-2 py-1 rounded-full text-[#6c757d] hover:text-red-400" 
                   title="Delete"

@@ -21122,7 +21122,11 @@ def delete_post():
             c = conn.cursor()
             c.execute("SELECT username, image_path, video_path, community_id FROM posts WHERE id= ?", (post_id,))
             post = c.fetchone()
-            if not post or (post['username'] != username and username != 'admin'):
+            if not post:
+                return jsonify({'success': False, 'error': 'Post not found!'}), 404
+            
+            # Use proper permission check that allows community owners/admins
+            if not has_post_delete_permission(username, post['username'], post['community_id']):
                 return jsonify({'success': False, 'error': 'Post not found or unauthorized!'}), 403
             
             # Get community_id for cache invalidation before deleting
@@ -23635,17 +23639,8 @@ def get_post():
     if not post_id:
         return jsonify({'success': False, 'error': 'Post ID is required'}), 400
     
-    # --- Firestore dual-read ---
-    try:
-        from backend.services.firestore_reads import USE_FIRESTORE_READS
-        if USE_FIRESTORE_READS:
-            from backend.services.firestore_reads import get_post_detail as fs_get_post
-            post = fs_get_post(post_id, username)
-            if post:
-                logger.info(f"Firestore post read: post {post_id}")
-                return jsonify({'success': True, 'post': post})
-    except Exception as fs_err:
-        logger.warning(f"Firestore post read failed, falling back to MySQL: {fs_err}")
+    # Firestore dual-read disabled for /get_post: MySQL is authoritative for
+    # reply view counts, edited content, and community admin flags.
 
     try:
         with get_db_connection() as conn:
@@ -23755,6 +23750,15 @@ def get_post():
             except Exception as view_err:
                 logger.warning(f"Failed to get view count for post {post_id}: {view_err}")
                 post['view_count'] = 0
+
+            # Community admin/owner flag so the frontend can show delete/edit for all posts
+            post_community_id = post.get('community_id')
+            post['is_community_admin'] = bool(
+                post_community_id and (
+                    is_community_owner(username, post_community_id)
+                    or is_community_admin(username, post_community_id)
+                )
+            )
 
             return jsonify({'success': True, 'post': post})
             
@@ -27059,6 +27063,24 @@ def api_community_feed(community_id):
                     except Exception as e:
                         logger.warning(f"Failed to batch fetch reply counts: {e}")
                 
+                # BATCH 16: Get reply view counts (excluding admin)
+                reply_view_counts: Dict[int, int] = {rid: 0 for rid in all_reply_ids}
+                if all_reply_ids:
+                    try:
+                        ensure_reply_views_table(c)
+                        params_rv = list(all_reply_ids) + ['admin']
+                        c.execute(
+                            f"SELECT reply_id, COUNT(*) as cnt FROM reply_views WHERE reply_id IN ({reply_placeholders}) AND LOWER(username) <> LOWER({get_sql_placeholder()}) GROUP BY reply_id",
+                            tuple(params_rv),
+                        )
+                        for row in c.fetchall():
+                            rid = row['reply_id'] if hasattr(row, 'keys') else row[0]
+                            cnt = row['cnt'] if hasattr(row, 'keys') else row[1]
+                            if rid in reply_view_counts:
+                                reply_view_counts[rid] = int(cnt or 0)
+                    except Exception as e:
+                        logger.warning(f"Failed to batch fetch reply view counts: {e}")
+                
                 # Now enrich posts with all the batched data (no more individual queries!)
                 for post in posts:
                     post_id = post['id']
@@ -27101,6 +27123,7 @@ def api_community_feed(community_id):
                         reply['reactions'] = reply_reactions.get(reply['id'], {})
                         reply['user_reaction'] = user_reply_reactions.get(reply['id'])
                         reply['reply_count'] = reply_counts.get(reply['id'], 0)
+                        reply['view_count'] = reply_view_counts.get(reply['id'], 0)
                     post['replies'] = post_replies
 
             response_payload = {

@@ -29,7 +29,6 @@ const STALE_API_ENDPOINTS = new Set([
   '/api/profile_me',
   '/api/check_gym_membership',
   '/api/check_admin',
-  '/api/home_timeline',
 ])
 
 self.addEventListener('install', (event) => {
