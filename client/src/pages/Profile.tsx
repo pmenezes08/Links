@@ -652,11 +652,21 @@ export default function Profile() {
         const cached = sessionStorage.getItem('geo_countries')
         if (cached) {
           const names = JSON.parse(cached) as string[]
-          if (!cancelled && names.length) { setCountries(names); return }
+          // Use cached data only if we have a reasonable number of countries
+          if (!cancelled && names.length >= 50) {
+            setCountries(names)
+            return
+          }
         }
       } catch {}
+
       try {
-        const response = await fetch('/api/geo/countries', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+        const response = await fetch('/api/geo/countries', {
+          credentials: 'include',
+          headers: { 'Accept': 'application/json' },
+          // Add cache-busting for fresh data
+          cache: 'no-cache'
+        })
         const payload = await response.json().catch(() => null)
         if (!cancelled) {
           if (payload?.success && Array.isArray(payload.countries)) {
@@ -666,11 +676,30 @@ export default function Profile() {
             setCountries(names)
             try { sessionStorage.setItem('geo_countries', JSON.stringify(names)) } catch {}
           } else {
-            setCountries([])
+            // Fallback to expanded static list if API fails
+            const fallbackCountries = [
+              'United States', 'Mexico', 'Canada', 'United Kingdom', 'Germany', 'France',
+              'Spain', 'Italy', 'Brazil', 'India', 'Japan', 'Australia', 'China',
+              'South Korea', 'Russia', 'Netherlands', 'Switzerland', 'South Africa',
+              'United Arab Emirates', 'Turkey', 'Portugal', 'Ireland', 'Norway',
+              'Denmark', 'Sweden', 'Belgium', 'New Zealand', 'Singapore', 'Saudi Arabia',
+              'Thailand', 'Indonesia', 'Argentina', 'Colombia', 'Chile', 'Peru',
+              'Egypt', 'Nigeria', 'Kenya', 'Philippines', 'Vietnam', 'Malaysia',
+              'Austria', 'Czech Republic', 'Poland', 'Hungary', 'Greece', 'Romania'
+            ]
+            setCountries(fallbackCountries)
           }
         }
       } catch {
-        if (!cancelled) setCountries([])
+        if (!cancelled) {
+          // Final fallback with comprehensive list
+          const fallbackCountries = [
+            'United States', 'Mexico', 'Canada', 'United Kingdom', 'Germany', 'France',
+            'Spain', 'Italy', 'Brazil', 'India', 'Japan', 'Australia', 'China',
+            'South Korea', 'Russia', 'Netherlands', 'Switzerland', 'South Africa'
+          ]
+          setCountries(fallbackCountries)
+        }
       }
     }
     loadCountries()

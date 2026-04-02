@@ -210,6 +210,50 @@ FALLBACK_COUNTRIES = [
     {'name': 'India', 'iso2': 'IN'},
     {'name': 'Japan', 'iso2': 'JP'},
     {'name': 'Spain', 'iso2': 'ES'},
+    {'name': 'Mexico', 'iso2': 'MX'},
+    {'name': 'Italy', 'iso2': 'IT'},
+    {'name': 'China', 'iso2': 'CN'},
+    {'name': 'South Korea', 'iso2': 'KR'},
+    {'name': 'Russia', 'iso2': 'RU'},
+    {'name': 'Netherlands', 'iso2': 'NL'},
+    {'name': 'Switzerland', 'iso2': 'CH'},
+    {'name': 'South Africa', 'iso2': 'ZA'},
+    {'name': 'United Arab Emirates', 'iso2': 'AE'},
+    {'name': 'Turkey', 'iso2': 'TR'},
+    {'name': 'Portugal', 'iso2': 'PT'},
+    {'name': 'Ireland', 'iso2': 'IE'},
+    {'name': 'Norway', 'iso2': 'NO'},
+    {'name': 'Denmark', 'iso2': 'DK'},
+    {'name': 'Sweden', 'iso2': 'SE'},
+    {'name': 'Belgium', 'iso2': 'BE'},
+    {'name': 'New Zealand', 'iso2': 'NZ'},
+    {'name': 'Singapore', 'iso2': 'SG'},
+    {'name': 'Saudi Arabia', 'iso2': 'SA'},
+    {'name': 'Thailand', 'iso2': 'TH'},
+    {'name': 'Indonesia', 'iso2': 'ID'},
+    {'name': 'Argentina', 'iso2': 'AR'},
+    {'name': 'Colombia', 'iso2': 'CO'},
+    {'name': 'Chile', 'iso2': 'CL'},
+    {'name': 'Peru', 'iso2': 'PE'},
+    {'name': 'Egypt', 'iso2': 'EG'},
+    {'name': 'Nigeria', 'iso2': 'NG'},
+    {'name': 'Ghana', 'iso2': 'GH'},
+    {'name': 'Kenya', 'iso2': 'KE'},
+    {'name': 'Philippines', 'iso2': 'PH'},
+    {'name': 'Vietnam', 'iso2': 'VN'},
+    {'name': 'Malaysia', 'iso2': 'MY'},
+    {'name': 'Austria', 'iso2': 'AT'},
+    {'name': 'Czech Republic', 'iso2': 'CZ'},
+    {'name': 'Poland', 'iso2': 'PL'},
+    {'name': 'Hungary', 'iso2': 'HU'},
+    {'name': 'Greece', 'iso2': 'GR'},
+    {'name': 'Romania', 'iso2': 'RO'},
+    {'name': 'Croatia', 'iso2': 'HR'},
+    {'name': 'Israel', 'iso2': 'IL'},
+    {'name': 'Finland', 'iso2': 'FI'},
+    {'name': 'Iceland', 'iso2': 'IS'},
+    {'name': 'Dominican Republic', 'iso2': 'DO'},
+    {'name': 'Costa Rica', 'iso2': 'CR'},
 ]
 FALLBACK_CITY_MAP: Dict[str, List[str]] = {
     'united states': ['New York', 'Los Angeles', 'Chicago', 'San Francisco', 'Seattle', 'Austin', 'Boston', 'Miami'],
@@ -2028,6 +2072,7 @@ def get_cached_countries() -> List[Dict[str, Any]]:
             return COUNTRY_CACHE['data']
     except Exception as e:
         logger.warning(f"Failed to fetch countries remotely: {e}")
+        logger.info(f"Using expanded fallback countries list with {len(FALLBACK_COUNTRIES)} countries (including Mexico)")
     COUNTRY_CACHE['data'] = FALLBACK_COUNTRIES
     COUNTRY_CACHE['timestamp'] = now
     return COUNTRY_CACHE['data']
