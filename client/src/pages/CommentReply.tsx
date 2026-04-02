@@ -6,7 +6,7 @@ import type { KeyboardInfo } from '@capacitor/keyboard'
 import { useNavigate, useParams } from 'react-router-dom'
 import Avatar from '../components/Avatar'
 import ImageLoader from '../components/ImageLoader'
-import { formatSmartTime } from '../utils/time'
+import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import MentionTextarea from '../components/MentionTextarea'
 import GifPicker from '../components/GifPicker'
 import type { GifSelection } from '../components/GifPicker'
@@ -462,19 +462,17 @@ export default function CommentReply() {
 
   function formatViewerRelative(viewed_at?: string | null): string {
     if (!viewed_at) return ''
-    try {
-      const date = new Date(viewed_at)
-      if (isNaN(date.getTime())) return ''
-      const diffMs = Date.now() - date.getTime()
-      const diffMins = Math.round(diffMs / 60000)
-      if (diffMins < 1) return 'just now'
-      if (diffMins < 60) return `${diffMins}m ago`
-      const diffHrs = Math.round(diffMins / 60)
-      if (diffHrs < 24) return `${diffHrs}h ago`
-      const diffDays = Math.round(diffHrs / 24)
-      if (diffDays < 7) return `${diffDays}d ago`
-      return date.toLocaleDateString()
-    } catch { return '' }
+    const date = parseFlexibleDate(viewed_at)
+    if (!date) return ''
+    const diffMs = Date.now() - date.getTime()
+    const diffMins = Math.round(diffMs / 60000)
+    if (diffMins < 1) return 'just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    const diffHrs = Math.round(diffMins / 60)
+    if (diffHrs < 24) return `${diffHrs}h ago`
+    const diffDays = Math.round(diffHrs / 24)
+    if (diffDays < 7) return `${diffDays}d ago`
+    return date.toLocaleDateString()
   }
 
   async function openReplyReactorsModal(replyId: number) {

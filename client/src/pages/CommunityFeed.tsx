@@ -8,7 +8,7 @@ import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove 
 import { CSS } from '@dnd-kit/utilities'
 import Avatar from '../components/Avatar'
 import MentionTextarea from '../components/MentionTextarea'
-import { formatSmartTime } from '../utils/time'
+import { formatSmartTime, parseFlexibleDate } from '../utils/time'
 import ImageLoader from '../components/ImageLoader'
 import ZoomableImage from '../components/ZoomableImage'
 import { useHeader } from '../contexts/HeaderContext'
@@ -311,23 +311,18 @@ export default function CommunityFeed() {
 
   const formatViewerRelative = (value?: string | null) => {
     if (!value) return ''
-    try {
-      const normalized = value.includes('T') ? value : value.replace(' ', 'T')
-      const date = new Date(normalized)
-      if (Number.isNaN(date.getTime())) return ''
-      const diffMs = Date.now() - date.getTime()
-      const diffSeconds = Math.floor(diffMs / 1000)
-      if (diffSeconds < 60) return 'just now'
-      const diffMinutes = Math.floor(diffSeconds / 60)
-      if (diffMinutes < 60) return `${diffMinutes}m ago`
-      const diffHours = Math.floor(diffMinutes / 60)
-      if (diffHours < 24) return `${diffHours}h ago`
-      const diffDays = Math.floor(diffHours / 24)
-      if (diffDays < 7) return `${diffDays}d ago`
-      return date.toLocaleDateString()
-    } catch {
-      return ''
-    }
+    const date = parseFlexibleDate(value)
+    if (!date) return ''
+    const diffMs = Date.now() - date.getTime()
+    const diffSeconds = Math.floor(diffMs / 1000)
+    if (diffSeconds < 60) return 'just now'
+    const diffMinutes = Math.floor(diffSeconds / 60)
+    if (diffMinutes < 60) return `${diffMinutes}m ago`
+    const diffHours = Math.floor(diffMinutes / 60)
+    if (diffHours < 24) return `${diffHours}h ago`
+    const diffDays = Math.floor(diffHours / 24)
+    if (diffDays < 7) return `${diffDays}d ago`
+    return date.toLocaleDateString()
   }
   
   const markPostViewed = useCallback(async (postId: number, alreadyViewed?: boolean) => {

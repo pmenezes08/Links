@@ -1036,7 +1036,7 @@ def upsert_post_view(c, post_id: int, username: Optional[str]) -> Optional[int]:
             logger.warning(f"Failed cleaning admin views for post {post_id}: {cleanup_err}")
         return _count_post_views_excluding_admin(c, post_id)
 
-    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     try:
         if USE_MYSQL:
             c.execute("INSERT IGNORE INTO post_views (post_id, username, viewed_at) VALUES (%s,%s,%s)", (post_id, username, now_str))
@@ -1092,7 +1092,7 @@ def upsert_reply_view(c, reply_id: int, username: Optional[str]) -> int:
     ensure_reply_views_table(c)
     if not username or username.lower() == 'admin':
         return _count_reply_views_excluding_admin(c, reply_id)
-    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    now_str = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     try:
         if USE_MYSQL:
             c.execute("INSERT IGNORE INTO reply_views (reply_id, username, viewed_at) VALUES (%s,%s,%s)", (reply_id, username, now_str))
