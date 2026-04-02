@@ -7017,50 +7017,96 @@ def check_admin():
 @app.route('/api/admin/steve_profiles', methods=['GET'])
 @login_required
 def admin_steve_profiles():
-    """Admin endpoint: analyze all users with Grok and store profiles in Firestore."""
+    """List all users with their existing Firestore profiles (no Grok calls)."""
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
     try:
         from backend.services.firestore_reads import list_steve_user_profiles
+
+        # Get all usernames from MySQL
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("""
+                SELECT u.username, COALESCE(p.display_name, u.username) AS display_name
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username NOT IN ('admin', 'steve')
+                ORDER BY u.username
+            """)
+            all_users = [
+                {'username': (r['username'] if hasattr(r, 'keys') else r[0]),
+                 'display_name': (r['display_name'] if hasattr(r, 'keys') else r[1])}
+                for r in c.fetchall()
+            ]
+
+        # Get existing Firestore profiles
+        fs_profiles = list_steve_user_profiles(limit=500)
+        fs_map = {p['username']: p for p in fs_profiles}
+
+        # Merge: every user appears, with analysis if it exists
+        profiles = []
+        for u in all_users:
+            existing = fs_map.get(u['username'])
+            profiles.append({
+                'username': u['username'],
+                'display_name': u['display_name'],
+                'analysis': existing.get('analysis', {}) if existing else {},
+                'lastUpdated': existing.get('lastUpdated') if existing else None,
+            })
+
+        return jsonify({'success': True, 'profiles': profiles, 'total': len(profiles)})
+    except Exception as e:
+        logger.error(f"Error in admin_steve_profiles: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/steve_profiles/<target_username>/analyze', methods=['POST'])
+@login_required
+def admin_steve_profile_analyze(target_username):
+    """Analyze a single user's profile with Grok on-demand."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
         from backend.services.firestore_writes import write_steve_user_profile
 
         with get_db_connection() as conn:
             c = conn.cursor()
-            c.execute("""
+            ph = get_sql_placeholder()
+            c.execute(f"""
                 SELECT u.username, u.role, u.company, u.industry, u.degree,
                        u.school, u.skills, u.linkedin, u.experience,
                        u.professional_about, u.professional_interests,
                        p.display_name, p.bio AS profile_bio, p.location
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
-                WHERE u.username NOT IN ('admin', 'steve')
-                ORDER BY u.username
-            """)
-            users = c.fetchall()
+                WHERE u.username = {ph}
+            """, (target_username,))
+            user = c.fetchone()
 
-        analyzed = 0
-        for user in users:
-            u_username = user['username'] if hasattr(user, 'keys') else user[0]
-            profile_text = _build_profile_text_for_grok(user)
-            if not profile_text.strip():
-                continue
-            analysis = _analyze_profile_with_grok(u_username, profile_text)
-            if analysis:
-                write_steve_user_profile(u_username, analysis=analysis)
-                analyzed += 1
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
 
-        profiles = list_steve_user_profiles(limit=500)
+        profile_text = _build_profile_text_for_grok(user)
+        if not profile_text.strip():
+            return jsonify({'success': False, 'error': 'No profile data to analyze'}), 400
+
+        analysis = _analyze_profile_with_grok(target_username, profile_text)
+        if not analysis:
+            return jsonify({'success': False, 'error': 'Grok analysis returned empty'}), 502
+
+        write_steve_user_profile(target_username, analysis=analysis)
 
         return jsonify({
             'success': True,
-            'profiles': profiles,
-            'total': len(profiles),
-            'analyzed': analyzed,
+            'username': target_username,
+            'analysis': analysis,
         })
     except Exception as e:
-        logger.error(f"Error in admin_steve_profiles: {e}", exc_info=True)
+        logger.error(f"Error analyzing profile for {target_username}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

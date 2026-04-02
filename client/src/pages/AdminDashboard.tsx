@@ -228,6 +228,7 @@ export default function AdminDashboard() {
   // Steve Profiles state (Phase 0)
   interface SteveProfile {
     username: string
+    display_name?: string
     analysis: {
       summary?: string
       interests?: { [key: string]: number }
@@ -239,6 +240,7 @@ export default function AdminDashboard() {
   }
   const [steveProfiles, setSteveProfiles] = useState<SteveProfile[]>([])
   const [steveProfilesLoading, setSteveProfilesLoading] = useState(false)
+  const [analyzingUser, setAnalyzingUser] = useState<string | null>(null)
   const [selectedProfileUsername, setSelectedProfileUsername] = useState<string>('')
   const [profileSearchQuery, setProfileSearchQuery] = useState('')
 
@@ -451,6 +453,31 @@ export default function AdminDashboard() {
       setSteveProfiles([])
     } finally {
       setSteveProfilesLoading(false)
+    }
+  }, [])
+
+  const analyzeUser = useCallback(async (targetUsername: string) => {
+    setAnalyzingUser(targetUsername)
+    try {
+      const response = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(targetUsername)}/analyze`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' }
+      })
+      const data = await response.json()
+      if (data?.success && data.analysis) {
+        setSteveProfiles(prev => prev.map(p =>
+          p.username === targetUsername
+            ? { ...p, analysis: data.analysis, lastUpdated: new Date().toISOString() }
+            : p
+        ))
+      } else {
+        console.error('Analyze failed:', data?.error)
+      }
+    } catch (error) {
+      console.error('Error analyzing user:', error)
+    } finally {
+      setAnalyzingUser(null)
     }
   }, [])
 
@@ -1910,7 +1937,7 @@ export default function AdminDashboard() {
                     <i className="fa-solid fa-brain" />
                     Steve User Profiles
                   </h3>
-                  <p className="text-xs text-white/60 mt-1">Phase 0: Simple interest vectors from user data</p>
+                  <p className="text-xs text-white/60 mt-1">Grok 4.1 profile analysis — select a user to analyze</p>
                 </div>
                 <button
                   onClick={loadSteveProfiles}
@@ -1961,11 +1988,12 @@ export default function AdminDashboard() {
 
                     <div className="max-h-[480px] overflow-y-auto space-y-0.5">
                       {steveProfiles
-                        .filter(p => !profileSearchQuery || p.username.toLowerCase().includes(profileSearchQuery.toLowerCase()))
+                        .filter(p => !profileSearchQuery || p.username.toLowerCase().includes(profileSearchQuery.toLowerCase())
+                          || (p.display_name || '').toLowerCase().includes(profileSearchQuery.toLowerCase()))
                         .map((profile) => {
                           const a = profile.analysis || {}
+                          const hasAnalysis = !!a.summary
                           const topInterest = Object.entries(a.interests || {}).sort((x: any, y: any) => y[1] - x[1])[0]
-                          const quality = a.dataQuality || 'sparse'
                           return (
                             <button
                               key={profile.username}
@@ -1977,13 +2005,11 @@ export default function AdminDashboard() {
                               }`}
                             >
                               <span className="font-medium">@{profile.username}</span>
-                              {topInterest ? (
+                              {hasAnalysis && topInterest ? (
                                 <span className="ml-1.5 text-white/30">{topInterest[0]} {Math.round((topInterest[1] as number) * 100)}%</span>
-                              ) : (
-                                <span className="ml-1.5 text-white/20">—</span>
-                              )}
-                              <span className={`ml-1 text-[9px] ${quality === 'rich' ? 'text-green-400/50' : quality === 'moderate' ? 'text-yellow-400/50' : 'text-white/20'}`}>
-                                {quality === 'rich' ? '●' : quality === 'moderate' ? '●' : '○'}
+                              ) : null}
+                              <span className={`ml-1 text-[9px] ${hasAnalysis ? 'text-green-400/50' : 'text-white/20'}`}>
+                                {hasAnalysis ? '●' : '○'}
                               </span>
                             </button>
                           )
@@ -1998,11 +2024,13 @@ export default function AdminDashboard() {
                         const profile = steveProfiles.find(p => p.username === selectedProfileUsername);
                         if (!profile) return <div className="text-white/40 text-sm">Profile not found</div>;
                         const a = profile.analysis || {};
+                        const hasAnalysis = !!a.summary;
                         const interests = a.interests || {};
                         const traits: string[] = a.traits || [];
                         const summary = a.summary || '';
                         const observations = a.observations || '';
                         const quality = a.dataQuality || 'sparse';
+                        const isAnalyzing = analyzingUser === profile.username;
 
                         return (
                           <div className="space-y-4">
@@ -2011,62 +2039,97 @@ export default function AdminDashboard() {
                               <div className="w-9 h-9 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-lg flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
                                 {profile.username[0]?.toUpperCase()}
                               </div>
-                              <div className="min-w-0">
+                              <div className="flex-1 min-w-0">
                                 <div className="text-lg font-semibold text-white truncate">@{profile.username}</div>
-                                <div className="text-[10px] text-white/40 flex items-center gap-2">
-                                  <span className={`${quality === 'rich' ? 'text-green-400' : quality === 'moderate' ? 'text-yellow-400' : 'text-white/30'}`}>{quality} data</span>
-                                  <span>·</span>
-                                  <span>{profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleDateString() : '—'}</span>
-                                </div>
+                                {profile.display_name && profile.display_name !== profile.username && (
+                                  <div className="text-xs text-white/40 truncate">{profile.display_name}</div>
+                                )}
+                                {hasAnalysis && (
+                                  <div className="text-[10px] text-white/40 flex items-center gap-2 mt-0.5">
+                                    <span className={`${quality === 'rich' ? 'text-green-400' : quality === 'moderate' ? 'text-yellow-400' : 'text-white/30'}`}>{quality} data</span>
+                                    <span>·</span>
+                                    <span>{profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleDateString() : '—'}</span>
+                                  </div>
+                                )}
                               </div>
+                              <button
+                                onClick={() => analyzeUser(profile.username)}
+                                disabled={isAnalyzing}
+                                className="px-3 py-1.5 bg-[#4db6ac]/10 hover:bg-[#4db6ac]/20 border border-[#4db6ac]/30 rounded-lg text-xs text-[#4db6ac] flex items-center gap-1.5 disabled:opacity-50 flex-shrink-0"
+                              >
+                                {isAnalyzing ? (
+                                  <><i className="fa-solid fa-spinner fa-spin" /> Analyzing...</>
+                                ) : (
+                                  <><i className="fa-solid fa-brain" /> {hasAnalysis ? 'Re-analyze' : 'Analyze'}</>
+                                )}
+                              </button>
                             </div>
 
-                            {/* Summary */}
-                            {summary && (
-                              <div className="text-sm text-white/70 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
-                                {summary}
+                            {isAnalyzing && (
+                              <div className="text-center py-8 text-white/50">
+                                <i className="fa-solid fa-spinner fa-spin text-xl mb-2" />
+                                <div className="text-xs">Grok is analyzing this profile...</div>
                               </div>
                             )}
 
-                            {/* Interests */}
-                            {Object.keys(interests).length > 0 && (
-                              <div>
-                                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Interests</div>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {Object.entries(interests)
-                                    .sort((x: any, y: any) => y[1] - x[1])
-                                    .map(([topic, score]) => (
-                                      <span key={topic} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-white/5 border border-white/10">
-                                        <span className="text-white">{topic}</span>
-                                        <span className="text-[#4db6ac] font-mono text-[10px]">{Math.round((score as number) * 100)}%</span>
-                                      </span>
-                                    ))}
-                                </div>
+                            {!isAnalyzing && !hasAnalysis && (
+                              <div className="text-center py-8 text-white/30">
+                                <i className="fa-solid fa-user-magnifying-glass text-2xl mb-2" />
+                                <div className="text-sm">Not yet analyzed</div>
+                                <div className="text-xs mt-1">Click "Analyze" to run Grok profile analysis</div>
                               </div>
                             )}
 
-                            {/* Traits */}
-                            {traits.length > 0 && (
-                              <div>
-                                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Traits</div>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {traits.map((trait, i) => (
-                                    <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300/80 border border-blue-500/20">
-                                      {trait}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
+                            {!isAnalyzing && hasAnalysis && (
+                              <>
+                                {/* Summary */}
+                                {summary && (
+                                  <div className="text-sm text-white/70 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
+                                    {summary}
+                                  </div>
+                                )}
 
-                            {/* Observations */}
-                            {observations && (
-                              <div>
-                                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Steve's Observations</div>
-                                <div className="text-xs text-white/50 leading-relaxed">
-                                  {observations}
-                                </div>
-                              </div>
+                                {/* Interests */}
+                                {Object.keys(interests).length > 0 && (
+                                  <div>
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Interests</div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {Object.entries(interests)
+                                        .sort((x: any, y: any) => y[1] - x[1])
+                                        .map(([topic, score]) => (
+                                          <span key={topic} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-white/5 border border-white/10">
+                                            <span className="text-white">{topic}</span>
+                                            <span className="text-[#4db6ac] font-mono text-[10px]">{Math.round((score as number) * 100)}%</span>
+                                          </span>
+                                        ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Traits */}
+                                {traits.length > 0 && (
+                                  <div>
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Traits</div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {traits.map((trait, i) => (
+                                        <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300/80 border border-blue-500/20">
+                                          {trait}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Observations */}
+                                {observations && (
+                                  <div>
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Steve's Observations</div>
+                                    <div className="text-xs text-white/50 leading-relaxed">
+                                      {observations}
+                                    </div>
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         );
