@@ -7078,9 +7078,11 @@ def admin_steve_profile_analyze(target_username):
             c = conn.cursor()
             ph = get_sql_placeholder()
             c.execute(f"""
-                SELECT u.username, u.role, u.company, u.industry, u.degree,
+                SELECT u.username, u.first_name, u.last_name,
+                       u.role, u.company, u.industry, u.degree,
                        u.school, u.skills, u.linkedin, u.experience,
                        u.professional_about, u.professional_interests,
+                       u.country, u.city,
                        p.display_name, p.bio AS profile_bio, p.location
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
@@ -7121,6 +7123,9 @@ def _build_profile_text_for_grok(user_row) -> str:
             return ''
 
     parts = []
+    full_name = f"{gv('first_name')} {gv('last_name')}".strip()
+    if full_name:
+        parts.append(f"Full name: {full_name}")
     if gv('display_name'):
         parts.append(f"Display name: {gv('display_name')}")
     if gv('role'):
@@ -7143,8 +7148,17 @@ def _build_profile_text_for_grok(user_row) -> str:
         parts.append(f"Declared interests: {gv('professional_interests')}")
     if gv('profile_bio'):
         parts.append(f"Bio: {gv('profile_bio')}")
-    if gv('location'):
+    loc_parts = []
+    if gv('city'):
+        loc_parts.append(gv('city'))
+    if gv('country'):
+        loc_parts.append(gv('country'))
+    if loc_parts:
+        parts.append(f"Location: {', '.join(loc_parts)}")
+    elif gv('location'):
         parts.append(f"Location: {gv('location')}")
+    if gv('linkedin'):
+        parts.append(f"LinkedIn: {gv('linkedin')}")
     return '\n'.join(parts)
 
 
@@ -7168,18 +7182,28 @@ IMPORTANT RULES:
 - Confidence scores (0.0–1.0) should reflect how confident YOU are in the interest, not how much the person cares.
 - If there is very little data, say so honestly in the summary and give fewer interests with lower confidence.
 
+PERSON RESEARCH:
+- If a full name is provided, USE YOUR WEB SEARCH to look them up.
+- Search for their LinkedIn profile, public social media presence, and any press/media mentions.
+- Cross-reference discovered info with their stated company, role, school, and location to confirm identity.
+- If a LinkedIn URL is provided, search for that profile directly.
+- Include any additional professional background, achievements, or public activity you discover.
+- Only use publicly available information. If you cannot confirm identity, state that clearly.
+
 COMPANY & ROLE RESEARCH:
 - If the user lists a company, USE YOUR WEB SEARCH to research it. What does the company do? What sector? What stage/size?
 - If you cannot find the company, say so and use whatever context clues are available.
 - Analyze the user's role in the context of their company. What does this person likely do day-to-day?
-- Provide a networking value assessment: what kind of connections would benefit this person, and who would benefit from meeting them?
+
+LOCATION CONTEXT:
+- If a city/country is provided, consider it for networking context (local ecosystems, regional industry hubs, timezone implications).
 
 Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
 {
-  "summary": "1-2 sentence profile summary that Steve can use when talking to or about this person",
+  "summary": "2-3 sentence profile summary that Steve can use when talking to or about this person",
   "interests": {"topic_name": 0.85, "another_topic": 0.6},
   "traits": ["trait1", "trait2", "trait3"],
-  "observations": "1-2 sentences of deeper insight — what makes this person tick, what they'd value in conversations",
+  "observations": "2-3 sentences of deeper insight — what makes this person tick, what they'd value in conversations",
   "dataQuality": "rich|moderate|sparse",
   "companyIntel": {
     "name": "Company name as stated",
@@ -7193,10 +7217,19 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
     "function": "e.g. engineering, product, sales, operations",
     "implication": "1 sentence on what this role means for networking"
   },
-  "networkingValue": "1-2 sentences: what kind of introductions would be most valuable for this person, and what unique value do they bring to others?"
+  "networkingValue": "1-2 sentences: what kind of introductions would be most valuable for this person, and what unique value do they bring to others?",
+  "personResearch": {
+    "linkedInUrl": "URL if found, null otherwise",
+    "publicSummary": "2-3 sentences summarizing what you found about this person online (career history, achievements, public roles)",
+    "additionalContext": "Any notable info discovered: board seats, publications, speaking engagements, side projects, public interests",
+    "confidence": "high|medium|low — how confident you are this is the right person"
+  },
+  "locationContext": "1 sentence on how their location is relevant to their professional profile (e.g. tech hub, emerging market, financial center)"
 }
 
-If the company or role fields are empty, set companyIntel and roleContext to null instead of guessing."""
+If the company or role fields are empty, set companyIntel and roleContext to null instead of guessing.
+If you cannot find the person online, set personResearch to null.
+If no location is provided, set locationContext to null."""
 
         response = client.responses.create(
             model=GROK_MODEL_MULTI_AGENT,
@@ -7205,7 +7238,7 @@ If the company or role fields are empty, set companyIntel and roleContext to nul
                 {"role": "user", "content": f"Analyze this user's profile (@{username}):\n\n{profile_text}"}
             ],
             tools=[{"type": "web_search"}],
-            max_output_tokens=1000,
+            max_output_tokens=2000,
             temperature=0.3,
         )
 
@@ -7224,7 +7257,7 @@ If the company or role fields are empty, set companyIntel and roleContext to nul
         for key in ('summary', 'traits', 'observations', 'dataQuality'):
             if key not in analysis:
                 analysis[key] = '' if key != 'traits' else []
-        for key in ('companyIntel', 'roleContext', 'networkingValue'):
+        for key in ('companyIntel', 'roleContext', 'networkingValue', 'personResearch', 'locationContext'):
             if key not in analysis:
                 analysis[key] = None
 
@@ -7268,6 +7301,14 @@ def get_steve_context_for_user(username: str) -> str:
             parts.append('Traits: ' + ', '.join(traits[:4]))
         if networking_value:
             parts.append(f"Networking: {networking_value}")
+        person_research = analysis.get('personResearch') or {}
+        if person_research.get('publicSummary'):
+            parts.append(f"Background: {person_research['publicSummary']}")
+        if person_research.get('additionalContext'):
+            parts.append(f"Notable: {person_research['additionalContext']}")
+        location_ctx = analysis.get('locationContext')
+        if location_ctx:
+            parts.append(f"Location: {location_ctx}")
         if observations:
             parts.append(observations)
         return ' | '.join(parts)
@@ -7305,9 +7346,11 @@ def _trigger_background_profile_analysis(username: str):
                 c = conn.cursor()
                 ph = get_sql_placeholder()
                 c.execute(f"""
-                    SELECT u.username, u.role, u.company, u.industry, u.degree,
+                    SELECT u.username, u.first_name, u.last_name,
+                           u.role, u.company, u.industry, u.degree,
                            u.school, u.skills, u.linkedin, u.experience,
                            u.professional_about, u.professional_interests,
+                           u.country, u.city,
                            p.display_name, p.bio AS profile_bio, p.location
                     FROM users u
                     LEFT JOIN user_profiles p ON u.username = p.username

@@ -238,6 +238,8 @@ export default function AdminDashboard() {
       companyIntel?: { name?: string; description?: string; sector?: string; stage?: string } | null
       roleContext?: { title?: string; seniority?: string; function?: string; implication?: string } | null
       networkingValue?: string | null
+      personResearch?: { linkedInUrl?: string; publicSummary?: string; additionalContext?: string; confidence?: string } | null
+      locationContext?: string | null
     }
     lastUpdated?: string
   }
@@ -2196,6 +2198,45 @@ export default function AdminDashboard() {
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Networking Value</div>
                                     <div className="text-xs text-white/60 leading-relaxed bg-[#4db6ac]/5 rounded-lg px-3.5 py-2.5 border border-[#4db6ac]/15">
                                       <i className="fa-solid fa-handshake text-[#4db6ac]/50 mr-1.5" />{a.networkingValue}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Person Research */}
+                                {a.personResearch?.publicSummary && (
+                                  <div>
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                      <i className="fa-solid fa-magnifying-glass" /> Web Research
+                                      {a.personResearch.confidence && (
+                                        <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] border ${
+                                          a.personResearch.confidence === 'high' ? 'bg-green-500/10 text-green-300/80 border-green-500/20' :
+                                          a.personResearch.confidence === 'medium' ? 'bg-yellow-500/10 text-yellow-300/80 border-yellow-500/20' :
+                                          'bg-white/5 text-white/40 border-white/10'
+                                        }`}>{a.personResearch.confidence} confidence</span>
+                                      )}
+                                    </div>
+                                    <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-2">
+                                      <div className="text-xs text-white/60 leading-relaxed">{a.personResearch.publicSummary}</div>
+                                      {a.personResearch.additionalContext && (
+                                        <div className="text-xs text-white/45 leading-relaxed italic">{a.personResearch.additionalContext}</div>
+                                      )}
+                                      {a.personResearch.linkedInUrl && (
+                                        <a href={a.personResearch.linkedInUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[10px] text-blue-400 hover:text-blue-300">
+                                          <i className="fa-brands fa-linkedin" /> LinkedIn Profile
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Location Context */}
+                                {a.locationContext && (
+                                  <div>
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">
+                                      <i className="fa-solid fa-location-dot mr-1" /> Location Context
+                                    </div>
+                                    <div className="text-xs text-white/50 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
+                                      {a.locationContext}
                                     </div>
                                   </div>
                                 )}
