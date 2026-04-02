@@ -1247,7 +1247,22 @@ export default function PostDetail(){
               .filter((v: any) => typeof v.username === 'string' && v.username.length > 0)
           : []
         setReplyReactorViewers(viewerList)
-        setReplyReactorViewCount(typeof j.view_count === 'number' ? j.view_count : viewerList.length || null)
+        const freshCount = typeof j.view_count === 'number' ? j.view_count : viewerList.length || null
+        setReplyReactorViewCount(freshCount)
+        // Propagate the fresh view count into the reply tree so the button updates
+        if (typeof freshCount === 'number') {
+          setPost(prev => {
+            if (!prev) return prev
+            function patchVC(replies: Reply[]): Reply[] {
+              return replies.map(r => {
+                if (r.id === replyId) return { ...r, view_count: freshCount! }
+                if (r.children?.length) return { ...r, children: patchVC(r.children) }
+                return r
+              })
+            }
+            return { ...prev, replies: patchVC(prev.replies) }
+          })
+        }
       }
     } finally {
       setReplyReactorsLoading(false)
@@ -1277,12 +1292,10 @@ export default function PostDetail(){
               .filter((v) => typeof v.username === 'string' && v.username.length > 0)
           : []
         setReactorViewers(viewerList)
-        if (typeof j.view_count === 'number') {
-          setReactorViewCount(j.view_count)
-        } else if (viewerList.length > 0) {
-          setReactorViewCount(viewerList.length)
-        } else {
-          setReactorViewCount(null)
+        const freshPostVC = typeof j.view_count === 'number' ? j.view_count : (viewerList.length > 0 ? viewerList.length : null)
+        setReactorViewCount(freshPostVC)
+        if (typeof freshPostVC === 'number') {
+          setPost(prev => prev ? { ...prev, view_count: freshPostVC } : prev)
         }
       }
     } finally {

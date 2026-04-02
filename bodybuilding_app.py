@@ -23639,9 +23639,139 @@ def get_post():
     if not post_id:
         return jsonify({'success': False, 'error': 'Post ID is required'}), 400
     
-    # Firestore dual-read disabled for /get_post: MySQL is authoritative for
-    # reply view counts, edited content, and community admin flags.
+    # --- Firestore dual-read with MySQL hydration ---
+    try:
+        from backend.services.firestore_reads import USE_FIRESTORE_READS
+        if USE_FIRESTORE_READS:
+            from backend.services.firestore_reads import get_post_detail as fs_get_post
+            fs_post = fs_get_post(post_id, username)
+            if fs_post:
+                try:
+                    with get_db_connection() as hconn:
+                        hc = hconn.cursor()
+                        # Always prefer MySQL content (authoritative after edits)
+                        hc.execute("SELECT content, community_id FROM posts WHERE id = ?", (post_id,))
+                        mysql_row = hc.fetchone()
+                        if mysql_row:
+                            mysql_content = mysql_row['content'] if hasattr(mysql_row, 'keys') else mysql_row[0]
+                            if mysql_content:
+                                fs_post['content'] = mysql_content
+                            fs_community_id = mysql_row['community_id'] if hasattr(mysql_row, 'keys') else mysql_row[1]
+                        else:
+                            fs_community_id = fs_post.get('community_id')
 
+                        # Post view count
+                        try:
+                            hc.execute("SELECT COUNT(*) as cnt FROM post_views WHERE post_id = ?", (post_id,))
+                            vr = hc.fetchone()
+                            fs_post['view_count'] = int((vr['cnt'] if hasattr(vr, 'keys') else vr[0]) if vr else 0)
+                        except Exception:
+                            pass
+
+                        # Community admin flag
+                        fs_post['is_community_admin'] = bool(
+                            fs_community_id and (
+                                is_community_owner(username, fs_community_id)
+                                or is_community_admin(username, fs_community_id)
+                            )
+                        )
+
+                        # Hydrate replies: view counts, profile pics, reactions
+                        all_reply_ids = []
+                        def _collect_reply_ids(replies):
+                            for r in replies:
+                                all_reply_ids.append(r['id'])
+                                _collect_reply_ids(r.get('children', []))
+                        _collect_reply_ids(fs_post.get('replies', []))
+
+                        if all_reply_ids:
+                            ph = get_sql_placeholder()
+                            phs = ','.join([ph] * len(all_reply_ids))
+
+                            # Reply view counts
+                            reply_vcs = {}
+                            try:
+                                ensure_reply_views_table(hc)
+                                params_rv = list(all_reply_ids) + ['admin']
+                                hc.execute(
+                                    f"SELECT reply_id, COUNT(*) as cnt FROM reply_views WHERE reply_id IN ({phs}) AND LOWER(username) <> LOWER({ph}) GROUP BY reply_id",
+                                    tuple(params_rv),
+                                )
+                                for row in hc.fetchall():
+                                    rid = row['reply_id'] if hasattr(row, 'keys') else row[0]
+                                    cnt = row['cnt'] if hasattr(row, 'keys') else row[1]
+                                    reply_vcs[int(rid)] = int(cnt or 0)
+                            except Exception:
+                                pass
+
+                            # Reply profile pictures
+                            reply_authors = set()
+                            def _collect_authors(replies):
+                                for r in replies:
+                                    if r.get('username'):
+                                        reply_authors.add(r['username'])
+                                    _collect_authors(r.get('children', []))
+                            _collect_authors(fs_post.get('replies', []))
+                            pp_map = {}
+                            if reply_authors:
+                                a_phs = ','.join([ph] * len(reply_authors))
+                                try:
+                                    hc.execute(f"SELECT username, profile_picture FROM user_profiles WHERE username IN ({a_phs})", tuple(reply_authors))
+                                    for row in hc.fetchall():
+                                        pp_map[row['username'] if hasattr(row, 'keys') else row[0]] = row['profile_picture'] if hasattr(row, 'keys') else row[1]
+                                except Exception:
+                                    pass
+
+                            # Reply reactions
+                            reply_rxs = {}
+                            user_reply_rxs = {}
+                            try:
+                                hc.execute(f"SELECT reply_id, reaction_type, COUNT(*) as count FROM reply_reactions WHERE reply_id IN ({phs}) GROUP BY reply_id, reaction_type", tuple(all_reply_ids))
+                                for row in hc.fetchall():
+                                    rid = row['reply_id'] if hasattr(row, 'keys') else row[0]
+                                    rtype = row['reaction_type'] if hasattr(row, 'keys') else row[1]
+                                    cnt = row['count'] if hasattr(row, 'keys') else row[2]
+                                    reply_rxs.setdefault(int(rid), {})[rtype] = cnt
+                            except Exception:
+                                pass
+                            try:
+                                params_urx = list(all_reply_ids) + [username]
+                                hc.execute(f"SELECT reply_id, reaction_type FROM reply_reactions WHERE reply_id IN ({phs}) AND username = {ph}", tuple(params_urx))
+                                for row in hc.fetchall():
+                                    rid = row['reply_id'] if hasattr(row, 'keys') else row[0]
+                                    rtype = row['reaction_type'] if hasattr(row, 'keys') else row[1]
+                                    user_reply_rxs[int(rid)] = rtype
+                            except Exception:
+                                pass
+
+                            # Apply hydrated data to replies
+                            def _hydrate(replies):
+                                for r in replies:
+                                    rid = r['id']
+                                    r['view_count'] = reply_vcs.get(rid, 0)
+                                    r['profile_picture'] = pp_map.get(r.get('username'))
+                                    r['reactions'] = reply_rxs.get(rid, {})
+                                    r['user_reaction'] = user_reply_rxs.get(rid)
+                                    _hydrate(r.get('children', []))
+                            _hydrate(fs_post.get('replies', []))
+
+                        # Post author profile picture
+                        try:
+                            hc.execute("SELECT profile_picture FROM user_profiles WHERE username = ?", (fs_post.get('username', ''),))
+                            pp = hc.fetchone()
+                            fs_post['profile_picture'] = pp['profile_picture'] if pp and 'profile_picture' in pp.keys() else None
+                        except Exception:
+                            pass
+
+                except Exception as hydrate_err:
+                    logger.warning(f"MySQL hydration of Firestore post failed (serving Firestore as-is): {hydrate_err}")
+
+                logger.info(f"Firestore+MySQL hybrid post read: post {post_id}")
+                return jsonify({'success': True, 'post': fs_post})
+    except Exception as fs_err:
+        logger.warning(f"Firestore post read failed, falling back to MySQL: {fs_err}")
+
+    # Full MySQL fallback
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
