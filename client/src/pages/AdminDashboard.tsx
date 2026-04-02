@@ -235,6 +235,8 @@ export default function AdminDashboard() {
   }
   const [steveProfiles, setSteveProfiles] = useState<SteveProfile[]>([])
   const [steveProfilesLoading, setSteveProfilesLoading] = useState(false)
+  const [selectedProfileUsername, setSelectedProfileUsername] = useState<string>('')
+  const [profileSearchQuery, setProfileSearchQuery] = useState('')
 
   // New user form
   const [newUser, setNewUser] = useState({
@@ -1928,43 +1930,123 @@ export default function AdminDashboard() {
                   <div className="text-xs">Click refresh to generate basic interest vectors</div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {steveProfiles.map((profile) => (
-                    <div key={profile.username} className="bg-[#0a0a0c] border border-white/10 rounded-xl p-5 hover:border-white/20 transition-all">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-full flex items-center justify-center text-white font-bold">
-                          {profile.username[0]?.toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="font-medium text-white">@{profile.username}</div>
-                          <div className="text-xs text-white/50">
-                            v{profile.profileVersion} • {profile.analyzedContentCount} items
-                          </div>
-                        </div>
+                <div className="flex flex-col lg:flex-row gap-6">
+                  {/* Searchable Dropdown */}
+                  <div className="lg:w-80 flex-shrink-0">
+                    <div className="mb-4">
+                      <label className="block text-xs text-white/60 mb-2">Select User</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          list="user-profiles-list"
+                          value={selectedProfileUsername}
+                          onChange={(e) => setSelectedProfileUsername(e.target.value)}
+                          placeholder="Type to search users..."
+                          className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+                        />
+                        <datalist id="user-profiles-list">
+                          {steveProfiles.map((profile) => (
+                            <option key={profile.username} value={profile.username} />
+                          ))}
+                        </datalist>
                       </div>
-
-                      <div className="text-xs text-white/60 mb-3">INTERESTS</div>
-                      <div className="flex flex-wrap gap-2">
-                        {Object.entries(profile.interests || {}).slice(0, 6).map(([topic, score]) => (
-                          <div key={topic} className="px-3 py-1 bg-white/5 rounded-full text-xs border border-white/10 flex items-center gap-1">
-                            <span>{topic}</span>
-                            <span className="text-[#4db6ac] font-mono text-[10px]">{Math.round(score * 100)}%</span>
-                          </div>
-                        ))}
-                        {Object.keys(profile.interests || {}).length > 6 && (
-                          <div className="px-3 py-1 bg-white/5 rounded-full text-xs text-white/40">
-                            +{Object.keys(profile.interests || {}).length - 6} more
-                          </div>
-                        )}
+                      <input
+                        type="text"
+                        value={profileSearchQuery}
+                        onChange={(e) => setProfileSearchQuery(e.target.value)}
+                        placeholder="Filter list..."
+                        className="mt-2 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+                      />
+                      <div className="text-xs text-white/40 mt-2">
+                        {steveProfiles.length} users • Type to filter
                       </div>
-
-                      {profile.lastUpdated && (
-                        <div className="text-[10px] text-white/40 mt-4 pt-3 border-t border-white/10">
-                          Updated: {new Date(profile.lastUpdated).toLocaleDateString()}
-                        </div>
-                      )}
                     </div>
-                  ))}
+
+                    {/* Profile List */}
+                    <div className="max-h-[500px] overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+                      {steveProfiles
+                        .filter(p => 
+                          !profileSearchQuery || 
+                          p.username.toLowerCase().includes(profileSearchQuery.toLowerCase())
+                        )
+                        .slice(0, 30) // Limit visible items in list
+                        .map((profile) => (
+                          <button
+                            key={profile.username}
+                            onClick={() => setSelectedProfileUsername(profile.username)}
+                            className={`w-full text-left px-4 py-3 rounded-xl transition-all border ${
+                              selectedProfileUsername === profile.username 
+                                ? 'bg-[#4db6ac] text-black border-[#4db6ac]' 
+                                : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20 text-white'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                {profile.username[0]?.toUpperCase()}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium truncate">@{profile.username}</div>
+                                <div className="text-xs opacity-70">
+                                  {Object.keys(profile.interests || {}).length} interests
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+
+                  {/* Profile Detail View */}
+                  <div className="flex-1">
+                    {selectedProfileUsername ? (
+                      (() => {
+                        const profile = steveProfiles.find(p => p.username === selectedProfileUsername);
+                        if (!profile) return <div className="text-white/60">Profile not found</div>;
+                        
+                        return (
+                          <div className="bg-[#0a0a0c] border border-white/10 rounded-2xl p-8">
+                            <div className="flex items-center gap-4 mb-8">
+                              <div className="w-16 h-16 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-2xl flex items-center justify-center text-3xl font-bold text-white">
+                                {profile.username[0]?.toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="text-3xl font-semibold text-white">@{profile.username}</div>
+                                <div className="text-white/60 text-sm">
+                                  Profile v{profile.profileVersion} • {profile.analyzedContentCount} items analyzed
+                                </div>
+                                {profile.lastUpdated && (
+                                  <div className="text-xs text-white/40 mt-1">
+                                    Last updated: {new Date(profile.lastUpdated).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="text-xs text-white/60 mb-4 tracking-widest">INTERESTS</div>
+                              <div className="flex flex-wrap gap-3">
+                                {Object.entries(profile.interests || {}).map(([topic, score]) => (
+                                  <div key={topic} className="flex items-center gap-2 bg-white/5 px-5 py-2.5 rounded-2xl border border-white/10">
+                                    <span className="text-white capitalize">{topic}</span>
+                                    <div className="px-3 py-0.5 bg-[#4db6ac]/20 text-[#4db6ac] text-xs font-mono rounded-full">
+                                      {Math.round(score * 100)}%
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-white/40 border border-dashed border-white/10 rounded-2xl">
+                        <div className="text-center">
+                          <i className="fa-solid fa-arrow-left text-4xl mb-4 opacity-30" />
+                          <div>Select a user from the list</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

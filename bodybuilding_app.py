@@ -7035,13 +7035,12 @@ def admin_steve_profiles():
             c = conn.cursor()
             ph = get_sql_placeholder()
             c.execute(f"""
-                SELECT u.username, u.industry, u.skills,
+                SELECT u.username, u.industry, u.skills, u.role, u.company,
                        p.display_name, p.bio as profile_bio, p.location
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username NOT IN ('admin', 'steve')
                 ORDER BY u.username
-                LIMIT 50
             """)
             users = c.fetchall()
 
@@ -7085,19 +7084,25 @@ def extract_simple_user_interests(user_row):
 
         industry = get_val(user_row, 'industry') or get_val(user_row, 1, '')
         skills = get_val(user_row, 'skills') or get_val(user_row, 2, '')
+        role = get_val(user_row, 'role') or get_val(user_row, 3, '')
+        company = get_val(user_row, 'company') or get_val(user_row, 4, '')
         bio = (get_val(user_row, 'profile_bio') or get_val(user_row, 'bio') or
-               get_val(user_row, 4, '') or get_val(user_row, 3, ''))
+               get_val(user_row, 6, '') or get_val(user_row, 5, ''))
 
-        text = f"{industry} {skills} {bio}".lower()
+        text = f"{industry} {skills} {role} {company} {bio}".lower()
 
-        # Simple keyword mapping for Phase 0
+        # Expanded keyword mapping for Phase 0 - much more comprehensive
         keyword_map = {
-            'tech': ['technology', 'software', 'programming', 'ai', 'ml', 'data', 'web'],
-            'business': ['business', 'entrepreneur', 'startup', 'ceo', 'founder', 'company'],
-            'fitness': ['fitness', 'gym', 'workout', 'training', 'health', 'crossfit'],
-            'finance': ['finance', 'investment', 'fund', 'money', 'trading'],
-            'marketing': ['marketing', 'social media', 'content', 'brand'],
-            'education': ['education', 'teacher', 'school', 'university', 'student'],
+            'tech': ['technology', 'software', 'programming', 'ai', 'ml', 'data', 'web', 'developer', 'engineer', 'coding'],
+            'business': ['business', 'entrepreneur', 'startup', 'ceo', 'founder', 'company', 'venture', 'investor', 'funding'],
+            'fitness': ['fitness', 'gym', 'workout', 'training', 'health', 'crossfit', 'athlete', 'running', 'sports'],
+            'finance': ['finance', 'investment', 'fund', 'money', 'trading', 'banking', 'financial', 'crypto'],
+            'marketing': ['marketing', 'social media', 'content', 'brand', 'advertising', 'seo', 'digital'],
+            'education': ['education', 'teacher', 'school', 'university', 'student', 'academic', 'professor'],
+            'healthcare': ['healthcare', 'medical', 'doctor', 'nurse', 'hospital', 'patient', 'clinical'],
+            'creative': ['creative', 'design', 'artist', 'music', 'writing', 'photography', 'film'],
+            'science': ['science', 'research', 'physics', 'biology', 'chemistry', 'lab', 'experiment'],
+            'realestate': ['real estate', 'property', 'housing', 'realtor', 'construction'],
         }
 
         for topic, keywords in keyword_map.items():
