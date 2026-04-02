@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useHeader } from '../contexts/HeaderContext'
 import { invalidateDashboardCache } from '../utils/dashboardCache'
@@ -246,6 +246,9 @@ export default function AdminDashboard() {
   const [analyzingUser, setAnalyzingUser] = useState<string | null>(null)
   const [selectedProfileUsername, setSelectedProfileUsername] = useState<string>('')
   const [profileSearchQuery, setProfileSearchQuery] = useState('')
+  const [batchRunning, setBatchRunning] = useState(false)
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentUser: '' })
+  const batchAbortRef = useRef(false)
 
   // New user form
   const [newUser, setNewUser] = useState({
@@ -483,6 +486,32 @@ export default function AdminDashboard() {
       setAnalyzingUser(null)
     }
   }, [])
+
+  const analyzeAllProfiles = useCallback(async () => {
+    const unanalyzed = steveProfiles.filter(p => !p.analysis?.summary)
+    if (unanalyzed.length === 0) return
+    batchAbortRef.current = false
+    setBatchRunning(true)
+    setBatchProgress({ current: 0, total: unanalyzed.length, currentUser: '' })
+    for (let i = 0; i < unanalyzed.length; i++) {
+      if (batchAbortRef.current) break
+      const u = unanalyzed[i]
+      setBatchProgress({ current: i + 1, total: unanalyzed.length, currentUser: u.username })
+      try {
+        const res = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(u.username)}/analyze`, {
+          method: 'POST', credentials: 'include', headers: { 'Accept': 'application/json' }
+        })
+        const data = await res.json()
+        if (data?.success && data.analysis) {
+          setSteveProfiles(prev => prev.map(p =>
+            p.username === u.username ? { ...p, analysis: data.analysis, lastUpdated: new Date().toISOString() } : p
+          ))
+        }
+      } catch {}
+    }
+    setBatchRunning(false)
+    setBatchProgress({ current: 0, total: 0, currentUser: '' })
+  }, [steveProfiles])
 
   const handleAdminUnblock = async (blockId: number) => {
     setUnblockingId(blockId)
@@ -1942,15 +1971,54 @@ export default function AdminDashboard() {
                   </h3>
                   <p className="text-xs text-white/60 mt-1">Grok 4.1 profile analysis — select a user to analyze</p>
                 </div>
-                <button
-                  onClick={loadSteveProfiles}
-                  disabled={steveProfilesLoading}
-                  className="px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
-                >
-                  <i className="fa-solid fa-refresh" />
-                  {steveProfilesLoading ? 'Loading...' : 'Refresh'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/40">
+                    {steveProfiles.filter(p => p.analysis?.summary).length}/{steveProfiles.length} analyzed
+                  </span>
+                  {!batchRunning && steveProfiles.filter(p => !p.analysis?.summary).length > 0 && (
+                    <button
+                      onClick={analyzeAllProfiles}
+                      disabled={steveProfilesLoading || batchRunning}
+                      className="px-3 py-2 bg-[#4db6ac]/20 border border-[#4db6ac]/30 hover:bg-[#4db6ac]/30 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 text-[#4db6ac]"
+                    >
+                      <i className="fa-solid fa-bolt" />
+                      Analyze All
+                    </button>
+                  )}
+                  {batchRunning && (
+                    <button
+                      onClick={() => { batchAbortRef.current = true }}
+                      className="px-3 py-2 bg-red-500/20 border border-red-500/30 hover:bg-red-500/30 rounded-lg text-sm flex items-center gap-2 text-red-400"
+                    >
+                      <i className="fa-solid fa-stop" />
+                      Stop
+                    </button>
+                  )}
+                  <button
+                    onClick={loadSteveProfiles}
+                    disabled={steveProfilesLoading || batchRunning}
+                    className="px-3 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <i className="fa-solid fa-refresh" />
+                    {steveProfilesLoading ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
               </div>
+
+              {batchRunning && (
+                <div className="mb-4">
+                  <div className="flex items-center justify-between text-xs text-white/60 mb-1">
+                    <span>Analyzing {batchProgress.currentUser}...</span>
+                    <span>{batchProgress.current}/{batchProgress.total}</span>
+                  </div>
+                  <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full bg-[#4db6ac] rounded-full transition-all duration-300"
+                      style={{ width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+              )}
 
               {steveProfilesLoading ? (
                 <div className="text-center py-12 text-white/60">
