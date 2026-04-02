@@ -13312,10 +13312,28 @@ def api_networking_steve_match():
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
-            # Get parent + child community IDs
-            c.execute(f"SELECT id FROM communities WHERE id = {ph} OR parent_community_id = {ph}", (community_id, community_id))
-            community_ids = [r['id'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+            # Get parent + child community IDs with names
+            c.execute(f"SELECT id, name FROM communities WHERE id = {ph} OR parent_community_id = {ph}", (community_id, community_id))
+            comm_rows = c.fetchall()
+            community_ids = [(r['id'] if hasattr(r, 'keys') else r[0]) for r in comm_rows]
+            community_names = {(r['id'] if hasattr(r, 'keys') else r[0]): (r['name'] if hasattr(r, 'keys') else r[1]) for r in comm_rows}
             comm_ph = ','.join([ph] * len(community_ids))
+
+            # Build sub-community membership map: {username: [community_names]}
+            c.execute(f"""
+                SELECT u.username, uc.community_id
+                FROM users u JOIN user_communities uc ON u.id = uc.user_id
+                WHERE uc.community_id IN ({comm_ph}) AND LOWER(u.username) NOT IN ('admin','steve')
+            """, tuple(community_ids))
+            user_subcommunities = {}
+            for row in c.fetchall():
+                uname = row['username'] if hasattr(row, 'keys') else row[0]
+                cid = row['community_id'] if hasattr(row, 'keys') else row[1]
+                cname = community_names.get(cid, '')
+                user_subcommunities.setdefault(uname, [])
+                if cname:
+                    user_subcommunities[uname].append(cname)
+
             # User profile
             c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u LEFT JOIN user_profiles p ON u.username=p.username WHERE u.username={ph}", (username,))
             ur = c.fetchone()
@@ -13323,19 +13341,53 @@ def api_networking_steve_match():
                 try: return r[i] if not hasattr(r, 'keys') else list(r.values())[i]
                 except: return ''
             user_profile = f"User: {_v(ur,0)} | {_v(ur,1)} | Bio: {_v(ur,2) or ''} | City: {_v(ur,3) or ''} | Country: {_v(ur,4) or ''} | Industry: {_v(ur,5) or ''} | Role: {_v(ur,6) or ''} | Company: {_v(ur,7) or ''}" if ur else ""
-            # Members (exclude admin and steve)
-            c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
+
+            # Members (exclude admin and steve) with sub-community info
+            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
+
+            # Fetch recent posts per member (last 30 days, max 2 per user)
+            recent_posts_map = {}
+            try:
+                c.execute(f"""
+                    SELECT username, content FROM posts
+                    WHERE community_id IN ({comm_ph}) AND LOWER(username) NOT IN ('admin','steve')
+                    AND timestamp > DATE_SUB(NOW(), INTERVAL 30 DAY)
+                    ORDER BY timestamp DESC LIMIT 200
+                """, tuple(community_ids))
+                for row in c.fetchall():
+                    pu = row['username'] if hasattr(row, 'keys') else row[0]
+                    pc = (row['content'] if hasattr(row, 'keys') else row[1]) or ''
+                    if pu not in recent_posts_map:
+                        recent_posts_map[pu] = []
+                    if len(recent_posts_map[pu]) < 2 and pc.strip():
+                        recent_posts_map[pu].append(pc.strip()[:80])
+            except Exception:
+                pass
+
             members_lines = []
             for r in member_rows:
                 uname = str(_v(r, 0))
                 line = f"- {uname} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}"
+                subcoms = user_subcommunities.get(uname, [])
+                if subcoms:
+                    line += f" | Groups: {', '.join(subcoms)}"
+                recent = recent_posts_map.get(uname, [])
+                if recent:
+                    line += f" | Recent posts: {'; '.join(recent)}"
                 profile_ctx = get_steve_context_for_user(uname)
                 if profile_ctx:
                     line += f" | AI insight: {profile_ctx}"
                 members_lines.append(line)
             members_text = "\n".join(members_lines)
+
+            # Community hierarchy context
+            parent_name = community_names.get(community_id, '')
+            sub_names = [n for cid, n in community_names.items() if cid != community_id]
+            hierarchy_ctx = f"Parent community: {parent_name}"
+            if sub_names:
+                hierarchy_ctx += f"\nSub-communities: {', '.join(sub_names)}"
 
             requester_profile_ctx = get_steve_context_for_user(username)
             enriched_user_profile = user_profile
@@ -13347,7 +13399,21 @@ def api_networking_steve_match():
         response = client.responses.create(
             model=GROK_MODEL_MULTI_AGENT,
             input=[
-                {"role": "system", "content": "You are Steve, a networking assistant. Given a user's profile and community members, recommend the best matches for the user's request. Be concise and friendly. Only reference actual members from the list. When mentioning a member, always use their username with @ prefix (e.g. @johndoe), never bold formatting. Use the AI insight data to make smarter, more personalized recommendations."},
+                {"role": "system", "content": f"""You are Steve, a networking assistant for a private professional network.
+
+COMMUNITY STRUCTURE:
+{hierarchy_ctx}
+
+MATCHING PRIORITIES:
+1. Sub-community membership is a strong signal (e.g., being in "India Field Trip" means real connection to India).
+2. Cross-reference bios, roles, locations, and recent posts for deeper relevance.
+3. Limit to 3-5 best matches with a brief explanation for each.
+
+RULES:
+- Only reference members from the provided list.
+- Always use @username format (e.g., @johndoe).
+- Be concise and friendly.
+- Never reveal that you're reading structured data — speak naturally."""},
                 {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"}
             ],
             tools=[{"type": "web_search"}, {"type": "x_search"}],
@@ -13377,27 +13443,78 @@ def api_networking_steve_auto_match():
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
-            c.execute(f"SELECT id FROM communities WHERE id = {ph} OR parent_community_id = {ph}", (community_id, community_id))
-            community_ids = [r['id'] if hasattr(r, 'keys') else r[0] for r in c.fetchall()]
+            c.execute(f"SELECT id, name FROM communities WHERE id = {ph} OR parent_community_id = {ph}", (community_id, community_id))
+            comm_rows = c.fetchall()
+            community_ids = [(r['id'] if hasattr(r, 'keys') else r[0]) for r in comm_rows]
+            community_names = {(r['id'] if hasattr(r, 'keys') else r[0]): (r['name'] if hasattr(r, 'keys') else r[1]) for r in comm_rows}
             comm_ph = ','.join([ph] * len(community_ids))
+
+            # Sub-community membership map
+            c.execute(f"""
+                SELECT u.username, uc.community_id
+                FROM users u JOIN user_communities uc ON u.id = uc.user_id
+                WHERE uc.community_id IN ({comm_ph}) AND LOWER(u.username) NOT IN ('admin','steve')
+            """, tuple(community_ids))
+            user_subcommunities = {}
+            for row in c.fetchall():
+                uname = row['username'] if hasattr(row, 'keys') else row[0]
+                cid = row['community_id'] if hasattr(row, 'keys') else row[1]
+                cname = community_names.get(cid, '')
+                user_subcommunities.setdefault(uname, [])
+                if cname:
+                    user_subcommunities[uname].append(cname)
+
             c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u LEFT JOIN user_profiles p ON u.username=p.username WHERE u.username={ph}", (username,))
             ur = c.fetchone()
             def _v(r, i):
                 try: return r[i] if not hasattr(r, 'keys') else list(r.values())[i]
                 except: return ''
             user_profile = f"User: {_v(ur,0)} | {_v(ur,1)} | Bio: {_v(ur,2) or ''} | City: {_v(ur,3) or ''} | Country: {_v(ur,4) or ''} | Industry: {_v(ur,5) or ''} | Role: {_v(ur,6) or ''} | Company: {_v(ur,7) or ''} | Interests: {_v(ur,8) or ''} | About: {_v(ur,9) or ''}" if ur else ""
-            c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
+
+            c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
+
+            # Recent posts
+            recent_posts_map = {}
+            try:
+                c.execute(f"""
+                    SELECT username, content FROM posts
+                    WHERE community_id IN ({comm_ph}) AND LOWER(username) NOT IN ('admin','steve')
+                    AND timestamp > DATE_SUB(NOW(), INTERVAL 30 DAY)
+                    ORDER BY timestamp DESC LIMIT 200
+                """, tuple(community_ids))
+                for row in c.fetchall():
+                    pu = row['username'] if hasattr(row, 'keys') else row[0]
+                    pc = (row['content'] if hasattr(row, 'keys') else row[1]) or ''
+                    if pu not in recent_posts_map:
+                        recent_posts_map[pu] = []
+                    if len(recent_posts_map[pu]) < 2 and pc.strip():
+                        recent_posts_map[pu].append(pc.strip()[:80])
+            except Exception:
+                pass
+
             members_lines = []
             for r in member_rows:
                 uname = str(_v(r, 0))
                 line = f"- {uname} | {_v(r,1)} | Bio: {_v(r,2) or ''} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'} | Interests: {_v(r,8) or ''} | About: {_v(r,9) or ''}"
+                subcoms = user_subcommunities.get(uname, [])
+                if subcoms:
+                    line += f" | Groups: {', '.join(subcoms)}"
+                recent = recent_posts_map.get(uname, [])
+                if recent:
+                    line += f" | Recent posts: {'; '.join(recent)}"
                 profile_ctx = get_steve_context_for_user(uname)
                 if profile_ctx:
                     line += f" | AI insight: {profile_ctx}"
                 members_lines.append(line)
             members_text = "\n".join(members_lines)
+
+            parent_name = community_names.get(community_id, '')
+            sub_names = [n for cid, n in community_names.items() if cid != community_id]
+            hierarchy_ctx = f"Parent community: {parent_name}"
+            if sub_names:
+                hierarchy_ctx += f"\nSub-communities: {', '.join(sub_names)}"
 
             requester_profile_ctx = get_steve_context_for_user(username)
             enriched_user_profile = user_profile
@@ -13409,7 +13526,21 @@ def api_networking_steve_auto_match():
         response = client.responses.create(
             model=GROK_MODEL_MULTI_AGENT,
             input=[
-                {"role": "system", "content": "You are Steve, a networking assistant. Analyze the user's profile and all community members' profiles. Suggest the top 3-5 best matches based on shared interests, location, industry, or complementary skills. Be concise and explain why each is a good match. When mentioning a member, always use their username with @ prefix (e.g. @johndoe), never bold formatting. Use the AI insight data to make smarter, more personalized recommendations."},
+                {"role": "system", "content": f"""You are Steve, a networking assistant for a private professional network.
+
+COMMUNITY STRUCTURE:
+{hierarchy_ctx}
+
+MATCHING PRIORITIES:
+1. Sub-community membership is a strong signal of shared experience or interest.
+2. Cross-reference bios, roles, locations, recent posts, and declared interests.
+3. Suggest 3-5 best matches with a brief explanation for each.
+
+RULES:
+- Only reference members from the provided list.
+- Always use @username format (e.g., @johndoe).
+- Be concise and friendly.
+- Never reveal that you're reading structured data — speak naturally."""},
                 {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
             ],
             tools=[{"type": "web_search"}, {"type": "x_search"}],

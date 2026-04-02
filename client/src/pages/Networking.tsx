@@ -550,12 +550,14 @@ export default function Networking() {
               >
                 <i className="fa-solid fa-wand-magic-sparkles text-xs text-[#4db6ac]" />
               </button>
-              <input
+              <textarea
                 value={steveInput}
-                onChange={e => setSteveInput(e.target.value)}
+                onChange={e => { setSteveInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSteveMessage() } }}
                 placeholder="What's on your mind?"
-                className="flex-1 rounded-lg border border-white/15 bg-transparent px-3 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac]"
+                rows={1}
+                className="flex-1 rounded-lg border border-white/15 bg-transparent px-3 py-2.5 text-sm text-white placeholder-[#6f7c81] focus:outline-none focus:border-[#4db6ac] resize-none overflow-y-auto"
+                style={{ maxHeight: 120 }}
                 disabled={steveSending || autoMatching}
               />
               <button
