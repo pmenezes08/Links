@@ -287,7 +287,7 @@ def write_reaction(post_id: int, username: str, reaction_type: str,
 
 def write_steve_user_profile(username: str, interests: dict = None, life_events=None,
                            shared_content=None, analyzed_count: int = 0,
-                           profile_version: int = 1):
+                           profile_version: int = 1, rationale: dict = None):
     """Write or update Steve user profile in Firestore."""
     if not USE_FIRESTORE_WRITES:
         return
@@ -299,6 +299,7 @@ def write_steve_user_profile(username: str, interests: dict = None, life_events=
         profile_data = {
             'username': username,
             'interests': interests or {},
+            'rationale': rationale or {},
             'lifeEvents': life_events or [],
             'sharedContent': shared_content or [],
             'lastUpdated': now,

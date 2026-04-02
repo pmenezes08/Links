@@ -7023,18 +7023,14 @@ def admin_steve_profiles():
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
 
     try:
-        # Import inside function to follow existing pattern
-        from backend.services.firestore_reads import list_steve_user_profiles, get_steve_user_profile
+        from backend.services.firestore_reads import list_steve_user_profiles
         from backend.services.firestore_writes import write_steve_user_profile
 
-        # Get existing profiles from Firestore
-        profiles = list_steve_user_profiles(limit=100)
+        force = request.args.get('force') == '1'
 
-        # Get all users for potential profile generation
         with get_db_connection() as conn:
             c = conn.cursor()
-            ph = get_sql_placeholder()
-            c.execute(f"""
+            c.execute("""
                 SELECT u.username, u.industry, u.skills, u.role, u.company,
                        p.display_name, p.bio as profile_bio, p.location
                 FROM users u
@@ -7044,23 +7040,19 @@ def admin_steve_profiles():
             """)
             users = c.fetchall()
 
-        # Generate basic profiles for users without one
         for user in users:
             u_username = user['username'] if hasattr(user, 'keys') else user[0]
-            # Check if profile exists
-            existing = get_steve_user_profile(u_username)
-            if not existing:
-                # Enhanced profile analysis from public profile data
-                profile_data = extract_simple_user_interests(user)
-                interests = profile_data.get('interests', {})
-                write_steve_user_profile(
-                    u_username, 
-                    interests=interests, 
-                    analyzed_count=1
-                )
+            result = extract_simple_user_interests(user)
+            interests = result.get('interests', {})
+            rationale = result.get('rationale', {})
+            write_steve_user_profile(
+                u_username,
+                interests=interests,
+                analyzed_count=1,
+                rationale=rationale,
+            )
 
-        # Refresh list
-        profiles = list_steve_user_profiles(limit=100)
+        profiles = list_steve_user_profiles(limit=500)
 
         return jsonify({
             'success': True,
@@ -7074,12 +7066,11 @@ def admin_steve_profiles():
 
 def extract_simple_user_interests(user_row):
     """Enhanced profile analysis from public profile data.
-    Captures meaningful context beyond simple keywords. Returns dict for backward compatibility."""
+    Returns {'interests': {...}, 'rationale': {...}} with structured scoring."""
     try:
         interests = {}
         insights = []
         
-        # Extract fields safely
         def get_val(row, key_or_idx, default=''):
             if hasattr(row, 'keys'):
                 return row.get(key_or_idx, default)
@@ -7088,26 +7079,27 @@ def extract_simple_user_interests(user_row):
             except:
                 return default
 
-        industry = get_val(user_row, 'industry') or get_val(user_row, 1, '')
-        skills = get_val(user_row, 'skills') or get_val(user_row, 2, '')
-        role = get_val(user_row, 'role') or get_val(user_row, 3, '')
-        company = get_val(user_row, 'company') or get_val(user_row, 4, '')
+        industry = (get_val(user_row, 'industry') or get_val(user_row, 1, '') or '').strip()
+        skills = (get_val(user_row, 'skills') or get_val(user_row, 2, '') or '').strip()
+        role = (get_val(user_row, 'role') or get_val(user_row, 3, '') or '').strip()
+        company = (get_val(user_row, 'company') or get_val(user_row, 4, '') or '').strip()
         bio = (get_val(user_row, 'profile_bio') or get_val(user_row, 'bio') or
-               get_val(user_row, 6, '') or get_val(user_row, 5, ''))
-        display_name = get_val(user_row, 'display_name') or get_val(user_row, 4, '')
+               get_val(user_row, 6, '') or get_val(user_row, 5, '') or '').strip()
+        display_name = (get_val(user_row, 'display_name') or get_val(user_row, 4, '') or '').strip()
 
         full_text = f"{industry} {skills} {role} {company} {bio} {display_name}".lower()
 
-        # More sophisticated keyword mapping with context
         keyword_map = {
-            'tech': ['technology', 'software', 'programming', 'ai', 'ml', 'data', 'web', 'developer', 'engineer', 'coding', 'product'],
-            'business': ['business', 'entrepreneur', 'startup', 'ceo', 'founder', 'company', 'venture', 'investor', 'funding', 'consulting', 'director', 'principal'],
-            'fitness': ['fitness', 'gym', 'workout', 'training', 'health', 'crossfit', 'athlete', 'running', 'sports', 'golf'],
-            'finance': ['finance', 'investment', 'fund', 'money', 'trading', 'banking', 'financial', 'crypto'],
-            'marketing': ['marketing', 'social media', 'content', 'brand', 'advertising', 'seo', 'digital'],
-            'consulting': ['consulting', 'consultant', 'partner', 'client', 'insights', 'strategy'],
-            'creative': ['creative', 'design', 'artist', 'music', 'writing', 'photography', 'film', 'deck', 'slide'],
-            'leadership': ['director', 'principal', 'lead', 'manager', 'team', 'partner'],
+            'tech': ['technology', 'software', 'programming', 'ai', 'ml', 'data', 'web', 'developer', 'engineer', 'coding', 'product', 'saas', 'cloud', 'api', 'platform', 'app'],
+            'business': ['business', 'entrepreneur', 'startup', 'ceo', 'founder', 'company', 'venture', 'investor', 'funding', 'director', 'principal', 'operations', 'growth', 'scale'],
+            'fitness': ['fitness', 'gym', 'workout', 'training', 'health', 'crossfit', 'athlete', 'running', 'sports', 'golf', 'wellness', 'nutrition'],
+            'finance': ['finance', 'investment', 'fund', 'money', 'trading', 'banking', 'financial', 'crypto', 'capital', 'equity', 'portfolio'],
+            'marketing': ['marketing', 'social media', 'content', 'brand', 'advertising', 'seo', 'digital', 'communications', 'pr', 'media'],
+            'consulting': ['consulting', 'consultant', 'advisory', 'client', 'insights', 'strategy', 'mckinsey', 'bain', 'bcg', 'deloitte', 'pwc', 'kpmg', 'ey'],
+            'creative': ['creative', 'design', 'artist', 'music', 'writing', 'photography', 'film', 'visual', 'ux', 'ui'],
+            'leadership': ['director', 'principal', 'lead', 'manager', 'head of', 'vp', 'chief', 'c-suite', 'executive'],
+            'education': ['education', 'teacher', 'professor', 'university', 'school', 'academic', 'research', 'phd', 'mba', 'learning'],
+            'realestate': ['real estate', 'property', 'housing', 'mortgage', 'construction', 'architecture', 'development'],
         }
 
         for topic, keywords in keyword_map.items():
@@ -7115,35 +7107,46 @@ def extract_simple_user_interests(user_row):
             matches = []
             for kw in keywords:
                 if kw in full_text:
-                    score += 0.25
+                    score += 0.2
                     matches.append(kw)
             if score > 0:
                 interests[topic] = min(0.95, round(score, 2))
                 if matches:
-                    insights.append(f"{topic} from: {', '.join(matches[:3])}")
+                    insights.append(f"{topic}: matched '{', '.join(matches[:3])}'")
 
-        # Add default if nothing meaningful found
-        if not interests or sum(interests.values()) < 0.5:
-            interests['general'] = 0.6
-            insights.append("general profile information available")
+        # Build a human-readable profile summary
+        profile_fields = []
+        if role:
+            profile_fields.append(f"Role: {role}")
+        if company:
+            profile_fields.append(f"Company: {company}")
+        if industry:
+            profile_fields.append(f"Industry: {industry}")
+        if skills:
+            profile_fields.append(f"Skills: {skills[:100]}")
+        if bio:
+            profile_fields.append(f"Bio: {bio[:150]}")
 
-        # Store rationale data (for future use)
+        if not interests:
+            interests['general'] = 0.5
+            insights.append("Limited public profile data available")
+
         rationale = {
-            'insights': insights[:5],
+            'insights': insights[:6],
+            'profileFields': profile_fields[:5],
             'sources': {
                 'industry': bool(industry),
                 'skills': bool(skills),
                 'bio': bool(bio),
-                'role': bool(role)
+                'role': bool(role),
+                'company': bool(company),
             }
         }
         
-        logger.debug(f"Profile analysis for user: {rationale}")
-        
-        return interests
+        return {'interests': interests, 'rationale': rationale}
     except Exception as e:
         logger.warning(f"Interest extraction failed: {e}")
-        return {'general': 0.5}
+        return {'interests': {'general': 0.5}, 'rationale': {'insights': ['extraction failed'], 'profileFields': [], 'sources': {}}}
 
 
 def get_steve_profile_rationale(username: str, profile_data: dict = None) -> str:

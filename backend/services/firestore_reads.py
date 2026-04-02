@@ -317,7 +317,7 @@ def get_steve_user_profile(username: str):
         return None
 
 
-def list_steve_user_profiles(limit: int = 50):
+def list_steve_user_profiles(limit: int = 500):
     """List all Steve user profiles (for admin dashboard)."""
     try:
         fs = _get_client()
@@ -327,6 +327,7 @@ def list_steve_user_profiles(limit: int = 50):
             profiles.append({
                 'username': p.get('username', doc.id),
                 'interests': p.get('interests', {}),
+                'rationale': p.get('rationale', {}),
                 'lastUpdated': _ts_to_str(p.get('lastUpdated')),
                 'analyzedContentCount': p.get('analyzedContentCount', 0),
                 'profileVersion': p.get('profileVersion', 1)

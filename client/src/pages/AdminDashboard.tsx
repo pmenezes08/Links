@@ -1924,126 +1924,147 @@ export default function AdminDashboard() {
                   <div>Analyzing user profiles...</div>
                 </div>
               ) : steveProfiles.length === 0 ? (
-                <div className="text-center py-12 text-white/60">
-                  <i className="fa-solid fa-user text-3xl mb-3 text-white/30" />
-                  <div className="mb-2">No profiles yet</div>
-                  <div className="text-xs">Click refresh to generate basic interest vectors</div>
+                <div className="text-center py-8 text-white/60">
+                  <i className="fa-solid fa-user text-2xl mb-2 text-white/30" />
+                  <div className="text-sm mb-1">No profiles yet</div>
+                  <div className="text-xs">Click refresh to generate interest vectors</div>
                 </div>
               ) : (
-                <div className="flex flex-col lg:flex-row gap-6">
-                  {/* Searchable Dropdown */}
-                  <div className="lg:w-80 flex-shrink-0">
-                    <div className="mb-4">
-                      <label className="block text-xs text-white/60 mb-2">Select User</label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          list="user-profiles-list"
-                          value={selectedProfileUsername}
-                          onChange={(e) => setSelectedProfileUsername(e.target.value)}
-                          placeholder="Type to search users..."
-                          className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
-                        />
-                        <datalist id="user-profiles-list">
-                          {steveProfiles.map((profile) => (
-                            <option key={profile.username} value={profile.username} />
-                          ))}
-                        </datalist>
-                      </div>
-                      <input
-                        type="text"
-                        value={profileSearchQuery}
-                        onChange={(e) => setProfileSearchQuery(e.target.value)}
-                        placeholder="Filter list..."
-                        className="mt-2 w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
-                      />
-                      <div className="text-xs text-white/40 mt-2">
-                        {steveProfiles.length} users • Type to filter
-                      </div>
-                    </div>
+                <div className="flex flex-col lg:flex-row gap-4">
+                  {/* Left: search + list */}
+                  <div className="lg:w-64 flex-shrink-0">
+                    <input
+                      type="text"
+                      list="user-profiles-list"
+                      value={selectedProfileUsername}
+                      onChange={(e) => setSelectedProfileUsername(e.target.value)}
+                      placeholder="Search user..."
+                      className="w-full bg-white/5 border border-white/10 rounded-md px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+                    />
+                    <datalist id="user-profiles-list">
+                      {steveProfiles.map((profile) => (
+                        <option key={profile.username} value={profile.username} />
+                      ))}
+                    </datalist>
+                    <input
+                      type="text"
+                      value={profileSearchQuery}
+                      onChange={(e) => setProfileSearchQuery(e.target.value)}
+                      placeholder="Filter..."
+                      className="mt-1.5 w-full bg-white/5 border border-white/10 rounded-md px-3 py-1.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-[#4db6ac]"
+                    />
+                    <div className="text-[10px] text-white/30 mt-1 mb-2">{steveProfiles.length} users</div>
 
-                    {/* Profile List */}
-                    <div className="max-h-[500px] overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+                    <div className="max-h-[480px] overflow-y-auto space-y-0.5">
                       {steveProfiles
-                        .filter(p => 
-                          !profileSearchQuery || 
-                          p.username.toLowerCase().includes(profileSearchQuery.toLowerCase())
-                        )
-                        .slice(0, 30) // Limit visible items in list
-                        .map((profile) => (
-                          <button
-                            key={profile.username}
-                            onClick={() => setSelectedProfileUsername(profile.username)}
-                            className={`w-full text-left px-4 py-3 rounded-xl transition-all border ${
-                              selectedProfileUsername === profile.username 
-                                ? 'bg-[#4db6ac] text-black border-[#4db6ac]' 
-                                : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20 text-white'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
-                                {profile.username[0]?.toUpperCase()}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="font-medium truncate">@{profile.username}</div>
-                                <div className="text-xs opacity-70">
-                                  {Object.keys(profile.interests || {}).length} interests
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                        ))}
+                        .filter(p => !profileSearchQuery || p.username.toLowerCase().includes(profileSearchQuery.toLowerCase()))
+                        .map((profile) => {
+                          const interestCount = Object.keys(profile.interests || {}).length
+                          const topInterest = Object.entries(profile.interests || {}).sort((a: any, b: any) => b[1] - a[1])[0]
+                          return (
+                            <button
+                              key={profile.username}
+                              onClick={() => setSelectedProfileUsername(profile.username)}
+                              className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors ${
+                                selectedProfileUsername === profile.username
+                                  ? 'bg-[#4db6ac]/20 text-[#4db6ac] border-l-2 border-[#4db6ac]'
+                                  : 'text-white/80 hover:bg-white/5'
+                              }`}
+                            >
+                              <span className="font-medium">@{profile.username}</span>
+                              {topInterest && topInterest[0] !== 'general' && (
+                                <span className="ml-1.5 text-white/30">{topInterest[0]} {Math.round((topInterest[1] as number) * 100)}%</span>
+                              )}
+                              {interestCount <= 1 && topInterest?.[0] === 'general' && (
+                                <span className="ml-1.5 text-white/20">—</span>
+                              )}
+                            </button>
+                          )
+                        })}
                     </div>
                   </div>
 
-                  {/* Profile Detail View */}
-                  <div className="flex-1">
+                  {/* Right: detail */}
+                  <div className="flex-1 min-w-0">
                     {selectedProfileUsername ? (
                       (() => {
-                        const profile = steveProfiles.find(p => p.username === selectedProfileUsername);
-                        if (!profile) return <div className="text-white/60">Profile not found</div>;
-                        
+                        const profile = steveProfiles.find(p => p.username === selectedProfileUsername) as any;
+                        if (!profile) return <div className="text-white/40 text-sm">Profile not found</div>;
+                        const rationale = profile.rationale || {};
+                        const profileFields: string[] = rationale.profileFields || [];
+                        const insights: string[] = rationale.insights || [];
+                        const sources = rationale.sources || {};
+                        const sourceLabels = Object.entries(sources).filter(([, v]) => v).map(([k]) => k);
+
                         return (
-                          <div className="bg-[#0a0a0c] border border-white/10 rounded-2xl p-8">
-                            <div className="flex items-center gap-4 mb-8">
-                              <div className="w-16 h-16 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-2xl flex items-center justify-center text-3xl font-bold text-white">
+                          <div className="space-y-4">
+                            {/* Header */}
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-lg flex items-center justify-center text-sm font-bold text-white flex-shrink-0">
                                 {profile.username[0]?.toUpperCase()}
                               </div>
-                              <div>
-                                <div className="text-3xl font-semibold text-white">@{profile.username}</div>
-                                <div className="text-white/60 text-sm">
-                                  Profile v{profile.profileVersion} • {profile.analyzedContentCount} items analyzed
+                              <div className="min-w-0">
+                                <div className="text-lg font-semibold text-white truncate">@{profile.username}</div>
+                                <div className="text-[10px] text-white/40">
+                                  v{profile.profileVersion} · {profile.analyzedContentCount} analyzed · {profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleDateString() : '—'}
                                 </div>
-                                {profile.lastUpdated && (
-                                  <div className="text-xs text-white/40 mt-1">
-                                    Last updated: {new Date(profile.lastUpdated).toLocaleDateString()}
-                                  </div>
-                                )}
                               </div>
                             </div>
 
+                            {/* Interests */}
                             <div>
-                              <div className="text-xs text-white/60 mb-4 tracking-widest">INTERESTS</div>
-                              <div className="flex flex-wrap gap-3">
-                                {Object.entries(profile.interests || {}).map(([topic, score]) => (
-                                  <div key={topic} className="flex items-center gap-2 bg-white/5 px-5 py-2.5 rounded-2xl border border-white/10">
-                                    <span className="text-white capitalize">{topic}</span>
-                                    <div className="px-3 py-0.5 bg-[#4db6ac]/20 text-[#4db6ac] text-xs font-mono rounded-full">
-                                      {Math.round(score * 100)}%
-                                    </div>
-                                  </div>
-                                ))}
+                              <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Interests</div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {Object.entries(profile.interests || {})
+                                  .sort((a: any, b: any) => b[1] - a[1])
+                                  .map(([topic, score]) => (
+                                    <span key={topic} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-white/5 border border-white/10">
+                                      <span className="text-white capitalize">{topic}</span>
+                                      <span className="text-[#4db6ac] font-mono text-[10px]">{Math.round((score as number) * 100)}%</span>
+                                    </span>
+                                  ))}
                               </div>
                             </div>
+
+                            {/* Profile data used */}
+                            {profileFields.length > 0 && (
+                              <div>
+                                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Profile Data</div>
+                                <div className="space-y-1">
+                                  {profileFields.map((field, i) => (
+                                    <div key={i} className="text-xs text-white/60 truncate">{field}</div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Steve's rationale */}
+                            {insights.length > 0 && (
+                              <div>
+                                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Steve's Analysis</div>
+                                <div className="space-y-1">
+                                  {insights.map((insight, i) => (
+                                    <div key={i} className="text-xs text-white/50 flex items-start gap-1.5">
+                                      <span className="text-[#4db6ac] mt-0.5">·</span>
+                                      <span>{insight}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Sources */}
+                            {sourceLabels.length > 0 && (
+                              <div className="text-[10px] text-white/25">
+                                Sources: {sourceLabels.join(', ')}
+                              </div>
+                            )}
                           </div>
                         );
                       })()
                     ) : (
-                      <div className="h-full flex items-center justify-center text-white/40 border border-dashed border-white/10 rounded-2xl">
-                        <div className="text-center">
-                          <i className="fa-solid fa-arrow-left text-4xl mb-4 opacity-30" />
-                          <div>Select a user from the list</div>
-                        </div>
+                      <div className="h-48 flex items-center justify-center text-white/30 text-sm">
+                        Select a user
                       </div>
                     )}
                   </div>
