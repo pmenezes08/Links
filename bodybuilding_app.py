@@ -7013,6 +7013,111 @@ def check_admin():
     username = session.get('username')
     return jsonify({'is_admin': is_app_admin(username)})
 
+
+@app.route('/api/admin/steve_profiles', methods=['GET'])
+@login_required
+def admin_steve_profiles():
+    """Admin endpoint to get Steve user profiles. Phase 0: simple vector interests."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    try:
+        # Import inside function to follow existing pattern
+        from backend.services.firestore_reads import list_steve_user_profiles, get_steve_user_profile
+        from backend.services.firestore_writes import write_steve_user_profile
+
+        # Get existing profiles from Firestore
+        profiles = list_steve_user_profiles(limit=100)
+
+        # Get all users for potential profile generation
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"""
+                SELECT u.username, u.industry, u.skills, u.bio,
+                       p.display_name, p.bio as profile_bio, p.location
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username NOT IN ('admin', 'steve')
+                ORDER BY u.username
+                LIMIT 50
+            """)
+            users = c.fetchall()
+
+        # Generate basic profiles for users without one
+        for user in users:
+            u_username = user['username'] if hasattr(user, 'keys') else user[0]
+            # Check if profile exists
+            existing = get_steve_user_profile(u_username)
+            if not existing:
+                # Simple interest extraction (Phase 0)
+                interests = extract_simple_user_interests(user)
+                write_steve_user_profile(u_username, interests=interests, analyzed_count=1)
+
+        # Refresh list
+        profiles = list_steve_user_profiles(limit=100)
+
+        return jsonify({
+            'success': True,
+            'profiles': profiles,
+            'total': len(profiles)
+        })
+    except Exception as e:
+        logger.error(f"Error in admin_steve_profiles: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def extract_simple_user_interests(user_row):
+    """Phase 0: Simple keyword-based interest extraction from user data.
+    Returns dict of {topic: confidence_score}"""
+    try:
+        interests = {}
+
+        # Extract fields safely
+        def get_val(row, key_or_idx, default=''):
+            if hasattr(row, 'keys'):
+                return row.get(key_or_idx, default)
+            try:
+                return row[key_or_idx] if isinstance(key_or_idx, int) else default
+            except:
+                return default
+
+        industry = get_val(user_row, 'industry') or get_val(user_row, 1, '')
+        skills = get_val(user_row, 'skills') or get_val(user_row, 2, '')
+        bio = (get_val(user_row, 'bio') or get_val(user_row, 'profile_bio') or
+               get_val(user_row, 3, '') or get_val(user_row, 5, ''))
+
+        text = f"{industry} {skills} {bio}".lower()
+
+        # Simple keyword mapping for Phase 0
+        keyword_map = {
+            'tech': ['technology', 'software', 'programming', 'ai', 'ml', 'data', 'web'],
+            'business': ['business', 'entrepreneur', 'startup', 'ceo', 'founder', 'company'],
+            'fitness': ['fitness', 'gym', 'workout', 'training', 'health', 'crossfit'],
+            'finance': ['finance', 'investment', 'fund', 'money', 'trading'],
+            'marketing': ['marketing', 'social media', 'content', 'brand'],
+            'education': ['education', 'teacher', 'school', 'university', 'student'],
+        }
+
+        for topic, keywords in keyword_map.items():
+            score = 0
+            for kw in keywords:
+                if kw in text:
+                    score += 0.3
+            if score > 0:
+                interests[topic] = min(0.95, round(score, 2))
+
+        # Default interest if none found
+        if not interests:
+            interests['general'] = 0.5
+
+        return interests
+    except Exception as e:
+        logger.warning(f"Interest extraction failed: {e}")
+        return {'general': 0.5}
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Simple health check endpoint"""

@@ -302,3 +302,36 @@ def get_group_post_detail(post_id: int, username: str):
     except Exception as e:
         logger.error(f"Firestore get_group_post_detail failed: {e}", exc_info=True)
         raise
+
+
+def get_steve_user_profile(username: str):
+    """Get Steve user profile from Firestore."""
+    try:
+        fs = _get_client()
+        doc = fs.collection('steve_user_profiles').document(username).get()
+        if not doc.exists:
+            return None
+        return doc.to_dict()
+    except Exception as e:
+        logger.warning(f"Firestore get_steve_user_profile failed for {username}: {e}")
+        return None
+
+
+def list_steve_user_profiles(limit: int = 50):
+    """List all Steve user profiles (for admin dashboard)."""
+    try:
+        fs = _get_client()
+        profiles = []
+        for doc in fs.collection('steve_user_profiles').limit(limit).stream():
+            p = doc.to_dict()
+            profiles.append({
+                'username': p.get('username', doc.id),
+                'interests': p.get('interests', {}),
+                'lastUpdated': _ts_to_str(p.get('lastUpdated')),
+                'analyzedContentCount': p.get('analyzedContentCount', 0),
+                'profileVersion': p.get('profileVersion', 1)
+            })
+        return profiles
+    except Exception as e:
+        logger.warning(f"Firestore list_steve_user_profiles failed: {e}")
+        return []

@@ -141,7 +141,7 @@ export default function AdminDashboard() {
     [communityChildrenMap]
   )
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review' | 'blocked_users'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'communities' | 'metrics' | 'content_review' | 'blocked_users' | 'steve_profiles'>('overview')
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<'all' | 'premium' | 'free'>('all')
@@ -224,6 +224,17 @@ export default function AdminDashboard() {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUserEntry[]>([])
   const [blockedUsersLoading, setBlockedUsersLoading] = useState(false)
   const [unblockingId, setUnblockingId] = useState<number | null>(null)
+
+  // Steve Profiles state (Phase 0)
+  interface SteveProfile {
+    username: string
+    interests: { [key: string]: number }
+    lastUpdated?: string
+    analyzedContentCount: number
+    profileVersion: number
+  }
+  const [steveProfiles, setSteveProfiles] = useState<SteveProfile[]>([])
+  const [steveProfilesLoading, setSteveProfilesLoading] = useState(false)
 
   // New user form
   const [newUser, setNewUser] = useState({
@@ -415,6 +426,28 @@ export default function AdminDashboard() {
     }
   }, [])
 
+  const loadSteveProfiles = useCallback(async () => {
+    setSteveProfilesLoading(true)
+    try {
+      const response = await fetch('/api/admin/steve_profiles', {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' }
+      })
+      const data = await response.json()
+      if (data?.success) {
+        setSteveProfiles(data.profiles || [])
+      } else {
+        setSteveProfiles([])
+        console.error('Failed to load Steve profiles:', data?.error)
+      }
+    } catch (error) {
+      console.error('Error loading Steve profiles:', error)
+      setSteveProfiles([])
+    } finally {
+      setSteveProfilesLoading(false)
+    }
+  }, [])
+
   const handleAdminUnblock = async (blockId: number) => {
     setUnblockingId(blockId)
     try {
@@ -530,6 +563,13 @@ export default function AdminDashboard() {
     }
   }, [activeTab, loadBlockedUsers])
 
+  // Load Steve profiles when steve_profiles tab is active
+  useEffect(() => {
+    if (activeTab === 'steve_profiles') {
+      loadSteveProfiles()
+    }
+  }, [activeTab])
+
   // Check URL for tab parameter
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -538,6 +578,8 @@ export default function AdminDashboard() {
       setActiveTab('content_review')
     } else if (tab === 'blocked_users') {
       setActiveTab('blocked_users')
+    } else if (tab === 'steve_profiles') {
+      setActiveTab('steve_profiles')
     }
   }, [])
 
@@ -995,6 +1037,15 @@ export default function AdminDashboard() {
           >
             <div className="pt-2">Blocks</div>
             <div className={`h-0.5 ${activeTab === 'blocked_users' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
+          </button>
+          <button 
+            onClick={() => setActiveTab('steve_profiles')}
+            className={`flex-1 text-center text-sm font-medium ${
+              activeTab === 'steve_profiles' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
+            }`}
+          >
+            <div className="pt-2">Steve Profiles</div>
+            <div className={`h-0.5 ${activeTab === 'steve_profiles' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
           </button>
         </div>
       </div>
@@ -1842,6 +1893,84 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* Steve Profiles Tab - Phase 0 Simple Vector Interests */}
+        {activeTab === 'steve_profiles' && (
+          <div className="space-y-4">
+            <div className="bg-white/5 backdrop-blur rounded-xl p-6 border border-white/10">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-[#4db6ac] flex items-center gap-2">
+                    <i className="fa-solid fa-brain" />
+                    Steve User Profiles
+                  </h3>
+                  <p className="text-xs text-white/60 mt-1">Phase 0: Simple interest vectors from user data</p>
+                </div>
+                <button
+                  onClick={loadSteveProfiles}
+                  disabled={steveProfilesLoading}
+                  className="px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  <i className="fa-solid fa-refresh" />
+                  {steveProfilesLoading ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+
+              {steveProfilesLoading ? (
+                <div className="text-center py-12 text-white/60">
+                  <i className="fa-solid fa-spinner fa-spin text-2xl mb-3" />
+                  <div>Analyzing user profiles...</div>
+                </div>
+              ) : steveProfiles.length === 0 ? (
+                <div className="text-center py-12 text-white/60">
+                  <i className="fa-solid fa-user text-3xl mb-3 text-white/30" />
+                  <div className="mb-2">No profiles yet</div>
+                  <div className="text-xs">Click refresh to generate basic interest vectors</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {steveProfiles.map((profile) => (
+                    <div key={profile.username} className="bg-[#0a0a0c] border border-white/10 rounded-xl p-5 hover:border-white/20 transition-all">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 bg-gradient-to-br from-[#4db6ac] to-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                          {profile.username[0]?.toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-medium text-white">@{profile.username}</div>
+                          <div className="text-xs text-white/50">
+                            v{profile.profileVersion} • {profile.analyzedContentCount} items
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-white/60 mb-3">INTERESTS</div>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(profile.interests || {}).slice(0, 6).map(([topic, score]) => (
+                          <div key={topic} className="px-3 py-1 bg-white/5 rounded-full text-xs border border-white/10 flex items-center gap-1">
+                            <span>{topic}</span>
+                            <span className="text-[#4db6ac] font-mono text-[10px]">{Math.round(score * 100)}%</span>
+                          </div>
+                        ))}
+                        {Object.keys(profile.interests || {}).length > 6 && (
+                          <div className="px-3 py-1 bg-white/5 rounded-full text-xs text-white/40">
+                            +{Object.keys(profile.interests || {}).length - 6} more
+                          </div>
+                        )}
+                      </div>
+
+                      {profile.lastUpdated && (
+                        <div className="text-[10px] text-white/40 mt-4 pt-3 border-t border-white/10">
+                          Updated: {new Date(profile.lastUpdated).toLocaleDateString()}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* Add User to Community Modal */}

@@ -283,3 +283,40 @@ def write_reaction(post_id: int, username: str, reaction_type: str,
             fs.collection('posts').document(doc_id).collection('reactions').document(username).delete()
     except Exception as e:
         logger.warning(f"Firestore reaction write failed (non-fatal): {e}")
+
+
+def write_steve_user_profile(username: str, interests: dict = None, life_events=None,
+                           shared_content=None, analyzed_count: int = 0,
+                           profile_version: int = 1):
+    """Write or update Steve user profile in Firestore."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        from datetime import datetime
+        now = datetime.utcnow()
+
+        profile_data = {
+            'username': username,
+            'interests': interests or {},
+            'lifeEvents': life_events or [],
+            'sharedContent': shared_content or [],
+            'lastUpdated': now,
+            'profileVersion': profile_version,
+            'analyzedContentCount': analyzed_count,
+            'steveObservations': '',
+            'keyInsights': [],
+            'interactionStats': {
+                'postsCreated': 0,
+                'reactionsGiven': 0,
+                'articlesShared': 0,
+                'commentsWritten': 0,
+                'totalInteractions': 0,
+                'lastActivity': now
+            }
+        }
+
+        fs.collection('steve_user_profiles').document(username).set(profile_data, merge=True)
+        logger.debug(f"Firestore Steve profile written for {username}")
+    except Exception as e:
+        logger.warning(f"Firestore steve profile write failed (non-fatal): {e}")
