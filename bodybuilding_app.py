@@ -7097,10 +7097,16 @@ def admin_steve_profile_analyze(target_username):
         if not profile_text.strip():
             return jsonify({'success': False, 'error': 'No profile data to analyze'}), 400
 
-        analysis = _analyze_profile_with_grok(target_username, profile_text)
+        from backend.services.firestore_reads import get_steve_user_profile
+        existing = get_steve_user_profile(target_username)
+        prior_feedback = (existing or {}).get('analysis', {}).get('_feedback', {})
+
+        analysis = _analyze_profile_with_grok(target_username, profile_text, prior_feedback=prior_feedback)
         if not analysis:
             return jsonify({'success': False, 'error': 'Grok analysis returned empty'}), 502
 
+        if prior_feedback:
+            analysis['_feedback'] = prior_feedback
         write_steve_user_profile(target_username, analysis=analysis)
 
         return jsonify({
@@ -7160,6 +7166,48 @@ def admin_steve_profile_patch(target_username):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/admin/steve_profiles/<target_username>/feedback', methods=['PATCH'])
+@login_required
+def admin_steve_profile_feedback(target_username):
+    """Record admin feedback (approve/reject) on individual analysis sections.
+    Body: { "section": "personResearch", "status": "approved"|"rejected", "note": "optional reason" }"""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        data = request.get_json(force=True) or {}
+        section = data.get('section', '')
+        status = data.get('status', '')
+        note = data.get('note', '')
+        allowed_sections = {'personResearch', 'companyIntel', 'roleContext', 'networkingValue',
+                            'locationContext', 'interests', 'traits', 'observations', 'summary', 'overall'}
+        if section not in allowed_sections or status not in ('approved', 'rejected'):
+            return jsonify({'success': False, 'error': 'Invalid section or status'}), 400
+
+        from backend.services.firestore_reads import get_steve_user_profile
+        profile = get_steve_user_profile(target_username)
+        if not profile:
+            return jsonify({'success': False, 'error': 'Profile not found'}), 404
+
+        analysis = profile.get('analysis', {})
+        feedback = analysis.get('_feedback', {})
+        feedback[section] = {
+            'status': status,
+            'by': username,
+            'at': datetime.utcnow().isoformat(),
+        }
+        if note:
+            feedback[section]['note'] = note
+        analysis['_feedback'] = feedback
+
+        from backend.services.firestore_writes import write_steve_user_profile
+        write_steve_user_profile(target_username, analysis=analysis)
+        return jsonify({'success': True, 'feedback': feedback})
+    except Exception as e:
+        logger.error(f"Error recording feedback for {target_username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 def _build_profile_text_for_grok(user_row) -> str:
     """Assemble all available profile fields into a text block for Grok analysis."""
     def gv(key):
@@ -7209,7 +7257,7 @@ def _build_profile_text_for_grok(user_row) -> str:
     return '\n'.join(parts)
 
 
-def _analyze_profile_with_grok(username: str, profile_text: str) -> dict:
+def _analyze_profile_with_grok(username: str, profile_text: str, prior_feedback: dict = None) -> dict:
     """Call Grok multi-agent to analyze a user's profile with web research.
     Returns structured dict with summary, interests, traits, company intel, role context, and networking value."""
     if not XAI_API_KEY:
@@ -7285,11 +7333,23 @@ If the company or role fields are empty, set companyIntel and roleContext to nul
 If you cannot find the person online, set personResearch to null.
 If no location is provided, set locationContext to null."""
 
+        user_msg = f"Analyze this user's profile (@{username}):\n\n{profile_text}"
+        if prior_feedback:
+            rejected = {k: v for k, v in prior_feedback.items() if isinstance(v, dict) and v.get('status') == 'rejected'}
+            if rejected:
+                feedback_lines = []
+                for section, fb in rejected.items():
+                    note = fb.get('note', '')
+                    feedback_lines.append(f"- {section}: REJECTED by admin" + (f" — reason: {note}" if note else ''))
+                user_msg += "\n\nADMIN FEEDBACK FROM PREVIOUS ANALYSIS (sections marked as incorrect):\n"
+                user_msg += '\n'.join(feedback_lines)
+                user_msg += "\nPlease be extra careful with these sections. If personResearch was rejected, the previous match was the WRONG person — search more carefully or set to null if unsure."
+
         response = client.responses.create(
             model=GROK_MODEL_MULTI_AGENT,
             input=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Analyze this user's profile (@{username}):\n\n{profile_text}"}
+                {"role": "user", "content": user_msg}
             ],
             tools=[{"type": "web_search"}],
             max_output_tokens=2000,
@@ -7433,9 +7493,12 @@ def _trigger_background_profile_analysis(username: str):
                 logger.info(f"Background analysis: no profile data for {username}")
                 return
 
+            prior_feedback = (existing or {}).get('analysis', {}).get('_feedback', {})
             logger.info(f"Background profile analysis starting for {username}")
-            analysis = _analyze_profile_with_grok(username, profile_text)
+            analysis = _analyze_profile_with_grok(username, profile_text, prior_feedback=prior_feedback)
             if analysis:
+                if prior_feedback:
+                    analysis['_feedback'] = prior_feedback
                 write_steve_user_profile(username, analysis=analysis)
                 logger.info(f"Background profile analysis completed for {username}")
             else:

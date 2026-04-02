@@ -240,6 +240,7 @@ export default function AdminDashboard() {
       networkingValue?: string | null
       personResearch?: { linkedInUrl?: string; publicSummary?: string; additionalContext?: string; confidence?: string } | null
       locationContext?: string | null
+      _feedback?: { [section: string]: { status: string; note?: string; by?: string; at?: string } }
     }
     lastUpdated?: string
   }
@@ -541,6 +542,24 @@ export default function AdminDashboard() {
       if (data?.success && data.analysis) {
         setSteveProfiles(prev => prev.map(p =>
           p.username === targetUsername ? { ...p, analysis: data.analysis, lastUpdated: new Date().toISOString() } : p
+        ))
+      }
+    } catch {}
+  }, [])
+
+  const submitFeedback = useCallback(async (targetUsername: string, section: string, status: 'approved' | 'rejected') => {
+    try {
+      const res = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(targetUsername)}/feedback`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ section, status })
+      })
+      const data = await res.json()
+      if (data?.success && data.feedback) {
+        setSteveProfiles(prev => prev.map(p =>
+          p.username === targetUsername
+            ? { ...p, analysis: { ...p.analysis, _feedback: data.feedback } }
+            : p
         ))
       }
     } catch {}
@@ -2135,6 +2154,20 @@ export default function AdminDashboard() {
                         const observations = a.observations || '';
                         const quality = a.dataQuality || 'sparse';
                         const isAnalyzing = analyzingUser === profile.username;
+                        const fb = a._feedback || {};
+                        const FbBtns = ({ s }: { s: string }) => {
+                          const st = fb[s]?.status;
+                          return (
+                            <span className="inline-flex items-center gap-0.5 ml-auto">
+                              <button onClick={() => submitFeedback(profile.username, s, 'approved')}
+                                className={`p-0.5 rounded transition-colors ${st === 'approved' ? 'text-green-400' : 'text-white/15 hover:text-green-400/60'}`}
+                                title="Approve"><i className="fa-solid fa-thumbs-up text-[9px]" /></button>
+                              <button onClick={() => submitFeedback(profile.username, s, 'rejected')}
+                                className={`p-0.5 rounded transition-colors ${st === 'rejected' ? 'text-red-400' : 'text-white/15 hover:text-red-400/60'}`}
+                                title="Reject"><i className="fa-solid fa-thumbs-down text-[9px]" /></button>
+                            </span>
+                          );
+                        };
 
                         return (
                           <div className="space-y-4">
@@ -2148,13 +2181,23 @@ export default function AdminDashboard() {
                                 {profile.display_name && profile.display_name !== profile.username && (
                                   <div className="text-xs text-white/40 truncate">{profile.display_name}</div>
                                 )}
-                                {hasAnalysis && (
-                                  <div className="text-[10px] text-white/40 flex items-center gap-2 mt-0.5">
-                                    <span className={`${quality === 'rich' ? 'text-green-400' : quality === 'moderate' ? 'text-yellow-400' : 'text-white/30'}`}>{quality} data</span>
-                                    <span>·</span>
-                                    <span>{profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleDateString() : '—'}</span>
-                                  </div>
-                                )}
+                                <div className="text-[10px] text-white/40 flex items-center gap-2 mt-0.5">
+                                  {hasAnalysis && (
+                                    <>
+                                      <span className={`${quality === 'rich' ? 'text-green-400' : quality === 'moderate' ? 'text-yellow-400' : 'text-white/30'}`}>{quality} data</span>
+                                      <span>·</span>
+                                      <span>{profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleDateString() : '—'}</span>
+                                      <span>·</span>
+                                    </>
+                                  )}
+                                  <button onClick={() => navigate(`/profile/${encodeURIComponent(profile.username)}`)} className="text-blue-400 hover:text-blue-300 transition-colors">
+                                    <i className="fa-solid fa-user mr-0.5" /> Profile
+                                  </button>
+                                  <span>·</span>
+                                  <button onClick={() => navigate(`/user_chat/chat/${encodeURIComponent(profile.username)}`)} className="text-blue-400 hover:text-blue-300 transition-colors">
+                                    <i className="fa-solid fa-message mr-0.5" /> Message
+                                  </button>
+                                </div>
                               </div>
                               <div className="flex items-center gap-1.5 flex-shrink-0">
                                 <button
@@ -2209,7 +2252,7 @@ export default function AdminDashboard() {
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span>Company Intel</span>
-                                      <button onClick={() => removeSection(profile.username, 'companyIntel')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button>
+                                      <span className="flex items-center gap-1"><FbBtns s="companyIntel" /><button onClick={() => removeSection(profile.username, 'companyIntel')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
                                     </div>
                                     <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1">
                                       <div className="text-sm text-white font-medium">{a.companyIntel.name}</div>
@@ -2227,7 +2270,7 @@ export default function AdminDashboard() {
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span>Role Context</span>
-                                      <button onClick={() => removeSection(profile.username, 'roleContext')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button>
+                                      <span className="flex items-center gap-1"><FbBtns s="roleContext" /><button onClick={() => removeSection(profile.username, 'roleContext')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
                                     </div>
                                     <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1">
                                       <div className="flex items-center gap-2">
@@ -2245,7 +2288,7 @@ export default function AdminDashboard() {
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span>Networking Value</span>
-                                      <button onClick={() => removeSection(profile.username, 'networkingValue')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button>
+                                      <span className="flex items-center gap-1"><FbBtns s="networkingValue" /><button onClick={() => removeSection(profile.username, 'networkingValue')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
                                     </div>
                                     <div className="text-xs text-white/60 leading-relaxed bg-[#4db6ac]/5 rounded-lg px-3.5 py-2.5 border border-[#4db6ac]/15">
                                       <i className="fa-solid fa-handshake text-[#4db6ac]/50 mr-1.5" />{a.networkingValue}
@@ -2269,7 +2312,7 @@ export default function AdminDashboard() {
                                             }`}>{a.personResearch!.confidence} confidence</span>
                                           )}
                                         </span>
-                                        <button onClick={() => removeSection(profile.username, 'personResearch')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button>
+                                        <span className="flex items-center gap-1"><FbBtns s="personResearch" /><button onClick={() => removeSection(profile.username, 'personResearch')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
                                       </div>
                                       {isLow && (
                                         <div className="text-[10px] text-red-400/70 mb-2 flex items-center gap-1">
@@ -2296,7 +2339,7 @@ export default function AdminDashboard() {
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span><i className="fa-solid fa-location-dot mr-1" /> Location Context</span>
-                                      <button onClick={() => removeSection(profile.username, 'locationContext')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button>
+                                      <span className="flex items-center gap-1"><FbBtns s="locationContext" /><button onClick={() => removeSection(profile.username, 'locationContext')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
                                     </div>
                                     <div className="text-xs text-white/50 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
                                       {a.locationContext}
@@ -2309,7 +2352,7 @@ export default function AdminDashboard() {
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span>Interests</span>
-                                      <button onClick={() => removeSection(profile.username, 'interests')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button>
+                                      <span className="flex items-center gap-1"><FbBtns s="interests" /><button onClick={() => removeSection(profile.username, 'interests')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
                                     </div>
                                     <div className="flex flex-wrap gap-1.5">
                                       {Object.entries(interests)
@@ -2329,7 +2372,7 @@ export default function AdminDashboard() {
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span>Traits</span>
-                                      <button onClick={() => removeSection(profile.username, 'traits')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button>
+                                      <span className="flex items-center gap-1"><FbBtns s="traits" /><button onClick={() => removeSection(profile.username, 'traits')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
                                     </div>
                                     <div className="flex flex-wrap gap-1.5">
                                       {traits.map((trait, i) => (
@@ -2346,7 +2389,7 @@ export default function AdminDashboard() {
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span>Steve's Observations</span>
-                                      <button onClick={() => removeSection(profile.username, 'observations')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button>
+                                      <span className="flex items-center gap-1"><FbBtns s="observations" /><button onClick={() => removeSection(profile.username, 'observations')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
                                     </div>
                                     <div className="text-xs text-white/50 leading-relaxed">
                                       {observations}
