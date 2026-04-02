@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { apiJson, api } from '../utils/api'
 
 interface Analysis {
@@ -26,15 +26,38 @@ export default function UserProfiles() {
   const [search, setSearch] = useState('')
   const [analyzing, setAnalyzing] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // Batch analysis state
+  const [batchRunning, setBatchRunning] = useState(false)
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentUser: '' })
+  const batchAbortRef = useRef(false)
+
+  // Auto-poll: refresh list every 15s while any analysis is in flight
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const d = await apiJson('/api/admin/steve_profiles')
       if (d?.success) setProfiles(d.profiles || [])
-    } catch {} finally { setLoading(false) }
+    } catch {} finally { if (!silent) setLoading(false) }
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Start/stop auto-poll when analyzing or batch is running
+  useEffect(() => {
+    if (analyzing || batchRunning) {
+      if (!pollRef.current) {
+        pollRef.current = setInterval(() => load(true), 15000)
+      }
+    } else {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    }
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
+  }, [analyzing, batchRunning, load])
 
   const analyze = async (username: string) => {
     setAnalyzing(username)
@@ -54,6 +77,38 @@ export default function UserProfiles() {
     } catch {} finally { setAnalyzing(null) }
   }
 
+  const analyzeAll = async () => {
+    const unanalyzed = profiles.filter(p => !p.analysis?.summary)
+    if (unanalyzed.length === 0) return
+    batchAbortRef.current = false
+    setBatchRunning(true)
+    setBatchProgress({ current: 0, total: unanalyzed.length, currentUser: '' })
+
+    for (let i = 0; i < unanalyzed.length; i++) {
+      if (batchAbortRef.current) break
+      const u = unanalyzed[i]
+      setBatchProgress({ current: i + 1, total: unanalyzed.length, currentUser: u.username })
+      try {
+        const res = await api(`/api/admin/steve_profiles/${encodeURIComponent(u.username)}/analyze`, {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' },
+        })
+        const d = await res.json()
+        if (d?.success && d.analysis) {
+          setProfiles(prev => prev.map(p =>
+            p.username === u.username
+              ? { ...p, analysis: d.analysis, lastUpdated: new Date().toISOString() }
+              : p
+          ))
+        }
+      } catch {}
+    }
+    setBatchRunning(false)
+    setBatchProgress({ current: 0, total: 0, currentUser: '' })
+  }
+
+  const stopBatch = () => { batchAbortRef.current = true }
+
   const filtered = profiles.filter(p => {
     if (!search) return true
     const q = search.toLowerCase()
@@ -66,23 +121,57 @@ export default function UserProfiles() {
   const isAnalyzing = analyzing === selected
 
   const analyzedCount = profiles.filter(p => !!p.analysis?.summary).length
+  const unanalyzedCount = profiles.length - analyzedCount
 
   if (loading) return <div className="text-muted text-center py-20">Loading profiles...</div>
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-semibold">AI Profiles</h1>
           <p className="text-muted text-sm mt-0.5">
             Grok-powered member intelligence — {analyzedCount}/{profiles.length} analyzed
           </p>
         </div>
-        <button onClick={load} disabled={loading} className="px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 transition">
-          <i className="fa-solid fa-refresh" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {!batchRunning && unanalyzedCount > 0 && (
+            <button
+              onClick={analyzeAll}
+              className="px-4 py-2 bg-accent/10 border border-accent/30 hover:bg-accent/20 rounded-lg text-sm flex items-center gap-2 text-accent transition"
+            >
+              <i className="fa-solid fa-bolt" />
+              Analyze All ({unanalyzedCount})
+            </button>
+          )}
+          <button onClick={() => load()} disabled={loading} className="px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 transition">
+            <i className="fa-solid fa-refresh" />
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {/* Batch progress bar */}
+      {batchRunning && (
+        <div className="bg-surface-2 border border-accent/20 rounded-xl p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-white flex items-center gap-2">
+              <i className="fa-solid fa-spinner fa-spin text-accent" />
+              Analyzing {batchProgress.current}/{batchProgress.total}
+              {batchProgress.currentUser && <span className="text-muted">— @{batchProgress.currentUser}</span>}
+            </div>
+            <button onClick={stopBatch} className="px-3 py-1 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 hover:bg-red-500/20 transition">
+              Stop
+            </button>
+          </div>
+          <div className="w-full bg-white/5 rounded-full h-1.5">
+            <div
+              className="bg-accent h-1.5 rounded-full transition-all duration-500"
+              style={{ width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="grid md:grid-cols-[320px_1fr] gap-4">
         {/* Left: user list */}
@@ -102,6 +191,7 @@ export default function UserProfiles() {
             ) : (
               filtered.map(p => {
                 const analyzed = !!p.analysis?.summary
+                const isBatchTarget = batchRunning && batchProgress.currentUser === p.username
                 return (
                   <button
                     key={p.username}
@@ -110,7 +200,9 @@ export default function UserProfiles() {
                       selected === p.username ? 'bg-accent/10' : 'hover:bg-white/5'
                     }`}
                   >
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${analyzed ? 'bg-green-400' : 'border border-white/20'}`} />
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      isBatchTarget ? 'bg-accent animate-pulse' : analyzed ? 'bg-green-400' : 'border border-white/20'
+                    }`} />
                     <div className="min-w-0 flex-1">
                       <div className={`text-sm truncate ${selected === p.username ? 'text-accent' : 'text-white'}`}>
                         @{p.username}
@@ -152,7 +244,7 @@ export default function UserProfiles() {
                 </div>
                 <button
                   onClick={() => analyze(profile.username)}
-                  disabled={isAnalyzing}
+                  disabled={isAnalyzing || batchRunning}
                   className="px-3 py-1.5 bg-accent/10 hover:bg-accent/20 border border-accent/30 rounded-lg text-xs text-accent flex items-center gap-1.5 disabled:opacity-50 flex-shrink-0 transition"
                 >
                   {isAnalyzing ? (
@@ -180,14 +272,12 @@ export default function UserProfiles() {
 
               {!isAnalyzing && hasAnalysis && (
                 <div className="space-y-4">
-                  {/* Summary */}
                   {a.summary && (
                     <div className="text-sm text-white/70 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
                       {a.summary}
                     </div>
                   )}
 
-                  {/* Company Intel */}
                   {a.companyIntel?.description && (
                     <div>
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Company Intel</div>
@@ -202,7 +292,6 @@ export default function UserProfiles() {
                     </div>
                   )}
 
-                  {/* Role Context */}
                   {a.roleContext?.title && (
                     <div>
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Role Context</div>
@@ -217,7 +306,6 @@ export default function UserProfiles() {
                     </div>
                   )}
 
-                  {/* Networking Value */}
                   {a.networkingValue && (
                     <div>
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Networking Value</div>
@@ -227,7 +315,6 @@ export default function UserProfiles() {
                     </div>
                   )}
 
-                  {/* Interests */}
                   {a.interests && Object.keys(a.interests).length > 0 && (
                     <div>
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Interests</div>
@@ -244,7 +331,6 @@ export default function UserProfiles() {
                     </div>
                   )}
 
-                  {/* Traits */}
                   {a.traits && a.traits.length > 0 && (
                     <div>
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Traits</div>
@@ -258,7 +344,6 @@ export default function UserProfiles() {
                     </div>
                   )}
 
-                  {/* Observations */}
                   {a.observations && (
                     <div>
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Observations</div>

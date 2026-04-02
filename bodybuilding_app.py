@@ -7297,7 +7297,7 @@ def _trigger_background_profile_analysis(username: str):
                         last_dt = None
                 if last_dt:
                     age_seconds = (datetime.now(timezone.utc) - last_dt).total_seconds()
-                    if age_seconds < 600:
+                    if age_seconds < 60:
                         logger.info(f"Skipping profile analysis for {username}: analyzed {int(age_seconds)}s ago (debounce)")
                         return
 
