@@ -7050,9 +7050,14 @@ def admin_steve_profiles():
             # Check if profile exists
             existing = get_steve_user_profile(u_username)
             if not existing:
-                # Simple interest extraction (Phase 0)
-                interests = extract_simple_user_interests(user)
-                write_steve_user_profile(u_username, interests=interests, analyzed_count=1)
+                # Enhanced profile analysis from public profile data
+                profile_data = extract_user_profile(user)
+                interests = profile_data.get('interests', {})
+                write_steve_user_profile(
+                    u_username, 
+                    interests=interests, 
+                    analyzed_count=1
+                )
 
         # Refresh list
         profiles = list_steve_user_profiles(limit=100)
@@ -7068,11 +7073,12 @@ def admin_steve_profiles():
 
 
 def extract_simple_user_interests(user_row):
-    """Phase 0: Simple keyword-based interest extraction from user data.
-    Returns dict of {topic: confidence_score}"""
+    """Enhanced profile analysis from public profile data.
+    Captures meaningful context beyond simple keywords. Returns dict for backward compatibility."""
     try:
         interests = {}
-
+        insights = []
+        
         # Extract fields safely
         def get_val(row, key_or_idx, default=''):
             if hasattr(row, 'keys'):
@@ -7088,39 +7094,76 @@ def extract_simple_user_interests(user_row):
         company = get_val(user_row, 'company') or get_val(user_row, 4, '')
         bio = (get_val(user_row, 'profile_bio') or get_val(user_row, 'bio') or
                get_val(user_row, 6, '') or get_val(user_row, 5, ''))
+        display_name = get_val(user_row, 'display_name') or get_val(user_row, 4, '')
 
-        text = f"{industry} {skills} {role} {company} {bio}".lower()
+        full_text = f"{industry} {skills} {role} {company} {bio} {display_name}".lower()
 
-        # Expanded keyword mapping for Phase 0 - much more comprehensive
+        # More sophisticated keyword mapping with context
         keyword_map = {
-            'tech': ['technology', 'software', 'programming', 'ai', 'ml', 'data', 'web', 'developer', 'engineer', 'coding'],
-            'business': ['business', 'entrepreneur', 'startup', 'ceo', 'founder', 'company', 'venture', 'investor', 'funding'],
-            'fitness': ['fitness', 'gym', 'workout', 'training', 'health', 'crossfit', 'athlete', 'running', 'sports'],
+            'tech': ['technology', 'software', 'programming', 'ai', 'ml', 'data', 'web', 'developer', 'engineer', 'coding', 'product'],
+            'business': ['business', 'entrepreneur', 'startup', 'ceo', 'founder', 'company', 'venture', 'investor', 'funding', 'consulting', 'director', 'principal'],
+            'fitness': ['fitness', 'gym', 'workout', 'training', 'health', 'crossfit', 'athlete', 'running', 'sports', 'golf'],
             'finance': ['finance', 'investment', 'fund', 'money', 'trading', 'banking', 'financial', 'crypto'],
             'marketing': ['marketing', 'social media', 'content', 'brand', 'advertising', 'seo', 'digital'],
-            'education': ['education', 'teacher', 'school', 'university', 'student', 'academic', 'professor'],
-            'healthcare': ['healthcare', 'medical', 'doctor', 'nurse', 'hospital', 'patient', 'clinical'],
-            'creative': ['creative', 'design', 'artist', 'music', 'writing', 'photography', 'film'],
-            'science': ['science', 'research', 'physics', 'biology', 'chemistry', 'lab', 'experiment'],
-            'realestate': ['real estate', 'property', 'housing', 'realtor', 'construction'],
+            'consulting': ['consulting', 'consultant', 'partner', 'client', 'insights', 'strategy'],
+            'creative': ['creative', 'design', 'artist', 'music', 'writing', 'photography', 'film', 'deck', 'slide'],
+            'leadership': ['director', 'principal', 'lead', 'manager', 'team', 'partner'],
         }
 
         for topic, keywords in keyword_map.items():
             score = 0
+            matches = []
             for kw in keywords:
-                if kw in text:
-                    score += 0.3
+                if kw in full_text:
+                    score += 0.25
+                    matches.append(kw)
             if score > 0:
                 interests[topic] = min(0.95, round(score, 2))
+                if matches:
+                    insights.append(f"{topic} from: {', '.join(matches[:3])}")
 
-        # Default interest if none found
-        if not interests:
-            interests['general'] = 0.5
+        # Add default if nothing meaningful found
+        if not interests or sum(interests.values()) < 0.5:
+            interests['general'] = 0.6
+            insights.append("general profile information available")
 
+        # Store rationale data (for future use)
+        rationale = {
+            'insights': insights[:5],
+            'sources': {
+                'industry': bool(industry),
+                'skills': bool(skills),
+                'bio': bool(bio),
+                'role': bool(role)
+            }
+        }
+        
+        logger.debug(f"Profile analysis for user: {rationale}")
+        
         return interests
     except Exception as e:
         logger.warning(f"Interest extraction failed: {e}")
         return {'general': 0.5}
+
+
+def get_steve_profile_rationale(username: str, profile_data: dict = None) -> str:
+    """Generate rationale from Steve explaining how a user's profile score was calculated.
+    This can be called by Steve when users ask about scoring."""
+    if not profile_data or not profile_data.get('interests'):
+        return "I analyze public profile information including industry, role, skills, company, and bio to identify key interests and characteristics."
+    
+    interests = profile_data.get('interests', {})
+    top_interests = sorted(interests.items(), key=lambda x: x[1], reverse=True)[:3]
+    
+    rationale = f"""For @{username}, I analyzed their public profile data (industry, role, skills, company, and bio).
+
+Key factors in their scoring:
+"""
+    for topic, score in top_interests:
+        rationale += f"• **{topic}** ({int(score*100)}%): Based on keywords found in their professional background and bio\n"
+    
+    rationale += "\nThis creates a vector representation of their interests that I can use to provide more relevant and personalized responses."
+    return rationale
 
 
 @app.route('/health', methods=['GET'])
