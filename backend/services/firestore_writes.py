@@ -285,10 +285,8 @@ def write_reaction(post_id: int, username: str, reaction_type: str,
         logger.warning(f"Firestore reaction write failed (non-fatal): {e}")
 
 
-def write_steve_user_profile(username: str, interests: dict = None, life_events=None,
-                           shared_content=None, analyzed_count: int = 0,
-                           profile_version: int = 1, rationale: dict = None):
-    """Write or update Steve user profile in Firestore."""
+def write_steve_user_profile(username: str, analysis: dict = None):
+    """Write a Grok-analyzed user profile to Firestore."""
     if not USE_FIRESTORE_WRITES:
         return
     try:
@@ -298,23 +296,8 @@ def write_steve_user_profile(username: str, interests: dict = None, life_events=
 
         profile_data = {
             'username': username,
-            'interests': interests or {},
-            'rationale': rationale or {},
-            'lifeEvents': life_events or [],
-            'sharedContent': shared_content or [],
+            'analysis': analysis or {},
             'lastUpdated': now,
-            'profileVersion': profile_version,
-            'analyzedContentCount': analyzed_count,
-            'steveObservations': '',
-            'keyInsights': [],
-            'interactionStats': {
-                'postsCreated': 0,
-                'reactionsGiven': 0,
-                'articlesShared': 0,
-                'commentsWritten': 0,
-                'totalInteractions': 0,
-                'lastActivity': now
-            }
         }
 
         fs.collection('steve_user_profiles').document(username).set(profile_data, merge=True)

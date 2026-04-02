@@ -228,10 +228,14 @@ export default function AdminDashboard() {
   // Steve Profiles state (Phase 0)
   interface SteveProfile {
     username: string
-    interests: { [key: string]: number }
+    analysis: {
+      summary?: string
+      interests?: { [key: string]: number }
+      traits?: string[]
+      observations?: string
+      dataQuality?: string
+    }
     lastUpdated?: string
-    analyzedContentCount: number
-    profileVersion: number
   }
   const [steveProfiles, setSteveProfiles] = useState<SteveProfile[]>([])
   const [steveProfilesLoading, setSteveProfilesLoading] = useState(false)
@@ -1959,8 +1963,9 @@ export default function AdminDashboard() {
                       {steveProfiles
                         .filter(p => !profileSearchQuery || p.username.toLowerCase().includes(profileSearchQuery.toLowerCase()))
                         .map((profile) => {
-                          const interestCount = Object.keys(profile.interests || {}).length
-                          const topInterest = Object.entries(profile.interests || {}).sort((a: any, b: any) => b[1] - a[1])[0]
+                          const a = profile.analysis || {}
+                          const topInterest = Object.entries(a.interests || {}).sort((x: any, y: any) => y[1] - x[1])[0]
+                          const quality = a.dataQuality || 'sparse'
                           return (
                             <button
                               key={profile.username}
@@ -1972,12 +1977,14 @@ export default function AdminDashboard() {
                               }`}
                             >
                               <span className="font-medium">@{profile.username}</span>
-                              {topInterest && topInterest[0] !== 'general' && (
+                              {topInterest ? (
                                 <span className="ml-1.5 text-white/30">{topInterest[0]} {Math.round((topInterest[1] as number) * 100)}%</span>
-                              )}
-                              {interestCount <= 1 && topInterest?.[0] === 'general' && (
+                              ) : (
                                 <span className="ml-1.5 text-white/20">—</span>
                               )}
+                              <span className={`ml-1 text-[9px] ${quality === 'rich' ? 'text-green-400/50' : quality === 'moderate' ? 'text-yellow-400/50' : 'text-white/20'}`}>
+                                {quality === 'rich' ? '●' : quality === 'moderate' ? '●' : '○'}
+                              </span>
                             </button>
                           )
                         })}
@@ -1988,13 +1995,14 @@ export default function AdminDashboard() {
                   <div className="flex-1 min-w-0">
                     {selectedProfileUsername ? (
                       (() => {
-                        const profile = steveProfiles.find(p => p.username === selectedProfileUsername) as any;
+                        const profile = steveProfiles.find(p => p.username === selectedProfileUsername);
                         if (!profile) return <div className="text-white/40 text-sm">Profile not found</div>;
-                        const rationale = profile.rationale || {};
-                        const profileFields: string[] = rationale.profileFields || [];
-                        const insights: string[] = rationale.insights || [];
-                        const sources = rationale.sources || {};
-                        const sourceLabels = Object.entries(sources).filter(([, v]) => v).map(([k]) => k);
+                        const a = profile.analysis || {};
+                        const interests = a.interests || {};
+                        const traits: string[] = a.traits || [];
+                        const summary = a.summary || '';
+                        const observations = a.observations || '';
+                        const quality = a.dataQuality || 'sparse';
 
                         return (
                           <div className="space-y-4">
@@ -2005,58 +2013,59 @@ export default function AdminDashboard() {
                               </div>
                               <div className="min-w-0">
                                 <div className="text-lg font-semibold text-white truncate">@{profile.username}</div>
-                                <div className="text-[10px] text-white/40">
-                                  v{profile.profileVersion} · {profile.analyzedContentCount} analyzed · {profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleDateString() : '—'}
+                                <div className="text-[10px] text-white/40 flex items-center gap-2">
+                                  <span className={`${quality === 'rich' ? 'text-green-400' : quality === 'moderate' ? 'text-yellow-400' : 'text-white/30'}`}>{quality} data</span>
+                                  <span>·</span>
+                                  <span>{profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleDateString() : '—'}</span>
                                 </div>
                               </div>
                             </div>
+
+                            {/* Summary */}
+                            {summary && (
+                              <div className="text-sm text-white/70 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
+                                {summary}
+                              </div>
+                            )}
 
                             {/* Interests */}
-                            <div>
-                              <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Interests</div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {Object.entries(profile.interests || {})
-                                  .sort((a: any, b: any) => b[1] - a[1])
-                                  .map(([topic, score]) => (
-                                    <span key={topic} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-white/5 border border-white/10">
-                                      <span className="text-white capitalize">{topic}</span>
-                                      <span className="text-[#4db6ac] font-mono text-[10px]">{Math.round((score as number) * 100)}%</span>
+                            {Object.keys(interests).length > 0 && (
+                              <div>
+                                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Interests</div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {Object.entries(interests)
+                                    .sort((x: any, y: any) => y[1] - x[1])
+                                    .map(([topic, score]) => (
+                                      <span key={topic} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-white/5 border border-white/10">
+                                        <span className="text-white">{topic}</span>
+                                        <span className="text-[#4db6ac] font-mono text-[10px]">{Math.round((score as number) * 100)}%</span>
+                                      </span>
+                                    ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Traits */}
+                            {traits.length > 0 && (
+                              <div>
+                                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Traits</div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {traits.map((trait, i) => (
+                                    <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300/80 border border-blue-500/20">
+                                      {trait}
                                     </span>
                                   ))}
-                              </div>
-                            </div>
-
-                            {/* Profile data used */}
-                            {profileFields.length > 0 && (
-                              <div>
-                                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Profile Data</div>
-                                <div className="space-y-1">
-                                  {profileFields.map((field, i) => (
-                                    <div key={i} className="text-xs text-white/60 truncate">{field}</div>
-                                  ))}
                                 </div>
                               </div>
                             )}
 
-                            {/* Steve's rationale */}
-                            {insights.length > 0 && (
+                            {/* Observations */}
+                            {observations && (
                               <div>
-                                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Steve's Analysis</div>
-                                <div className="space-y-1">
-                                  {insights.map((insight, i) => (
-                                    <div key={i} className="text-xs text-white/50 flex items-start gap-1.5">
-                                      <span className="text-[#4db6ac] mt-0.5">·</span>
-                                      <span>{insight}</span>
-                                    </div>
-                                  ))}
+                                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Steve's Observations</div>
+                                <div className="text-xs text-white/50 leading-relaxed">
+                                  {observations}
                                 </div>
-                              </div>
-                            )}
-
-                            {/* Sources */}
-                            {sourceLabels.length > 0 && (
-                              <div className="text-[10px] text-white/25">
-                                Sources: {sourceLabels.join(', ')}
                               </div>
                             )}
                           </div>

@@ -324,13 +324,11 @@ def list_steve_user_profiles(limit: int = 500):
         profiles = []
         for doc in fs.collection('steve_user_profiles').limit(limit).stream():
             p = doc.to_dict()
+            analysis = p.get('analysis', {})
             profiles.append({
                 'username': p.get('username', doc.id),
-                'interests': p.get('interests', {}),
-                'rationale': p.get('rationale', {}),
+                'analysis': analysis,
                 'lastUpdated': _ts_to_str(p.get('lastUpdated')),
-                'analyzedContentCount': p.get('analyzedContentCount', 0),
-                'profileVersion': p.get('profileVersion', 1)
             })
         return profiles
     except Exception as e:

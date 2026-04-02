@@ -7017,7 +7017,7 @@ def check_admin():
 @app.route('/api/admin/steve_profiles', methods=['GET'])
 @login_required
 def admin_steve_profiles():
-    """Admin endpoint to get Steve user profiles. Phase 0: simple vector interests."""
+    """Admin endpoint: analyze all users with Grok and store profiles in Firestore."""
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
@@ -7026,13 +7026,13 @@ def admin_steve_profiles():
         from backend.services.firestore_reads import list_steve_user_profiles
         from backend.services.firestore_writes import write_steve_user_profile
 
-        force = request.args.get('force') == '1'
-
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute("""
-                SELECT u.username, u.industry, u.skills, u.role, u.company,
-                       p.display_name, p.bio as profile_bio, p.location
+                SELECT u.username, u.role, u.company, u.industry, u.degree,
+                       u.school, u.skills, u.linkedin, u.experience,
+                       u.professional_about, u.professional_interests,
+                       p.display_name, p.bio AS profile_bio, p.location
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username NOT IN ('admin', 'steve')
@@ -7040,133 +7040,160 @@ def admin_steve_profiles():
             """)
             users = c.fetchall()
 
+        analyzed = 0
         for user in users:
             u_username = user['username'] if hasattr(user, 'keys') else user[0]
-            result = extract_simple_user_interests(user)
-            interests = result.get('interests', {})
-            rationale = result.get('rationale', {})
-            write_steve_user_profile(
-                u_username,
-                interests=interests,
-                analyzed_count=1,
-                rationale=rationale,
-            )
+            profile_text = _build_profile_text_for_grok(user)
+            if not profile_text.strip():
+                continue
+            analysis = _analyze_profile_with_grok(u_username, profile_text)
+            if analysis:
+                write_steve_user_profile(u_username, analysis=analysis)
+                analyzed += 1
 
         profiles = list_steve_user_profiles(limit=500)
 
         return jsonify({
             'success': True,
             'profiles': profiles,
-            'total': len(profiles)
+            'total': len(profiles),
+            'analyzed': analyzed,
         })
     except Exception as e:
-        logger.error(f"Error in admin_steve_profiles: {e}")
+        logger.error(f"Error in admin_steve_profiles: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def extract_simple_user_interests(user_row):
-    """Enhanced profile analysis from public profile data.
-    Returns {'interests': {...}, 'rationale': {...}} with structured scoring."""
+def _build_profile_text_for_grok(user_row) -> str:
+    """Assemble all available profile fields into a text block for Grok analysis."""
+    def gv(key):
+        try:
+            val = user_row[key] if hasattr(user_row, 'keys') else None
+            return (str(val).strip() if val else '')
+        except Exception:
+            return ''
+
+    parts = []
+    if gv('display_name'):
+        parts.append(f"Display name: {gv('display_name')}")
+    if gv('role'):
+        parts.append(f"Role: {gv('role')}")
+    if gv('company'):
+        parts.append(f"Company: {gv('company')}")
+    if gv('industry'):
+        parts.append(f"Industry: {gv('industry')}")
+    if gv('skills'):
+        parts.append(f"Skills: {gv('skills')}")
+    if gv('degree'):
+        parts.append(f"Degree: {gv('degree')}")
+    if gv('school'):
+        parts.append(f"School: {gv('school')}")
+    if gv('experience'):
+        parts.append(f"Years of experience: {gv('experience')}")
+    if gv('professional_about'):
+        parts.append(f"Professional about: {gv('professional_about')}")
+    if gv('professional_interests'):
+        parts.append(f"Declared interests: {gv('professional_interests')}")
+    if gv('profile_bio'):
+        parts.append(f"Bio: {gv('profile_bio')}")
+    if gv('location'):
+        parts.append(f"Location: {gv('location')}")
+    return '\n'.join(parts)
+
+
+def _analyze_profile_with_grok(username: str, profile_text: str) -> dict:
+    """Call Grok 4.1-fast-reasoning to analyze a user's profile.
+    Returns structured dict with summary, interests, traits, and observations."""
+    if not XAI_API_KEY:
+        logger.warning("XAI_API_KEY not set, skipping Grok profile analysis")
+        return {}
     try:
-        interests = {}
-        insights = []
-        
-        def get_val(row, key_or_idx, default=''):
-            if hasattr(row, 'keys'):
-                return row.get(key_or_idx, default)
-            try:
-                return row[key_or_idx] if isinstance(key_or_idx, int) else default
-            except:
-                return default
+        from openai import OpenAI
+        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
-        industry = (get_val(user_row, 'industry') or get_val(user_row, 1, '') or '').strip()
-        skills = (get_val(user_row, 'skills') or get_val(user_row, 2, '') or '').strip()
-        role = (get_val(user_row, 'role') or get_val(user_row, 3, '') or '').strip()
-        company = (get_val(user_row, 'company') or get_val(user_row, 4, '') or '').strip()
-        bio = (get_val(user_row, 'profile_bio') or get_val(user_row, 'bio') or
-               get_val(user_row, 6, '') or get_val(user_row, 5, '') or '').strip()
-        display_name = (get_val(user_row, 'display_name') or get_val(user_row, 4, '') or '').strip()
+        system_prompt = """You are an expert people analyst. Given a user's profile data from a private professional network, produce a structured JSON analysis.
 
-        full_text = f"{industry} {skills} {role} {company} {bio} {display_name}".lower()
+IMPORTANT RULES:
+- Read the FULL text holistically. Understand tone, sarcasm, humor, and career context.
+- "Interests" are topics this person genuinely cares about professionally or personally — infer from ALL fields, not just keywords.
+- If someone says "recovering lawyer turned developer", they are in TECH, not law.
+- If a bio is humorous or vague, still extract what you can about the person's actual focus.
+- Confidence scores (0.0–1.0) should reflect how confident YOU are in the interest, not how much the person cares.
+- If there is very little data, say so honestly in the summary and give fewer interests with lower confidence.
 
-        keyword_map = {
-            'tech': ['technology', 'software', 'programming', 'ai', 'ml', 'data', 'web', 'developer', 'engineer', 'coding', 'product', 'saas', 'cloud', 'api', 'platform', 'app'],
-            'business': ['business', 'entrepreneur', 'startup', 'ceo', 'founder', 'company', 'venture', 'investor', 'funding', 'director', 'principal', 'operations', 'growth', 'scale'],
-            'fitness': ['fitness', 'gym', 'workout', 'training', 'health', 'crossfit', 'athlete', 'running', 'sports', 'golf', 'wellness', 'nutrition'],
-            'finance': ['finance', 'investment', 'fund', 'money', 'trading', 'banking', 'financial', 'crypto', 'capital', 'equity', 'portfolio'],
-            'marketing': ['marketing', 'social media', 'content', 'brand', 'advertising', 'seo', 'digital', 'communications', 'pr', 'media'],
-            'consulting': ['consulting', 'consultant', 'advisory', 'client', 'insights', 'strategy', 'mckinsey', 'bain', 'bcg', 'deloitte', 'pwc', 'kpmg', 'ey'],
-            'creative': ['creative', 'design', 'artist', 'music', 'writing', 'photography', 'film', 'visual', 'ux', 'ui'],
-            'leadership': ['director', 'principal', 'lead', 'manager', 'head of', 'vp', 'chief', 'c-suite', 'executive'],
-            'education': ['education', 'teacher', 'professor', 'university', 'school', 'academic', 'research', 'phd', 'mba', 'learning'],
-            'realestate': ['real estate', 'property', 'housing', 'mortgage', 'construction', 'architecture', 'development'],
-        }
+Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
+{
+  "summary": "1-2 sentence profile summary that Steve can use when talking to or about this person",
+  "interests": {"topic_name": 0.85, "another_topic": 0.6},
+  "traits": ["trait1", "trait2", "trait3"],
+  "observations": "1-2 sentences of deeper insight — what makes this person tick, what they'd value in conversations",
+  "dataQuality": "rich|moderate|sparse"
+}"""
 
-        for topic, keywords in keyword_map.items():
-            score = 0
-            matches = []
-            for kw in keywords:
-                if kw in full_text:
-                    score += 0.2
-                    matches.append(kw)
-            if score > 0:
-                interests[topic] = min(0.95, round(score, 2))
-                if matches:
-                    insights.append(f"{topic}: matched '{', '.join(matches[:3])}'")
+        response = client.responses.create(
+            model=GROK_MODEL_REASONING,
+            input=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Analyze this user's profile (@{username}):\n\n{profile_text}"}
+            ],
+            max_output_tokens=600,
+            temperature=0.3,
+        )
 
-        # Build a human-readable profile summary
-        profile_fields = []
-        if role:
-            profile_fields.append(f"Role: {role}")
-        if company:
-            profile_fields.append(f"Company: {company}")
-        if industry:
-            profile_fields.append(f"Industry: {industry}")
-        if skills:
-            profile_fields.append(f"Skills: {skills[:100]}")
-        if bio:
-            profile_fields.append(f"Bio: {bio[:150]}")
+        raw = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
+        if not raw:
+            logger.warning(f"Grok returned empty response for {username}")
+            return {}
 
-        if not interests:
-            interests['general'] = 0.5
-            insights.append("Limited public profile data available")
+        import json as _json
+        # Strip markdown fences if Grok wraps them
+        if raw.startswith('```'):
+            raw = raw.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
+        analysis = _json.loads(raw)
 
-        rationale = {
-            'insights': insights[:6],
-            'profileFields': profile_fields[:5],
-            'sources': {
-                'industry': bool(industry),
-                'skills': bool(skills),
-                'bio': bool(bio),
-                'role': bool(role),
-                'company': bool(company),
-            }
-        }
-        
-        return {'interests': interests, 'rationale': rationale}
+        # Validate required keys
+        if not isinstance(analysis.get('interests'), dict):
+            analysis['interests'] = {}
+        for key in ('summary', 'traits', 'observations', 'dataQuality'):
+            if key not in analysis:
+                analysis[key] = '' if key != 'traits' else []
+
+        return analysis
     except Exception as e:
-        logger.warning(f"Interest extraction failed: {e}")
-        return {'interests': {'general': 0.5}, 'rationale': {'insights': ['extraction failed'], 'profileFields': [], 'sources': {}}}
+        logger.error(f"Grok profile analysis failed for {username}: {e}", exc_info=True)
+        return {}
 
 
-def get_steve_profile_rationale(username: str, profile_data: dict = None) -> str:
-    """Generate rationale from Steve explaining how a user's profile score was calculated.
-    This can be called by Steve when users ask about scoring."""
-    if not profile_data or not profile_data.get('interests'):
-        return "I analyze public profile information including industry, role, skills, company, and bio to identify key interests and characteristics."
-    
-    interests = profile_data.get('interests', {})
-    top_interests = sorted(interests.items(), key=lambda x: x[1], reverse=True)[:3]
-    
-    rationale = f"""For @{username}, I analyzed their public profile data (industry, role, skills, company, and bio).
+def get_steve_context_for_user(username: str) -> str:
+    """Read the Grok-analyzed profile from Firestore and return a concise context string
+    that can be injected into Steve's system prompts across all touchpoints."""
+    try:
+        from backend.services.firestore_reads import get_steve_user_profile
+        profile = get_steve_user_profile(username)
+        if not profile:
+            return ''
+        analysis = profile.get('analysis', {})
+        if not analysis:
+            return ''
+        summary = analysis.get('summary', '')
+        interests = analysis.get('interests', {})
+        traits = analysis.get('traits', [])
+        observations = analysis.get('observations', '')
 
-Key factors in their scoring:
-"""
-    for topic, score in top_interests:
-        rationale += f"• **{topic}** ({int(score*100)}%): Based on keywords found in their professional background and bio\n"
-    
-    rationale += "\nThis creates a vector representation of their interests that I can use to provide more relevant and personalized responses."
-    return rationale
+        parts = []
+        if summary:
+            parts.append(summary)
+        if interests:
+            top = sorted(interests.items(), key=lambda x: x[1], reverse=True)[:5]
+            parts.append('Interests: ' + ', '.join(f"{k} ({int(v*100)}%)" for k, v in top))
+        if traits:
+            parts.append('Traits: ' + ', '.join(traits[:4]))
+        if observations:
+            parts.append(observations)
+        return ' | '.join(parts)
+    except Exception as e:
+        logger.debug(f"Could not load Steve profile for {username}: {e}")
+        return ''
 
 
 @app.route('/health', methods=['GET'])
@@ -11968,13 +11995,23 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         
         current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
         
+        # Inject Grok-analyzed profile context
+        user_profile_ctx = get_steve_context_for_user(sender_username)
+
         context = "Direct message conversation:\n" + "\n".join(recent[-10:])
         context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully."
         context += f"\n\n[Current date and time: {current_date}]"
         
         system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat with real-time knowledge and web search capabilities.
 
-CURRENT DATE AND TIME: {current_date}
+CURRENT DATE AND TIME: {current_date}"""
+        if user_profile_ctx:
+            system_prompt += f"""
+
+WHAT YOU KNOW ABOUT @{sender_username}:
+{user_profile_ctx}
+Use this knowledge naturally — don't announce it, but let it guide your tone and relevance."""
+        system_prompt += """
 
 LANGUAGE RULES:
 - If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).
@@ -13244,15 +13281,28 @@ def api_networking_steve_match():
             c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
-            members_text = "\n".join([f"- {_v(r,0)} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}" for r in member_rows])
+            members_lines = []
+            for r in member_rows:
+                uname = str(_v(r, 0))
+                line = f"- {uname} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}"
+                profile_ctx = get_steve_context_for_user(uname)
+                if profile_ctx:
+                    line += f" | AI insight: {profile_ctx}"
+                members_lines.append(line)
+            members_text = "\n".join(members_lines)
+
+            requester_profile_ctx = get_steve_context_for_user(username)
+            enriched_user_profile = user_profile
+            if requester_profile_ctx:
+                enriched_user_profile += f"\nAI insight: {requester_profile_ctx}"
 
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         response = client.responses.create(
             model=GROK_MODEL_MULTI_AGENT,
             input=[
-                {"role": "system", "content": "You are Steve, a networking assistant. Given a user's profile and community members, recommend the best matches for the user's request. Be concise and friendly. Only reference actual members from the list. When mentioning a member, always use their username with @ prefix (e.g. @johndoe), never bold formatting."},
-                {"role": "user", "content": f"My profile:\n{user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"}
+                {"role": "system", "content": "You are Steve, a networking assistant. Given a user's profile and community members, recommend the best matches for the user's request. Be concise and friendly. Only reference actual members from the list. When mentioning a member, always use their username with @ prefix (e.g. @johndoe), never bold formatting. Use the AI insight data to make smarter, more personalized recommendations."},
+                {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"}
             ],
             tools=[{"type": "web_search"}, {"type": "x_search"}],
             max_output_tokens=800, temperature=0.7
@@ -13293,15 +13343,28 @@ def api_networking_steve_auto_match():
             c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
-            members_text = "\n".join([f"- {_v(r,0)} | {_v(r,1)} | Bio: {_v(r,2) or ''} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'} | Interests: {_v(r,8) or ''} | About: {_v(r,9) or ''}" for r in member_rows])
+            members_lines = []
+            for r in member_rows:
+                uname = str(_v(r, 0))
+                line = f"- {uname} | {_v(r,1)} | Bio: {_v(r,2) or ''} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'} | Interests: {_v(r,8) or ''} | About: {_v(r,9) or ''}"
+                profile_ctx = get_steve_context_for_user(uname)
+                if profile_ctx:
+                    line += f" | AI insight: {profile_ctx}"
+                members_lines.append(line)
+            members_text = "\n".join(members_lines)
+
+            requester_profile_ctx = get_steve_context_for_user(username)
+            enriched_user_profile = user_profile
+            if requester_profile_ctx:
+                enriched_user_profile += f"\nAI insight: {requester_profile_ctx}"
 
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         response = client.responses.create(
             model=GROK_MODEL_MULTI_AGENT,
             input=[
-                {"role": "system", "content": "You are Steve, a networking assistant. Analyze the user's profile and all community members' profiles. Suggest the top 3-5 best matches based on shared interests, location, industry, or complementary skills. Be concise and explain why each is a good match. When mentioning a member, always use their username with @ prefix (e.g. @johndoe), never bold formatting."},
-                {"role": "user", "content": f"My profile:\n{user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
+                {"role": "system", "content": "You are Steve, a networking assistant. Analyze the user's profile and all community members' profiles. Suggest the top 3-5 best matches based on shared interests, location, industry, or complementary skills. Be concise and explain why each is a good match. When mentioning a member, always use their username with @ prefix (e.g. @johndoe), never bold formatting. Use the AI insight data to make smarter, more personalized recommendations."},
+                {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
             ],
             tools=[{"type": "web_search"}, {"type": "x_search"}],
             max_output_tokens=800, temperature=0.7
@@ -22897,14 +22960,18 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             except Exception as ctx_err:
                 logger.warning("Steve community context failed: %s", ctx_err)
 
+            # Inject Grok-analyzed profile context for the post author
+            author_profile_ctx = get_steve_context_for_user(author_username)
+
             context = "\n\n".join(context_parts)
             
-            # Get base personality prompt - Grok has real-time knowledge of current date
             base_system_prompt = get_ai_personality_prompt(ai_personality)
             system_prompt = f"""You are Steve, with real-time knowledge and web search capabilities.
 
 {base_system_prompt}"""
             system_prompt += "\nYou have access to this community's upcoming events, useful links, document excerpts, and active polls. Use them when answering questions about community resources."
+            if author_profile_ctx:
+                system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{author_username}:\n{author_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
             
             ai_response = None
             try:
@@ -23326,11 +23393,16 @@ def ai_steve_reply():
                 except Exception:
                     pass
             
+            # Inject Grok-analyzed profile context for the commenting user
+            commenter_profile_ctx = get_steve_context_for_user(username)
+
             context = "\n\n".join(context_parts)
             
             logger.info(f"[Steve AI] Context built, length: {len(context)} chars, personality: {ai_personality}")
             
             system_prompt = get_ai_personality_prompt(ai_personality)
+            if commenter_profile_ctx:
+                system_prompt += f"\n\nWHAT YOU KNOW ABOUT @{username}:\n{commenter_profile_ctx}\nUse this knowledge naturally — don't announce it, but let it guide your tone and relevance."
             ai_response = None
             
             # Intelligent routing: use multi-agent only for community analysis queries
