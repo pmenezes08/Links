@@ -7051,7 +7051,7 @@ def admin_steve_profiles():
             existing = get_steve_user_profile(u_username)
             if not existing:
                 # Enhanced profile analysis from public profile data
-                profile_data = extract_user_profile(user)
+                profile_data = extract_simple_user_interests(user)
                 interests = profile_data.get('interests', {})
                 write_steve_user_profile(
                     u_username, 
