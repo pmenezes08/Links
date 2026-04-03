@@ -317,6 +317,13 @@ export default function Profile() {
     refresh: refreshUserProfile,
   } = useUserProfile()
 
+  const [aiSuggestions, setAiSuggestions] = useState<Record<string, any> | null>(null)
+  const [aiAccepted, setAiAccepted] = useState<Set<string>>(new Set())
+  const [aiEdits, setAiEdits] = useState<Record<string, string>>({})
+  const [aiReviewStatus, setAiReviewStatus] = useState<string | null>(null)
+  const [aiSaving, setAiSaving] = useState(false)
+  const [aiEditingSection, setAiEditingSection] = useState<string | null>(null)
+
   const isPersonalDirty = useCallback(() => {
     const s = serverPersonalRef.current
     return personal.bio !== s.bio || personal.display_name !== s.display_name ||
@@ -768,6 +775,22 @@ export default function Profile() {
     return () => window.clearTimeout(timer)
   }, [feedback])
 
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/profile/ai_suggestions', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return
+        if (d.success && d.suggestions) {
+          setAiSuggestions(d.suggestions)
+          setAiAccepted(new Set(d.acceptedSections || []))
+          setAiReviewStatus(d.userReview?.status || null)
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
   const locationPreview = personal.city || personal.country
     ? [personal.city, personal.country].filter(Boolean).join(', ')
     : summary?.location || ''
@@ -991,6 +1014,71 @@ export default function Profile() {
   function onSelectPhoto(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (file) handlePhotoUpload(file)
+  }
+
+  function toggleAiSection(key: string) {
+    setAiAccepted(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function formatAiSectionLabel(key: string): string {
+    const labels: Record<string, string> = {
+      summary: 'Professional Summary',
+      companyIntel: 'Company Insights',
+      roleContext: 'Role Context',
+      networkingValue: 'Networking Value',
+      personResearch: 'Public Profile Research',
+      locationContext: 'Location Context',
+      interests: 'Interests',
+    }
+    return labels[key] || key
+  }
+
+  function getAiSectionText(key: string, val: any): string {
+    if (typeof val === 'string') return val
+    if (key === 'interests' && typeof val === 'object' && !Array.isArray(val))
+      return Object.keys(val).join(', ')
+    if (key === 'companyIntel' && typeof val === 'object')
+      return [val.name, val.description, val.sector, val.stage].filter(Boolean).join(' — ')
+    if (key === 'roleContext' && typeof val === 'object')
+      return [val.title, val.function, val.seniority, val.implication].filter(Boolean).join(' — ')
+    if (key === 'personResearch' && typeof val === 'object')
+      return [val.publicSummary, val.additionalContext].filter(Boolean).join(' ')
+    return JSON.stringify(val)
+  }
+
+  async function saveAiReview() {
+    setAiSaving(true)
+    try {
+      const hasEdits = Object.keys(aiEdits).length > 0
+      const status = hasEdits ? 'edited' : 'confirmed'
+      const res = await fetch('/api/profile/ai_review', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, acceptedSections: Array.from(aiAccepted), edits: aiEdits }),
+      })
+      const d = await res.json()
+      if (d.success) {
+        setAiReviewStatus(status)
+        setAiEditingSection(null)
+        setFeedback('Profile enhancements saved!')
+        try { invalidate_user_cache() } catch {}
+      } else {
+        setFeedback(d.error || 'Failed to save')
+      }
+    } catch {
+      setFeedback('Failed to save enhancements')
+    } finally {
+      setAiSaving(false)
+    }
+  }
+
+  function invalidate_user_cache() {
+    fetch('/api/profile_me', { credentials: 'include', headers: { 'Cache-Control': 'no-cache' } })
   }
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
@@ -1311,6 +1399,108 @@ export default function Profile() {
             </button>
           </form>
         </section>
+
+        {aiSuggestions && Object.keys(aiSuggestions).length > 0 && (
+          <section className="rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/5 p-4 space-y-3">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-[#4db6ac]">
+                <i className="fa-solid fa-wand-magic-sparkles" />
+                Enhance your profile
+              </div>
+              <p className="text-xs text-[#9fb0b5] mt-1">
+                Based on publicly available information, Steve found additional context that could strengthen your profile. Toggle on what you'd like to include.
+              </p>
+              {aiReviewStatus && (
+                <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full ${
+                  aiReviewStatus === 'confirmed' || aiReviewStatus === 'edited'
+                    ? 'bg-green-500/20 text-green-400'
+                    : aiReviewStatus === 'disputed'
+                      ? 'bg-orange-500/20 text-orange-400'
+                      : 'bg-white/10 text-white/50'
+                }`}>
+                  {aiReviewStatus === 'confirmed' ? 'Saved' : aiReviewStatus === 'edited' ? 'Saved (edited)' : aiReviewStatus === 'disputed' ? 'Disputed' : 'Pending'}
+                </span>
+              )}
+            </div>
+            <div className="space-y-2">
+              {Object.entries(aiSuggestions).map(([key, val]) => {
+                if (val === null || val === undefined) return null
+                const accepted = aiAccepted.has(key)
+                const editing = aiEditingSection === key
+                const editValue = aiEdits[key] ?? getAiSectionText(key, val)
+                return (
+                  <div
+                    key={key}
+                    className={`rounded-lg border p-3 transition-all ${
+                      accepted
+                        ? 'border-[#4db6ac]/40 bg-[#4db6ac]/10'
+                        : 'border-white/10 bg-white/[0.03]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-white/80">{formatAiSectionLabel(key)}</span>
+                      <div className="flex items-center gap-2">
+                        {accepted && !editing && (
+                          <button
+                            type="button"
+                            onClick={() => setAiEditingSection(key)}
+                            className="text-[10px] text-[#4db6ac] hover:text-[#80cbc4]"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => toggleAiSection(key)}
+                          className={`relative w-9 h-5 rounded-full transition-colors ${
+                            accepted ? 'bg-[#4db6ac]' : 'bg-white/20'
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                              accepted ? 'translate-x-4' : ''
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                    {editing ? (
+                      <div className="mt-2 space-y-1">
+                        <textarea
+                          value={editValue}
+                          onChange={e => setAiEdits(prev => ({ ...prev, [key]: e.target.value }))}
+                          rows={3}
+                          className="w-full rounded-md border border-white/10 bg-black/50 px-2 py-1.5 text-xs text-white placeholder:text-white/30 outline-none focus:border-[#4db6ac]/50 resize-none"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAiEditingSection(null)}
+                            className="text-[10px] text-[#4db6ac] hover:text-[#80cbc4]"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-xs text-[#a7b8be] leading-relaxed">
+                        {key in aiEdits ? aiEdits[key] : getAiSectionText(key, val)}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={saveAiReview}
+              disabled={aiSaving || aiAccepted.size === 0}
+              className="w-full py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50 transition"
+            >
+              {aiSaving ? 'Saving…' : `Save ${aiAccepted.size} enhancement${aiAccepted.size !== 1 ? 's' : ''} to profile`}
+            </button>
+          </section>
+        )}
 
         {feedback ? (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full border border-white/10 bg-white/10 text-sm text-white">

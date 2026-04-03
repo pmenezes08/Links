@@ -49,6 +49,7 @@ type PublicProfileResponse = {
   is_following?: boolean
   follow_status?: 'none' | 'pending' | 'accepted' | 'self'
   has_pending_follow_request?: boolean
+  ai_enhanced?: Record<string, any>
 }
 
 export default function PublicProfile() {
@@ -442,6 +443,42 @@ export default function PublicProfile() {
                   Twitter / X
                 </a>
               ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {profile.ai_enhanced && Object.keys(profile.ai_enhanced).length > 0 ? (
+          <section className="glass-section space-y-2">
+            <div className="flex items-center gap-2 font-semibold">
+              <i className="fa-solid fa-wand-magic-sparkles text-[#4db6ac] text-sm" />
+              About
+            </div>
+            <div className="space-y-2">
+              {Object.entries(profile.ai_enhanced).map(([key, val]) => {
+                if (!val) return null
+                const label: Record<string, string> = {
+                  summary: 'Summary', companyIntel: 'Company', roleContext: 'Role',
+                  networkingValue: 'Networking', personResearch: 'Background',
+                  locationContext: 'Location', interests: 'Interests',
+                }
+                let text = ''
+                if (typeof val === 'string') text = val
+                else if (key === 'interests' && typeof val === 'object' && !Array.isArray(val))
+                  text = Object.keys(val).join(', ')
+                else if (key === 'companyIntel' && typeof val === 'object')
+                  text = [val.name, val.description].filter(Boolean).join(' — ')
+                else if (key === 'roleContext' && typeof val === 'object')
+                  text = [val.title, val.function, val.implication].filter(Boolean).join(' — ')
+                else if (key === 'personResearch' && typeof val === 'object')
+                  text = [val.publicSummary, val.additionalContext].filter(Boolean).join(' ')
+                else text = JSON.stringify(val)
+                return (
+                  <div key={key} className="text-sm text-[#a7b8be]">
+                    <span className="text-white/60 text-xs font-medium">{label[key] || key}</span>
+                    <p className="mt-0.5 leading-relaxed">{renderTextWithSourceLinks(text)}</p>
+                  </div>
+                )
+              })}
             </div>
           </section>
         ) : null}

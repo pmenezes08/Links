@@ -7208,6 +7208,89 @@ def admin_steve_profile_feedback(target_username):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/profile/ai_suggestions', methods=['GET'])
+@login_required
+def api_profile_ai_suggestions():
+    """Return the logged-in user's AI-generated profile suggestions (filtered: no observations, traits, _feedback, dataQuality)."""
+    username = session.get('username')
+    try:
+        from backend.services.firestore_reads import get_steve_user_profile
+        profile = get_steve_user_profile(username)
+        if not profile:
+            return jsonify({'success': True, 'suggestions': None})
+        analysis = profile.get('analysis', {})
+        if not analysis:
+            return jsonify({'success': True, 'suggestions': None})
+        user_review = analysis.get('_userReview', {})
+        filtered = {}
+        visible_keys = ('summary', 'interests', 'companyIntel', 'roleContext',
+                        'networkingValue', 'personResearch', 'locationContext')
+        for key in visible_keys:
+            val = analysis.get(key)
+            if val is not None:
+                filtered[key] = val
+        if not filtered:
+            return jsonify({'success': True, 'suggestions': None})
+        return jsonify({
+            'success': True,
+            'suggestions': filtered,
+            'userReview': user_review,
+            'acceptedSections': analysis.get('_acceptedSections', []),
+        })
+    except Exception as e:
+        logger.error(f"Error fetching AI suggestions for {username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+@app.route('/api/profile/ai_review', methods=['POST'])
+@login_required
+def api_profile_ai_review():
+    """User reviews AI-generated profile: accept/edit/dismiss sections.
+    Body: { "status": "confirmed"|"edited"|"disputed", "acceptedSections": ["summary","companyIntel",...], "edits": {"summary": "new text",...} }"""
+    username = session.get('username')
+    try:
+        data = request.get_json(force=True) or {}
+        status = data.get('status', '')
+        if status not in ('confirmed', 'edited', 'disputed'):
+            return jsonify({'success': False, 'error': 'Invalid status'}), 400
+        accepted_sections = data.get('acceptedSections', [])
+        edits = data.get('edits', {})
+
+        from backend.services.firestore_reads import get_steve_user_profile
+        profile = get_steve_user_profile(username)
+        if not profile:
+            return jsonify({'success': False, 'error': 'No AI profile found'}), 404
+
+        analysis = profile.get('analysis', {})
+        analysis['_userReview'] = {
+            'status': status,
+            'at': datetime.utcnow().isoformat(),
+            'acceptedSections': accepted_sections,
+        }
+        analysis['_acceptedSections'] = accepted_sections
+
+        if edits and isinstance(edits, dict):
+            if '_userEdits' not in analysis:
+                analysis['_userEdits'] = {}
+            for section, new_val in edits.items():
+                if section in ('summary', 'companyIntel', 'roleContext',
+                               'networkingValue', 'personResearch', 'locationContext'):
+                    analysis['_userEdits'][section] = new_val
+
+        from backend.services.firestore_writes import write_steve_user_profile
+        write_steve_user_profile(username, analysis=analysis)
+
+        try:
+            invalidate_user_cache(username)
+        except Exception:
+            pass
+
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error saving AI review for {username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
 def _build_profile_text_for_grok(user_row) -> str:
     """Assemble all available profile fields into a text block for Grok analysis."""
     def gv(key):
@@ -9390,6 +9473,25 @@ def api_public_profile(username):
             profile['follow_status'] = follow_status
             profile['is_following'] = follow_status == 'accepted'
             profile['has_pending_follow_request'] = follow_status == 'pending'
+
+            try:
+                from backend.services.firestore_reads import get_steve_user_profile
+                steve_profile = get_steve_user_profile(actual_username)
+                if steve_profile:
+                    analysis = steve_profile.get('analysis', {})
+                    accepted = analysis.get('_acceptedSections', [])
+                    user_edits = analysis.get('_userEdits', {})
+                    if accepted:
+                        ai_public = {}
+                        for section in accepted:
+                            if section in user_edits:
+                                ai_public[section] = user_edits[section]
+                            elif section in analysis and analysis[section] is not None:
+                                ai_public[section] = analysis[section]
+                        if ai_public:
+                            profile['ai_enhanced'] = ai_public
+            except Exception as ai_err:
+                logger.warning(f"Failed to load AI sections for public profile {actual_username}: {ai_err}")
 
             result = {'success': True, 'profile': profile}
             try:
