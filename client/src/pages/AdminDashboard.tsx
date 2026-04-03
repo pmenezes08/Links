@@ -241,6 +241,7 @@ export default function AdminDashboard() {
       personResearch?: { linkedInUrl?: string; publicSummary?: string; additionalContext?: string; confidence?: string } | null
       locationContext?: string | null
       _feedback?: { [section: string]: { status: string; note?: string; by?: string; at?: string } }
+      _userReview?: { status: 'pending' | 'confirmed' | 'edited' | 'disputed'; at?: string; notes?: string }
     }
     lastUpdated?: string
   }
@@ -2021,7 +2022,7 @@ export default function AdminDashboard() {
                     <i className="fa-solid fa-brain" />
                     Steve User Profiles
                   </h3>
-                  <p className="text-xs text-white/60 mt-1">Grok 4.1 profile analysis — select a user to analyze</p>
+                  <p className="text-xs text-white/60 mt-1">Steve's AI profile analysis — select a user to analyze</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-white/40">
@@ -2134,6 +2135,12 @@ export default function AdminDashboard() {
                               <span className={`ml-1 text-[9px] ${hasAnalysis ? 'text-green-400/50' : 'text-white/20'}`}>
                                 {hasAnalysis ? '●' : '○'}
                               </span>
+                              {(() => {
+                                const rs = a._userReview?.status;
+                                if (rs === 'confirmed' || rs === 'edited') return <span className="ml-0.5 text-[8px] text-green-400" title={rs === 'edited' ? 'User edited' : 'User confirmed'}><i className="fa-solid fa-check" /></span>;
+                                if (rs === 'disputed') return <span className="ml-0.5 text-[8px] text-orange-400" title="User disputed"><i className="fa-solid fa-exclamation" /></span>;
+                                return null;
+                              })()}
                             </button>
                           )
                         })}
@@ -2188,8 +2195,23 @@ export default function AdminDashboard() {
                                       <span>·</span>
                                       <span>{profile.lastUpdated ? new Date(profile.lastUpdated).toLocaleDateString() : '—'}</span>
                                       <span>·</span>
+                                      {(() => {
+                                        const rs = a._userReview?.status;
+                                        if (rs === 'confirmed') return <span className="text-green-400">User confirmed</span>;
+                                        if (rs === 'edited') return <span className="text-green-400">User edited</span>;
+                                        if (rs === 'disputed') return <span className="text-orange-400">User disputed</span>;
+                                        return <span className="text-white/30">Pending review</span>;
+                                      })()}
+                                      <span>·</span>
                                     </>
                                   )}
+                                  {!hasAnalysis && (() => {
+                                    const rs = a._userReview?.status;
+                                    if (rs === 'confirmed') return <><span className="text-green-400 text-[10px]">User confirmed</span><span>·</span></>;
+                                    if (rs === 'edited') return <><span className="text-green-400 text-[10px]">User edited</span><span>·</span></>;
+                                    if (rs === 'disputed') return <><span className="text-orange-400 text-[10px]">User disputed</span><span>·</span></>;
+                                    return null;
+                                  })()}
                                   <button onClick={() => navigate(`/profile/${encodeURIComponent(profile.username)}`)} className="text-blue-400 hover:text-blue-300 transition-colors">
                                     <i className="fa-solid fa-user mr-0.5" /> Profile
                                   </button>
@@ -2226,7 +2248,7 @@ export default function AdminDashboard() {
                             {isAnalyzing && (
                               <div className="text-center py-8 text-white/50">
                                 <i className="fa-solid fa-spinner fa-spin text-xl mb-2" />
-                                <div className="text-xs">Grok is analyzing this profile...</div>
+                                <div className="text-xs">Steve is analyzing this profile...</div>
                               </div>
                             )}
 
@@ -2234,7 +2256,7 @@ export default function AdminDashboard() {
                               <div className="text-center py-8 text-white/30">
                                 <i className="fa-solid fa-user-magnifying-glass text-2xl mb-2" />
                                 <div className="text-sm">Not yet analyzed</div>
-                                <div className="text-xs mt-1">Click "Analyze" to run Grok profile analysis</div>
+                                <div className="text-xs mt-1">Click "Analyze" to run Steve's profile analysis</div>
                               </div>
                             )}
 

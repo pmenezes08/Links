@@ -13673,19 +13673,39 @@ COMMUNITY STRUCTURE:
 {hierarchy_ctx}
 
 MATCHING PRIORITIES:
-1. Sub-community membership is a strong signal (e.g., being in "India Field Trip" means real connection to India).
-2. Cross-reference bios, roles, locations, and recent posts for deeper relevance.
-3. Limit to 3-5 best matches with a brief explanation for each.
+1. STRICT RELEVANCE: Only recommend people who directly match the user's specific request criteria.
+   If they ask about a location, only recommend people with that location in their profile.
+   If they ask about an industry or topic, only recommend people with clear ties to it.
+   If they ask about a sub-community, prioritize members of that sub-community.
+2. SMART INFERENCES (secondary, clearly labeled): If you spot a plausible but unconfirmed connection
+   (e.g., a name suggesting cultural ties, a company HQ in the requested city), mention them SEPARATELY
+   and clearly flag as inference, not a confirmed match.
+3. ZERO FILLER: Never pad with people who have no connection to the ask. Shared interests or
+   general overlap are NOT relevant unless the user asked for them.
+4. Sub-community membership is a strong signal (e.g., being in "India Field Trip" means real connection to India).
+5. Cross-reference bios, roles, locations, AI insights, and recent posts for deeper relevance.
+
+AI PROFILE INTELLIGENCE:
+- Each member may have an "AI insight" field — a pre-analyzed profile built from platform data,
+  public profiles, web research, and admin-verified information.
+- This includes: professional summary, company intel, role context, location context, networking
+  value, interests, and web research findings.
+- PRIORITIZE this intelligence when matching. It contains deeper context than raw profile fields.
+- This data evolves over time. Treat it as the richest source of truth about a member.
+- If the AI insight mentions a location, company, interest, or background relevant to the request,
+  treat it as a valid match signal.
 
 RULES:
 - Only reference members from the provided list.
 - Always use @username format (e.g., @johndoe).
 - Be concise and friendly.
+- If fewer than 3 people match, recommend only those who match. Quality over quantity.
+- If ZERO people match, say so honestly. Do not suggest alternatives unless the user asks.
 - Never reveal that you're reading structured data — speak naturally."""},
                 {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"}
             ],
             tools=[{"type": "web_search"}, {"type": "x_search"}],
-            max_output_tokens=800, temperature=0.7
+            max_output_tokens=800, temperature=0.4
         )
         ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
         if not ai_response: ai_response = "I couldn't find matching members. Try refining your request."
@@ -13800,19 +13820,39 @@ COMMUNITY STRUCTURE:
 {hierarchy_ctx}
 
 MATCHING PRIORITIES:
-1. Sub-community membership is a strong signal of shared experience or interest.
-2. Cross-reference bios, roles, locations, recent posts, and declared interests.
-3. Suggest 3-5 best matches with a brief explanation for each.
+1. STRICT RELEVANCE: Only recommend people who directly match the user's specific request criteria.
+   If they ask about a location, only recommend people with that location in their profile.
+   If they ask about an industry or topic, only recommend people with clear ties to it.
+   If they ask about a sub-community, prioritize members of that sub-community.
+2. SMART INFERENCES (secondary, clearly labeled): If you spot a plausible but unconfirmed connection
+   (e.g., a name suggesting cultural ties, a company HQ in the requested city), mention them SEPARATELY
+   and clearly flag as inference, not a confirmed match.
+3. ZERO FILLER: Never pad with people who have no connection to the ask. Shared interests or
+   general overlap are NOT relevant unless the user asked for them.
+4. Sub-community membership is a strong signal of shared experience or interest.
+5. Cross-reference bios, roles, locations, AI insights, recent posts, and declared interests for deeper relevance.
+
+AI PROFILE INTELLIGENCE:
+- Each member may have an "AI insight" field — a pre-analyzed profile built from platform data,
+  public profiles, web research, and admin-verified information.
+- This includes: professional summary, company intel, role context, location context, networking
+  value, interests, and web research findings.
+- PRIORITIZE this intelligence when matching. It contains deeper context than raw profile fields.
+- This data evolves over time. Treat it as the richest source of truth about a member.
+- If the AI insight mentions a location, company, interest, or background relevant to the request,
+  treat it as a valid match signal.
 
 RULES:
 - Only reference members from the provided list.
 - Always use @username format (e.g., @johndoe).
 - Be concise and friendly.
+- If fewer than 3 people match, recommend only those who match. Quality over quantity.
+- If ZERO people match, say so honestly. Do not suggest alternatives unless the user asks.
 - Never reveal that you're reading structured data — speak naturally."""},
                 {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
             ],
             tools=[{"type": "web_search"}, {"type": "x_search"}],
-            max_output_tokens=800, temperature=0.7
+            max_output_tokens=800, temperature=0.4
         )
         ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
         if not ai_response: ai_response = "I couldn't generate matches. Please try again."

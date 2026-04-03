@@ -131,7 +131,7 @@ export default function UserProfiles() {
         <div>
           <h1 className="text-xl font-semibold">AI Profiles</h1>
           <p className="text-muted text-sm mt-0.5">
-            Grok-powered member intelligence — {analyzedCount}/{profiles.length} analyzed
+            Steve's member intelligence — {analyzedCount}/{profiles.length} analyzed
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -258,7 +258,7 @@ export default function UserProfiles() {
               {isAnalyzing && (
                 <div className="text-center py-8 text-muted">
                   <i className="fa-solid fa-spinner fa-spin text-xl mb-2" />
-                  <div className="text-xs">Grok is analyzing this profile...</div>
+                  <div className="text-xs">Steve is analyzing this profile...</div>
                 </div>
               )}
 
@@ -266,7 +266,7 @@ export default function UserProfiles() {
                 <div className="text-center py-8 text-muted">
                   <i className="fa-solid fa-user-magnifying-glass text-2xl mb-2" />
                   <div className="text-sm">Not yet analyzed</div>
-                  <div className="text-xs mt-1">Click "Analyze" to run Grok profile analysis</div>
+                  <div className="text-xs mt-1">Click "Analyze" to run Steve's profile analysis</div>
                 </div>
               )}
 
