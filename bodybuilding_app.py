@@ -7332,9 +7332,9 @@ def _migrate_analysis_to_v3(analysis: dict) -> dict:
 
     old_identity = analysis.get('identity') or {}
     v3['identity'] = {
-        'roles': old_identity.get('roles', []),
-        'drivingForces': old_identity.get('drivingForces', ''),
-        'bridgeInsight': old_identity.get('bridgeInsight', ''),
+        'roles': old_identity.get('roles') or [],
+        'drivingForces': old_identity.get('drivingForces') or '',
+        'bridgeInsight': old_identity.get('bridgeInsight') or '',
     }
 
     old_bg = analysis.get('background') or {}
@@ -7358,13 +7358,13 @@ def _migrate_analysis_to_v3(analysis: dict) -> dict:
         'publications': [],
     }
 
-    old_social = old_web.get('socialProfiles', [])
+    old_social = old_web.get('socialProfiles') or []
     v3['personal'] = {
         'socialProfiles': old_social if isinstance(old_social, list) else [],
         'interests': [],
         'lifestyle': '',
         'webFindings': old_web.get('additionalContext', ''),
-        'publicPosts': analysis.get('publicContent', []),
+        'publicPosts': analysis.get('publicContent') or [],
     }
 
     v3['webResearch'] = {
@@ -7373,7 +7373,7 @@ def _migrate_analysis_to_v3(analysis: dict) -> dict:
         'socialProfiles': old_social if isinstance(old_social, list) else [],
     } if old_web.get('publicSummary') else None
 
-    raw_interests = analysis.get('interests', {})
+    raw_interests = analysis.get('interests') or {}
     migrated_interests = {}
     for k, v in raw_interests.items():
         if isinstance(v, dict):
@@ -7382,10 +7382,10 @@ def _migrate_analysis_to_v3(analysis: dict) -> dict:
             migrated_interests[k] = {'score': float(v) if v else 0.5, 'source': 'platform', 'type': 'both'}
     v3['interests'] = migrated_interests
 
-    v3['traits'] = analysis.get('traits', [])
-    v3['observations'] = analysis.get('observations', '')
-    v3['networkingValue'] = analysis.get('networkingValue', '')
-    v3['conversationStarters'] = analysis.get('conversationStarters', [])
+    v3['traits'] = analysis.get('traits') or []
+    v3['observations'] = analysis.get('observations') or ''
+    v3['networkingValue'] = analysis.get('networkingValue') or ''
+    v3['conversationStarters'] = analysis.get('conversationStarters') or []
 
     for meta_key in ('_feedback', '_userReview', '_acceptedSections', '_userEdits'):
         if meta_key in analysis:
@@ -7661,25 +7661,25 @@ def get_steve_context_for_user(username: str) -> str:
             parts.append(f"Personal: {personal['lifestyle']}")
         if personal.get('webFindings'):
             parts.append(f"Personal context: {personal['webFindings']}")
-        public_posts = personal.get('publicPosts', [])
+        public_posts = personal.get('publicPosts') or []
         if public_posts:
             recent = [p for p in public_posts if isinstance(p, dict) and p.get('relevance') in ('high', 'medium')][:3]
             if recent:
                 parts.append('Recent activity: ' + '; '.join(p.get('insight', '') for p in recent if p.get('insight')))
 
-        interests = analysis.get('interests', {})
+        interests = analysis.get('interests') or {}
         if interests:
             top = sorted(interests.items(), key=lambda x: x[1].get('score', 0) if isinstance(x[1], dict) else 0, reverse=True)[:5]
             parts.append('Interests: ' + ', '.join(f"{k} ({int(v.get('score', 0)*100)}%)" for k, v in top if isinstance(v, dict)))
 
-        traits = analysis.get('traits', [])
+        traits = analysis.get('traits') or []
         if traits:
             parts.append('Traits: ' + ', '.join(traits[:4]))
 
         if analysis.get('networkingValue'):
             parts.append(f"Networking: {analysis['networkingValue']}")
 
-        starters = analysis.get('conversationStarters', [])
+        starters = analysis.get('conversationStarters') or []
         if starters:
             parts.append('Conversation starters: ' + '; '.join(starters[:2]))
 
