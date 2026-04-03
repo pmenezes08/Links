@@ -458,16 +458,15 @@ export default function PublicProfile() {
                 if (!val) return null
                 const label: Record<string, string> = {
                   summary: 'Summary', identity: 'Identity',
-                  background: 'Background', companyIntel: 'Company', roleContext: 'Role',
-                  networkingValue: 'Networking', webResearch: 'Background', personResearch: 'Background',
-                  locationContext: 'Location', interests: 'Interests',
-                  publicContent: 'Public Activity', conversationStarters: 'Conversation Starters',
+                  professional: 'Professional', personal: 'Personal',
+                  networkingValue: 'Networking', interests: 'Interests',
+                  conversationStarters: 'Conversation Starters',
                 }
                 let text = ''
                 if (typeof val === 'string') text = val
                 else if (key === 'identity' && typeof val === 'object')
                   text = [val.bridgeInsight, val.drivingForces].filter(Boolean).join(' — ')
-                else if (key === 'background' && typeof val === 'object') {
+                else if (key === 'professional' && typeof val === 'object') {
                   const parts: string[] = []
                   if (val.company?.description) parts.push(`${val.company.name}: ${val.company.description}`)
                   if (val.role?.title) parts.push(val.role.title + (val.role.implication ? ` — ${val.role.implication}` : ''))
@@ -475,16 +474,14 @@ export default function PublicProfile() {
                   if (val.location?.context) parts.push(val.location.context)
                   text = parts.join('. ')
                 }
+                else if (key === 'personal' && typeof val === 'object') {
+                  const parts: string[] = []
+                  if (val.lifestyle) parts.push(val.lifestyle)
+                  if (val.interests?.length) parts.push(val.interests.join(', '))
+                  text = parts.join('. ')
+                }
                 else if (key === 'interests' && typeof val === 'object' && !Array.isArray(val))
                   text = Object.keys(val).join(', ')
-                else if (key === 'companyIntel' && typeof val === 'object')
-                  text = [val.name, val.description].filter(Boolean).join(' — ')
-                else if (key === 'roleContext' && typeof val === 'object')
-                  text = [val.title, val.function, val.implication].filter(Boolean).join(' — ')
-                else if ((key === 'webResearch' || key === 'personResearch') && typeof val === 'object')
-                  text = [val.publicSummary, val.additionalContext].filter(Boolean).join(' ')
-                else if (key === 'publicContent' && Array.isArray(val))
-                  text = val.map((p: any) => p.insight).filter(Boolean).join('. ')
                 else if (key === 'conversationStarters' && Array.isArray(val))
                   text = val.join('. ')
                 else text = typeof val === 'object' ? '' : String(val)

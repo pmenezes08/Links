@@ -2,14 +2,31 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { apiJson, api } from '../utils/api'
 
 interface Analysis {
+  _schemaVersion?: number
   summary?: string
-  interests?: { [key: string]: number }
+  analysisDepth?: string
+  dataQuality?: string
+  identity?: { roles?: string[]; drivingForces?: string; bridgeInsight?: string } | null
+  professional?: {
+    company?: { name?: string; description?: string; sector?: string; stage?: string } | null
+    role?: { title?: string; seniority?: string; function?: string; implication?: string } | null
+    education?: string | null
+    location?: { city?: string; country?: string; context?: string } | null
+    webFindings?: string
+    publications?: { source?: string; date?: string; insight?: string }[]
+  } | null
+  personal?: {
+    socialProfiles?: { platform?: string; url?: string; handle?: string }[]
+    interests?: string[]
+    lifestyle?: string
+    webFindings?: string
+    publicPosts?: { source?: string; date?: string; insight?: string }[]
+  } | null
+  interests?: Record<string, { score: number; source?: string; type?: string }>
   traits?: string[]
   observations?: string
-  dataQuality?: string
-  companyIntel?: { name?: string; description?: string; sector?: string; stage?: string } | null
-  roleContext?: { title?: string; seniority?: string; function?: string; implication?: string } | null
   networkingValue?: string | null
+  conversationStarters?: string[]
 }
 
 interface Profile {
@@ -278,33 +295,58 @@ export default function UserProfiles() {
                     </div>
                   )}
 
-                  {a.companyIntel?.description && (
+                  {a.identity && (a.identity.bridgeInsight || a.identity.roles?.length) && (
                     <div>
-                      <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Company Intel</div>
-                      <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1">
-                        <div className="text-sm text-white font-medium">{a.companyIntel.name}</div>
-                        <div className="text-xs text-white/60 leading-relaxed">{a.companyIntel.description}</div>
-                        <div className="flex gap-2 mt-1">
-                          {a.companyIntel.sector && <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300/80 border border-purple-500/20">{a.companyIntel.sector}</span>}
-                          {a.companyIntel.stage && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300/80 border border-amber-500/20">{a.companyIntel.stage}</span>}
-                        </div>
+                      <div className="text-[10px] text-muted uppercase tracking-wider mb-2"><i className="fa-solid fa-fingerprint mr-1" /> Identity</div>
+                      <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-2">
+                        {a.identity.roles && a.identity.roles.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {a.identity.roles.map((r, i) => (
+                              <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20">{r}</span>
+                            ))}
+                          </div>
+                        )}
+                        {a.identity.bridgeInsight && <div className="text-xs text-accent/80 italic">{a.identity.bridgeInsight}</div>}
                       </div>
                     </div>
                   )}
 
-                  {a.roleContext?.title && (
+                  <div className="grid md:grid-cols-2 gap-3">
                     <div>
-                      <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Role Context</div>
-                      <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm text-white">{a.roleContext.title}</span>
-                          {a.roleContext.seniority && <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-300/80 border border-teal-500/20">{a.roleContext.seniority}</span>}
-                          {a.roleContext.function && <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-muted border border-white/10">{a.roleContext.function}</span>}
+                      <div className="text-[10px] text-muted uppercase tracking-wider mb-2"><i className="fa-solid fa-briefcase mr-1" /> Professional</div>
+                      {a.professional ? (
+                        <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1.5">
+                          {a.professional.company?.description && (
+                            <div>
+                              <div className="text-sm text-white font-medium">{a.professional.company.name}</div>
+                              <div className="text-xs text-white/60">{a.professional.company.description}</div>
+                            </div>
+                          )}
+                          {a.professional.role?.title && (
+                            <div className="text-xs text-white/60">{a.professional.role.title}{a.professional.role.implication ? ` — ${a.professional.role.implication}` : ''}</div>
+                          )}
+                          {a.professional.education && <div className="text-xs text-white/50"><i className="fa-solid fa-graduation-cap mr-1" />{a.professional.education}</div>}
+                          {a.professional.webFindings && <div className="text-xs text-white/45 italic">{a.professional.webFindings}</div>}
                         </div>
-                        {a.roleContext.implication && <div className="text-xs text-white/50 leading-relaxed">{a.roleContext.implication}</div>}
-                      </div>
+                      ) : <div className="text-xs text-muted text-center py-3 border border-dashed border-white/10 rounded-lg">No data</div>}
                     </div>
-                  )}
+                    <div>
+                      <div className="text-[10px] text-muted uppercase tracking-wider mb-2"><i className="fa-solid fa-user mr-1" /> Personal</div>
+                      {a.personal ? (
+                        <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1.5">
+                          {a.personal.lifestyle && <div className="text-xs text-white/60">{a.personal.lifestyle}</div>}
+                          {a.personal.interests && a.personal.interests.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {a.personal.interests.map((item, i) => (
+                                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/10 text-pink-300/80 border border-pink-500/20">{item}</span>
+                              ))}
+                            </div>
+                          )}
+                          {a.personal.webFindings && <div className="text-xs text-white/45 italic">{a.personal.webFindings}</div>}
+                        </div>
+                      ) : <div className="text-xs text-muted text-center py-3 border border-dashed border-white/10 rounded-lg">Run Deep analysis</div>}
+                    </div>
+                  </div>
 
                   {a.networkingValue && (
                     <div>
@@ -320,11 +362,11 @@ export default function UserProfiles() {
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Interests</div>
                       <div className="flex flex-wrap gap-1.5">
                         {Object.entries(a.interests)
-                          .sort((x, y) => (y[1] as number) - (x[1] as number))
-                          .map(([topic, score]) => (
+                          .sort(([, x], [, y]) => (y?.score ?? 0) - (x?.score ?? 0))
+                          .map(([topic, meta]) => (
                             <span key={topic} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-white/5 border border-white/10">
                               <span className="text-white">{topic}</span>
-                              <span className="text-accent font-mono text-[10px]">{Math.round((score as number) * 100)}%</span>
+                              <span className="text-accent font-mono text-[10px]">{Math.round((meta?.score ?? 0) * 100)}%</span>
                             </span>
                           ))}
                       </div>
@@ -336,9 +378,7 @@ export default function UserProfiles() {
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Traits</div>
                       <div className="flex flex-wrap gap-1.5">
                         {a.traits.map((trait, i) => (
-                          <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300/80 border border-blue-500/20">
-                            {trait}
-                          </span>
+                          <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300/80 border border-blue-500/20">{trait}</span>
                         ))}
                       </div>
                     </div>

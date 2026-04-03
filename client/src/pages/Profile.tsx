@@ -320,7 +320,7 @@ export default function Profile() {
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, any> | null>(null)
   const [aiAccepted, setAiAccepted] = useState<Set<string>>(new Set())
   const [aiEdits, setAiEdits] = useState<Record<string, string>>({})
-  const [, setAiReviewStatus] = useState<string | null>(null)
+  const [aiReviewStatus, setAiReviewStatus] = useState<string | null>(null)
   const [aiSaving, setAiSaving] = useState(false)
   const [aiEditingSection, setAiEditingSection] = useState<string | null>(null)
 
@@ -1074,23 +1074,24 @@ export default function Profile() {
     if (typeof val === 'string') return val
     if (key === 'interests' && typeof val === 'object' && !Array.isArray(val))
       return Object.keys(val).join(', ')
-    if ((key === 'companyIntel' || key === 'background') && typeof val === 'object') {
-      const co = val.company || val
-      const ro = val.role
-      const parts = [co.name, co.description, co.sector, co.stage].filter(Boolean)
-      if (ro) parts.push(ro.title, ro.implication)
+    if (key === 'professional' && typeof val === 'object') {
+      const parts: string[] = []
+      if (val.company?.description) parts.push(`${val.company.name}: ${val.company.description}`)
+      if (val.role?.title) parts.push(`${val.role.title}${val.role.implication ? ' — ' + val.role.implication : ''}`)
       if (val.education) parts.push(val.education)
       if (val.location?.context) parts.push(val.location.context)
-      return parts.join(' — ')
+      if (val.webFindings) parts.push(val.webFindings)
+      return parts.join('. ')
     }
-    if (key === 'roleContext' && typeof val === 'object')
-      return [val.title, val.function, val.seniority, val.implication].filter(Boolean).join(' — ')
-    if ((key === 'personResearch' || key === 'webResearch') && typeof val === 'object')
-      return [val.publicSummary, val.additionalContext].filter(Boolean).join(' ')
+    if (key === 'personal' && typeof val === 'object') {
+      const parts: string[] = []
+      if (val.lifestyle) parts.push(val.lifestyle)
+      if (val.interests?.length) parts.push(`Interests: ${val.interests.join(', ')}`)
+      if (val.webFindings) parts.push(val.webFindings)
+      return parts.join('. ')
+    }
     if (key === 'identity' && typeof val === 'object')
       return [val.bridgeInsight, val.drivingForces].filter(Boolean).join(' — ')
-    if (key === 'publicContent' && Array.isArray(val))
-      return val.map((p: any) => `${p.source || ''} (${p.date || '?'}): ${p.insight || ''}`).join('; ')
     if (key === 'conversationStarters' && Array.isArray(val))
       return val.join('; ')
     return typeof val === 'object' ? JSON.stringify(val) : String(val)
@@ -1372,14 +1373,9 @@ export default function Profile() {
                 />
               </label>
             </div>
-            {renderAiCard('background', 'Steve found insights about your company & role')}
+            {renderAiCard('professional', 'Steve found insights about your professional background')}
+            {renderAiCard('personal', 'Steve discovered personal context from public sources')}
             {renderAiCard('networkingValue', 'Steve identified your networking value')}
-            {renderAiCard('webResearch', 'Steve found your public profile online')}
-            {renderAiCard('companyIntel', 'Steve found insights about your company')}
-            {renderAiCard('roleContext', 'Steve found context about your role')}
-            {renderAiCard('personResearch', 'Steve found your public profile')}
-            {renderAiCard('locationContext', 'Location context')}
-            {renderAiCard('publicContent', 'Steve found your recent public activity')}
             {renderAiCard('conversationStarters', 'Conversation starters Steve suggests')}
             <button
               type="submit"
@@ -1458,7 +1454,7 @@ export default function Profile() {
         </section>
 
         {aiSuggestions && aiAccepted.size > 0 && (
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-1">
             <button
               type="button"
               onClick={saveAiReview}
@@ -1468,6 +1464,9 @@ export default function Profile() {
               <i className="fa-solid fa-wand-magic-sparkles" />
               {aiSaving ? 'Saving…' : `Save ${aiAccepted.size} enhancement${aiAccepted.size !== 1 ? 's' : ''} to profile`}
             </button>
+            {aiReviewStatus && aiReviewStatus !== 'pending' && (
+              <span className="text-[10px] text-[#4db6ac]/60">{aiReviewStatus === 'confirmed' ? 'Saved' : aiReviewStatus === 'edited' ? 'Saved (edited)' : ''}</span>
+            )}
           </div>
         )}
 

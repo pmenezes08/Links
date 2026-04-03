@@ -230,21 +230,30 @@ export default function AdminDashboard() {
     username: string
     display_name?: string
     analysis: {
+      _schemaVersion?: number
       summary?: string
-      interests?: Record<string, any>
+      analysisDepth?: string
+      dataQuality?: string
+      identity?: { roles?: string[]; drivingForces?: string; bridgeInsight?: string } | null
+      professional?: {
+        company?: { name?: string; description?: string; sector?: string; stage?: string } | null
+        role?: { title?: string; seniority?: string; function?: string; implication?: string } | null
+        education?: string | null
+        location?: { city?: string; country?: string; context?: string } | null
+        webFindings?: string
+        publications?: { source?: string; date?: string; insight?: string; relevance?: string }[]
+      } | null
+      personal?: {
+        socialProfiles?: { platform?: string; url?: string; handle?: string }[]
+        interests?: string[]
+        lifestyle?: string
+        webFindings?: string
+        publicPosts?: { source?: string; date?: string; insight?: string; relevance?: string }[]
+      } | null
+      interests?: Record<string, { score: number; source?: string; type?: string }>
       traits?: string[]
       observations?: string
-      dataQuality?: string
-      analysisDepth?: string
-      identity?: { roles?: string[]; drivingForces?: string; bridgeInsight?: string } | null
-      background?: { company?: any; role?: any; education?: string; location?: any } | null
-      companyIntel?: { name?: string; description?: string; sector?: string; stage?: string } | null
-      roleContext?: { title?: string; seniority?: string; function?: string; implication?: string } | null
       networkingValue?: string | null
-      webResearch?: { confidence?: string; publicSummary?: string; additionalContext?: string; socialProfiles?: any[]; linkedInUrl?: string } | null
-      personResearch?: { linkedInUrl?: string; publicSummary?: string; additionalContext?: string; confidence?: string } | null
-      locationContext?: string | null
-      publicContent?: any[]
       conversationStarters?: string[]
       _feedback?: { [section: string]: { status: string; note?: string; by?: string; at?: string } }
       _userReview?: { status: 'pending' | 'confirmed' | 'edited' | 'disputed'; at?: string; notes?: string }
@@ -2080,7 +2089,7 @@ export default function AdminDashboard() {
                         .map((profile) => {
                           const a = profile.analysis || {}
                           const hasAnalysis = !!a.summary
-                          const topInterest = Object.entries(a.interests || {}).sort((x: any, y: any) => y[1] - x[1])[0]
+                          const topInterest = Object.entries(a.interests || {}).sort(([, x]: any, [, y]: any) => (y?.score ?? 0) - (x?.score ?? 0))[0]
                           return (
                             <button
                               key={profile.username}
@@ -2093,7 +2102,7 @@ export default function AdminDashboard() {
                             >
                               <span className="font-medium">@{profile.username}</span>
                               {hasAnalysis && topInterest ? (
-                                <span className="ml-1.5 text-white/30">{topInterest[0]} {Math.round((topInterest[1] as number) * 100)}%</span>
+                                <span className="ml-1.5 text-white/30">{topInterest[0]} {Math.round(((topInterest[1] as any)?.score ?? 0) * 100)}%</span>
                               ) : null}
                               <span className={`ml-1 text-[9px] ${hasAnalysis ? 'text-green-400/50' : 'text-white/20'}`}>
                                 {hasAnalysis ? '●' : '○'}
@@ -2118,20 +2127,15 @@ export default function AdminDashboard() {
                         if (!profile) return <div className="text-white/40 text-sm">Profile not found</div>;
                         const a = profile.analysis || {};
                         const hasAnalysis = !!a.summary;
-                        const rawInterests = a.interests || {};
-                        const interests: Record<string, number> = {};
-                        for (const [k, v] of Object.entries(rawInterests)) {
-                          interests[k] = typeof v === 'object' && v !== null && 'score' in (v as any) ? (v as any).score : (v as number);
-                        }
+                        const interests = a.interests || {};
                         const traits: string[] = a.traits || [];
                         const summary = a.summary || '';
                         const observations = a.observations || '';
                         const quality = a.dataQuality || 'sparse';
                         const depthLabel = a.analysisDepth || '';
                         const identity = a.identity || null;
-                        const background = a.background || null;
-                        const webResearch = a.webResearch || a.personResearch || null;
-                        const publicContent: any[] = a.publicContent || [];
+                        const pro = a.professional || null;
+                        const personal = a.personal || null;
                         const conversationStarters: string[] = a.conversationStarters || [];
                         const isAnalyzing = analyzingUser === profile.username;
                         const fb = a._feedback || {};
@@ -2257,19 +2261,24 @@ export default function AdminDashboard() {
 
                             {!isAnalyzing && hasAnalysis && (
                               <>
-                                {/* Depth badge */}
-                                {depthLabel && (
-                                  <div className="flex items-center gap-2 mb-1">
+                                {/* Meta badges */}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {depthLabel && (
                                     <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
                                       depthLabel === 'deep' ? 'bg-purple-500/10 text-purple-300 border-purple-500/20' :
                                       depthLabel === 'standard' ? 'bg-[#4db6ac]/10 text-[#4db6ac] border-[#4db6ac]/20' :
                                       'bg-white/5 text-white/50 border-white/10'
                                     }`}>
                                       <i className={`fa-solid ${depthLabel === 'deep' ? 'fa-microscope' : depthLabel === 'standard' ? 'fa-brain' : 'fa-bolt'} mr-1`} />
-                                      {depthLabel} analysis
+                                      {depthLabel}
                                     </span>
-                                  </div>
-                                )}
+                                  )}
+                                  <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                                    quality === 'rich' ? 'bg-green-500/10 text-green-300 border-green-500/20' :
+                                    quality === 'moderate' ? 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20' :
+                                    'bg-white/5 text-white/50 border-white/10'
+                                  }`}>{quality}</span>
+                                </div>
 
                                 {/* Summary */}
                                 {summary && (
@@ -2278,12 +2287,12 @@ export default function AdminDashboard() {
                                   </div>
                                 )}
 
-                                {/* Identity (new schema) */}
+                                {/* Identity — the bridge */}
                                 {identity && (identity.bridgeInsight || identity.drivingForces || (identity.roles && identity.roles.length > 0)) && (
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span><i className="fa-solid fa-fingerprint mr-1" /> Identity</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="identity" /></span>
+                                      <FbBtns s="identity" />
                                     </div>
                                     <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-2">
                                       {identity.roles && identity.roles.length > 0 && (
@@ -2299,92 +2308,77 @@ export default function AdminDashboard() {
                                   </div>
                                 )}
 
-                                {/* Background (new schema) or legacy Company/Role/Location */}
-                                {(() => {
-                                  const bgCompany = background?.company || a.companyIntel;
-                                  const bgRole = background?.role || a.roleContext;
-                                  const bgLocation = background?.location;
-                                  const bgEducation = background?.education;
-                                  if (!bgCompany?.description && !bgRole?.title && !bgLocation && !bgEducation && !a.locationContext) return null;
-                                  return (
-                                    <div>
-                                      <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
-                                        <span><i className="fa-solid fa-briefcase mr-1" /> Background</span>
-                                        <span className="flex items-center gap-1"><FbBtns s="background" /></span>
-                                      </div>
+                                {/* Professional + Personal side-by-side */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                  {/* Professional */}
+                                  <div className="space-y-3">
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider flex items-center justify-between">
+                                      <span><i className="fa-solid fa-briefcase mr-1" /> Professional</span>
+                                      <FbBtns s="professional" />
+                                    </div>
+                                    {pro ? (
                                       <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-2">
-                                        {bgCompany?.description && (
+                                        {pro.company?.description && (
                                           <div>
-                                            <div className="text-sm text-white font-medium">{bgCompany.name}</div>
-                                            <div className="text-xs text-white/60 leading-relaxed">{bgCompany.description}</div>
+                                            <div className="text-sm text-white font-medium">{pro.company.name}</div>
+                                            <div className="text-xs text-white/60 leading-relaxed">{pro.company.description}</div>
                                             <div className="flex gap-2 mt-1">
-                                              {bgCompany.sector && <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300/80 border border-purple-500/20">{bgCompany.sector}</span>}
-                                              {bgCompany.stage && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300/80 border border-amber-500/20">{bgCompany.stage}</span>}
+                                              {pro.company.sector && <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300/80 border border-purple-500/20">{pro.company.sector}</span>}
+                                              {pro.company.stage && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300/80 border border-amber-500/20">{pro.company.stage}</span>}
                                             </div>
                                           </div>
                                         )}
-                                        {bgRole?.title && (
-                                          <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-sm text-white">{bgRole.title}</span>
-                                            {bgRole.seniority && <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-300/80 border border-teal-500/20">{bgRole.seniority}</span>}
-                                            {bgRole.function && <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/50 border border-white/10">{bgRole.function}</span>}
+                                        {pro.role?.title && (
+                                          <div>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="text-sm text-white">{pro.role.title}</span>
+                                              {pro.role.seniority && <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-300/80 border border-teal-500/20">{pro.role.seniority}</span>}
+                                              {pro.role.function && <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/50 border border-white/10">{pro.role.function}</span>}
+                                            </div>
+                                            {pro.role.implication && <div className="text-xs text-white/50 leading-relaxed mt-0.5">{pro.role.implication}</div>}
                                           </div>
                                         )}
-                                        {bgRole?.implication && <div className="text-xs text-white/50 leading-relaxed">{bgRole.implication}</div>}
-                                        {bgEducation && <div className="text-xs text-white/50"><i className="fa-solid fa-graduation-cap mr-1" />{bgEducation}</div>}
-                                        {(bgLocation?.context || a.locationContext) && (
-                                          <div className="text-xs text-white/50"><i className="fa-solid fa-location-dot mr-1" />{bgLocation?.context || a.locationContext}</div>
+                                        {pro.education && <div className="text-xs text-white/50"><i className="fa-solid fa-graduation-cap mr-1" />{pro.education}</div>}
+                                        {pro.location?.context && <div className="text-xs text-white/50"><i className="fa-solid fa-location-dot mr-1" />{pro.location.context}</div>}
+                                        {pro.webFindings && <div className="text-xs text-white/45 leading-relaxed italic mt-1">{pro.webFindings}</div>}
+                                        {pro.publications && pro.publications.length > 0 && (
+                                          <div className="space-y-1 mt-1">
+                                            {pro.publications.map((pub, i) => (
+                                              <div key={i} className="text-[10px] text-white/40">
+                                                <span>{pub.source}</span>
+                                                {pub.date && <span> · {pub.date}</span>}
+                                                {pub.insight && <span className="text-white/55"> — {pub.insight}</span>}
+                                              </div>
+                                            ))}
+                                          </div>
                                         )}
                                       </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Networking Value */}
-                                {a.networkingValue && (
-                                  <div>
-                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
-                                      <span>Networking Value</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="networkingValue" /></span>
-                                    </div>
-                                    <div className="text-xs text-white/60 leading-relaxed bg-[#4db6ac]/5 rounded-lg px-3.5 py-2.5 border border-[#4db6ac]/15">
-                                      <i className="fa-solid fa-handshake text-[#4db6ac]/50 mr-1.5" />{a.networkingValue}
-                                    </div>
+                                    ) : (
+                                      <div className="text-xs text-white/20 text-center py-4 bg-white/[0.02] rounded-lg border border-dashed border-white/10">
+                                        No professional data found
+                                      </div>
+                                    )}
                                   </div>
-                                )}
 
-                                {/* Web Research (new schema) or legacy Person Research */}
-                                {webResearch?.publicSummary && (() => {
-                                  const isLow = webResearch.confidence === 'low';
-                                  const socialProfiles: any[] = (webResearch as any).socialProfiles || [];
-                                  return (
-                                    <div className={isLow ? 'opacity-60' : ''}>
-                                      <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
-                                        <span className="flex items-center gap-1.5">
-                                          <i className="fa-solid fa-magnifying-glass" /> Web Research
-                                          {webResearch.confidence && (
-                                            <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] border ${
-                                              webResearch.confidence === 'high' ? 'bg-green-500/10 text-green-300/80 border-green-500/20' :
-                                              webResearch.confidence === 'medium' ? 'bg-yellow-500/10 text-yellow-300/80 border-yellow-500/20' :
-                                              'bg-red-500/10 text-red-300/80 border-red-500/20'
-                                            }`}>{webResearch.confidence} confidence</span>
-                                          )}
-                                        </span>
-                                        <span className="flex items-center gap-1"><FbBtns s="webResearch" /></span>
-                                      </div>
-                                      {isLow && (
-                                        <div className="text-[10px] text-red-400/70 mb-2 flex items-center gap-1">
-                                          <i className="fa-solid fa-triangle-exclamation" /> Unverified — limited profile data to cross-reference
-                                        </div>
-                                      )}
-                                      <div className={`bg-white/[0.03] rounded-lg px-3.5 py-2.5 border space-y-2 ${isLow ? 'border-red-500/15' : 'border-white/5'}`}>
-                                        <div className="text-xs text-white/60 leading-relaxed">{webResearch.publicSummary}</div>
-                                        {webResearch.additionalContext && (
-                                          <div className="text-xs text-white/45 leading-relaxed italic">{webResearch.additionalContext}</div>
+                                  {/* Personal */}
+                                  <div className="space-y-3">
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider flex items-center justify-between">
+                                      <span><i className="fa-solid fa-user mr-1" /> Personal</span>
+                                      <FbBtns s="personal" />
+                                    </div>
+                                    {personal ? (
+                                      <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-2">
+                                        {personal.lifestyle && <div className="text-xs text-white/60 leading-relaxed">{personal.lifestyle}</div>}
+                                        {personal.interests && personal.interests.length > 0 && (
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {personal.interests.map((item, i) => (
+                                              <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/10 text-pink-300/80 border border-pink-500/20">{item}</span>
+                                            ))}
+                                          </div>
                                         )}
-                                        {socialProfiles.length > 0 && (
+                                        {personal.socialProfiles && personal.socialProfiles.length > 0 && (
                                           <div className="flex flex-wrap gap-2">
-                                            {socialProfiles.map((sp: any, i: number) => (
+                                            {personal.socialProfiles.map((sp, i) => (
                                               <a key={i} href={sp.url || '#'} target="_blank" rel="noopener noreferrer"
                                                 className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20">
                                                 <i className={`fa-brands fa-${(sp.platform || '').toLowerCase() === 'x' ? 'x-twitter' : (sp.platform || '').toLowerCase()}`} />
@@ -2393,58 +2387,55 @@ export default function AdminDashboard() {
                                             ))}
                                           </div>
                                         )}
-                                        {webResearch.linkedInUrl && !socialProfiles.some((sp: any) => sp.platform === 'LinkedIn') && (
-                                          <a href={webResearch.linkedInUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[10px] text-blue-400 hover:text-blue-300">
-                                            <i className="fa-brands fa-linkedin" /> LinkedIn Profile
-                                          </a>
+                                        {personal.webFindings && <div className="text-xs text-white/45 leading-relaxed italic">{personal.webFindings}</div>}
+                                        {personal.publicPosts && personal.publicPosts.length > 0 && (
+                                          <div className="space-y-1">
+                                            {personal.publicPosts.map((pp, i) => (
+                                              <div key={i} className="text-[10px] text-white/40">
+                                                <span>{pp.source}</span>
+                                                {pp.date && <span> · {pp.date}</span>}
+                                                {pp.insight && <span className="text-white/55"> — {pp.insight}</span>}
+                                              </div>
+                                            ))}
+                                          </div>
                                         )}
                                       </div>
-                                    </div>
-                                  );
-                                })()}
-
-                                {/* Public Content (deep analysis) */}
-                                {publicContent.length > 0 && (
-                                  <div>
-                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">
-                                      <i className="fa-solid fa-newspaper mr-1" /> Public Activity
-                                    </div>
-                                    <div className="space-y-1.5">
-                                      {publicContent.map((pc: any, i: number) => (
-                                        <div key={i} className={`text-xs rounded-lg px-3 py-2 border ${
-                                          pc.relevance === 'high' ? 'bg-white/[0.03] border-white/5' :
-                                          pc.relevance === 'medium' ? 'bg-white/[0.02] border-white/5 opacity-80' :
-                                          'bg-white/[0.01] border-white/5 opacity-60'
-                                        }`}>
-                                          <div className="flex items-center gap-2 text-white/40 mb-0.5">
-                                            <span>{pc.source}</span>
-                                            {pc.date && <span>· {pc.date}</span>}
-                                            {pc.relevance && <span className={`px-1.5 py-0.5 rounded-full text-[9px] ${
-                                              pc.relevance === 'high' ? 'bg-green-500/10 text-green-300/70' :
-                                              pc.relevance === 'medium' ? 'bg-yellow-500/10 text-yellow-300/70' :
-                                              'bg-white/5 text-white/40'
-                                            }`}>{pc.relevance}</span>}
-                                          </div>
-                                          <div className="text-white/60 leading-relaxed">{pc.insight}</div>
-                                        </div>
-                                      ))}
-                                    </div>
+                                    ) : (
+                                      <div className="text-xs text-white/20 text-center py-4 bg-white/[0.02] rounded-lg border border-dashed border-white/10">
+                                        {depthLabel === 'deep' ? 'No personal data found' : 'Run a Deep analysis to discover personal data'}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
+                                </div>
 
-                                {/* Conversation Starters (deep analysis) */}
-                                {conversationStarters.length > 0 && (
-                                  <div>
-                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">
-                                      <i className="fa-solid fa-comments mr-1" /> Conversation Starters
-                                    </div>
-                                    <div className="space-y-1">
-                                      {conversationStarters.map((s: string, i: number) => (
-                                        <div key={i} className="text-xs text-white/60 leading-relaxed bg-[#4db6ac]/5 rounded-lg px-3 py-2 border border-[#4db6ac]/10">
-                                          <i className="fa-solid fa-lightbulb text-[#4db6ac]/40 mr-1.5" />{s}
+                                {/* Networking + Conversation Starters */}
+                                {(a.networkingValue || conversationStarters.length > 0) && (
+                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                    {a.networkingValue && (
+                                      <div>
+                                        <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                          <span>Networking Value</span>
+                                          <FbBtns s="networkingValue" />
                                         </div>
-                                      ))}
-                                    </div>
+                                        <div className="text-xs text-white/60 leading-relaxed bg-[#4db6ac]/5 rounded-lg px-3.5 py-2.5 border border-[#4db6ac]/15">
+                                          <i className="fa-solid fa-handshake text-[#4db6ac]/50 mr-1.5" />{a.networkingValue}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {conversationStarters.length > 0 && (
+                                      <div>
+                                        <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">
+                                          <i className="fa-solid fa-comments mr-1" /> Starters
+                                        </div>
+                                        <div className="space-y-1">
+                                          {conversationStarters.map((s, i) => (
+                                            <div key={i} className="text-xs text-white/60 leading-relaxed bg-[#4db6ac]/5 rounded-lg px-3 py-2 border border-[#4db6ac]/10">
+                                              <i className="fa-solid fa-lightbulb text-[#4db6ac]/40 mr-1.5" />{s}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
 
@@ -2453,48 +2444,51 @@ export default function AdminDashboard() {
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span>Interests</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="interests" /></span>
+                                      <FbBtns s="interests" />
                                     </div>
                                     <div className="flex flex-wrap gap-1.5">
                                       {Object.entries(interests)
-                                        .sort(([, a], [, b]) => b - a)
-                                        .map(([topic, score]) => (
-                                          <span key={topic} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-white/5 border border-white/10">
-                                            <span className="text-white">{topic}</span>
-                                            <span className="text-[#4db6ac] font-mono text-[10px]">{Math.round(score * 100)}%</span>
-                                          </span>
-                                        ))}
+                                        .sort(([, a], [, b]) => (b?.score ?? 0) - (a?.score ?? 0))
+                                        .map(([topic, meta]) => {
+                                          const typeColor = meta?.type === 'professional' ? 'bg-blue-500/10 border-blue-500/15 text-blue-300/60' :
+                                            meta?.type === 'personal' ? 'bg-pink-500/10 border-pink-500/15 text-pink-300/60' :
+                                            'bg-white/5 border-white/10 text-white/40';
+                                          return (
+                                            <span key={topic} className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border ${typeColor}`}>
+                                              <span className="text-white">{topic}</span>
+                                              <span className="text-[#4db6ac] font-mono text-[10px]">{Math.round((meta?.score ?? 0) * 100)}%</span>
+                                            </span>
+                                          );
+                                        })}
                                     </div>
                                   </div>
                                 )}
 
-                                {/* Traits */}
-                                {traits.length > 0 && (
-                                  <div>
-                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
-                                      <span>Traits</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="traits" /></span>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {traits.map((trait, i) => (
-                                        <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300/80 border border-blue-500/20">
-                                          {trait}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Observations */}
-                                {observations && (
-                                  <div>
-                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
-                                      <span>Steve's Observations</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="observations" /></span>
-                                    </div>
-                                    <div className="text-xs text-white/50 leading-relaxed">
-                                      {observations}
-                                    </div>
+                                {/* Traits + Observations */}
+                                {(traits.length > 0 || observations) && (
+                                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                    {traits.length > 0 && (
+                                      <div>
+                                        <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                          <span>Traits</span>
+                                          <FbBtns s="traits" />
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {traits.map((trait, i) => (
+                                            <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300/80 border border-blue-500/20">{trait}</span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {observations && (
+                                      <div>
+                                        <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                          <span>Steve's Observations</span>
+                                          <FbBtns s="observations" />
+                                        </div>
+                                        <div className="text-xs text-white/50 leading-relaxed">{observations}</div>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </>

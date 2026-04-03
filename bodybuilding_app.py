@@ -7048,10 +7048,11 @@ def admin_steve_profiles():
         profiles = []
         for u in all_users:
             existing = fs_map.get(u['username'])
+            raw_analysis = existing.get('analysis', {}) if existing else {}
             profiles.append({
                 'username': u['username'],
                 'display_name': u['display_name'],
-                'analysis': existing.get('analysis', {}) if existing else {},
+                'analysis': _migrate_analysis_to_v3(raw_analysis) if raw_analysis else {},
                 'lastUpdated': existing.get('lastUpdated') if existing else None,
             })
 
@@ -7143,15 +7144,14 @@ def admin_steve_profile_delete(target_username):
 @app.route('/api/admin/steve_profiles/<target_username>/analysis/sections', methods=['PATCH'])
 @login_required
 def admin_steve_profile_patch(target_username):
-    """Remove specific sections from a user's analysis. Body: { "remove": ["personResearch", "companyIntel", ...] }"""
+    """Remove specific sections from a user's analysis. Body: { "remove": ["professional", "personal", ...] }"""
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         data = request.get_json(force=True) or {}
         sections_to_remove = data.get('remove', [])
-        allowed = {'personResearch', 'companyIntel', 'roleContext', 'networkingValue', 'locationContext', 'interests', 'traits', 'observations'}
-        to_remove = [s for s in sections_to_remove if s in allowed]
+        to_remove = [s for s in sections_to_remove if s in STEVE_DATA_SECTIONS]
         if not to_remove:
             return jsonify({'success': False, 'error': 'No valid sections specified'}), 400
 
@@ -7184,9 +7184,7 @@ def admin_steve_profile_feedback(target_username):
         section = data.get('section', '')
         status = data.get('status', '')
         note = data.get('note', '')
-        allowed_sections = {'personResearch', 'companyIntel', 'roleContext', 'networkingValue',
-                            'locationContext', 'interests', 'traits', 'observations', 'summary', 'overall'}
-        if section not in allowed_sections or status not in ('approved', 'rejected'):
+        if section not in STEVE_ADMIN_FEEDBACKABLE_SECTIONS or status not in ('approved', 'rejected'):
             return jsonify({'success': False, 'error': 'Invalid section or status'}), 400
 
         from backend.services.firestore_reads import get_steve_user_profile
@@ -7216,25 +7214,21 @@ def admin_steve_profile_feedback(target_username):
 @app.route('/api/profile/ai_suggestions', methods=['GET'])
 @login_required
 def api_profile_ai_suggestions():
-    """Return the logged-in user's AI-generated profile suggestions (filtered: no observations, traits, _feedback, dataQuality)."""
+    """Return the logged-in user's AI-generated profile suggestions (user-visible sections only)."""
     username = session.get('username')
     try:
         from backend.services.firestore_reads import get_steve_user_profile
         profile = get_steve_user_profile(username)
         if not profile:
             return jsonify({'success': True, 'suggestions': None})
-        analysis = profile.get('analysis', {})
+        analysis = _migrate_analysis_to_v3(profile.get('analysis', {}))
         if not analysis:
             return jsonify({'success': True, 'suggestions': None})
         user_review = analysis.get('_userReview', {})
         filtered = {}
-        visible_keys = ('summary', 'identity', 'background', 'interests',
-                        'networkingValue', 'webResearch', 'publicContent',
-                        'conversationStarters',
-                        'companyIntel', 'roleContext', 'personResearch', 'locationContext')
-        for key in visible_keys:
+        for key in STEVE_USER_VISIBLE_SECTIONS:
             val = analysis.get(key)
-            if val is not None and val != [] and val != {}:
+            if val is not None and val != [] and val != {} and val != '':
                 filtered[key] = val
         if not filtered:
             return jsonify({'success': True, 'suggestions': None})
@@ -7280,8 +7274,7 @@ def api_profile_ai_review():
             if '_userEdits' not in analysis:
                 analysis['_userEdits'] = {}
             for section, new_val in edits.items():
-                if section in ('summary', 'companyIntel', 'roleContext',
-                               'networkingValue', 'personResearch', 'locationContext'):
+                if section in STEVE_USER_EDITABLE_SECTIONS:
                     analysis['_userEdits'][section] = new_val
 
         from backend.services.firestore_writes import write_steve_user_profile
@@ -7296,6 +7289,109 @@ def api_profile_ai_review():
     except Exception as e:
         logger.error(f"Error saving AI review for {username}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+STEVE_PROFILE_SCHEMA_VERSION = 3
+
+STEVE_DATA_SECTIONS = frozenset({
+    'summary', 'identity', 'professional', 'personal',
+    'interests', 'traits', 'observations',
+    'networkingValue', 'conversationStarters',
+    'dataQuality', 'analysisDepth',
+})
+
+STEVE_USER_VISIBLE_SECTIONS = frozenset({
+    'summary', 'identity', 'professional', 'personal',
+    'interests', 'networkingValue', 'conversationStarters',
+})
+
+STEVE_USER_EDITABLE_SECTIONS = frozenset({
+    'summary', 'professional', 'personal',
+    'interests', 'networkingValue',
+})
+
+STEVE_ADMIN_FEEDBACKABLE_SECTIONS = frozenset({
+    'summary', 'identity', 'professional', 'personal',
+    'interests', 'traits', 'observations',
+    'networkingValue', 'overall',
+})
+
+
+def _migrate_analysis_to_v3(analysis: dict) -> dict:
+    """Migrate a legacy (v1/v2) analysis dict to the canonical v3 schema.
+    Idempotent: if already v3, returns as-is."""
+    if not analysis or analysis.get('_schemaVersion') == STEVE_PROFILE_SCHEMA_VERSION:
+        return analysis
+
+    v3 = {}
+
+    v3['_schemaVersion'] = STEVE_PROFILE_SCHEMA_VERSION
+    v3['summary'] = analysis.get('summary', '')
+    v3['analysisDepth'] = analysis.get('analysisDepth', 'standard')
+    v3['dataQuality'] = analysis.get('dataQuality', 'sparse')
+
+    old_identity = analysis.get('identity') or {}
+    v3['identity'] = {
+        'roles': old_identity.get('roles', []),
+        'drivingForces': old_identity.get('drivingForces', ''),
+        'bridgeInsight': old_identity.get('bridgeInsight', ''),
+    }
+
+    old_bg = analysis.get('background') or {}
+    old_company = old_bg.get('company') or analysis.get('companyIntel') or {}
+    old_role = old_bg.get('role') or analysis.get('roleContext') or {}
+    old_location = old_bg.get('location')
+    if isinstance(old_location, str):
+        old_location = {'city': '', 'country': '', 'context': old_location}
+    elif not isinstance(old_location, dict):
+        loc_ctx = analysis.get('locationContext', '')
+        old_location = {'city': '', 'country': '', 'context': loc_ctx} if loc_ctx else None
+
+    old_web = analysis.get('webResearch') or analysis.get('personResearch') or {}
+
+    v3['professional'] = {
+        'company': old_company if old_company.get('name') or old_company.get('description') else None,
+        'role': old_role if old_role.get('title') else None,
+        'education': old_bg.get('education'),
+        'location': old_location,
+        'webFindings': old_web.get('publicSummary', ''),
+        'publications': [],
+    }
+
+    old_social = old_web.get('socialProfiles', [])
+    v3['personal'] = {
+        'socialProfiles': old_social if isinstance(old_social, list) else [],
+        'interests': [],
+        'lifestyle': '',
+        'webFindings': old_web.get('additionalContext', ''),
+        'publicPosts': analysis.get('publicContent', []),
+    }
+
+    v3['webResearch'] = {
+        'confidence': old_web.get('confidence', 'low'),
+        'publicSummary': old_web.get('publicSummary', ''),
+        'socialProfiles': old_social if isinstance(old_social, list) else [],
+    } if old_web.get('publicSummary') else None
+
+    raw_interests = analysis.get('interests', {})
+    migrated_interests = {}
+    for k, v in raw_interests.items():
+        if isinstance(v, dict):
+            migrated_interests[k] = v
+        else:
+            migrated_interests[k] = {'score': float(v) if v else 0.5, 'source': 'platform', 'type': 'both'}
+    v3['interests'] = migrated_interests
+
+    v3['traits'] = analysis.get('traits', [])
+    v3['observations'] = analysis.get('observations', '')
+    v3['networkingValue'] = analysis.get('networkingValue', '')
+    v3['conversationStarters'] = analysis.get('conversationStarters', [])
+
+    for meta_key in ('_feedback', '_userReview', '_acceptedSections', '_userEdits'):
+        if meta_key in analysis:
+            v3[meta_key] = analysis[meta_key]
+
+    return v3
 
 
 def _build_profile_text_for_grok(user_row) -> str:
@@ -7348,26 +7444,24 @@ def _build_profile_text_for_grok(user_row) -> str:
 
 
 def _analyze_profile_with_grok(username: str, profile_text: str, prior_feedback: dict = None, depth: str = 'standard') -> dict:
-    """Call Grok multi-agent to analyze a user's profile.
-    depth: 'quick' (platform data only), 'standard' (+ professional web research), 'deep' (full web + social media + posts).
-    Returns unified profile dict."""
+    """Call Grok to analyze a user's profile. Returns v3 schema dict.
+    depth: 'quick' (platform data only), 'standard' (+ professional web), 'deep' (full web + social + posts)."""
     if not XAI_API_KEY:
-        logger.warning("XAI_API_KEY not set, skipping Grok profile analysis")
+        logger.warning("XAI_API_KEY not set, skipping profile analysis")
         return {}
     try:
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-
         today_str = datetime.utcnow().strftime('%Y-%m-%d')
 
         base_rules = """IMPORTANT RULES:
 - Read the FULL text holistically. Understand tone, sarcasm, humor, and career context.
 - There is no wall between personal and professional — build a UNIFIED picture of the whole person.
-- "Interests" are topics this person genuinely cares about — whether at work, at home, or both. Infer from ALL fields.
 - If someone says "recovering lawyer turned developer", they are in TECH, not law.
-- If a bio is humorous or vague, still extract what you can about the person's actual focus.
-- Confidence scores (0.0–1.0) should reflect how confident YOU are in the interest, not how much the person cares.
-- If there is very little data, say so honestly in the summary and give fewer interests with lower confidence."""
+- If a bio is humorous or vague, still extract what you can.
+- Confidence scores (0.0–1.0) reflect YOUR confidence in the interest.
+- If there is very little data, say so honestly and give fewer interests with lower confidence.
+- Tag each interest as "professional", "personal", or "both"."""
 
         research_rules = ""
         if depth in ('standard', 'deep'):
@@ -7376,17 +7470,15 @@ WEB RESEARCH (today is {today_str}):
 - If a full name is provided, USE YOUR WEB SEARCH to look them up.
 - Search for LinkedIn, company websites, press mentions, speaking engagements, publications.
 - If a LinkedIn URL is provided, search for that profile directly.
-- If the user lists a company, research it: what does the company do? What sector? What stage/size?
-- Analyze the user's role in the context of their company.
+- If the user lists a company, research it: what does it do? What sector? What stage/size?
 - Only use publicly available information.
-- BE VERY CONSERVATIVE with identity matching. You MUST cross-reference what you find online with the platform profile data.
+- BE VERY CONSERVATIVE with identity matching — cross-reference with the platform profile data.
 
 IDENTITY CONFIDENCE RULES (STRICT):
-- "high": Found the person online AND at least 2 data points match (e.g. same company AND same city, or same school AND same role, or LinkedIn URL matches).
+- "high": Found the person online AND at least 2 data points match (e.g. same company AND same city).
 - "medium": Found the person online AND exactly 1 data point matches.
-- "low": Found someone online but ZERO data points could be verified, OR the profile is too sparse to confirm. A name-only match is ALWAYS "low".
-- NEVER set confidence to "high" or "medium" based solely on a name match.
-- If the profile has very little data, default to "low" unless you have strong corroboration."""
+- "low": Found someone online but ZERO data points could be verified. A name-only match is ALWAYS "low".
+- NEVER set confidence to "high" or "medium" based solely on a name match."""
 
         deep_rules = ""
         if depth == 'deep':
@@ -7394,46 +7486,34 @@ IDENTITY CONFIDENCE RULES (STRICT):
 SOCIAL MEDIA & PERSONAL RESEARCH (today is {today_str}):
 - Search for this person on Instagram, Facebook, TikTok, X/Twitter, personal blogs, Medium, Substack, YouTube.
 - Look for public posts, articles, videos, or statements they have made.
-- Note the DATE of every finding. Content from the last 6 months is highly relevant. Content 1-2 years old is moderately relevant. Content older than 2 years may reflect outdated interests — flag it as such.
-- If you can only find old content, say so explicitly and note that interests may have shifted.
-- Look for PATTERNS that connect their personal and professional worlds — a marathon runner who works in health-tech, a parent who founded an ed-tech startup, a sustainability advocate who works in ESG.
+- Note the DATE of every finding. Content from the last 6 months is highly relevant. >2 years old may be outdated.
+- Look for PATTERNS that connect their personal and professional worlds.
 - Build a picture of who this person IS — not just what their job title says."""
 
-        schema_identity = """  "identity": {
-    "roles": ["e.g. Fintech founder", "Marathon runner", "Father of two"],
-    "drivingForces": "1-2 sentences: what motivates this person across all dimensions of life",
-    "bridgeInsight": "1-2 sentences: how their personal and professional worlds connect and reinforce each other"
-  },"""
-
-        schema_background = """  "background": {
+        professional_schema = """  "professional": {
     "company": {"name": "...", "description": "...", "sector": "...", "stage": "..."} or null,
     "role": {"title": "...", "seniority": "junior|mid|senior|executive|founder", "function": "...", "implication": "1 sentence"} or null,
     "education": "degree + school if known, else null",
-    "location": {"city": "...", "country": "...", "context": "1 sentence on local ecosystem relevance"} or null
+    "location": {"city": "...", "country": "...", "context": "1 sentence on local ecosystem relevance"} or null,
+    "webFindings": "professional web research summary (career, achievements, press)" or "",
+    "publications": [{"source": "...", "date": "YYYY-MM", "insight": "...", "relevance": "high|medium|low"}] or []
   },"""
 
-        schema_interests = """  "interests": {"topic_name": {"score": 0.85, "source": "where you found this"}, ...},"""
-
-        schema_web_research = ""
-        if depth in ('standard', 'deep'):
-            schema_web_research = """  "webResearch": {
-    "confidence": "high|medium|low",
-    "publicSummary": "2-3 sentences summarizing what you found about this person online",
-    "additionalContext": "Notable info: board seats, publications, speaking, side projects, personal passions",
-    "socialProfiles": [{"platform": "LinkedIn|Instagram|X|Facebook|TikTok|Blog", "url": "...", "handle": "..."}] or []
-  } or null,"""
-
-        schema_public_content = ""
+        personal_schema = '  "personal": null,'
         if depth == 'deep':
-            schema_public_content = """  "publicContent": [
-    {"source": "platform or site", "date": "YYYY-MM or approximate", "insight": "what this reveals about the person", "relevance": "high|medium|low"}
-  ] or [],"""
+            personal_schema = """  "personal": {
+    "socialProfiles": [{"platform": "Instagram|Facebook|TikTok|X|Blog|YouTube", "url": "...", "handle": "..."}] or [],
+    "interests": ["running", "cooking", "travel"],
+    "lifestyle": "1-2 sentences on personal life indicators found publicly" or "",
+    "webFindings": "personal web research summary (social media activity, personal content)" or "",
+    "publicPosts": [{"source": "...", "date": "YYYY-MM", "insight": "...", "relevance": "high|medium|low"}] or []
+  },"""
 
-        schema_starters = ""
+        starters_schema = ""
         if depth == 'deep':
-            schema_starters = """  "conversationStarters": ["1-2 natural ice-breakers that connect personal + professional"],"""
+            starters_schema = """  "conversationStarters": ["1-2 natural ice-breakers that connect personal + professional"],"""
 
-        system_prompt = f"""You are an expert people analyst. Given a user's profile data from a private professional network, produce a unified JSON analysis that captures the WHOLE person — not just their job, not just their hobbies, but who they really are.
+        system_prompt = f"""You are an expert people analyst. Given a user's profile data from a private professional network, produce a structured JSON analysis that captures the WHOLE person.
 
 {base_rules}
 {research_rules}
@@ -7442,22 +7522,25 @@ SOCIAL MEDIA & PERSONAL RESEARCH (today is {today_str}):
 Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
 {{
   "summary": "3-4 sentences capturing the whole person — who they are, what they do, what they care about",
-{schema_identity}
-{schema_background}
-{schema_interests}
+  "identity": {{
+    "roles": ["e.g. Fintech founder", "Marathon runner", "Father of two"],
+    "drivingForces": "1-2 sentences: what motivates this person across all dimensions of life",
+    "bridgeInsight": "1-2 sentences: how their personal and professional worlds connect"
+  }},
+{professional_schema}
+{personal_schema}
+  "interests": {{"topic_name": {{"score": 0.85, "source": "where you found this", "type": "professional|personal|both"}}, ...}},
   "traits": ["trait1", "trait2", "trait3"],
-  "observations": "2-3 sentences of deeper insight — what makes this person tick, what they'd value in conversations",
-{schema_web_research}
-{schema_public_content}
-  "networkingValue": "1-2 sentences: what unique value they bring to others and what connections would benefit them most",
-{schema_starters}
+  "observations": "2-3 sentences of deeper insight — what makes this person tick",
+  "networkingValue": "1-2 sentences: what unique value they bring and what connections would benefit them",
+{starters_schema}
   "dataQuality": "rich|moderate|sparse",
   "analysisDepth": "{depth}"
 }}
 
-If the company or role fields are empty, set background.company and background.role to null.
-If no location is provided, set background.location to null.
-If you cannot find the person online, set webResearch to null.
+If the company or role fields are empty, set professional.company and professional.role to null.
+If no location is provided, set professional.location to null.
+If you cannot find the person online or depth is "quick", set personal to null.
 Set any field to null rather than guessing with no basis."""
 
         user_msg = f"Analyze this user's profile (@{username}):\n\n{profile_text}"
@@ -7470,7 +7553,7 @@ Set any field to null rather than guessing with no basis."""
                     feedback_lines.append(f"- {section}: REJECTED by admin" + (f" — reason: {note}" if note else ''))
                 user_msg += "\n\nADMIN FEEDBACK FROM PREVIOUS ANALYSIS (sections marked as incorrect):\n"
                 user_msg += '\n'.join(feedback_lines)
-                user_msg += "\nPlease be extra careful with these sections. If webResearch was rejected, the previous match was the WRONG person — search more carefully or set to null if unsure."
+                user_msg += "\nPlease be extra careful with these sections."
 
         tools = []
         max_tokens = 1000
@@ -7494,7 +7577,6 @@ Set any field to null rather than guessing with no basis."""
             create_kwargs["tools"] = tools
 
         response = client.responses.create(**create_kwargs)
-
         raw = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
         if not raw:
             logger.warning(f"Grok returned empty response for {username}")
@@ -7505,31 +7587,34 @@ Set any field to null rather than guessing with no basis."""
             raw = raw.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
         analysis = _json.loads(raw)
 
+        for key in ('summary', 'observations', 'dataQuality', 'networkingValue'):
+            if key not in analysis:
+                analysis[key] = ''
         if not isinstance(analysis.get('interests'), dict):
             analysis['interests'] = {}
-        for key in ('summary', 'traits', 'observations', 'dataQuality'):
-            if key not in analysis:
-                analysis[key] = '' if key != 'traits' else []
-        for key in ('identity', 'background', 'webResearch', 'networkingValue'):
-            if key not in analysis:
-                analysis[key] = None
-        if 'publicContent' not in analysis:
-            analysis['publicContent'] = []
+        for k, v in list(analysis['interests'].items()):
+            if not isinstance(v, dict):
+                analysis['interests'][k] = {'score': float(v) if v else 0.5, 'source': 'platform', 'type': 'both'}
+        if 'traits' not in analysis or not isinstance(analysis['traits'], list):
+            analysis['traits'] = []
+        if 'identity' not in analysis or not isinstance(analysis.get('identity'), dict):
+            analysis['identity'] = {'roles': [], 'drivingForces': '', 'bridgeInsight': ''}
+        if 'professional' not in analysis or not isinstance(analysis.get('professional'), dict):
+            analysis['professional'] = None
+        if 'personal' not in analysis or not isinstance(analysis.get('personal'), dict):
+            analysis['personal'] = None
         if 'conversationStarters' not in analysis:
             analysis['conversationStarters'] = []
+
+        analysis['_schemaVersion'] = STEVE_PROFILE_SCHEMA_VERSION
         analysis['analysisDepth'] = depth
 
         corroborating_fields = sum(1 for marker in ('Company:', 'Role:', 'School:', 'Location:', 'LinkedIn:', 'Industry:')
                                    if marker in profile_text)
-        web_research = analysis.get('webResearch')
-        if isinstance(web_research, dict) and web_research.get('confidence'):
-            stated = web_research['confidence'].lower().strip()
-            if corroborating_fields < 2 and stated in ('high', 'medium'):
-                web_research['confidence'] = 'low'
-                logger.info(f"Downgraded webResearch confidence for {username}: only {corroborating_fields} corroborating fields")
-            elif corroborating_fields < 3 and stated == 'high':
-                web_research['confidence'] = 'medium'
-                logger.info(f"Downgraded webResearch confidence for {username} from high to medium: only {corroborating_fields} corroborating fields")
+        pro = analysis.get('professional') or {}
+        web_findings = pro.get('webFindings', '')
+        if web_findings and corroborating_fields < 2:
+            logger.info(f"Low corroboration ({corroborating_fields} fields) for {username} — web findings may be unreliable")
 
         return analysis
     except Exception as e:
@@ -7538,82 +7623,68 @@ Set any field to null rather than guessing with no basis."""
 
 
 def get_steve_context_for_user(username: str) -> str:
-    """Read the analyzed profile from Firestore and return a concise context string
-    that can be injected into Steve's system prompts across all touchpoints.
-    Supports both the new unified schema and the legacy schema."""
+    """Read the analyzed profile from Firestore, migrate to v3 if needed,
+    and return a concise context string for Steve's system prompts."""
     try:
         from backend.services.firestore_reads import get_steve_user_profile
         profile = get_steve_user_profile(username)
         if not profile:
             return ''
-        analysis = profile.get('analysis', {})
-        if not analysis:
+        analysis = _migrate_analysis_to_v3(profile.get('analysis', {}))
+        if not analysis or not analysis.get('summary'):
             return ''
 
         parts = []
-        summary = analysis.get('summary', '')
-        if summary:
-            parts.append(summary)
+        parts.append(analysis['summary'])
 
         identity = analysis.get('identity') or {}
         if identity.get('bridgeInsight'):
             parts.append(identity['bridgeInsight'])
-        if identity.get('drivingForces'):
-            parts.append(f"Drives: {identity['drivingForces']}")
         if identity.get('roles'):
             parts.append(f"Roles: {', '.join(identity['roles'][:5])}")
 
-        background = analysis.get('background') or {}
-        bg_company = background.get('company') or analysis.get('companyIntel') or {}
-        bg_role = background.get('role') or analysis.get('roleContext') or {}
-        bg_location = background.get('location')
+        pro = analysis.get('professional') or {}
+        co = pro.get('company') or {}
+        if co.get('description'):
+            parts.append(f"Company ({co.get('name','?')}): {co['description']} [{co.get('sector','')} / {co.get('stage','')}]")
+        role = pro.get('role') or {}
+        if role.get('implication'):
+            parts.append(f"Role: {role.get('title','')} ({role.get('seniority','')}) — {role['implication']}")
+        loc = pro.get('location') or {}
+        if loc.get('context'):
+            parts.append(f"Location: {loc['context']}")
+        if pro.get('webFindings'):
+            parts.append(f"Professional background: {pro['webFindings']}")
 
-        if bg_company and bg_company.get('description'):
-            parts.append(f"Company ({bg_company.get('name','?')}): {bg_company['description']} [{bg_company.get('sector','')} / {bg_company.get('stage','')}]")
-        if bg_role and bg_role.get('implication'):
-            parts.append(f"Role: {bg_role.get('title','')} ({bg_role.get('seniority','')}) — {bg_role['implication']}")
-        if isinstance(bg_location, dict) and bg_location.get('context'):
-            parts.append(f"Location: {bg_location['context']}")
-        elif isinstance(bg_location, str):
-            parts.append(f"Location: {bg_location}")
-        elif analysis.get('locationContext'):
-            parts.append(f"Location: {analysis['locationContext']}")
+        personal = analysis.get('personal') or {}
+        if personal.get('lifestyle'):
+            parts.append(f"Personal: {personal['lifestyle']}")
+        if personal.get('webFindings'):
+            parts.append(f"Personal context: {personal['webFindings']}")
+        public_posts = personal.get('publicPosts', [])
+        if public_posts:
+            recent = [p for p in public_posts if isinstance(p, dict) and p.get('relevance') in ('high', 'medium')][:3]
+            if recent:
+                parts.append('Recent activity: ' + '; '.join(p.get('insight', '') for p in recent if p.get('insight')))
 
         interests = analysis.get('interests', {})
         if interests:
-            top_items = []
-            for k, v in sorted(interests.items(), key=lambda x: (x[1].get('score', x[1]) if isinstance(x[1], dict) else x[1]), reverse=True)[:5]:
-                score = v.get('score', v) if isinstance(v, dict) else v
-                top_items.append(f"{k} ({int(float(score)*100)}%)")
-            parts.append('Interests: ' + ', '.join(top_items))
+            top = sorted(interests.items(), key=lambda x: x[1].get('score', 0) if isinstance(x[1], dict) else 0, reverse=True)[:5]
+            parts.append('Interests: ' + ', '.join(f"{k} ({int(v.get('score', 0)*100)}%)" for k, v in top if isinstance(v, dict)))
 
         traits = analysis.get('traits', [])
         if traits:
             parts.append('Traits: ' + ', '.join(traits[:4]))
 
-        networking_value = analysis.get('networkingValue', '')
-        if networking_value:
-            parts.append(f"Networking: {networking_value}")
-
-        web_research = analysis.get('webResearch') or analysis.get('personResearch') or {}
-        if web_research.get('publicSummary'):
-            parts.append(f"Background: {web_research['publicSummary']}")
-        if web_research.get('additionalContext'):
-            parts.append(f"Notable: {web_research['additionalContext']}")
-
-        public_content = analysis.get('publicContent', [])
-        if public_content:
-            recent = [p for p in public_content if isinstance(p, dict) and p.get('relevance') in ('high', 'medium')][:3]
-            if recent:
-                parts.append('Recent public activity: ' + '; '.join(p.get('insight', '') for p in recent if p.get('insight')))
+        if analysis.get('networkingValue'):
+            parts.append(f"Networking: {analysis['networkingValue']}")
 
         starters = analysis.get('conversationStarters', [])
         if starters:
             parts.append('Conversation starters: ' + '; '.join(starters[:2]))
 
-        observations = analysis.get('observations', '')
-        if observations:
-            parts.append(observations)
+        if analysis.get('observations'):
+            parts.append(analysis['observations'])
 
         return ' | '.join(parts)
     except Exception as e:
@@ -9573,16 +9644,17 @@ def api_public_profile(username):
                 from backend.services.firestore_reads import get_steve_user_profile
                 steve_profile = get_steve_user_profile(actual_username)
                 if steve_profile:
-                    analysis = steve_profile.get('analysis', {})
+                    analysis = _migrate_analysis_to_v3(steve_profile.get('analysis', {}))
                     accepted = analysis.get('_acceptedSections', [])
                     user_edits = analysis.get('_userEdits', {})
                     if accepted:
                         ai_public = {}
                         for section in accepted:
-                            if section in user_edits:
-                                ai_public[section] = user_edits[section]
-                            elif section in analysis and analysis[section] is not None:
-                                ai_public[section] = analysis[section]
+                            if section in STEVE_USER_VISIBLE_SECTIONS:
+                                if section in user_edits:
+                                    ai_public[section] = user_edits[section]
+                                elif section in analysis and analysis[section] is not None:
+                                    ai_public[section] = analysis[section]
                         if ai_public:
                             profile['ai_enhanced'] = ai_public
             except Exception as ai_err:
