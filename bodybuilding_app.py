@@ -13690,7 +13690,8 @@ RULES:
 - Speak naturally and conversationally — like a helpful friend, not a search engine.
 - NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "City: Lisbon", "AI insight", "profile data", "structured data", or "no members list X as their location". Just speak naturally about what you know.
 - NEVER say "I won't recommend" or explain what you're choosing not to do. Focus on what you CAN offer.
-- This is a multi-turn conversation. Pay close attention to what was discussed previously. If the user asks a follow-up (e.g., "suggest a message to send him", "tell me more about her"), refer back to the person or topic from the prior exchange. Do NOT start a new unrelated recommendation unless the user explicitly asks for something different."""}
+- This is a multi-turn conversation. Pay close attention to what was discussed previously. If the user asks a follow-up (e.g., "suggest a message to send him", "tell me more about her"), refer back to the person or topic from the prior exchange. Do NOT start a new unrelated recommendation unless the user explicitly asks for something different.
+- The requester's profile is provided as background context ONLY — so you know who they are and can craft better introductions. When the user makes a specific request, match ONLY based on what they asked for. Do NOT bring the requester's own interests, industry, or background into the recommendation rationale unless they explicitly ask for connections related to their own profile (e.g., "people in my industry", "people with similar interests"). If the user asks about race cars, recommend people connected to race cars — not people who share the requester's AI interests."""}
         ]
         if conversation_history and isinstance(conversation_history, list):
             for turn in conversation_history[-10:]:
@@ -13698,7 +13699,7 @@ RULES:
                 content = turn.get('content', '')
                 if role in ('user', 'assistant') and content:
                     grok_input.append({"role": role, "content": content})
-        grok_input.append({"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"})
+        grok_input.append({"role": "user", "content": f"(Background context about me — use only if relevant to my request):\n{enriched_user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"})
         response = client.responses.create(
             model=GROK_MODEL_MULTI_AGENT,
             input=grok_input,
