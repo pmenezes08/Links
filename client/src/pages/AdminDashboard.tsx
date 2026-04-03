@@ -481,14 +481,15 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  const analyzeUser = useCallback(async (targetUsername: string, depth: 'quick' | 'standard' | 'deep' = 'standard') => {
+  const analyzeUser = useCallback(async (targetUsername: string, depth: 'quick' | 'standard' | 'deep' = 'standard', reset = false) => {
+    if (reset && !confirm(`This will discard existing data and run a fresh analysis for @${targetUsername}. Continue?`)) return
     setAnalyzingUser(targetUsername)
     try {
       const response = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(targetUsername)}/analyze`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ depth })
+        body: JSON.stringify({ depth, reset })
       })
       const data = await response.json()
       if (data?.success && data.analysis) {
@@ -2208,7 +2209,7 @@ export default function AdminDashboard() {
                                     {isAnalyzing ? (
                                       <><i className="fa-solid fa-spinner fa-spin" /> Analyzing...</>
                                     ) : (
-                                      <><i className="fa-solid fa-brain" /> {hasAnalysis ? 'Re-analyze' : 'Analyze'}</>
+                                      <><i className="fa-solid fa-brain" /> {hasAnalysis ? 'Enhance' : 'Analyze'}</>
                                     )}
                                   </button>
                                 </div>
@@ -2219,17 +2220,29 @@ export default function AdminDashboard() {
                                   >
                                     <i className="fa-solid fa-chevron-down text-[9px]" />
                                   </button>
-                                  <div className="absolute right-0 top-full mt-1 bg-[#1a1a1a] border border-white/10 rounded-lg shadow-xl z-50 w-36 hidden peer-focus:block hover:block">
+                                  <div className="absolute right-0 top-full mt-1 bg-[#1a1a1a] border border-white/10 rounded-lg shadow-xl z-50 w-44 hidden peer-focus:block hover:block">
                                     {([['quick', 'Quick', 'fa-bolt'], ['standard', 'Standard', 'fa-brain'], ['deep', 'Deep', 'fa-microscope']] as const).map(([d, label, icon]) => (
                                       <button
                                         key={d}
                                         onClick={() => analyzeUser(profile.username, d)}
-                                        className="w-full px-3 py-2 text-left text-xs text-white/80 hover:bg-white/10 flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg"
+                                        className="w-full px-3 py-2 text-left text-xs text-white/80 hover:bg-white/10 flex items-center gap-2"
                                       >
                                         <i className={`fa-solid ${icon} w-3 text-center text-[#4db6ac]`} />
                                         {label}
                                       </button>
                                     ))}
+                                    {hasAnalysis && (
+                                      <>
+                                        <div className="border-t border-white/10 my-0.5" />
+                                        <button
+                                          onClick={() => analyzeUser(profile.username, 'deep', true)}
+                                          className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-red-500/10 flex items-center gap-2 rounded-b-lg"
+                                        >
+                                          <i className="fa-solid fa-rotate w-3 text-center" />
+                                          Reset & Re-analyze
+                                        </button>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                                 {hasAnalysis && (

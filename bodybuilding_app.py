@@ -7102,23 +7102,30 @@ def admin_steve_profile_analyze(target_username):
         depth = data.get('depth', 'standard')
         if depth not in ('quick', 'standard', 'deep'):
             depth = 'standard'
+        reset = data.get('reset', False)
 
         from backend.services.firestore_reads import get_steve_user_profile
-        existing = get_steve_user_profile(target_username)
-        prior_feedback = (existing or {}).get('analysis', {}).get('_feedback', {})
+        existing_profile = get_steve_user_profile(target_username)
+        existing_analysis = _migrate_analysis_to_v3((existing_profile or {}).get('analysis', {})) or {}
+        prior_feedback = existing_analysis.get('_feedback', {})
 
         analysis = _analyze_profile_with_grok(target_username, profile_text, prior_feedback=prior_feedback, depth=depth)
         if not analysis:
             return jsonify({'success': False, 'error': 'Grok analysis returned empty'}), 502
 
-        if prior_feedback:
-            analysis['_feedback'] = prior_feedback
-        write_steve_user_profile(target_username, analysis=analysis)
+        if reset:
+            if prior_feedback:
+                analysis['_feedback'] = prior_feedback
+            final = analysis
+        else:
+            final = _merge_analyses(existing_analysis, analysis)
+
+        write_steve_user_profile(target_username, analysis=final)
 
         return jsonify({
             'success': True,
             'username': target_username,
-            'analysis': analysis,
+            'analysis': final,
         })
     except Exception as e:
         logger.error(f"Error analyzing profile for {target_username}: {e}", exc_info=True)
@@ -7392,6 +7399,58 @@ def _migrate_analysis_to_v3(analysis: dict) -> dict:
             v3[meta_key] = analysis[meta_key]
 
     return v3
+
+
+def _merge_analyses(existing: dict, new: dict) -> dict:
+    """Merge a new Grok analysis into an existing one, preserving richer data."""
+    if not existing:
+        return new
+    if not new:
+        return existing
+
+    merged = dict(existing)
+
+    DEPTH_RANK = {'quick': 0, 'standard': 1, 'deep': 2}
+
+    for key in ('summary', 'observations', 'networkingValue', 'dataQuality'):
+        if new.get(key):
+            merged[key] = new[key]
+
+    if new.get('identity'):
+        merged['identity'] = new['identity']
+
+    if new.get('professional'):
+        merged['professional'] = new['professional']
+    if new.get('personal'):
+        merged['personal'] = new['personal']
+
+    old_interests = existing.get('interests') or {}
+    new_interests = new.get('interests') or {}
+    combined = dict(old_interests)
+    for k, v in new_interests.items():
+        old_v = combined.get(k)
+        if not old_v or (isinstance(v, dict) and v.get('score', 0) > (old_v.get('score', 0) if isinstance(old_v, dict) else 0)):
+            combined[k] = v
+    merged['interests'] = combined
+
+    old_traits = set(existing.get('traits') or [])
+    new_traits = set(new.get('traits') or [])
+    merged['traits'] = list(old_traits | new_traits)
+
+    if new.get('conversationStarters'):
+        merged['conversationStarters'] = new['conversationStarters']
+
+    old_depth = existing.get('analysisDepth', 'quick')
+    new_depth = new.get('analysisDepth', 'quick')
+    merged['analysisDepth'] = max(old_depth, new_depth, key=lambda d: DEPTH_RANK.get(d, 0))
+
+    merged['_schemaVersion'] = STEVE_PROFILE_SCHEMA_VERSION
+
+    for meta in ('_feedback', '_userReview', '_acceptedSections', '_userEdits'):
+        if meta in existing and meta not in new:
+            merged[meta] = existing[meta]
+
+    return merged
 
 
 def _build_profile_text_for_grok(user_row) -> str:
