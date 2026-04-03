@@ -326,7 +326,8 @@ export default function Networking() {
     const sid = await ensureSession()
     if (sid) saveMessage(sid, 'user', msg)
     try {
-      const res = await fetch('/api/networking/steve_match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ community_id: steveCommunity, message: msg }) })
+      const history = steveMessages.slice(-10).map(m => ({ role: m.role === 'steve' ? 'assistant' : 'user', content: m.text }))
+      const res = await fetch('/api/networking/steve_match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ community_id: steveCommunity, message: msg, history }) })
       const data = await res.json()
       const reply = data.success ? data.response : (data.error || 'Something went wrong.')
       setSteveMessages(prev => [...prev, { role: 'steve', text: reply }])
