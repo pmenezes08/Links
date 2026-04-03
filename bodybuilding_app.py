@@ -7097,11 +7097,16 @@ def admin_steve_profile_analyze(target_username):
         if not profile_text.strip():
             return jsonify({'success': False, 'error': 'No profile data to analyze'}), 400
 
+        data = request.get_json(silent=True) or {}
+        depth = data.get('depth', 'standard')
+        if depth not in ('quick', 'standard', 'deep'):
+            depth = 'standard'
+
         from backend.services.firestore_reads import get_steve_user_profile
         existing = get_steve_user_profile(target_username)
         prior_feedback = (existing or {}).get('analysis', {}).get('_feedback', {})
 
-        analysis = _analyze_profile_with_grok(target_username, profile_text, prior_feedback=prior_feedback)
+        analysis = _analyze_profile_with_grok(target_username, profile_text, prior_feedback=prior_feedback, depth=depth)
         if not analysis:
             return jsonify({'success': False, 'error': 'Grok analysis returned empty'}), 502
 
@@ -7223,11 +7228,13 @@ def api_profile_ai_suggestions():
             return jsonify({'success': True, 'suggestions': None})
         user_review = analysis.get('_userReview', {})
         filtered = {}
-        visible_keys = ('summary', 'interests', 'companyIntel', 'roleContext',
-                        'networkingValue', 'personResearch', 'locationContext')
+        visible_keys = ('summary', 'identity', 'background', 'interests',
+                        'networkingValue', 'webResearch', 'publicContent',
+                        'conversationStarters',
+                        'companyIntel', 'roleContext', 'personResearch', 'locationContext')
         for key in visible_keys:
             val = analysis.get(key)
-            if val is not None:
+            if val is not None and val != [] and val != {}:
                 filtered[key] = val
         if not filtered:
             return jsonify({'success': True, 'suggestions': None})
@@ -7340,9 +7347,10 @@ def _build_profile_text_for_grok(user_row) -> str:
     return '\n'.join(parts)
 
 
-def _analyze_profile_with_grok(username: str, profile_text: str, prior_feedback: dict = None) -> dict:
-    """Call Grok multi-agent to analyze a user's profile with web research.
-    Returns structured dict with summary, interests, traits, company intel, role context, and networking value."""
+def _analyze_profile_with_grok(username: str, profile_text: str, prior_feedback: dict = None, depth: str = 'standard') -> dict:
+    """Call Grok multi-agent to analyze a user's profile.
+    depth: 'quick' (platform data only), 'standard' (+ professional web research), 'deep' (full web + social media + posts).
+    Returns unified profile dict."""
     if not XAI_API_KEY:
         logger.warning("XAI_API_KEY not set, skipping Grok profile analysis")
         return {}
@@ -7350,71 +7358,107 @@ def _analyze_profile_with_grok(username: str, profile_text: str, prior_feedback:
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
-        system_prompt = """You are an expert people analyst with web research capability. Given a user's profile data from a private professional network, produce a structured JSON analysis.
+        today_str = datetime.utcnow().strftime('%Y-%m-%d')
 
-IMPORTANT RULES:
+        base_rules = """IMPORTANT RULES:
 - Read the FULL text holistically. Understand tone, sarcasm, humor, and career context.
-- "Interests" are topics this person genuinely cares about professionally or personally — infer from ALL fields, not just keywords.
+- There is no wall between personal and professional — build a UNIFIED picture of the whole person.
+- "Interests" are topics this person genuinely cares about — whether at work, at home, or both. Infer from ALL fields.
 - If someone says "recovering lawyer turned developer", they are in TECH, not law.
 - If a bio is humorous or vague, still extract what you can about the person's actual focus.
 - Confidence scores (0.0–1.0) should reflect how confident YOU are in the interest, not how much the person cares.
-- If there is very little data, say so honestly in the summary and give fewer interests with lower confidence.
+- If there is very little data, say so honestly in the summary and give fewer interests with lower confidence."""
 
-PERSON RESEARCH:
+        research_rules = ""
+        if depth in ('standard', 'deep'):
+            research_rules = f"""
+WEB RESEARCH (today is {today_str}):
 - If a full name is provided, USE YOUR WEB SEARCH to look them up.
-- Search for their LinkedIn profile, public social media presence, and any press/media mentions.
+- Search for LinkedIn, company websites, press mentions, speaking engagements, publications.
 - If a LinkedIn URL is provided, search for that profile directly.
+- If the user lists a company, research it: what does the company do? What sector? What stage/size?
+- Analyze the user's role in the context of their company.
 - Only use publicly available information.
-- BE VERY CONSERVATIVE with identity matching. You MUST cross-reference what you find online with the CPoint profile data.
+- BE VERY CONSERVATIVE with identity matching. You MUST cross-reference what you find online with the platform profile data.
 
-PERSON RESEARCH CONFIDENCE RULES (STRICT):
-- "high": You found the person online AND at least 2 data points from CPoint match (e.g. same company AND same city, or same school AND same role, or LinkedIn URL matches).
-- "medium": You found the person online AND exactly 1 data point from CPoint matches (e.g. same company OR same city OR same school).
-- "low": You found someone online but ZERO data points from CPoint could be verified, OR the CPoint profile is too sparse to confirm (e.g. only a name with no company/role/school/city). A name-only match is ALWAYS "low".
-- If you are not sure it's the same person, set confidence to "low" and say so in publicSummary.
-- NEVER set confidence to "high" or "medium" based solely on a name match — you need corroborating profile data.
-- If the CPoint profile has very little data (just a name, or name + 1 field), be extra skeptical. Default to "low" unless you have strong corroboration.
+IDENTITY CONFIDENCE RULES (STRICT):
+- "high": Found the person online AND at least 2 data points match (e.g. same company AND same city, or same school AND same role, or LinkedIn URL matches).
+- "medium": Found the person online AND exactly 1 data point matches.
+- "low": Found someone online but ZERO data points could be verified, OR the profile is too sparse to confirm. A name-only match is ALWAYS "low".
+- NEVER set confidence to "high" or "medium" based solely on a name match.
+- If the profile has very little data, default to "low" unless you have strong corroboration."""
 
-COMPANY & ROLE RESEARCH:
-- If the user lists a company, USE YOUR WEB SEARCH to research it. What does the company do? What sector? What stage/size?
-- If you cannot find the company, say so and use whatever context clues are available.
-- Analyze the user's role in the context of their company. What does this person likely do day-to-day?
+        deep_rules = ""
+        if depth == 'deep':
+            deep_rules = f"""
+SOCIAL MEDIA & PERSONAL RESEARCH (today is {today_str}):
+- Search for this person on Instagram, Facebook, TikTok, X/Twitter, personal blogs, Medium, Substack, YouTube.
+- Look for public posts, articles, videos, or statements they have made.
+- Note the DATE of every finding. Content from the last 6 months is highly relevant. Content 1-2 years old is moderately relevant. Content older than 2 years may reflect outdated interests — flag it as such.
+- If you can only find old content, say so explicitly and note that interests may have shifted.
+- Look for PATTERNS that connect their personal and professional worlds — a marathon runner who works in health-tech, a parent who founded an ed-tech startup, a sustainability advocate who works in ESG.
+- Build a picture of who this person IS — not just what their job title says."""
 
-LOCATION CONTEXT:
-- If a city/country is provided, consider it for networking context (local ecosystems, regional industry hubs, timezone implications).
+        schema_identity = """  "identity": {
+    "roles": ["e.g. Fintech founder", "Marathon runner", "Father of two"],
+    "drivingForces": "1-2 sentences: what motivates this person across all dimensions of life",
+    "bridgeInsight": "1-2 sentences: how their personal and professional worlds connect and reinforce each other"
+  },"""
+
+        schema_background = """  "background": {
+    "company": {"name": "...", "description": "...", "sector": "...", "stage": "..."} or null,
+    "role": {"title": "...", "seniority": "junior|mid|senior|executive|founder", "function": "...", "implication": "1 sentence"} or null,
+    "education": "degree + school if known, else null",
+    "location": {"city": "...", "country": "...", "context": "1 sentence on local ecosystem relevance"} or null
+  },"""
+
+        schema_interests = """  "interests": {"topic_name": {"score": 0.85, "source": "where you found this"}, ...},"""
+
+        schema_web_research = ""
+        if depth in ('standard', 'deep'):
+            schema_web_research = """  "webResearch": {
+    "confidence": "high|medium|low",
+    "publicSummary": "2-3 sentences summarizing what you found about this person online",
+    "additionalContext": "Notable info: board seats, publications, speaking, side projects, personal passions",
+    "socialProfiles": [{"platform": "LinkedIn|Instagram|X|Facebook|TikTok|Blog", "url": "...", "handle": "..."}] or []
+  } or null,"""
+
+        schema_public_content = ""
+        if depth == 'deep':
+            schema_public_content = """  "publicContent": [
+    {"source": "platform or site", "date": "YYYY-MM or approximate", "insight": "what this reveals about the person", "relevance": "high|medium|low"}
+  ] or [],"""
+
+        schema_starters = ""
+        if depth == 'deep':
+            schema_starters = """  "conversationStarters": ["1-2 natural ice-breakers that connect personal + professional"],"""
+
+        system_prompt = f"""You are an expert people analyst. Given a user's profile data from a private professional network, produce a unified JSON analysis that captures the WHOLE person — not just their job, not just their hobbies, but who they really are.
+
+{base_rules}
+{research_rules}
+{deep_rules}
 
 Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
-{
-  "summary": "2-3 sentence profile summary that Steve can use when talking to or about this person",
-  "interests": {"topic_name": 0.85, "another_topic": 0.6},
+{{
+  "summary": "3-4 sentences capturing the whole person — who they are, what they do, what they care about",
+{schema_identity}
+{schema_background}
+{schema_interests}
   "traits": ["trait1", "trait2", "trait3"],
   "observations": "2-3 sentences of deeper insight — what makes this person tick, what they'd value in conversations",
+{schema_web_research}
+{schema_public_content}
+  "networkingValue": "1-2 sentences: what unique value they bring to others and what connections would benefit them most",
+{schema_starters}
   "dataQuality": "rich|moderate|sparse",
-  "companyIntel": {
-    "name": "Company name as stated",
-    "description": "What the company does (from your web research)",
-    "sector": "e.g. B2B SaaS, Consumer Fintech, Healthcare",
-    "stage": "e.g. Startup, Series B, Public, Fortune 500"
-  },
-  "roleContext": {
-    "title": "Their role title",
-    "seniority": "junior|mid|senior|executive|founder",
-    "function": "e.g. engineering, product, sales, operations",
-    "implication": "1 sentence on what this role means for networking"
-  },
-  "networkingValue": "1-2 sentences: what kind of introductions would be most valuable for this person, and what unique value do they bring to others?",
-  "personResearch": {
-    "linkedInUrl": "URL if found, null otherwise",
-    "publicSummary": "2-3 sentences summarizing what you found about this person online (career history, achievements, public roles)",
-    "additionalContext": "Any notable info discovered: board seats, publications, speaking engagements, side projects, public interests",
-    "confidence": "high|medium|low — how confident you are this is the right person"
-  },
-  "locationContext": "1 sentence on how their location is relevant to their professional profile (e.g. tech hub, emerging market, financial center)"
-}
+  "analysisDepth": "{depth}"
+}}
 
-If the company or role fields are empty, set companyIntel and roleContext to null instead of guessing.
-If you cannot find the person online, set personResearch to null.
-If no location is provided, set locationContext to null."""
+If the company or role fields are empty, set background.company and background.role to null.
+If no location is provided, set background.location to null.
+If you cannot find the person online, set webResearch to null.
+Set any field to null rather than guessing with no basis."""
 
         user_msg = f"Analyze this user's profile (@{username}):\n\n{profile_text}"
         if prior_feedback:
@@ -7426,18 +7470,30 @@ If no location is provided, set locationContext to null."""
                     feedback_lines.append(f"- {section}: REJECTED by admin" + (f" — reason: {note}" if note else ''))
                 user_msg += "\n\nADMIN FEEDBACK FROM PREVIOUS ANALYSIS (sections marked as incorrect):\n"
                 user_msg += '\n'.join(feedback_lines)
-                user_msg += "\nPlease be extra careful with these sections. If personResearch was rejected, the previous match was the WRONG person — search more carefully or set to null if unsure."
+                user_msg += "\nPlease be extra careful with these sections. If webResearch was rejected, the previous match was the WRONG person — search more carefully or set to null if unsure."
 
-        response = client.responses.create(
-            model=GROK_MODEL_MULTI_AGENT,
-            input=[
+        tools = []
+        max_tokens = 1000
+        if depth == 'standard':
+            tools = [{"type": "web_search"}]
+            max_tokens = 2000
+        elif depth == 'deep':
+            tools = [{"type": "web_search"}, {"type": "x_search"}]
+            max_tokens = 4000
+
+        create_kwargs = {
+            "model": GROK_MODEL_MULTI_AGENT,
+            "input": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_msg}
             ],
-            tools=[{"type": "web_search"}],
-            max_output_tokens=2000,
-            temperature=0.3,
-        )
+            "max_output_tokens": max_tokens,
+            "temperature": 0.3,
+        }
+        if tools:
+            create_kwargs["tools"] = tools
+
+        response = client.responses.create(**create_kwargs)
 
         raw = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
         if not raw:
@@ -7454,21 +7510,26 @@ If no location is provided, set locationContext to null."""
         for key in ('summary', 'traits', 'observations', 'dataQuality'):
             if key not in analysis:
                 analysis[key] = '' if key != 'traits' else []
-        for key in ('companyIntel', 'roleContext', 'networkingValue', 'personResearch', 'locationContext'):
+        for key in ('identity', 'background', 'webResearch', 'networkingValue'):
             if key not in analysis:
                 analysis[key] = None
+        if 'publicContent' not in analysis:
+            analysis['publicContent'] = []
+        if 'conversationStarters' not in analysis:
+            analysis['conversationStarters'] = []
+        analysis['analysisDepth'] = depth
 
         corroborating_fields = sum(1 for marker in ('Company:', 'Role:', 'School:', 'Location:', 'LinkedIn:', 'Industry:')
                                    if marker in profile_text)
-        person_research = analysis.get('personResearch')
-        if isinstance(person_research, dict) and person_research.get('confidence'):
-            stated = person_research['confidence'].lower().strip()
+        web_research = analysis.get('webResearch')
+        if isinstance(web_research, dict) and web_research.get('confidence'):
+            stated = web_research['confidence'].lower().strip()
             if corroborating_fields < 2 and stated in ('high', 'medium'):
-                person_research['confidence'] = 'low'
-                logger.info(f"Downgraded personResearch confidence for {username}: only {corroborating_fields} corroborating fields")
+                web_research['confidence'] = 'low'
+                logger.info(f"Downgraded webResearch confidence for {username}: only {corroborating_fields} corroborating fields")
             elif corroborating_fields < 3 and stated == 'high':
-                person_research['confidence'] = 'medium'
-                logger.info(f"Downgraded personResearch confidence for {username} from high to medium: only {corroborating_fields} corroborating fields")
+                web_research['confidence'] = 'medium'
+                logger.info(f"Downgraded webResearch confidence for {username} from high to medium: only {corroborating_fields} corroborating fields")
 
         return analysis
     except Exception as e:
@@ -7477,8 +7538,9 @@ If no location is provided, set locationContext to null."""
 
 
 def get_steve_context_for_user(username: str) -> str:
-    """Read the Grok-analyzed profile from Firestore and return a concise context string
-    that can be injected into Steve's system prompts across all touchpoints."""
+    """Read the analyzed profile from Firestore and return a concise context string
+    that can be injected into Steve's system prompts across all touchpoints.
+    Supports both the new unified schema and the legacy schema."""
     try:
         from backend.services.firestore_reads import get_steve_user_profile
         profile = get_steve_user_profile(username)
@@ -7487,39 +7549,72 @@ def get_steve_context_for_user(username: str) -> str:
         analysis = profile.get('analysis', {})
         if not analysis:
             return ''
-        summary = analysis.get('summary', '')
-        interests = analysis.get('interests', {})
-        traits = analysis.get('traits', [])
-        observations = analysis.get('observations', '')
-        company_intel = analysis.get('companyIntel') or {}
-        role_ctx = analysis.get('roleContext') or {}
-        networking_value = analysis.get('networkingValue', '')
 
         parts = []
+        summary = analysis.get('summary', '')
         if summary:
             parts.append(summary)
-        if company_intel and company_intel.get('description'):
-            co = company_intel
-            parts.append(f"Company ({co.get('name','?')}): {co['description']} [{co.get('sector','')} / {co.get('stage','')}]")
-        if role_ctx and role_ctx.get('implication'):
-            parts.append(f"Role: {role_ctx.get('title','')} ({role_ctx.get('seniority','')}) — {role_ctx['implication']}")
+
+        identity = analysis.get('identity') or {}
+        if identity.get('bridgeInsight'):
+            parts.append(identity['bridgeInsight'])
+        if identity.get('drivingForces'):
+            parts.append(f"Drives: {identity['drivingForces']}")
+        if identity.get('roles'):
+            parts.append(f"Roles: {', '.join(identity['roles'][:5])}")
+
+        background = analysis.get('background') or {}
+        bg_company = background.get('company') or analysis.get('companyIntel') or {}
+        bg_role = background.get('role') or analysis.get('roleContext') or {}
+        bg_location = background.get('location')
+
+        if bg_company and bg_company.get('description'):
+            parts.append(f"Company ({bg_company.get('name','?')}): {bg_company['description']} [{bg_company.get('sector','')} / {bg_company.get('stage','')}]")
+        if bg_role and bg_role.get('implication'):
+            parts.append(f"Role: {bg_role.get('title','')} ({bg_role.get('seniority','')}) — {bg_role['implication']}")
+        if isinstance(bg_location, dict) and bg_location.get('context'):
+            parts.append(f"Location: {bg_location['context']}")
+        elif isinstance(bg_location, str):
+            parts.append(f"Location: {bg_location}")
+        elif analysis.get('locationContext'):
+            parts.append(f"Location: {analysis['locationContext']}")
+
+        interests = analysis.get('interests', {})
         if interests:
-            top = sorted(interests.items(), key=lambda x: x[1], reverse=True)[:5]
-            parts.append('Interests: ' + ', '.join(f"{k} ({int(v*100)}%)" for k, v in top))
+            top_items = []
+            for k, v in sorted(interests.items(), key=lambda x: (x[1].get('score', x[1]) if isinstance(x[1], dict) else x[1]), reverse=True)[:5]:
+                score = v.get('score', v) if isinstance(v, dict) else v
+                top_items.append(f"{k} ({int(float(score)*100)}%)")
+            parts.append('Interests: ' + ', '.join(top_items))
+
+        traits = analysis.get('traits', [])
         if traits:
             parts.append('Traits: ' + ', '.join(traits[:4]))
+
+        networking_value = analysis.get('networkingValue', '')
         if networking_value:
             parts.append(f"Networking: {networking_value}")
-        person_research = analysis.get('personResearch') or {}
-        if person_research.get('publicSummary'):
-            parts.append(f"Background: {person_research['publicSummary']}")
-        if person_research.get('additionalContext'):
-            parts.append(f"Notable: {person_research['additionalContext']}")
-        location_ctx = analysis.get('locationContext')
-        if location_ctx:
-            parts.append(f"Location: {location_ctx}")
+
+        web_research = analysis.get('webResearch') or analysis.get('personResearch') or {}
+        if web_research.get('publicSummary'):
+            parts.append(f"Background: {web_research['publicSummary']}")
+        if web_research.get('additionalContext'):
+            parts.append(f"Notable: {web_research['additionalContext']}")
+
+        public_content = analysis.get('publicContent', [])
+        if public_content:
+            recent = [p for p in public_content if isinstance(p, dict) and p.get('relevance') in ('high', 'medium')][:3]
+            if recent:
+                parts.append('Recent public activity: ' + '; '.join(p.get('insight', '') for p in recent if p.get('insight')))
+
+        starters = analysis.get('conversationStarters', [])
+        if starters:
+            parts.append('Conversation starters: ' + '; '.join(starters[:2]))
+
+        observations = analysis.get('observations', '')
         if observations:
             parts.append(observations)
+
         return ' | '.join(parts)
     except Exception as e:
         logger.debug(f"Could not load Steve profile for {username}: {e}")
@@ -7578,7 +7673,7 @@ def _trigger_background_profile_analysis(username: str):
 
             prior_feedback = (existing or {}).get('analysis', {}).get('_feedback', {})
             logger.info(f"Background profile analysis starting for {username}")
-            analysis = _analyze_profile_with_grok(username, profile_text, prior_feedback=prior_feedback)
+            analysis = _analyze_profile_with_grok(username, profile_text, prior_feedback=prior_feedback, depth='quick')
             if analysis:
                 if prior_feedback:
                     analysis['_feedback'] = prior_feedback

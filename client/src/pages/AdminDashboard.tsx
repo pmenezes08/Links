@@ -231,15 +231,21 @@ export default function AdminDashboard() {
     display_name?: string
     analysis: {
       summary?: string
-      interests?: { [key: string]: number }
+      interests?: Record<string, any>
       traits?: string[]
       observations?: string
       dataQuality?: string
+      analysisDepth?: string
+      identity?: { roles?: string[]; drivingForces?: string; bridgeInsight?: string } | null
+      background?: { company?: any; role?: any; education?: string; location?: any } | null
       companyIntel?: { name?: string; description?: string; sector?: string; stage?: string } | null
       roleContext?: { title?: string; seniority?: string; function?: string; implication?: string } | null
       networkingValue?: string | null
+      webResearch?: { confidence?: string; publicSummary?: string; additionalContext?: string; socialProfiles?: any[]; linkedInUrl?: string } | null
       personResearch?: { linkedInUrl?: string; publicSummary?: string; additionalContext?: string; confidence?: string } | null
       locationContext?: string | null
+      publicContent?: any[]
+      conversationStarters?: string[]
       _feedback?: { [section: string]: { status: string; note?: string; by?: string; at?: string } }
       _userReview?: { status: 'pending' | 'confirmed' | 'edited' | 'disputed'; at?: string; notes?: string }
     }
@@ -466,13 +472,14 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  const analyzeUser = useCallback(async (targetUsername: string) => {
+  const analyzeUser = useCallback(async (targetUsername: string, depth: 'quick' | 'standard' | 'deep' = 'standard') => {
     setAnalyzingUser(targetUsername)
     try {
       const response = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(targetUsername)}/analyze`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Accept': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ depth })
       })
       const data = await response.json()
       if (data?.success && data.analysis) {
@@ -491,6 +498,8 @@ export default function AdminDashboard() {
     }
   }, [])
 
+  const [batchDepth, setBatchDepth] = useState<'quick' | 'standard' | 'deep'>('quick')
+
   const analyzeAllProfiles = useCallback(async () => {
     const unanalyzed = steveProfiles.filter(p => !p.analysis?.summary)
     if (unanalyzed.length === 0) return
@@ -503,7 +512,9 @@ export default function AdminDashboard() {
       setBatchProgress({ current: i + 1, total: unanalyzed.length, currentUser: u.username })
       try {
         const res = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(u.username)}/analyze`, {
-          method: 'POST', credentials: 'include', headers: { 'Accept': 'application/json' }
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ depth: batchDepth })
         })
         const data = await res.json()
         if (data?.success && data.analysis) {
@@ -515,7 +526,7 @@ export default function AdminDashboard() {
     }
     setBatchRunning(false)
     setBatchProgress({ current: 0, total: 0, currentUser: '' })
-  }, [steveProfiles])
+  }, [steveProfiles, batchDepth])
 
   const clearProfile = useCallback(async (targetUsername: string) => {
     if (!confirm(`Clear all AI analysis for @${targetUsername}?`)) return
@@ -527,22 +538,6 @@ export default function AdminDashboard() {
       if (data?.success) {
         setSteveProfiles(prev => prev.map(p =>
           p.username === targetUsername ? { ...p, analysis: {} as any, lastUpdated: new Date().toISOString() } : p
-        ))
-      }
-    } catch {}
-  }, [])
-
-  const removeSection = useCallback(async (targetUsername: string, section: string) => {
-    try {
-      const res = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(targetUsername)}/analysis/sections`, {
-        method: 'PATCH', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ remove: [section] })
-      })
-      const data = await res.json()
-      if (data?.success && data.analysis) {
-        setSteveProfiles(prev => prev.map(p =>
-          p.username === targetUsername ? { ...p, analysis: data.analysis, lastUpdated: new Date().toISOString() } : p
         ))
       }
     } catch {}
@@ -1101,70 +1096,27 @@ export default function AdminDashboard() {
         className="fixed left-0 right-0 h-10 bg-black/70 backdrop-blur z-40"
         style={{ top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))', '--app-subnav-height': '40px' } as CSSProperties}
       >
-        <div className="max-w-4xl mx-auto h-full flex">
-          <button 
-            onClick={() => setActiveTab('overview')}
-            className={`flex-1 text-center text-sm font-medium ${
-              activeTab === 'overview' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
-            }`}
-          >
-            <div className="pt-2">Overview</div>
-            <div className={`h-0.5 ${activeTab === 'overview' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
-          </button>
-          <button 
-            onClick={() => setActiveTab('users')}
-            className={`flex-1 text-center text-sm font-medium ${
-              activeTab === 'users' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
-            }`}
-          >
-            <div className="pt-2">Users</div>
-            <div className={`h-0.5 ${activeTab === 'users' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
-          </button>
-          <button 
-            onClick={() => setActiveTab('communities')}
-            className={`flex-1 text-center text-sm font-medium ${
-              activeTab === 'communities' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
-            }`}
-          >
-            <div className="pt-2">Communities</div>
-            <div className={`h-0.5 ${activeTab === 'communities' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
-          </button>
-          <button 
-            onClick={() => setActiveTab('metrics')}
-            className={`flex-1 text-center text-sm font-medium ${
-              activeTab === 'metrics' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
-            }`}
-          >
-            <div className="pt-2">Key Metrics</div>
-            <div className={`h-0.5 ${activeTab === 'metrics' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
-          </button>
-          <button 
-            onClick={() => setActiveTab('content_review')}
-            className={`flex-1 text-center text-sm font-medium ${
-              activeTab === 'content_review' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
-            }`}
-          >
-            <div className="pt-2">Reports</div>
-            <div className={`h-0.5 ${activeTab === 'content_review' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
-          </button>
-          <button 
-            onClick={() => setActiveTab('blocked_users')}
-            className={`flex-1 text-center text-sm font-medium ${
-              activeTab === 'blocked_users' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
-            }`}
-          >
-            <div className="pt-2">Blocks</div>
-            <div className={`h-0.5 ${activeTab === 'blocked_users' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
-          </button>
-          <button 
-            onClick={() => setActiveTab('steve_profiles')}
-            className={`flex-1 text-center text-sm font-medium ${
-              activeTab === 'steve_profiles' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
-            }`}
-          >
-            <div className="pt-2">Steve Profiles</div>
-            <div className={`h-0.5 ${activeTab === 'steve_profiles' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
-          </button>
+        <div className="max-w-4xl mx-auto h-full flex overflow-x-auto scrollbar-hide">
+          {([
+            ['overview', 'Overview'],
+            ['users', 'Users'],
+            ['communities', 'Communities'],
+            ['metrics', 'Metrics'],
+            ['content_review', 'Reports'],
+            ['blocked_users', 'Blocks'],
+            ['steve_profiles', 'Steve'],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key as typeof activeTab)}
+              className={`flex-shrink-0 px-3 text-center text-sm font-medium ${
+                activeTab === key ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'
+              }`}
+            >
+              <div className="pt-2 whitespace-nowrap">{label}</div>
+              <div className={`h-0.5 ${activeTab === key ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-12 mx-auto mt-1`} />
+            </button>
+          ))}
         </div>
       </div>
 
@@ -2029,14 +1981,25 @@ export default function AdminDashboard() {
                     {steveProfiles.filter(p => p.analysis?.summary).length}/{steveProfiles.length} analyzed
                   </span>
                   {!batchRunning && steveProfiles.filter(p => !p.analysis?.summary).length > 0 && (
-                    <button
-                      onClick={analyzeAllProfiles}
-                      disabled={steveProfilesLoading || batchRunning}
-                      className="px-3 py-2 bg-[#4db6ac]/20 border border-[#4db6ac]/30 hover:bg-[#4db6ac]/30 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 text-[#4db6ac]"
-                    >
-                      <i className="fa-solid fa-bolt" />
-                      Analyze All
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <select
+                        value={batchDepth}
+                        onChange={e => setBatchDepth(e.target.value as 'quick' | 'standard' | 'deep')}
+                        className="bg-[#1a1a1a] border border-white/10 rounded-lg text-xs text-white/80 px-2 py-2 outline-none"
+                      >
+                        <option value="quick">Quick</option>
+                        <option value="standard">Standard</option>
+                        <option value="deep">Deep</option>
+                      </select>
+                      <button
+                        onClick={analyzeAllProfiles}
+                        disabled={steveProfilesLoading || batchRunning}
+                        className="px-3 py-2 bg-[#4db6ac]/20 border border-[#4db6ac]/30 hover:bg-[#4db6ac]/30 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 text-[#4db6ac]"
+                      >
+                        <i className="fa-solid fa-bolt" />
+                        Analyze All
+                      </button>
+                    </div>
                   )}
                   {batchRunning && (
                     <button
@@ -2155,11 +2118,21 @@ export default function AdminDashboard() {
                         if (!profile) return <div className="text-white/40 text-sm">Profile not found</div>;
                         const a = profile.analysis || {};
                         const hasAnalysis = !!a.summary;
-                        const interests = a.interests || {};
+                        const rawInterests = a.interests || {};
+                        const interests: Record<string, number> = {};
+                        for (const [k, v] of Object.entries(rawInterests)) {
+                          interests[k] = typeof v === 'object' && v !== null && 'score' in (v as any) ? (v as any).score : (v as number);
+                        }
                         const traits: string[] = a.traits || [];
                         const summary = a.summary || '';
                         const observations = a.observations || '';
                         const quality = a.dataQuality || 'sparse';
+                        const depthLabel = a.analysisDepth || '';
+                        const identity = a.identity || null;
+                        const background = a.background || null;
+                        const webResearch = a.webResearch || a.personResearch || null;
+                        const publicContent: any[] = a.publicContent || [];
+                        const conversationStarters: string[] = a.conversationStarters || [];
                         const isAnalyzing = analyzingUser === profile.username;
                         const fb = a._feedback || {};
                         const FbBtns = ({ s }: { s: string }) => {
@@ -2222,21 +2195,43 @@ export default function AdminDashboard() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5 flex-shrink-0">
-                                <button
-                                  onClick={() => analyzeUser(profile.username)}
-                                  disabled={isAnalyzing}
-                                  className="px-3 py-1.5 bg-[#4db6ac]/10 hover:bg-[#4db6ac]/20 border border-[#4db6ac]/30 rounded-lg text-xs text-[#4db6ac] flex items-center gap-1.5 disabled:opacity-50"
-                                >
-                                  {isAnalyzing ? (
-                                    <><i className="fa-solid fa-spinner fa-spin" /> Analyzing...</>
-                                  ) : (
-                                    <><i className="fa-solid fa-brain" /> {hasAnalysis ? 'Re-analyze' : 'Analyze'}</>
-                                  )}
-                                </button>
+                                <div className="relative group">
+                                  <button
+                                    onClick={() => analyzeUser(profile.username, 'standard')}
+                                    disabled={isAnalyzing}
+                                    className="px-3 py-1.5 bg-[#4db6ac]/10 hover:bg-[#4db6ac]/20 border border-[#4db6ac]/30 rounded-l-lg text-xs text-[#4db6ac] flex items-center gap-1.5 disabled:opacity-50"
+                                  >
+                                    {isAnalyzing ? (
+                                      <><i className="fa-solid fa-spinner fa-spin" /> Analyzing...</>
+                                    ) : (
+                                      <><i className="fa-solid fa-brain" /> {hasAnalysis ? 'Re-analyze' : 'Analyze'}</>
+                                    )}
+                                  </button>
+                                </div>
+                                <div className="relative">
+                                  <button
+                                    disabled={isAnalyzing}
+                                    className="px-1.5 py-1.5 bg-[#4db6ac]/10 hover:bg-[#4db6ac]/20 border border-[#4db6ac]/30 border-l-0 rounded-r-lg text-xs text-[#4db6ac] disabled:opacity-50 peer"
+                                  >
+                                    <i className="fa-solid fa-chevron-down text-[9px]" />
+                                  </button>
+                                  <div className="absolute right-0 top-full mt-1 bg-[#1a1a1a] border border-white/10 rounded-lg shadow-xl z-50 w-36 hidden peer-focus:block hover:block">
+                                    {([['quick', 'Quick', 'fa-bolt'], ['standard', 'Standard', 'fa-brain'], ['deep', 'Deep', 'fa-microscope']] as const).map(([d, label, icon]) => (
+                                      <button
+                                        key={d}
+                                        onClick={() => analyzeUser(profile.username, d)}
+                                        className="w-full px-3 py-2 text-left text-xs text-white/80 hover:bg-white/10 flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg"
+                                      >
+                                        <i className={`fa-solid ${icon} w-3 text-center text-[#4db6ac]`} />
+                                        {label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
                                 {hasAnalysis && (
                                   <button
                                     onClick={() => clearProfile(profile.username)}
-                                    className="px-2 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-xs text-red-400 flex items-center gap-1"
+                                    className="px-2 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-xs text-red-400 flex items-center gap-1 ml-0.5"
                                     title="Clear all analysis"
                                   >
                                     <i className="fa-solid fa-trash-can" />
@@ -2262,6 +2257,20 @@ export default function AdminDashboard() {
 
                             {!isAnalyzing && hasAnalysis && (
                               <>
+                                {/* Depth badge */}
+                                {depthLabel && (
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                                      depthLabel === 'deep' ? 'bg-purple-500/10 text-purple-300 border-purple-500/20' :
+                                      depthLabel === 'standard' ? 'bg-[#4db6ac]/10 text-[#4db6ac] border-[#4db6ac]/20' :
+                                      'bg-white/5 text-white/50 border-white/10'
+                                    }`}>
+                                      <i className={`fa-solid ${depthLabel === 'deep' ? 'fa-microscope' : depthLabel === 'standard' ? 'fa-brain' : 'fa-bolt'} mr-1`} />
+                                      {depthLabel} analysis
+                                    </span>
+                                  </div>
+                                )}
+
                                 {/* Summary */}
                                 {summary && (
                                   <div className="text-sm text-white/70 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
@@ -2269,48 +2278,74 @@ export default function AdminDashboard() {
                                   </div>
                                 )}
 
-                                {/* Company Intel */}
-                                {a.companyIntel?.description && (
+                                {/* Identity (new schema) */}
+                                {identity && (identity.bridgeInsight || identity.drivingForces || (identity.roles && identity.roles.length > 0)) && (
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
-                                      <span>Company Intel</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="companyIntel" /><button onClick={() => removeSection(profile.username, 'companyIntel')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
+                                      <span><i className="fa-solid fa-fingerprint mr-1" /> Identity</span>
+                                      <span className="flex items-center gap-1"><FbBtns s="identity" /></span>
                                     </div>
-                                    <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1">
-                                      <div className="text-sm text-white font-medium">{a.companyIntel.name}</div>
-                                      <div className="text-xs text-white/60 leading-relaxed">{a.companyIntel.description}</div>
-                                      <div className="flex gap-2 mt-1">
-                                        {a.companyIntel.sector && <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300/80 border border-purple-500/20">{a.companyIntel.sector}</span>}
-                                        {a.companyIntel.stage && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300/80 border border-amber-500/20">{a.companyIntel.stage}</span>}
-                                      </div>
+                                    <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-2">
+                                      {identity.roles && identity.roles.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {identity.roles.map((r: string, i: number) => (
+                                            <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#4db6ac]/10 text-[#4db6ac] border border-[#4db6ac]/20">{r}</span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {identity.drivingForces && <div className="text-xs text-white/60 leading-relaxed">{identity.drivingForces}</div>}
+                                      {identity.bridgeInsight && <div className="text-xs text-[#4db6ac]/80 leading-relaxed italic">{identity.bridgeInsight}</div>}
                                     </div>
                                   </div>
                                 )}
 
-                                {/* Role Context */}
-                                {a.roleContext?.title && (
-                                  <div>
-                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
-                                      <span>Role Context</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="roleContext" /><button onClick={() => removeSection(profile.username, 'roleContext')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
-                                    </div>
-                                    <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-sm text-white">{a.roleContext.title}</span>
-                                        {a.roleContext.seniority && <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-300/80 border border-teal-500/20">{a.roleContext.seniority}</span>}
-                                        {a.roleContext.function && <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/50 border border-white/10">{a.roleContext.function}</span>}
+                                {/* Background (new schema) or legacy Company/Role/Location */}
+                                {(() => {
+                                  const bgCompany = background?.company || a.companyIntel;
+                                  const bgRole = background?.role || a.roleContext;
+                                  const bgLocation = background?.location;
+                                  const bgEducation = background?.education;
+                                  if (!bgCompany?.description && !bgRole?.title && !bgLocation && !bgEducation && !a.locationContext) return null;
+                                  return (
+                                    <div>
+                                      <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                        <span><i className="fa-solid fa-briefcase mr-1" /> Background</span>
+                                        <span className="flex items-center gap-1"><FbBtns s="background" /></span>
                                       </div>
-                                      {a.roleContext.implication && <div className="text-xs text-white/50 leading-relaxed">{a.roleContext.implication}</div>}
+                                      <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-2">
+                                        {bgCompany?.description && (
+                                          <div>
+                                            <div className="text-sm text-white font-medium">{bgCompany.name}</div>
+                                            <div className="text-xs text-white/60 leading-relaxed">{bgCompany.description}</div>
+                                            <div className="flex gap-2 mt-1">
+                                              {bgCompany.sector && <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300/80 border border-purple-500/20">{bgCompany.sector}</span>}
+                                              {bgCompany.stage && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300/80 border border-amber-500/20">{bgCompany.stage}</span>}
+                                            </div>
+                                          </div>
+                                        )}
+                                        {bgRole?.title && (
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-sm text-white">{bgRole.title}</span>
+                                            {bgRole.seniority && <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-300/80 border border-teal-500/20">{bgRole.seniority}</span>}
+                                            {bgRole.function && <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-white/50 border border-white/10">{bgRole.function}</span>}
+                                          </div>
+                                        )}
+                                        {bgRole?.implication && <div className="text-xs text-white/50 leading-relaxed">{bgRole.implication}</div>}
+                                        {bgEducation && <div className="text-xs text-white/50"><i className="fa-solid fa-graduation-cap mr-1" />{bgEducation}</div>}
+                                        {(bgLocation?.context || a.locationContext) && (
+                                          <div className="text-xs text-white/50"><i className="fa-solid fa-location-dot mr-1" />{bgLocation?.context || a.locationContext}</div>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
+                                  );
+                                })()}
 
                                 {/* Networking Value */}
                                 {a.networkingValue && (
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span>Networking Value</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="networkingValue" /><button onClick={() => removeSection(profile.username, 'networkingValue')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
+                                      <span className="flex items-center gap-1"><FbBtns s="networkingValue" /></span>
                                     </div>
                                     <div className="text-xs text-white/60 leading-relaxed bg-[#4db6ac]/5 rounded-lg px-3.5 py-2.5 border border-[#4db6ac]/15">
                                       <i className="fa-solid fa-handshake text-[#4db6ac]/50 mr-1.5" />{a.networkingValue}
@@ -2318,23 +2353,24 @@ export default function AdminDashboard() {
                                   </div>
                                 )}
 
-                                {/* Person Research */}
-                                {a.personResearch?.publicSummary && (() => {
-                                  const isLow = a.personResearch!.confidence === 'low';
+                                {/* Web Research (new schema) or legacy Person Research */}
+                                {webResearch?.publicSummary && (() => {
+                                  const isLow = webResearch.confidence === 'low';
+                                  const socialProfiles: any[] = (webResearch as any).socialProfiles || [];
                                   return (
                                     <div className={isLow ? 'opacity-60' : ''}>
                                       <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                         <span className="flex items-center gap-1.5">
                                           <i className="fa-solid fa-magnifying-glass" /> Web Research
-                                          {a.personResearch!.confidence && (
+                                          {webResearch.confidence && (
                                             <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] border ${
-                                              a.personResearch!.confidence === 'high' ? 'bg-green-500/10 text-green-300/80 border-green-500/20' :
-                                              a.personResearch!.confidence === 'medium' ? 'bg-yellow-500/10 text-yellow-300/80 border-yellow-500/20' :
+                                              webResearch.confidence === 'high' ? 'bg-green-500/10 text-green-300/80 border-green-500/20' :
+                                              webResearch.confidence === 'medium' ? 'bg-yellow-500/10 text-yellow-300/80 border-yellow-500/20' :
                                               'bg-red-500/10 text-red-300/80 border-red-500/20'
-                                            }`}>{a.personResearch!.confidence} confidence</span>
+                                            }`}>{webResearch.confidence} confidence</span>
                                           )}
                                         </span>
-                                        <span className="flex items-center gap-1"><FbBtns s="personResearch" /><button onClick={() => removeSection(profile.username, 'personResearch')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
+                                        <span className="flex items-center gap-1"><FbBtns s="webResearch" /></span>
                                       </div>
                                       {isLow && (
                                         <div className="text-[10px] text-red-400/70 mb-2 flex items-center gap-1">
@@ -2342,12 +2378,23 @@ export default function AdminDashboard() {
                                         </div>
                                       )}
                                       <div className={`bg-white/[0.03] rounded-lg px-3.5 py-2.5 border space-y-2 ${isLow ? 'border-red-500/15' : 'border-white/5'}`}>
-                                        <div className="text-xs text-white/60 leading-relaxed">{a.personResearch!.publicSummary}</div>
-                                        {a.personResearch!.additionalContext && (
-                                          <div className="text-xs text-white/45 leading-relaxed italic">{a.personResearch!.additionalContext}</div>
+                                        <div className="text-xs text-white/60 leading-relaxed">{webResearch.publicSummary}</div>
+                                        {webResearch.additionalContext && (
+                                          <div className="text-xs text-white/45 leading-relaxed italic">{webResearch.additionalContext}</div>
                                         )}
-                                        {a.personResearch!.linkedInUrl && (
-                                          <a href={a.personResearch!.linkedInUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[10px] text-blue-400 hover:text-blue-300">
+                                        {socialProfiles.length > 0 && (
+                                          <div className="flex flex-wrap gap-2">
+                                            {socialProfiles.map((sp: any, i: number) => (
+                                              <a key={i} href={sp.url || '#'} target="_blank" rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20">
+                                                <i className={`fa-brands fa-${(sp.platform || '').toLowerCase() === 'x' ? 'x-twitter' : (sp.platform || '').toLowerCase()}`} />
+                                                {sp.platform}{sp.handle ? ` ${sp.handle}` : ''}
+                                              </a>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {webResearch.linkedInUrl && !socialProfiles.some((sp: any) => sp.platform === 'LinkedIn') && (
+                                          <a href={webResearch.linkedInUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[10px] text-blue-400 hover:text-blue-300">
                                             <i className="fa-brands fa-linkedin" /> LinkedIn Profile
                                           </a>
                                         )}
@@ -2356,15 +2403,47 @@ export default function AdminDashboard() {
                                   );
                                 })()}
 
-                                {/* Location Context */}
-                                {a.locationContext && (
+                                {/* Public Content (deep analysis) */}
+                                {publicContent.length > 0 && (
                                   <div>
-                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
-                                      <span><i className="fa-solid fa-location-dot mr-1" /> Location Context</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="locationContext" /><button onClick={() => removeSection(profile.username, 'locationContext')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">
+                                      <i className="fa-solid fa-newspaper mr-1" /> Public Activity
                                     </div>
-                                    <div className="text-xs text-white/50 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
-                                      {a.locationContext}
+                                    <div className="space-y-1.5">
+                                      {publicContent.map((pc: any, i: number) => (
+                                        <div key={i} className={`text-xs rounded-lg px-3 py-2 border ${
+                                          pc.relevance === 'high' ? 'bg-white/[0.03] border-white/5' :
+                                          pc.relevance === 'medium' ? 'bg-white/[0.02] border-white/5 opacity-80' :
+                                          'bg-white/[0.01] border-white/5 opacity-60'
+                                        }`}>
+                                          <div className="flex items-center gap-2 text-white/40 mb-0.5">
+                                            <span>{pc.source}</span>
+                                            {pc.date && <span>· {pc.date}</span>}
+                                            {pc.relevance && <span className={`px-1.5 py-0.5 rounded-full text-[9px] ${
+                                              pc.relevance === 'high' ? 'bg-green-500/10 text-green-300/70' :
+                                              pc.relevance === 'medium' ? 'bg-yellow-500/10 text-yellow-300/70' :
+                                              'bg-white/5 text-white/40'
+                                            }`}>{pc.relevance}</span>}
+                                          </div>
+                                          <div className="text-white/60 leading-relaxed">{pc.insight}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Conversation Starters (deep analysis) */}
+                                {conversationStarters.length > 0 && (
+                                  <div>
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">
+                                      <i className="fa-solid fa-comments mr-1" /> Conversation Starters
+                                    </div>
+                                    <div className="space-y-1">
+                                      {conversationStarters.map((s: string, i: number) => (
+                                        <div key={i} className="text-xs text-white/60 leading-relaxed bg-[#4db6ac]/5 rounded-lg px-3 py-2 border border-[#4db6ac]/10">
+                                          <i className="fa-solid fa-lightbulb text-[#4db6ac]/40 mr-1.5" />{s}
+                                        </div>
+                                      ))}
                                     </div>
                                   </div>
                                 )}
@@ -2374,15 +2453,15 @@ export default function AdminDashboard() {
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span>Interests</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="interests" /><button onClick={() => removeSection(profile.username, 'interests')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
+                                      <span className="flex items-center gap-1"><FbBtns s="interests" /></span>
                                     </div>
                                     <div className="flex flex-wrap gap-1.5">
                                       {Object.entries(interests)
-                                        .sort((x: any, y: any) => y[1] - x[1])
+                                        .sort(([, a], [, b]) => b - a)
                                         .map(([topic, score]) => (
                                           <span key={topic} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-white/5 border border-white/10">
                                             <span className="text-white">{topic}</span>
-                                            <span className="text-[#4db6ac] font-mono text-[10px]">{Math.round((score as number) * 100)}%</span>
+                                            <span className="text-[#4db6ac] font-mono text-[10px]">{Math.round(score * 100)}%</span>
                                           </span>
                                         ))}
                                     </div>
@@ -2394,7 +2473,7 @@ export default function AdminDashboard() {
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span>Traits</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="traits" /><button onClick={() => removeSection(profile.username, 'traits')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
+                                      <span className="flex items-center gap-1"><FbBtns s="traits" /></span>
                                     </div>
                                     <div className="flex flex-wrap gap-1.5">
                                       {traits.map((trait, i) => (
@@ -2411,7 +2490,7 @@ export default function AdminDashboard() {
                                   <div>
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center justify-between">
                                       <span>Steve's Observations</span>
-                                      <span className="flex items-center gap-1"><FbBtns s="observations" /><button onClick={() => removeSection(profile.username, 'observations')} className="text-white/20 hover:text-red-400 transition-colors" title="Remove"><i className="fa-solid fa-xmark text-[10px]" /></button></span>
+                                      <span className="flex items-center gap-1"><FbBtns s="observations" /></span>
                                     </div>
                                     <div className="text-xs text-white/50 leading-relaxed">
                                       {observations}

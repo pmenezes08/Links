@@ -457,21 +457,38 @@ export default function PublicProfile() {
               {Object.entries(profile.ai_enhanced).map(([key, val]) => {
                 if (!val) return null
                 const label: Record<string, string> = {
-                  summary: 'Summary', companyIntel: 'Company', roleContext: 'Role',
-                  networkingValue: 'Networking', personResearch: 'Background',
+                  summary: 'Summary', identity: 'Identity',
+                  background: 'Background', companyIntel: 'Company', roleContext: 'Role',
+                  networkingValue: 'Networking', webResearch: 'Background', personResearch: 'Background',
                   locationContext: 'Location', interests: 'Interests',
+                  publicContent: 'Public Activity', conversationStarters: 'Conversation Starters',
                 }
                 let text = ''
                 if (typeof val === 'string') text = val
+                else if (key === 'identity' && typeof val === 'object')
+                  text = [val.bridgeInsight, val.drivingForces].filter(Boolean).join(' — ')
+                else if (key === 'background' && typeof val === 'object') {
+                  const parts: string[] = []
+                  if (val.company?.description) parts.push(`${val.company.name}: ${val.company.description}`)
+                  if (val.role?.title) parts.push(val.role.title + (val.role.implication ? ` — ${val.role.implication}` : ''))
+                  if (val.education) parts.push(val.education)
+                  if (val.location?.context) parts.push(val.location.context)
+                  text = parts.join('. ')
+                }
                 else if (key === 'interests' && typeof val === 'object' && !Array.isArray(val))
                   text = Object.keys(val).join(', ')
                 else if (key === 'companyIntel' && typeof val === 'object')
                   text = [val.name, val.description].filter(Boolean).join(' — ')
                 else if (key === 'roleContext' && typeof val === 'object')
                   text = [val.title, val.function, val.implication].filter(Boolean).join(' — ')
-                else if (key === 'personResearch' && typeof val === 'object')
+                else if ((key === 'webResearch' || key === 'personResearch') && typeof val === 'object')
                   text = [val.publicSummary, val.additionalContext].filter(Boolean).join(' ')
-                else text = JSON.stringify(val)
+                else if (key === 'publicContent' && Array.isArray(val))
+                  text = val.map((p: any) => p.insight).filter(Boolean).join('. ')
+                else if (key === 'conversationStarters' && Array.isArray(val))
+                  text = val.join('. ')
+                else text = typeof val === 'object' ? '' : String(val)
+                if (!text) return null
                 return (
                   <div key={key} className="text-sm text-[#a7b8be]">
                     <span className="text-white/60 text-xs font-medium">{label[key] || key}</span>

@@ -320,7 +320,7 @@ export default function Profile() {
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, any> | null>(null)
   const [aiAccepted, setAiAccepted] = useState<Set<string>>(new Set())
   const [aiEdits, setAiEdits] = useState<Record<string, string>>({})
-  const [aiReviewStatus, setAiReviewStatus] = useState<string | null>(null)
+  const [, setAiReviewStatus] = useState<string | null>(null)
   const [aiSaving, setAiSaving] = useState(false)
   const [aiEditingSection, setAiEditingSection] = useState<string | null>(null)
 
@@ -1025,30 +1025,75 @@ export default function Profile() {
     })
   }
 
-  function formatAiSectionLabel(key: string): string {
-    const labels: Record<string, string> = {
-      summary: 'Professional Summary',
-      companyIntel: 'Company Insights',
-      roleContext: 'Role Context',
-      networkingValue: 'Networking Value',
-      personResearch: 'Public Profile Research',
-      locationContext: 'Location Context',
-      interests: 'Interests',
-    }
-    return labels[key] || key
+  function renderAiCard(key: string, label: string) {
+    if (!aiSuggestions || !(key in aiSuggestions) || aiSuggestions[key] === null) return null
+    const val = aiSuggestions[key]
+    const accepted = aiAccepted.has(key)
+    const editing = aiEditingSection === key
+    const editValue = aiEdits[key] ?? getAiSectionText(key, val)
+    return (
+      <div className={`mt-2 rounded-lg border p-2.5 transition-all ${
+        accepted ? 'border-[#4db6ac]/30 bg-[#4db6ac]/5' : 'border-dashed border-white/10 bg-white/[0.02]'
+      }`}>
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-[#4db6ac] flex items-center gap-1">
+            <i className="fa-solid fa-wand-magic-sparkles text-[8px]" />
+            {label}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {accepted && !editing && (
+              <button type="button" onClick={() => setAiEditingSection(key)} className="text-[10px] text-[#4db6ac]/60 hover:text-[#4db6ac]">edit</button>
+            )}
+            <button
+              type="button"
+              onClick={() => toggleAiSection(key)}
+              className={`relative w-8 h-4 rounded-full transition-colors ${accepted ? 'bg-[#4db6ac]' : 'bg-white/15'}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${accepted ? 'translate-x-4' : ''}`} />
+            </button>
+          </div>
+        </div>
+        {editing ? (
+          <div className="mt-1.5">
+            <textarea
+              value={editValue}
+              onChange={e => setAiEdits(prev => ({ ...prev, [key]: e.target.value }))}
+              rows={2}
+              className="w-full rounded-md border border-white/10 bg-black/50 px-2 py-1.5 text-xs text-white outline-none focus:border-[#4db6ac]/50 resize-none"
+            />
+            <button type="button" onClick={() => setAiEditingSection(null)} className="text-[10px] text-[#4db6ac] mt-1">done</button>
+          </div>
+        ) : (
+          <p className="mt-1 text-[11px] text-[#a7b8be] leading-relaxed">{key in aiEdits ? aiEdits[key] : getAiSectionText(key, val)}</p>
+        )}
+      </div>
+    )
   }
 
   function getAiSectionText(key: string, val: any): string {
     if (typeof val === 'string') return val
     if (key === 'interests' && typeof val === 'object' && !Array.isArray(val))
       return Object.keys(val).join(', ')
-    if (key === 'companyIntel' && typeof val === 'object')
-      return [val.name, val.description, val.sector, val.stage].filter(Boolean).join(' — ')
+    if ((key === 'companyIntel' || key === 'background') && typeof val === 'object') {
+      const co = val.company || val
+      const ro = val.role
+      const parts = [co.name, co.description, co.sector, co.stage].filter(Boolean)
+      if (ro) parts.push(ro.title, ro.implication)
+      if (val.education) parts.push(val.education)
+      if (val.location?.context) parts.push(val.location.context)
+      return parts.join(' — ')
+    }
     if (key === 'roleContext' && typeof val === 'object')
       return [val.title, val.function, val.seniority, val.implication].filter(Boolean).join(' — ')
-    if (key === 'personResearch' && typeof val === 'object')
+    if ((key === 'personResearch' || key === 'webResearch') && typeof val === 'object')
       return [val.publicSummary, val.additionalContext].filter(Boolean).join(' ')
-    return JSON.stringify(val)
+    if (key === 'identity' && typeof val === 'object')
+      return [val.bridgeInsight, val.drivingForces].filter(Boolean).join(' — ')
+    if (key === 'publicContent' && Array.isArray(val))
+      return val.map((p: any) => `${p.source || ''} (${p.date || '?'}): ${p.insight || ''}`).join('; ')
+    if (key === 'conversationStarters' && Array.isArray(val))
+      return val.join('; ')
+    return typeof val === 'object' ? JSON.stringify(val) : String(val)
   }
 
   async function saveAiReview() {
@@ -1257,6 +1302,8 @@ export default function Profile() {
                   </div>
                 </label>
             </div>
+            {renderAiCard('summary', 'Steve found a professional summary for you')}
+            {renderAiCard('identity', 'Steve identified what makes you unique')}
             <button
               type="submit"
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
@@ -1325,6 +1372,15 @@ export default function Profile() {
                 />
               </label>
             </div>
+            {renderAiCard('background', 'Steve found insights about your company & role')}
+            {renderAiCard('networkingValue', 'Steve identified your networking value')}
+            {renderAiCard('webResearch', 'Steve found your public profile online')}
+            {renderAiCard('companyIntel', 'Steve found insights about your company')}
+            {renderAiCard('roleContext', 'Steve found context about your role')}
+            {renderAiCard('personResearch', 'Steve found your public profile')}
+            {renderAiCard('locationContext', 'Location context')}
+            {renderAiCard('publicContent', 'Steve found your recent public activity')}
+            {renderAiCard('conversationStarters', 'Conversation starters Steve suggests')}
             <button
               type="submit"
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
@@ -1390,6 +1446,7 @@ export default function Profile() {
                 />
               ) : null}
             </div>
+            {renderAiCard('interests', 'Steve identified interests from your profile')}
             <button
               type="submit"
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
@@ -1400,106 +1457,18 @@ export default function Profile() {
           </form>
         </section>
 
-        {aiSuggestions && Object.keys(aiSuggestions).length > 0 && (
-          <section className="rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/5 p-4 space-y-3">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-[#4db6ac]">
-                <i className="fa-solid fa-wand-magic-sparkles" />
-                Enhance your profile
-              </div>
-              <p className="text-xs text-[#9fb0b5] mt-1">
-                Based on publicly available information, Steve found additional context that could strengthen your profile. Toggle on what you'd like to include.
-              </p>
-              {aiReviewStatus && (
-                <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full ${
-                  aiReviewStatus === 'confirmed' || aiReviewStatus === 'edited'
-                    ? 'bg-green-500/20 text-green-400'
-                    : aiReviewStatus === 'disputed'
-                      ? 'bg-orange-500/20 text-orange-400'
-                      : 'bg-white/10 text-white/50'
-                }`}>
-                  {aiReviewStatus === 'confirmed' ? 'Saved' : aiReviewStatus === 'edited' ? 'Saved (edited)' : aiReviewStatus === 'disputed' ? 'Disputed' : 'Pending'}
-                </span>
-              )}
-            </div>
-            <div className="space-y-2">
-              {Object.entries(aiSuggestions).map(([key, val]) => {
-                if (val === null || val === undefined) return null
-                const accepted = aiAccepted.has(key)
-                const editing = aiEditingSection === key
-                const editValue = aiEdits[key] ?? getAiSectionText(key, val)
-                return (
-                  <div
-                    key={key}
-                    className={`rounded-lg border p-3 transition-all ${
-                      accepted
-                        ? 'border-[#4db6ac]/40 bg-[#4db6ac]/10'
-                        : 'border-white/10 bg-white/[0.03]'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-white/80">{formatAiSectionLabel(key)}</span>
-                      <div className="flex items-center gap-2">
-                        {accepted && !editing && (
-                          <button
-                            type="button"
-                            onClick={() => setAiEditingSection(key)}
-                            className="text-[10px] text-[#4db6ac] hover:text-[#80cbc4]"
-                          >
-                            Edit
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => toggleAiSection(key)}
-                          className={`relative w-9 h-5 rounded-full transition-colors ${
-                            accepted ? 'bg-[#4db6ac]' : 'bg-white/20'
-                          }`}
-                        >
-                          <span
-                            className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                              accepted ? 'translate-x-4' : ''
-                            }`}
-                          />
-                        </button>
-                      </div>
-                    </div>
-                    {editing ? (
-                      <div className="mt-2 space-y-1">
-                        <textarea
-                          value={editValue}
-                          onChange={e => setAiEdits(prev => ({ ...prev, [key]: e.target.value }))}
-                          rows={3}
-                          className="w-full rounded-md border border-white/10 bg-black/50 px-2 py-1.5 text-xs text-white placeholder:text-white/30 outline-none focus:border-[#4db6ac]/50 resize-none"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setAiEditingSection(null)}
-                            className="text-[10px] text-[#4db6ac] hover:text-[#80cbc4]"
-                          >
-                            Done
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="mt-1 text-xs text-[#a7b8be] leading-relaxed">
-                        {key in aiEdits ? aiEdits[key] : getAiSectionText(key, val)}
-                      </p>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+        {aiSuggestions && aiAccepted.size > 0 && (
+          <div className="flex justify-center">
             <button
               type="button"
               onClick={saveAiReview}
-              disabled={aiSaving || aiAccepted.size === 0}
-              className="w-full py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50 transition"
+              disabled={aiSaving}
+              className="px-6 py-2 rounded-full bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50 transition flex items-center gap-2"
             >
+              <i className="fa-solid fa-wand-magic-sparkles" />
               {aiSaving ? 'Saving…' : `Save ${aiAccepted.size} enhancement${aiAccepted.size !== 1 ? 's' : ''} to profile`}
             </button>
-          </section>
+          </div>
         )}
 
         {feedback ? (
