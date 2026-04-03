@@ -7094,7 +7094,8 @@ def admin_steve_profile_analyze(target_username):
         if not user:
             return jsonify({'success': False, 'error': 'User not found'}), 404
 
-        profile_text = _build_profile_text_for_grok(user)
+        communities = _fetch_user_communities(target_username)
+        profile_text = _build_profile_text_for_grok(user, communities=communities)
         if not profile_text.strip():
             return jsonify({'success': False, 'error': 'No profile data to analyze'}), 400
 
@@ -7453,7 +7454,28 @@ def _merge_analyses(existing: dict, new: dict) -> dict:
     return merged
 
 
-def _build_profile_text_for_grok(user_row) -> str:
+def _fetch_user_communities(username: str) -> list:
+    """Fetch the communities/networks a user belongs to."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"""
+                SELECT c.name, c.description, uc.role, c.type
+                FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                JOIN communities c ON c.id = uc.community_id
+                WHERE u.username = {ph}
+                ORDER BY c.name
+            """, (username,))
+            rows = c.fetchall()
+            return [dict(r) if hasattr(r, 'keys') else {'name': r[0], 'description': r[1], 'role': r[2], 'type': r[3]} for r in rows]
+    except Exception as e:
+        logger.debug(f"Could not fetch communities for {username}: {e}")
+        return []
+
+
+def _build_profile_text_for_grok(user_row, communities: list = None) -> str:
     """Assemble all available profile fields into a text block for Grok analysis."""
     def gv(key):
         try:
@@ -7499,6 +7521,24 @@ def _build_profile_text_for_grok(user_row) -> str:
         parts.append(f"Location: {gv('location')}")
     if gv('linkedin'):
         parts.append(f"LinkedIn: {gv('linkedin')}")
+
+    if communities:
+        network_lines = []
+        for comm in communities:
+            name = comm.get('name', '')
+            if not name:
+                continue
+            role = comm.get('role', '')
+            desc = comm.get('description', '')
+            line = name
+            if role:
+                line += f" (role: {role})"
+            if desc:
+                line += f" — {desc[:120]}"
+            network_lines.append(line)
+        if network_lines:
+            parts.append(f"Networks/Communities: {'; '.join(network_lines)}")
+
     return '\n'.join(parts)
 
 
@@ -7530,14 +7570,21 @@ WEB RESEARCH (today is {today_str}):
 - Search for LinkedIn, company websites, press mentions, speaking engagements, publications.
 - If a LinkedIn URL is provided, search for that profile directly.
 - If the user lists a company, research it: what does it do? What sector? What stage/size?
+- NETWORK MEMBERSHIPS are a strong identity signal. If the user belongs to recognizable networks
+  (e.g. "Kellogg EMBA", "Harvard MBA", "YPO", "Techstars"), USE those names in your web search
+  queries alongside the person's name to narrow results. For example, search "John Smith Kellogg EMBA"
+  rather than just "John Smith". This dramatically improves accuracy.
+  Not all networks are recognizable — some may be casual groups. Use your judgment on which ones
+  are useful for web search disambiguation.
 - Only use publicly available information.
 - BE VERY CONSERVATIVE with identity matching — cross-reference with the platform profile data.
 
 IDENTITY CONFIDENCE RULES (STRICT):
-- "high": Found the person online AND at least 2 data points match (e.g. same company AND same city).
+- "high": Found the person online AND at least 2 data points match (e.g. same company AND same city, or same network AND same role).
 - "medium": Found the person online AND exactly 1 data point matches.
 - "low": Found someone online but ZERO data points could be verified. A name-only match is ALWAYS "low".
-- NEVER set confidence to "high" or "medium" based solely on a name match."""
+- NEVER set confidence to "high" or "medium" based solely on a name match.
+- A recognizable network membership (e.g. "Kellogg EMBA") counts as a corroborating data point when matched online."""
 
         deep_rules = ""
         if depth == 'deep':
@@ -7796,7 +7843,8 @@ def _trigger_background_profile_analysis(username: str):
                 logger.warning(f"Background analysis: user {username} not found")
                 return
 
-            profile_text = _build_profile_text_for_grok(user)
+            communities = _fetch_user_communities(username)
+            profile_text = _build_profile_text_for_grok(user, communities=communities)
             if not profile_text.strip():
                 logger.info(f"Background analysis: no profile data for {username}")
                 return
