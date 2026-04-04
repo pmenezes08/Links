@@ -829,8 +829,8 @@ export default function OnboardingChat({
   return (
     <div className="fixed inset-0 z-[1100] bg-black flex flex-col" style={{ height: '100dvh' }}>
       {/* Header with logo */}
-      <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-        <div className="max-w-lg mx-auto px-4 pt-3 pb-2 flex flex-col items-center">
+      <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
+        <div className="max-w-lg mx-auto px-4 pb-2 flex flex-col items-center" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
           <div className="flex items-center gap-2 mb-2">
             <img
               src={headerLogoSrc}
