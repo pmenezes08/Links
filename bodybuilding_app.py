@@ -6746,6 +6746,163 @@ def is_app_admin(username):
         return False
 
 
+def user_is_member_of_community(username: str, community_id: int) -> bool:
+    """Check if a user is a member of a specific community (including sub-communities)."""
+    if not username or not community_id:
+        return False
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            # Check direct membership
+            c.execute(f"""
+                SELECT 1 FROM user_communities uc
+                JOIN users u ON uc.user_id = u.id
+                WHERE u.username = {ph} AND uc.community_id = {ph}
+            """, (username, community_id))
+            if c.fetchone():
+                return True
+
+            # Check if it's a sub-community - get parent
+            c.execute(f"SELECT parent_community_id FROM communities WHERE id = {ph}", (community_id,))
+            row = c.fetchone()
+            if row:
+                parent_id = row['parent_community_id'] if hasattr(row, 'keys') else row[0]
+                if parent_id:
+                    c.execute(f"""
+                        SELECT 1 FROM user_communities uc
+                        JOIN users u ON uc.user_id = u.id
+                        WHERE u.username = {ph} AND uc.community_id = {ph}
+                    """, (username, parent_id))
+                    return c.fetchone() is not None
+            return False
+    except Exception as e:
+        logger.debug(f"Error checking membership for {username} in community {community_id}: {e}")
+        return False
+
+
+def _execute_steve_tool(tool_name: str, tool_args: dict, username: str) -> dict:
+    """Execute a Steve platform tool with proper permission checking using community_id."""
+    try:
+        community_id = tool_args.get('community_id')
+        if not community_id:
+            return {"error": "community_id is required"}
+
+        is_admin = is_app_admin(username)
+
+        # Regular users can only access communities they belong to
+        if not is_admin and not user_is_member_of_community(username, community_id):
+            return {"error": f"You don't have access to community {community_id}. I can only help with communities you're a member of."}
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            if tool_name == "get_community_info":
+                c.execute(f"""
+                    SELECT id, name, description, type, created_at
+                    FROM communities WHERE id = {ph}
+                """, (community_id,))
+                row = c.fetchone()
+                if row:
+                    r = dict(row) if hasattr(row, 'keys') else {
+                        'id': row[0], 'name': row[1], 'description': row[2],
+                        'type': row[3], 'created_at': row[4]
+                    }
+                    # Count members
+                    c.execute(f"SELECT COUNT(*) FROM user_communities WHERE community_id = {ph}", (community_id,))
+                    member_count_row = c.fetchone()
+                    member_count = member_count_row[0] if member_count_row else 0
+
+                    return {
+                        "community_id": r['id'],
+                        "name": r['name'],
+                        "description": r.get('description', ''),
+                        "type": r.get('type'),
+                        "member_count": member_count
+                    }
+                return {"error": "Community not found"}
+
+            elif tool_name == "search_members":
+                city = tool_args.get('city')
+                industry = tool_args.get('industry')
+                role = tool_args.get('role')
+
+                query = f"""
+                    SELECT DISTINCT u.username, u.first_name, u.last_name, u.city, u.country,
+                           u.company, u.industry, u.role
+                    FROM users u
+                    JOIN user_communities uc ON u.id = uc.user_id
+                    WHERE uc.community_id = {ph}
+                """
+                params = [community_id]
+
+                if city:
+                    query += f" AND LOWER(u.city) LIKE LOWER({ph})"
+                    params.append(f"%{city}%")
+                if industry:
+                    query += f" AND LOWER(u.industry) LIKE LOWER({ph})"
+                    params.append(f"%{industry}%")
+                if role:
+                    query += f" AND LOWER(u.role) LIKE LOWER({ph})"
+                    params.append(f"%{role}%")
+
+                query += " LIMIT 20"
+                c.execute(query, params)
+                rows = c.fetchall()
+
+                members = []
+                for row in rows:
+                    r = dict(row) if hasattr(row, 'keys') else {
+                        'username': row[0], 'first_name': row[1], 'last_name': row[2],
+                        'city': row[3], 'country': row[4], 'company': row[5],
+                        'industry': row[6], 'role': row[7]
+                    }
+                    members.append({
+                        "username": r['username'],
+                        "name": f"{r.get('first_name','')} {r.get('last_name','')}".strip() or r['username'],
+                        "city": r.get('city'),
+                        "country": r.get('country'),
+                        "company": r.get('company'),
+                        "industry": r.get('industry'),
+                        "role": r.get('role')
+                    })
+                return {"members": members, "count": len(members)}
+
+            elif tool_name == "get_member_profile":
+                target_username = tool_args.get('username')
+                if not target_username:
+                    return {"error": "username is required"}
+
+                c.execute(f"""
+                    SELECT username, first_name, last_name, city, country,
+                           company, industry, role, linkedin, professional_about
+                    FROM users WHERE username = {ph}
+                """, (target_username,))
+                row = c.fetchone()
+                if row:
+                    r = dict(row) if hasattr(row, 'keys') else {k: v for k, v in zip(['username','first_name','last_name','city','country','company','industry','role','linkedin','professional_about'], row)}
+                    return {
+                        "username": r['username'],
+                        "name": f"{r.get('first_name','')} {r.get('last_name','')}".strip(),
+                        "location": f"{r.get('city','')}, {r.get('country','')}".strip(', '),
+                        "company": r.get('company'),
+                        "industry": r.get('industry'),
+                        "role": r.get('role'),
+                        "linkedin": r.get('linkedin'),
+                        "bio": r.get('professional_about')
+                    }
+                return {"error": "User not found"}
+
+            else:
+                return {"error": f"Unknown tool: {tool_name}"}
+
+    except Exception as e:
+        logger.error(f"Error executing Steve tool {tool_name}: {e}", exc_info=True)
+        return {"error": f"Internal error: {str(e)}"}
+
+
 # Content filtering for objectionable content (Apple App Store requirement)
 OBJECTIONABLE_WORDS = [
     # Profanity and slurs - basic list, can be expanded
@@ -12914,56 +13071,187 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         context = "Direct message conversation:\n" + "\n".join(recent[-10:])
         context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully."
         context += f"\n\n[Current date and time: {current_date}]"
-        
-        system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat with real-time knowledge and web search capabilities.
 
-CURRENT DATE AND TIME: {current_date}"""
+        is_admin = is_app_admin(sender_username)
+
+        # Define platform tools with community_id-based permissions
+        platform_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_community_info",
+                    "description": "Get basic information about a community including member count. Only use for communities the user is a member of.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "community_id": {
+                                "type": "integer",
+                                "description": "The community ID to query"
+                            }
+                        },
+                        "required": ["community_id"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_members",
+                    "description": "Search for members in a community by city, industry, or role. Only use for communities the user is a member of.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "community_id": {
+                                "type": "integer",
+                                "description": "The community ID to search in"
+                            },
+                            "city": {
+                                "type": "string",
+                                "description": "Optional: filter by city"
+                            },
+                            "industry": {
+                                "type": "string",
+                                "description": "Optional: filter by industry"
+                            },
+                            "role": {
+                                "type": "string",
+                                "description": "Optional: filter by role"
+                            }
+                        },
+                        "required": ["community_id"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_member_profile",
+                    "description": "Get public profile information for a specific user. Only works for users in communities you share.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "username": {
+                                "type": "string",
+                                "description": "The username to look up"
+                            }
+                        },
+                        "required": ["username"]
+                    }
+                }
+            }
+        ]
+
+        # Add admin-only tools for full platform access
+        if is_admin:
+            platform_tools.extend([
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_platform_stats",
+                        "description": "Get platform-wide statistics (admin only)",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                            "required": []
+                        }
+                    }
+                }
+            ])
+
+        system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat.
+
+CURRENT DATE AND TIME: {current_date}
+
+YOUR CAPABILITIES:
+- You have access to the C.Point platform through tools
+- You can look up community information and member profiles
+- {"As an admin, you have full platform access including statistics." if is_admin else "You can ONLY access information from communities the user asking is a member of."}
+- If asked about communities the user is not a member of, or proprietary platform analytics (MAU, DAU, most active users, growth metrics), you MUST refuse and explain your limitations.
+
+COMMUNITY ACCESS RULES:
+- Always use community_id when calling tools
+- For regular users: only return data from communities they belong to
+- Never reveal information about communities the user is not a member of
+- If asked "are there other networks?" or similar, say you can only share information about communities they belong to
+
+RESPONSE STYLE:
+- Be helpful and concise (2-5 sentences)
+- Use emojis occasionally
+- When using tools, be natural — don't announce "I looked this up"
+- If you cannot answer due to permissions, be transparent about it"""
+
         if user_profile_ctx:
             system_prompt += f"""
 
 WHAT YOU KNOW ABOUT @{sender_username}:
 {user_profile_ctx}
 Use this knowledge naturally — don't announce it, but let it guide your tone and relevance."""
-        system_prompt += """
 
-LANGUAGE RULES:
-- If user writes in Portuguese, respond in EUROPEAN PORTUGUESE (PT-PT, Portugal style).
-  Use "tu" not "você", "autocarro" not "ônibus", "telemóvel" not "celular".
-- If user writes in English, respond in English.
-- If user writes in Spanish, respond in Spanish.
-- Match the user's language exactly.
-
-CONVERSATION INTELLIGENCE:
-1. If the user asks about news, weather, sports, or current events — search the web and provide real, up-to-date information with source links.
-2. If casual banter — join in naturally. Be witty, use emojis, keep it light.
-3. If a problem is being discussed with no solution — suggest practical, actionable solutions.
-4. If a solution is discussed — analyze it briefly: strengths, risks, improvements.
-5. Answer direct questions helpfully and concisely.
-6. If images are attached, you CAN see them. Analyze and describe when relevant.
-
-RESPONSE STYLE:
-- Keep responses concise (2-5 sentences). This is a private chat, be personable.
-- Use emojis occasionally.
-- When citing sources, include the URL — it will be auto-formatted as a clickable link."""
-        
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
-        
-        response = client.responses.create(
-            model="grok-4-1-fast-non-reasoning",
-            input=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": context}
-            ],
-            tools=[
-                {"type": "web_search"},
-                {"type": "x_search"}
-            ],
-            max_output_tokens=600,
-            temperature=0.7
-        )
-        
-        ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
+
+        # Function calling loop
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": context}
+        ]
+
+        max_iterations = 5
+        for iteration in range(max_iterations):
+            response = client.responses.create(
+                model="grok-4-1-fast-non-reasoning",
+                input=messages,
+                tools=platform_tools + [{"type": "web_search"}, {"type": "x_search"}],
+                max_output_tokens=600,
+                temperature=0.7
+            )
+
+            ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
+
+            # Check if Grok wants to call a tool
+            if hasattr(response, 'tool_calls') and response.tool_calls:
+                tool_call = response.tool_calls[0]
+                tool_name = tool_call.function.name
+                tool_args = tool_call.function.arguments if hasattr(tool_call.function, 'arguments') else {}
+
+                if isinstance(tool_args, str):
+                    import json
+                    try:
+                        tool_args = json.loads(tool_args)
+                    except:
+                        tool_args = {}
+
+                tool_result = _execute_steve_tool(tool_name, tool_args, sender_username)
+
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "arguments": str(tool_args)
+                        }
+                    }]
+                })
+
+                messages.append({
+                    "role": "tool",
+                    "content": str(tool_result),
+                    "tool_call_id": tool_call.id
+                })
+
+                continue  # Let Grok respond with the tool result
+
+            # No more tool calls - final response
+            break
+
+        if not ai_response:
+            logger.warning("Steve DM reply: empty response from API")
+            return
+
+        ai_response = format_steve_response_links(ai_response)
         
         if not ai_response:
             logger.warning("Steve DM reply: empty response from API")
