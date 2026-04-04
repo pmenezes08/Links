@@ -727,7 +727,7 @@ export default function OnboardingChat({
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh' }}>
+    <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}>
       {/* Header with logo */}
       <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
         <div className="max-w-lg mx-auto px-4 pt-3 pb-1 flex flex-col items-center">
@@ -904,7 +904,7 @@ export default function OnboardingChat({
 
       {/* Photo upload area */}
       {showPhotoUpload && (
-        <div className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3">
+        <div className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
           <div className="max-w-lg mx-auto">
             <input
               ref={fileInputRef}
@@ -949,7 +949,7 @@ export default function OnboardingChat({
 
       {/* Text input */}
       {showInput && (
-        <div className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3">
+        <div className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
           <div className="max-w-lg mx-auto flex gap-2">
             {lastSteveMsg?.inputType === 'textarea' ? (
               <textarea
