@@ -277,7 +277,7 @@ export default function OnboardingChat({
         const greeting = data.firstName
           ? `Hey ${data.firstName}! 👋`
           : 'Hey there! 👋'
-        let welcomeText = `${greeting} I'm Steve, your AI assistant here at CPoint.`
+        let welcomeText = `${greeting} I'm Steve here at CPoint.`
         if (communityName) {
           welcomeText += ` I see you were invited to ${communityName} — exciting!`
         }
@@ -768,10 +768,10 @@ export default function OnboardingChat({
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh' }}>
+    <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* Header with logo */}
-      <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-        <div className="max-w-lg mx-auto px-4 pt-3 pb-2 flex flex-col items-center">
+      <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
+        <div className="max-w-lg mx-auto px-4 pt-3 pb-2 flex flex-col items-center" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
           <div className="flex items-center gap-2 mb-2">
             <img src="/static/logo.png" alt="CPoint" className="w-8 h-8 rounded-lg object-contain" />
             <span className="text-sm font-semibold text-[#4db6ac]">CPoint</span>
@@ -796,7 +796,7 @@ export default function OnboardingChat({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: keyboardOffset > 0 ? `${keyboardOffset + 120}px` : '120px' }}>
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: keyboardOffset > 0 ? `${keyboardOffset + 140}px` : '140px' }}>
         <div className="max-w-lg mx-auto space-y-3">
           {messages.map((msg, i) => (
             <div key={i}>
