@@ -13265,7 +13265,43 @@ Use this knowledge naturally — don't announce it, but let it guide your tone a
             response = client.responses.create(
                 model=GROK_MODEL_FAST,  # Use consistent model that was working before
                 input=messages,
-                tools=platform_tools + [{"type": "web_search"}, {"type": "x_search"}],
+                # Properly format web_search and x_search tools to match OpenAI spec
+                tools=platform_tools + [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "web_search",
+                            "description": "Search the web for current information",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "query": {
+                                        "type": "string",
+                                        "description": "The search query"
+                                    }
+                                },
+                                "required": ["query"]
+                            }
+                        }
+                    },
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "x_search",
+                            "description": "Search X/Twitter for recent posts and discussions",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "query": {
+                                        "type": "string",
+                                        "description": "The search query"
+                                    }
+                                },
+                                "required": ["query"]
+                            }
+                        }
+                    }
+                ],
                 max_output_tokens=600,
                 temperature=0.7
             )

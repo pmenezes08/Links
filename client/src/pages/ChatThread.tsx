@@ -679,13 +679,25 @@ export default function ChatThread(){
   }, [chatCacheKey, processRawMessages, username])
 
   // Restore draft when entering chat (only if there's an actual saved draft)
+  // Added extra protection for iOS navigation - clear any stale content first
   useEffect(() => {
     if (!username || !textareaRef.current) return
+    
+    // Force clear any stale content before checking for saved draft (fixes iOS navigation issue)
+    if (textareaRef.current.value) {
+      textareaRef.current.value = ''
+    }
+    
     const savedDraft = readDeviceCache<string>(`chat-draft:dm:${username}`)
     if (savedDraft && savedDraft.trim()) {
       textareaRef.current.value = savedDraft
       draftRef.current = savedDraft
       setDraftDisplay(savedDraft)
+      adjustTextareaHeight()
+    } else {
+      // Ensure clean state if no draft
+      draftRef.current = ''
+      setDraftDisplay('')
       adjustTextareaHeight()
     }
   }, [username])
