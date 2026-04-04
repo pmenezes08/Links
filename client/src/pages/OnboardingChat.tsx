@@ -768,12 +768,12 @@ export default function OnboardingChat({
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh' }}>
       {/* Header with logo */}
-      <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
-        <div className="max-w-lg mx-auto px-4 pt-2 pb-1 flex flex-col items-center" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
+      <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        <div className="max-w-lg mx-auto px-4 pt-3 pb-2 flex flex-col items-center">
           <div className="flex items-center gap-2 mb-2">
-            <img src="/static/cpoint-logo.svg" alt="CPoint" className="w-8 h-8 rounded-lg object-contain" />
+            <img src="/static/logo.png" alt="CPoint" className="w-8 h-8 rounded-lg object-contain" />
             <span className="text-sm font-semibold text-[#4db6ac]">CPoint</span>
           </div>
           <div className="w-full flex items-center gap-3 pb-2">
