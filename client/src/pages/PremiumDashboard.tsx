@@ -41,6 +41,7 @@ export default function PremiumDashboard() {
   const [initialLoading, setInitialLoading] = useState(true)
   // Onboarding
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [onboardingLaunching, setOnboardingLaunching] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -455,6 +456,7 @@ export default function PremiumDashboard() {
 
     // Check server-side completion before triggering
     ;(async () => {
+      setOnboardingLaunching(true)
       try {
         const r = await fetch('/api/onboarding/state', { credentials: 'include' })
         const j = await r.json().catch(() => null)
@@ -465,7 +467,11 @@ export default function PremiumDashboard() {
       } catch {}
       onboardingTriggeredRef.current = true
       setShowOnboarding(true)
-    })()
+      setOnboardingLaunching(false)
+      return
+    })().finally(() => {
+      if (!onboardingTriggeredRef.current) setOnboardingLaunching(false)
+    })
   }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, showOnboarding, doneKey, isRecentlyVerified])
 
   // Parent-only creation: skip loading parent communities
@@ -653,6 +659,15 @@ export default function PremiumDashboard() {
       </div>
 
       {/* Conversational Onboarding with Steve */}
+      {onboardingLaunching && !showOnboarding && (
+        <div className="fixed inset-0 z-[55] bg-black/80 backdrop-blur-sm flex items-center justify-center px-6">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <img src="/api/public/logo" alt="CPoint" className="w-14 h-14 rounded-2xl object-contain" />
+            <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" />
+            <div className="text-sm text-white/65">Starting onboarding...</div>
+          </div>
+        </div>
+      )}
       {showOnboarding && (
         <OnboardingChat
           firstName={firstName}

@@ -135,12 +135,15 @@ export default function OnboardingChat({
   const [enrichmentCards, setEnrichmentCards] = useState<EnrichmentCard[]>([])
   const [enriching, setEnriching] = useState(false)
   const [initialized, setInitialized] = useState(false)
+  const [booting, setBooting] = useState(true)
   const [composingBio, setComposingBio] = useState(false)
   const [tourStep, setTourStep] = useState<number | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
+  const [headerLogoSrc, setHeaderLogoSrc] = useState('/api/public/logo')
 
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60
   const KEYBOARD_OFFSET_EPSILON = 6
+  const isIOS = Capacitor.getPlatform() === 'ios'
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -190,6 +193,7 @@ export default function OnboardingChat({
 
   // Visual viewport keyboard handling (web + Android)
   useEffect(() => {
+    if (isIOS) return
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
     if (!viewport) return
@@ -209,7 +213,7 @@ export default function OnboardingChat({
       viewport.removeEventListener('resize', onResize)
       viewport.removeEventListener('scroll', onResize)
     }
-  }, [scrollToBottom])
+  }, [isIOS, scrollToBottom])
 
   const addSteveMessage = useCallback((text: string, opts?: Partial<ChatMessage>) => {
     setIsTyping(true)
@@ -262,10 +266,12 @@ export default function OnboardingChat({
           }
           setStage(saved.stage)
           startStage(saved.stage, saved.collected || collected)
+          setBooting(false)
           return
         }
       } catch {}
       startStage('welcome', collected)
+      setBooting(false)
     })()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -766,14 +772,39 @@ export default function OnboardingChat({
   const lastSteveMsg = [...messages].reverse().find(m => m.from === 'steve')
   const showInput = lastSteveMsg?.inputType && stage !== 'enriching' && stage !== 'review' && stage !== 'complete' && !composingBio
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
+  const composerOffset = keyboardOffset > 0 ? keyboardOffset : 0
+  const composerBottom = keyboardOffset > 0 ? `${keyboardOffset}px` : 'env(safe-area-inset-bottom, 0px)'
+  const composerClearance = showPhotoUpload ? 124 : showInput ? 112 : 24
+
+  if (booting) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black flex items-center justify-center px-6" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <div className="flex flex-col items-center gap-4 text-center">
+          <img
+            src={headerLogoSrc}
+            alt="CPoint"
+            className="w-14 h-14 rounded-2xl object-contain"
+            onError={() => setHeaderLogoSrc('/static/cpoint-logo.svg')}
+          />
+          <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" />
+          <div className="text-sm text-white/65">Starting your profile setup...</div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* Header with logo */}
       <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
-        <div className="max-w-lg mx-auto px-4 pt-3 pb-2 flex flex-col items-center" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
+        <div className="max-w-lg mx-auto px-4 pt-3 pb-2 flex flex-col items-center">
           <div className="flex items-center gap-2 mb-2">
-            <img src="/static/logo.png" alt="CPoint" className="w-8 h-8 rounded-lg object-contain" />
+            <img
+              src={headerLogoSrc}
+              alt="CPoint"
+              className="w-8 h-8 rounded-lg object-contain"
+              onError={() => setHeaderLogoSrc('/static/cpoint-logo.svg')}
+            />
             <span className="text-sm font-semibold text-[#4db6ac]">CPoint</span>
           </div>
           <div className="w-full flex items-center gap-3 pb-2">
@@ -796,7 +827,7 @@ export default function OnboardingChat({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: keyboardOffset > 0 ? `${keyboardOffset + 140}px` : '140px' }}>
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: `${composerOffset + composerClearance}px` }}>
         <div className="max-w-lg mx-auto space-y-3">
           {messages.map((msg, i) => (
             <div key={i}>
@@ -947,7 +978,7 @@ export default function OnboardingChat({
         <div
           className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
           style={{
-            bottom: keyboardOffset > 0 ? `${keyboardOffset}px` : 'env(safe-area-inset-bottom, 0px)',
+            bottom: composerBottom,
             position: 'fixed',
             left: '0',
             right: '0',
@@ -1001,7 +1032,7 @@ export default function OnboardingChat({
         <div
           className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
           style={{
-            bottom: keyboardOffset > 0 ? `${keyboardOffset}px` : 'env(safe-area-inset-bottom, 0px)',
+            bottom: composerBottom,
             position: 'fixed',
             left: '0',
             right: '0',
