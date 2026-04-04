@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Capacitor } from '@capacitor/core'
+import type { PluginListenerHandle } from '@capacitor/core'
+import { Keyboard } from '@capacitor/keyboard'
+import type { KeyboardInfo } from '@capacitor/keyboard'
 
 type Stage =
   | 'welcome'
@@ -6,9 +10,9 @@ type Stage =
   | 'location'
   | 'photo'
   | 'talk_all_day'
-  | 'recommend'
   | 'reach_out'
   | 'professional'
+  | 'recommend'
   | 'linkedin'
   | 'compose'
   | 'enriching'
@@ -84,9 +88,9 @@ function stageProgress(stage: Stage): number {
     location: 2,
     photo: 3,
     talk_all_day: 4,
-    recommend: 5,
-    reach_out: 6,
-    professional: 7,
+    reach_out: 5,
+    professional: 6,
+    recommend: 7,
     linkedin: 8,
     compose: 8,
     enriching: 8,
@@ -135,6 +139,9 @@ export default function OnboardingChat({
   const [tourStep, setTourStep] = useState<number | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
 
+  const NATIVE_KEYBOARD_MIN_HEIGHT = 60
+  const KEYBOARD_OFFSET_EPSILON = 6
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -145,7 +152,43 @@ export default function OnboardingChat({
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }, [])
 
-  // iOS keyboard handling via visualViewport
+  // Native keyboard handling (Capacitor — iOS only)
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'ios') return
+    let showSub: PluginListenerHandle | undefined
+    let hideSub: PluginListenerHandle | undefined
+
+    const normalizeHeight = (raw: number) => (raw < NATIVE_KEYBOARD_MIN_HEIGHT ? 0 : raw)
+
+    const handleShow = (info: KeyboardInfo) => {
+      const height = normalizeHeight(info?.keyboardHeight ?? 0)
+      if (height === 0) return
+      if (Math.abs(keyboardOffsetRef.current - height) < KEYBOARD_OFFSET_EPSILON) return
+      keyboardOffsetRef.current = height
+      setKeyboardOffset(height)
+      requestAnimationFrame(scrollToBottom)
+    }
+
+    const handleHide = () => {
+      if (Math.abs(keyboardOffsetRef.current) < KEYBOARD_OFFSET_EPSILON) return
+      keyboardOffsetRef.current = 0
+      setKeyboardOffset(0)
+    }
+
+    Keyboard.addListener('keyboardWillShow', handleShow).then(handle => {
+      showSub = handle
+    })
+    Keyboard.addListener('keyboardWillHide', handleHide).then(handle => {
+      hideSub = handle
+    })
+
+    return () => {
+      showSub?.remove()
+      hideSub?.remove()
+    }
+  }, [scrollToBottom])
+
+  // Visual viewport keyboard handling (web + Android)
   useEffect(() => {
     if (typeof window === 'undefined') return
     const viewport = window.visualViewport
@@ -279,12 +322,6 @@ export default function OnboardingChat({
           inputPlaceholder: 'e.g. AI, leadership, travel, startups',
         })
         break
-      case 'recommend':
-        addSteveMessage("Recommend a book, movie, or TV show to your network.", {
-          inputType: 'text',
-          inputPlaceholder: 'e.g. Sapiens by Yuval Noah Harari',
-        })
-        break
       case 'reach_out':
         addSteveMessage("What do you want people to reach out to you about?", {
           inputType: 'text',
@@ -295,6 +332,12 @@ export default function OnboardingChat({
         addSteveMessage('What do you do professionally? Something like "Product Manager at Google" or "Founder, building in fintech" works great.', {
           inputType: 'text',
           inputPlaceholder: 'e.g. Product Manager at Google',
+        })
+        break
+      case 'recommend':
+        addSteveMessage("As a gift to your network — recommend a book, movie, or TV show.", {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. Sapiens by Yuval Noah Harari',
         })
         break
       case 'linkedin':
@@ -575,13 +618,6 @@ export default function OnboardingChat({
         setCollected(newCollected)
         const reactions = ['Love it!', 'Great taste!', 'Interesting!', 'Nice!']
         addSteveMessage(reactions[Math.floor(Math.random() * reactions.length)])
-        setTimeout(() => advanceTo('recommend', newCollected), 600)
-        break
-      }
-      case 'recommend': {
-        const newCollected = { ...collected, recommend: val }
-        setCollected(newCollected)
-        addSteveMessage('Good pick! 📚')
         setTimeout(() => advanceTo('reach_out', newCollected), 600)
         break
       }
@@ -603,7 +639,14 @@ export default function OnboardingChat({
         setCollected(newCollected)
         await saveField('role', role)
         if (company) await saveField('company', company)
-        advanceTo('linkedin', newCollected)
+        advanceTo('recommend', newCollected)
+        break
+      }
+      case 'recommend': {
+        const newCollected = { ...collected, recommend: val }
+        setCollected(newCollected)
+        addSteveMessage('Good pick! 📚')
+        setTimeout(() => advanceTo('linkedin', newCollected), 600)
         break
       }
       case 'linkedin': {
@@ -723,14 +766,12 @@ export default function OnboardingChat({
   const lastSteveMsg = [...messages].reverse().find(m => m.from === 'steve')
   const showInput = lastSteveMsg?.inputType && stage !== 'enriching' && stage !== 'review' && stage !== 'complete' && !composingBio
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
-  const kbOpen = keyboardOffset > 0
-  const bottomSafe = kbOpen ? '0px' : 'env(safe-area-inset-bottom, 0px)'
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* Header with logo */}
       <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
-        <div className="max-w-lg mx-auto px-4 pt-3 pb-1 flex flex-col items-center">
+        <div className="max-w-lg mx-auto px-4 pt-2 pb-1 flex flex-col items-center" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
           <div className="flex items-center gap-2 mb-2">
             <img src="/static/logo.png" alt="CPoint" className="w-8 h-8 rounded-lg object-contain" />
             <span className="text-sm font-semibold text-[#4db6ac]">CPoint</span>
@@ -756,7 +797,7 @@ export default function OnboardingChat({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: keyboardOffset > 0 ? `${keyboardOffset + 80}px` : '80px' }}>
         <div className="max-w-lg mx-auto space-y-3">
           {messages.map((msg, i) => (
             <div key={i}>
@@ -906,7 +947,13 @@ export default function OnboardingChat({
       {showPhotoUpload && (
         <div
           className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
-          style={{ paddingBottom: `calc(0.75rem + ${bottomSafe})`, marginBottom: kbOpen ? `${keyboardOffset}px` : undefined }}
+          style={{
+            bottom: keyboardOffset > 0 ? `${keyboardOffset}px` : 'env(safe-area-inset-bottom, 0px)',
+            position: 'fixed',
+            left: '0',
+            right: '0',
+            zIndex: 1000,
+          }}
         >
           <div className="max-w-lg mx-auto">
             <input
@@ -954,7 +1001,13 @@ export default function OnboardingChat({
       {showInput && (
         <div
           className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
-          style={{ paddingBottom: `calc(0.75rem + ${bottomSafe})`, marginBottom: kbOpen ? `${keyboardOffset}px` : undefined }}
+          style={{
+            bottom: keyboardOffset > 0 ? `${keyboardOffset}px` : 'env(safe-area-inset-bottom, 0px)',
+            position: 'fixed',
+            left: '0',
+            right: '0',
+            zIndex: 1000,
+          }}
         >
           <div className="max-w-lg mx-auto flex gap-2">
             {lastSteveMsg?.inputType === 'textarea' ? (
