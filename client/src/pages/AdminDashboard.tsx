@@ -510,16 +510,16 @@ export default function AdminDashboard() {
 
   const [batchDepth, setBatchDepth] = useState<'quick' | 'standard' | 'deep'>('quick')
 
-  const analyzeAllProfiles = useCallback(async () => {
-    const unanalyzed = steveProfiles.filter(p => !p.analysis?.summary)
-    if (unanalyzed.length === 0) return
+  const analyzeAllProfiles = useCallback(async (onlyNew = false) => {
+    const targets = onlyNew ? steveProfiles.filter(p => !p.analysis?.summary) : steveProfiles
+    if (targets.length === 0) return
     batchAbortRef.current = false
     setBatchRunning(true)
-    setBatchProgress({ current: 0, total: unanalyzed.length, currentUser: '' })
-    for (let i = 0; i < unanalyzed.length; i++) {
+    setBatchProgress({ current: 0, total: targets.length, currentUser: '' })
+    for (let i = 0; i < targets.length; i++) {
       if (batchAbortRef.current) break
-      const u = unanalyzed[i]
-      setBatchProgress({ current: i + 1, total: unanalyzed.length, currentUser: u.username })
+      const u = targets[i]
+      setBatchProgress({ current: i + 1, total: targets.length, currentUser: u.username })
       try {
         const res = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(u.username)}/analyze`, {
           method: 'POST', credentials: 'include',
@@ -1990,7 +1990,7 @@ export default function AdminDashboard() {
                   <span className="text-xs text-white/40">
                     {steveProfiles.filter(p => p.analysis?.summary).length}/{steveProfiles.length} analyzed
                   </span>
-                  {!batchRunning && steveProfiles.filter(p => !p.analysis?.summary).length > 0 && (
+                  {!batchRunning && steveProfiles.length > 0 && (
                     <div className="flex items-center gap-1">
                       <select
                         value={batchDepth}
@@ -2002,13 +2002,22 @@ export default function AdminDashboard() {
                         <option value="deep">Deep</option>
                       </select>
                       <button
-                        onClick={analyzeAllProfiles}
+                        onClick={() => analyzeAllProfiles(false)}
                         disabled={steveProfilesLoading || batchRunning}
                         className="px-3 py-2 bg-[#4db6ac]/20 border border-[#4db6ac]/30 hover:bg-[#4db6ac]/30 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 text-[#4db6ac]"
                       >
                         <i className="fa-solid fa-bolt" />
-                        Analyze All
+                        Enhance All ({steveProfiles.length})
                       </button>
+                      {steveProfiles.filter(p => !p.analysis?.summary).length > 0 && (
+                        <button
+                          onClick={() => analyzeAllProfiles(true)}
+                          disabled={steveProfilesLoading || batchRunning}
+                          className="px-3 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-sm flex items-center gap-2 disabled:opacity-50 text-white/60"
+                        >
+                          New only ({steveProfiles.filter(p => !p.analysis?.summary).length})
+                        </button>
+                      )}
                     </div>
                   )}
                   {batchRunning && (

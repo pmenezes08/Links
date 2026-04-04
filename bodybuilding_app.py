@@ -7666,19 +7666,23 @@ PLATFORM ACTIVITY (if provided):
         research_rules = ""
         if depth in ('standard', 'deep'):
             research_rules = f"""
-WEB RESEARCH (today is {today_str}):
-- If a full name is provided, USE YOUR WEB SEARCH to look them up.
-- Search for LinkedIn, company websites, press mentions, speaking engagements, publications.
-- If a LinkedIn URL is provided, search for that profile directly.
-- If the user lists a company, research it: what does it do? What sector? What stage/size?
-- NETWORK MEMBERSHIPS are a strong identity signal. If the user belongs to recognizable networks
-  (e.g. "Kellogg EMBA", "Harvard MBA", "YPO", "Techstars"), USE those names in your web search
-  queries alongside the person's name to narrow results. For example, search "John Smith Kellogg EMBA"
-  rather than just "John Smith". This dramatically improves accuracy.
-  Not all networks are recognizable — some may be casual groups. Use your judgment on which ones
-  are useful for web search disambiguation.
+WEB RESEARCH — TWO-PHASE STRATEGY (today is {today_str}):
+
+PHASE 1 — CONFIRM IDENTITY (do this FIRST):
+- Your strongest signals are: full name + location + community/network + LinkedIn URL + company.
+- If a LinkedIn URL is provided, start there — that's a confirmed identity.
+- Otherwise, combine the highest-signal data points in your search: "FirstName LastName [Company] [City]"
+  or "FirstName LastName [Network name like Kellogg EMBA]". This is far more effective than a bare name search.
+- NETWORK MEMBERSHIPS are powerful disambiguation signals. "Kellogg EMBA", "Harvard MBA", "YPO", "Techstars" etc.
+  are highly specific. Use them in your queries.
+- Once you find a match, VERIFY by cross-referencing at least 1-2 data points (company, city, school, network).
+- Do NOT proceed to Phase 2 until you are confident you have the right person.
+- If you cannot confidently identify the person, set professional.webFindings to "" and move on.
+
+PHASE 2 — EXPAND RESEARCH (only after identity is confirmed):
+- Now that you know WHO this person is, research their company: what does it do? What sector? Stage/size?
+- Look for press mentions, speaking engagements, publications, board seats.
 - Only use publicly available information.
-- BE VERY CONSERVATIVE with identity matching — cross-reference with the platform profile data.
 
 IDENTITY CONFIDENCE RULES (STRICT):
 - "high": Found the person online AND at least 2 data points match (e.g. same company AND same city, or same network AND same role).
@@ -7690,12 +7694,17 @@ IDENTITY CONFIDENCE RULES (STRICT):
         deep_rules = ""
         if depth == 'deep':
             deep_rules = f"""
-SOCIAL MEDIA & PERSONAL RESEARCH (today is {today_str}):
-- Search for this person on Instagram, Facebook, TikTok, X/Twitter, personal blogs, Medium, Substack, YouTube.
+PHASE 3 — PERSONAL & SOCIAL MEDIA (today is {today_str}, only after Phase 1 identity is confirmed):
+- You now know this person's full identity. Use it to search precisely:
+  Search "[FullName] [Company] Instagram", "[FullName] [City] marathon", "[FullName] blog" etc.
+- Check Instagram, Facebook, TikTok, X/Twitter, personal blogs, Medium, Substack, YouTube.
+- Look for hobbies, interests, sports, family mentions, personal projects, creative work.
 - Look for public posts, articles, videos, or statements they have made.
 - Note the DATE of every finding. Content from the last 6 months is highly relevant. >2 years old may be outdated.
 - Look for PATTERNS that connect their personal and professional worlds.
-- Build a picture of who this person IS — not just what their job title says."""
+  A marathon runner who works in health-tech. A parent who founded an ed-tech startup.
+- Build a picture of who this person IS — not just what their job title says.
+- If Phase 1 confidence was "low", do NOT attempt personal research — the risk of wrong person is too high."""
 
         professional_schema = """  "professional": {
     "company": {"name": "...", "description": "...", "sector": "...", "stage": "..."} or null,
