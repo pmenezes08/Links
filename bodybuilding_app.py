@@ -7151,6 +7151,59 @@ def admin_steve_profile_delete(target_username):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/admin/steve_profiles/<target_username>/wrong_person', methods=['POST'])
+@login_required
+def admin_steve_profile_wrong_person(target_username):
+    """Flag the current analysis as matching the wrong person.
+    Captures the incorrect identity data, clears the analysis, and stores
+    anti-target feedback so future analyses avoid the same mistake."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.firestore_reads import get_steve_user_profile
+        from backend.services.firestore_writes import write_steve_user_profile
+
+        existing = get_steve_user_profile(target_username)
+        analysis = _migrate_analysis_to_v3((existing or {}).get('analysis', {})) or {}
+
+        pro = analysis.get('professional') or {}
+        personal = analysis.get('personal') or {}
+        identity = analysis.get('identity') or {}
+
+        wrong_urls = []
+        if pro.get('company', {}) and isinstance(pro['company'], dict):
+            co_name = pro['company'].get('name', '')
+            if co_name:
+                wrong_urls.append(f"company:{co_name}")
+        social = personal.get('socialProfiles') or []
+        for sp in social:
+            if isinstance(sp, dict) and sp.get('url'):
+                wrong_urls.append(sp['url'])
+
+        wrong_data = {
+            'name': ' | '.join(identity.get('roles', [])[:3]) if identity.get('roles') else '',
+            'company': pro.get('company', {}).get('name', '') if isinstance(pro.get('company'), dict) else '',
+            'urls': wrong_urls[:10],
+            'webFindings': (pro.get('webFindings', '') or '') + ' | ' + (personal.get('webFindings', '') or ''),
+        }
+
+        preserved_feedback = analysis.get('_feedback') or {}
+        preserved_feedback['wrongPerson'] = {
+            'status': 'wrong_person',
+            'flaggedAt': datetime.utcnow().isoformat(),
+            'flaggedBy': username,
+            'wrongData': wrong_data,
+        }
+
+        write_steve_user_profile(target_username, analysis={'_feedback': preserved_feedback})
+
+        return jsonify({'success': True, 'wrongData': wrong_data})
+    except Exception as e:
+        logger.error(f"Error flagging wrong person for {target_username}: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/admin/steve_profiles/<target_username>/analysis/sections', methods=['PATCH'])
 @login_required
 def admin_steve_profile_patch(target_username):
@@ -7653,6 +7706,15 @@ def _analyze_profile_with_grok(username: str, profile_text: str, prior_feedback:
 - If there is very little data, say so honestly and give fewer interests with lower confidence.
 - Tag each interest as "professional", "personal", or "both".
 
+COMMUNITY PRIVACY (CRITICAL):
+- The "Networks/Communities" data is provided ONLY to help you disambiguate identity and understand context.
+- NEVER mention specific community or network names in ANY output field (summary, webFindings, observations,
+  interests, networkingValue, conversationStarters, traits, bridgeInsight, etc.).
+- Instead use generic descriptions: "an MBA program", "a tech founders network", "an executive peer group",
+  "a professional community", "a startup cohort", etc.
+- This protects the exclusivity and privacy of private networks. Violating this is a critical failure.
+- You MAY use community names in your internal reasoning and web searches — just keep them out of the output.
+
 PLATFORM ACTIVITY (if provided):
 - SHARED CONTENT (posts with links): These URLs reveal the user's information diet and professional focus.
   USE YOUR WEB SEARCH to visit/analyze each URL. Understand what the content is about and what sharing
@@ -7661,7 +7723,10 @@ PLATFORM ACTIVITY (if provided):
   Pay special attention to recurring themes.
 - REPLIES & COMMENTS: These show what topics the user engages with and how they think.
   Look for patterns in what they respond to.
-- Recent posts matter more than older ones. If a user's posts show a clear evolution, note it."""
+- Recent posts matter more than older ones. If a user's posts show a clear evolution, note it.
+- REQUIREMENT: If platform activity is provided, you MUST incorporate specific themes and insights from it
+  in your summary and observations. Platform activity is PRIMARY data — it shows what the user actually
+  cares about RIGHT NOW. Do not ignore it."""
 
         research_rules = ""
         if depth in ('standard', 'deep'):
@@ -7771,6 +7836,24 @@ Set any field to null rather than guessing with no basis."""
                 user_msg += '\n'.join(feedback_lines)
                 user_msg += "\nPlease be extra careful with these sections."
 
+            wrong_person = prior_feedback.get('wrongPerson')
+            if wrong_person and isinstance(wrong_person, dict) and wrong_person.get('wrongData'):
+                wd = wrong_person['wrongData']
+                user_msg += "\n\n⚠️ WRONG PERSON ALERT — CRITICAL ANTI-TARGET DATA:\n"
+                user_msg += "A previous analysis matched the WRONG individual. The following data is INCORRECT for this user.\n"
+                user_msg += "You MUST NOT match this person to these details again:\n"
+                if wd.get('name'):
+                    user_msg += f"- WRONG name/person: {wd['name']}\n"
+                if wd.get('company'):
+                    user_msg += f"- WRONG company: {wd['company']}\n"
+                if wd.get('urls'):
+                    for url in wd['urls'][:5]:
+                        user_msg += f"- WRONG URL (not this person): {url}\n"
+                if wd.get('webFindings'):
+                    user_msg += f"- WRONG web findings summary: {wd['webFindings'][:300]}\n"
+                user_msg += "If your web search leads you back to these details, STOP and set confidence to 'low'.\n"
+                user_msg += "Search for a DIFFERENT person with the same name. Use the platform profile data as your anchor."
+
         tools = []
         max_tokens = 1000
         if depth == 'standard':
@@ -7838,9 +7921,10 @@ Set any field to null rather than guessing with no basis."""
         return {}
 
 
-def get_steve_context_for_user(username: str) -> str:
+def get_steve_context_for_user(username: str, viewer_username: str = None) -> str:
     """Read the analyzed profile from Firestore, migrate to v3 if needed,
-    and return a concise context string for Steve's system prompts."""
+    and return a concise context string for Steve's system prompts.
+    If viewer_username is provided, scrub community names not shared between target and viewer."""
     try:
         from backend.services.firestore_reads import get_steve_user_profile
         profile = get_steve_user_profile(username)
@@ -7902,10 +7986,38 @@ def get_steve_context_for_user(username: str) -> str:
         if analysis.get('observations'):
             parts.append(analysis['observations'])
 
-        return ' | '.join(parts)
+        result = ' | '.join(parts)
+
+        if viewer_username:
+            result = _scrub_community_names(result, username, viewer_username)
+
+        return result
     except Exception as e:
         logger.debug(f"Could not load Steve profile for {username}: {e}")
         return ''
+
+
+def _scrub_community_names(text: str, target_username: str, viewer_username: str) -> str:
+    """Remove references to community names that the viewer doesn't share with the target user.
+    This is a safety net — Grok should already avoid naming communities in output."""
+    try:
+        target_communities = _fetch_user_communities(target_username)
+        viewer_communities = _fetch_user_communities(viewer_username)
+
+        target_names = {c.get('name', '') for c in target_communities if c.get('name')}
+        viewer_names = {c.get('name', '') for c in viewer_communities if c.get('name')}
+        private_names = target_names - viewer_names
+
+        if not private_names:
+            return text
+
+        import re as _re
+        for name in private_names:
+            if len(name) >= 3:
+                text = _re.sub(_re.escape(name), 'a private network', text, flags=_re.IGNORECASE)
+        return text
+    except Exception:
+        return text
 
 
 def _trigger_background_profile_analysis(username: str):
@@ -14132,7 +14244,7 @@ def api_networking_steve_match():
                 recent = recent_posts_map.get(uname, [])
                 if recent:
                     line += f" | Recent posts: {'; '.join(recent)}"
-                profile_ctx = get_steve_context_for_user(uname)
+                profile_ctx = get_steve_context_for_user(uname, viewer_username=username)
                 if profile_ctx:
                     line += f" | AI insight: {profile_ctx}"
                 members_lines.append(line)
@@ -14278,7 +14390,7 @@ def api_networking_steve_auto_match():
                 recent = recent_posts_map.get(uname, [])
                 if recent:
                     line += f" | Recent posts: {'; '.join(recent)}"
-                profile_ctx = get_steve_context_for_user(uname)
+                profile_ctx = get_steve_context_for_user(uname, viewer_username=username)
                 if profile_ctx:
                     line += f" | AI insight: {profile_ctx}"
                 members_lines.append(line)
@@ -23922,8 +24034,8 @@ def trigger_steve_reply_to_post(post_id: int, post_content: str, author_username
             except Exception as ctx_err:
                 logger.warning("Steve community context failed: %s", ctx_err)
 
-            # Inject Grok-analyzed profile context for the post author
-            author_profile_ctx = get_steve_context_for_user(author_username)
+            # Inject Grok-analyzed profile context for the post author (scrub for commenter's view)
+            author_profile_ctx = get_steve_context_for_user(author_username, viewer_username=username)
 
             context = "\n\n".join(context_parts)
             

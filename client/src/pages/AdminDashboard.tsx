@@ -255,7 +255,7 @@ export default function AdminDashboard() {
       observations?: string
       networkingValue?: string | null
       conversationStarters?: string[]
-      _feedback?: { [section: string]: { status: string; note?: string; by?: string; at?: string } }
+      _feedback?: Record<string, any>
       _userReview?: { status: 'pending' | 'confirmed' | 'edited' | 'disputed'; at?: string; notes?: string }
     }
     lastUpdated?: string
@@ -548,6 +548,30 @@ export default function AdminDashboard() {
       if (data?.success) {
         setSteveProfiles(prev => prev.map(p =>
           p.username === targetUsername ? { ...p, analysis: {} as any, lastUpdated: new Date().toISOString() } : p
+        ))
+      }
+    } catch {}
+  }, [])
+
+  const flagWrongPerson = useCallback(async (targetUsername: string) => {
+    if (!confirm(
+      `Flag @${targetUsername}'s profile as WRONG PERSON?\n\n` +
+      `This will:\n` +
+      `• Record the current (incorrect) data as anti-target\n` +
+      `• Clear the analysis\n` +
+      `• Future analyses will avoid matching this wrong identity\n\n` +
+      `Use this when Steve consistently pulls data about a different person with the same name.`
+    )) return
+    try {
+      const res = await fetch(`/api/admin/steve_profiles/${encodeURIComponent(targetUsername)}/wrong_person`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      const data = await res.json()
+      if (data?.success) {
+        setSteveProfiles(prev => prev.map(p =>
+          p.username === targetUsername ? { ...p, analysis: { _feedback: { wrongPerson: data.wrongData } } as any, lastUpdated: new Date().toISOString() } : p
         ))
       }
     } catch {}
@@ -2255,13 +2279,22 @@ export default function AdminDashboard() {
                                   </div>
                                 </div>
                                 {hasAnalysis && (
-                                  <button
-                                    onClick={() => clearProfile(profile.username)}
-                                    className="px-2 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-xs text-red-400 flex items-center gap-1 ml-0.5"
-                                    title="Clear all analysis"
-                                  >
-                                    <i className="fa-solid fa-trash-can" />
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={() => flagWrongPerson(profile.username)}
+                                      className="px-2 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 rounded-lg text-xs text-orange-400 flex items-center gap-1 ml-0.5"
+                                      title="Wrong person — flag identity mismatch"
+                                    >
+                                      <i className="fa-solid fa-user-xmark" />
+                                    </button>
+                                    <button
+                                      onClick={() => clearProfile(profile.username)}
+                                      className="px-2 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-xs text-red-400 flex items-center gap-1 ml-0.5"
+                                      title="Clear all analysis"
+                                    >
+                                      <i className="fa-solid fa-trash-can" />
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -2275,9 +2308,19 @@ export default function AdminDashboard() {
 
                             {!isAnalyzing && !hasAnalysis && (
                               <div className="text-center py-8 text-white/30">
-                                <i className="fa-solid fa-user-magnifying-glass text-2xl mb-2" />
-                                <div className="text-sm">Not yet analyzed</div>
-                                <div className="text-xs mt-1">Click "Analyze" to run Steve's profile analysis</div>
+                                {a._feedback?.wrongPerson ? (
+                                  <>
+                                    <i className="fa-solid fa-user-xmark text-2xl mb-2 text-orange-400" />
+                                    <div className="text-sm text-orange-300">Wrong person flagged</div>
+                                    <div className="text-xs mt-1 text-white/40">Previous identity was incorrect. Re-analyze to find the right person.</div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <i className="fa-solid fa-user-magnifying-glass text-2xl mb-2" />
+                                    <div className="text-sm">Not yet analyzed</div>
+                                    <div className="text-xs mt-1">Click "Analyze" to run Steve's profile analysis</div>
+                                  </>
+                                )}
                               </div>
                             )}
 
@@ -2300,6 +2343,12 @@ export default function AdminDashboard() {
                                     quality === 'moderate' ? 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20' :
                                     'bg-white/5 text-white/50 border-white/10'
                                   }`}>{quality}</span>
+                                  {a._feedback?.wrongPerson && (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full border bg-orange-500/10 text-orange-300 border-orange-500/20">
+                                      <i className="fa-solid fa-user-xmark mr-1" />
+                                      Wrong person flagged
+                                    </span>
+                                  )}
                                 </div>
 
                                 {/* Summary */}
