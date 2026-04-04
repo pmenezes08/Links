@@ -8,7 +8,10 @@ type Stage =
   | 'role'
   | 'location'
   | 'linkedin'
-  | 'bio'
+  | 'brand_known_for'
+  | 'brand_conversations'
+  | 'brand_called_when'
+  | 'brand_compose'
   | 'enriching'
   | 'review'
   | 'complete'
@@ -21,6 +24,7 @@ interface ChatMessage {
   photoUpload?: boolean
   inputType?: 'text' | 'url' | 'textarea'
   inputPlaceholder?: string
+  composedBio?: string
 }
 
 interface EnrichmentCard {
@@ -42,7 +46,24 @@ interface Collected {
   country: string
   linkedin: string
   bio: string
+  brandKnownFor: string
+  brandConversations: string
+  brandCalledWhen: string
 }
+
+interface TourStep {
+  icon: string
+  title: string
+  description: string
+}
+
+const TOUR_STEPS: TourStep[] = [
+  { icon: 'fa-solid fa-house', title: 'Dashboard', description: 'Your home base — see your communities, notifications, and quick actions all in one place.' },
+  { icon: 'fa-solid fa-user', title: 'My Profile', description: "Where others learn about you. Keep it fresh and it'll power better connections." },
+  { icon: 'fa-solid fa-users', title: 'Followers', description: 'See who follows you and who you follow across your communities.' },
+  { icon: 'fa-solid fa-network-wired', title: 'Networking', description: 'Discover people in your networks — Steve helps match you with relevant connections.' },
+  { icon: 'fa-solid fa-cog', title: 'Account Settings', description: 'Manage your email, notifications, and privacy preferences.' },
+]
 
 interface OnboardingChatProps {
   firstName: string
@@ -57,14 +78,26 @@ interface OnboardingChatProps {
   onGoToCommunity: () => void
 }
 
-const STAGE_ORDER: Stage[] = [
-  'welcome', 'name', 'display_name', 'photo', 'role', 'location', 'linkedin', 'bio', 'enriching', 'review', 'complete',
-]
-
+const USER_FACING_STEPS = 8
 function stageProgress(stage: Stage): number {
-  const idx = STAGE_ORDER.indexOf(stage)
-  if (idx < 0) return 0
-  return Math.round((idx / (STAGE_ORDER.length - 1)) * 100)
+  const stepMap: Record<Stage, number> = {
+    welcome: 0,
+    name: 1,
+    display_name: 2,
+    photo: 3,
+    role: 4,
+    location: 5,
+    linkedin: 6,
+    brand_known_for: 7,
+    brand_conversations: 7,
+    brand_called_when: 7,
+    brand_compose: 7,
+    enriching: 7.5,
+    review: 7.8,
+    complete: 8,
+  }
+  const step = stepMap[stage] ?? 0
+  return Math.round((step / USER_FACING_STEPS) * 100)
 }
 
 export default function OnboardingChat({
@@ -92,6 +125,9 @@ export default function OnboardingChat({
     country: '',
     linkedin: '',
     bio: '',
+    brandKnownFor: '',
+    brandConversations: '',
+    brandCalledWhen: '',
   })
   const [isTyping, setIsTyping] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
@@ -100,6 +136,8 @@ export default function OnboardingChat({
   const [enrichmentCards, setEnrichmentCards] = useState<EnrichmentCard[]>([])
   const [enriching, setEnriching] = useState(false)
   const [initialized, setInitialized] = useState(false)
+  const [composingBio, setComposingBio] = useState(false)
+  const [tourStep, setTourStep] = useState<number | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -180,7 +218,7 @@ export default function OnboardingChat({
         if (communityName) {
           welcomeText += ` I see you were invited to ${communityName} — exciting!`
         }
-        welcomeText += ` Let me help you set up your profile so people in your networks can find you. This will only take a couple of minutes.`
+        welcomeText += `\n\nA great profile is what powers meaningful connections here. I'll walk you through ${USER_FACING_STEPS} quick steps — it takes about 3 minutes. Ready?`
         addSteveMessage(welcomeText, {
           options: [{ label: "Let's go!", value: 'start', icon: '🚀' }],
         })
@@ -237,11 +275,26 @@ export default function OnboardingChat({
           options: [{ label: 'Skip', value: 'skip_linkedin', icon: '⏭️' }],
         })
         break
-      case 'bio':
-        addSteveMessage('Last one — how would you introduce yourself at a networking event? 2-3 sentences is perfect.', {
-          inputType: 'textarea',
-          inputPlaceholder: 'Tell people a bit about yourself...',
+      case 'brand_known_for':
+        addSteveMessage("Now let's build your intro — this is how people in your networks will get to know you. I'll ask three quick questions and turn your answers into a bio.\n\nWhat's the one thing people always come to you for?", {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. Making complex problems feel simple',
         })
+        break
+      case 'brand_conversations':
+        addSteveMessage("What topic could you talk about over coffee for hours?", {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. The future of AI, leadership, travel stories',
+        })
+        break
+      case 'brand_called_when':
+        addSteveMessage('Complete this: "People call me when..."', {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. ...things are broken and they need someone who stays calm',
+        })
+        break
+      case 'brand_compose':
+        composeBio(data)
         break
       case 'enriching':
         addSteveMessage("Awesome, thanks! Give me a moment — I'm looking up some public info to help build out your profile. This is based only on publicly available information. 🔍")
@@ -277,9 +330,10 @@ export default function OnboardingChat({
 
   function showComplete() {
     addSteveMessage(
-      "You're all set! 🎉 Your profile is live and people in your networks can now find you.\n\nI'm always here if you need anything — just DM me or tag @Steve in any chat.\n\nBy the way, did you know you can create your own communities? Planning a trip with friends? Starting a book club? Organizing weekend tennis? A community is just a group of people you want to keep connected.",
+      "You're all set! 🎉 Your profile is live!\n\nI'm always here if you need anything — just DM me or tag @Steve in any chat.\n\nBy the way, did you know you can create your own communities? Planning a trip with friends? Starting a book club? Organizing weekend tennis? A community is just a group of people you want to keep connected.",
       {
         options: [
+          { label: 'Show me around', value: 'start_tour', icon: '🗺️' },
           { label: hasCommunity ? 'Take me to my feed' : 'Explore the platform', value: 'go_feed', icon: '🚀' },
           { label: 'Create a community', value: 'create_community', icon: '➕' },
         ],
@@ -307,6 +361,43 @@ export default function OnboardingChat({
     setEnriching(false)
     addSteveMessage("I couldn't find additional public information right now — no worries! Your profile is looking great with what you've provided.")
     setTimeout(() => advanceToComplete(), 1200)
+  }
+
+  async function composeBio(data?: Collected) {
+    const c = data || collected
+    setComposingBio(true)
+    addSteveMessage("Give me a sec — I'm crafting your bio... ✍️")
+    try {
+      const r = await fetch('/api/onboarding/compose_bio', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          known_for: c.brandKnownFor,
+          conversations: c.brandConversations,
+          called_when: c.brandCalledWhen,
+          role: c.role,
+          company: c.company,
+        }),
+      })
+      const j = await r.json().catch(() => null)
+      const bio = j?.bio || ''
+      setComposingBio(false)
+      if (bio) {
+        addSteveMessage("Here's a draft based on what you told me:", { composedBio: bio })
+      } else {
+        addSteveMessage("I couldn't compose a bio right now — would you like to write one yourself?", {
+          inputType: 'textarea',
+          inputPlaceholder: 'Write a 2-3 sentence intro...',
+        })
+      }
+    } catch {
+      setComposingBio(false)
+      addSteveMessage("Something went wrong composing your bio. Want to write one yourself?", {
+        inputType: 'textarea',
+        inputPlaceholder: 'Write a 2-3 sentence intro...',
+      })
+    }
   }
 
   function handleCardAction(cardId: string, action: 'accepted' | 'dismissed') {
@@ -363,7 +454,40 @@ export default function OnboardingChat({
         break
       case 'skip_linkedin':
         addUserMessage('Skip')
-        advanceTo('bio')
+        advanceTo('brand_known_for')
+        break
+      case 'use_bio': {
+        const lastComposed = [...messages].reverse().find(m => m.composedBio)?.composedBio || ''
+        if (lastComposed) {
+          addUserMessage('Use this')
+          const newCollected = { ...collected, bio: lastComposed }
+          setCollected(newCollected)
+          await saveField('bio', lastComposed)
+          addSteveMessage('Looks great! Your bio is set. 🎯')
+          setTimeout(() => advanceTo('enriching', newCollected), 600)
+        }
+        break
+      }
+      case 'edit_bio': {
+        const bioToEdit = [...messages].reverse().find(m => m.composedBio)?.composedBio || ''
+        addUserMessage('Let me edit')
+        setInputValue(bioToEdit)
+        addSteveMessage("Go ahead — tweak it however you'd like:", {
+          inputType: 'textarea',
+          inputPlaceholder: 'Edit your bio...',
+        })
+        break
+      }
+      case 'redo_bio':
+        addUserMessage('Start fresh')
+        addSteveMessage('No problem — write your own intro. 2-3 sentences is perfect.', {
+          inputType: 'textarea',
+          inputPlaceholder: 'Write your bio...',
+        })
+        break
+      case 'start_tour':
+        addUserMessage('Show me around')
+        setTourStep(0)
         break
       case 'go_feed':
         await completeOnboarding()
@@ -466,14 +590,33 @@ export default function OnboardingChat({
         setCollected(newCollected)
         await saveField('linkedin', val)
         addSteveMessage('Perfect, that will help me learn more about your background!')
-        setTimeout(() => advanceTo('bio', newCollected), 600)
+        setTimeout(() => advanceTo('brand_known_for', newCollected), 600)
         break
       }
-      case 'bio': {
+      case 'brand_known_for': {
+        const newCollected = { ...collected, brandKnownFor: val }
+        setCollected(newCollected)
+        advanceTo('brand_conversations', newCollected)
+        break
+      }
+      case 'brand_conversations': {
+        const newCollected = { ...collected, brandConversations: val }
+        setCollected(newCollected)
+        advanceTo('brand_called_when', newCollected)
+        break
+      }
+      case 'brand_called_when': {
+        const newCollected = { ...collected, brandCalledWhen: val }
+        setCollected(newCollected)
+        advanceTo('brand_compose', newCollected)
+        break
+      }
+      case 'brand_compose': {
         const newCollected = { ...collected, bio: val }
         setCollected(newCollected)
         await saveField('bio', val)
-        advanceTo('enriching', newCollected)
+        addSteveMessage('Looks great! Your bio is set. 🎯')
+        setTimeout(() => advanceTo('enriching', newCollected), 600)
         break
       }
       default:
@@ -497,7 +640,10 @@ export default function OnboardingChat({
       if (lower.includes('linkedin.com') || lower.includes('skip')) return false
       return lower.includes('?') || /^(hey|what|how|can|tell)/.test(lower)
     }
-    if (currentStage === 'bio') return false
+    if (currentStage === 'brand_known_for') return false
+    if (currentStage === 'brand_conversations') return false
+    if (currentStage === 'brand_called_when') return false
+    if (currentStage === 'brand_compose') return false
     return false
   }
 
@@ -509,6 +655,9 @@ export default function OnboardingChat({
         role: 'What do you do professionally?',
         location: 'Where are you based?',
         linkedin: 'Got a LinkedIn URL?',
+        brand_known_for: "What's the one thing people always come to you for?",
+        brand_conversations: 'What topic could you talk about over coffee for hours?',
+        brand_called_when: 'Complete this: People call me when...',
       }
       const r = await fetch('/api/onboarding/redirect', {
         method: 'POST',
@@ -574,22 +723,28 @@ export default function OnboardingChat({
   }, [messages, isTyping, scrollToBottom])
 
   const lastSteveMsg = [...messages].reverse().find(m => m.from === 'steve')
-  const showInput = lastSteveMsg?.inputType && stage !== 'enriching' && stage !== 'review' && stage !== 'complete'
+  const showInput = lastSteveMsg?.inputType && stage !== 'enriching' && stage !== 'review' && stage !== 'complete' && !composingBio
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh' }}>
-      {/* Header */}
+      {/* Header with logo */}
       <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#2a7a72] flex items-center justify-center text-sm font-bold text-black shrink-0">
-            S
+        <div className="max-w-lg mx-auto px-4 pt-3 pb-1 flex flex-col items-center">
+          <div className="flex items-center gap-2 mb-2">
+            <img src="/static/logo.png" alt="CPoint" className="w-8 h-8 rounded-lg object-contain" />
+            <span className="text-sm font-semibold text-[#4db6ac]">CPoint</span>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-white">Steve</div>
-            <div className="text-[10px] text-white/40">Your AI assistant</div>
+          <div className="w-full flex items-center gap-3 pb-2">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0">
+              S
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-white">Steve</div>
+              <div className="text-[10px] text-white/40">Your AI assistant</div>
+            </div>
+            <div className="text-[10px] text-white/30">Step {Math.min(Math.ceil(stageProgress(stage) / (100 / USER_FACING_STEPS)), USER_FACING_STEPS)} of {USER_FACING_STEPS}</div>
           </div>
-          <div className="text-[10px] text-white/30">{stageProgress(stage)}%</div>
         </div>
         {/* Progress bar */}
         <div className="h-0.5 bg-white/5">
@@ -642,6 +797,25 @@ export default function OnboardingChat({
                             {opt.label}
                           </button>
                         ))}
+                      </div>
+                    )}
+                    {/* Composed bio preview with action buttons */}
+                    {msg.composedBio && i === messages.length - 1 && stage === 'brand_compose' && !composingBio && (
+                      <div className="space-y-2 mt-1">
+                        <div className="rounded-xl border border-[#4db6ac]/20 bg-[#4db6ac]/5 px-3.5 py-3">
+                          <div className="text-[13px] text-white/90 leading-relaxed italic">"{msg.composedBio}"</div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button onClick={() => handleOptionClick('use_bio')} className="px-3.5 py-2 rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 text-[12px] font-medium text-[#4db6ac] hover:bg-[#4db6ac]/20 transition-colors">
+                            ✅ Use this
+                          </button>
+                          <button onClick={() => handleOptionClick('edit_bio')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                            ✏️ Let me edit
+                          </button>
+                          <button onClick={() => handleOptionClick('redo_bio')} className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 text-[12px] font-medium text-white/60 hover:bg-white/10 transition-colors">
+                            🔄 Start fresh
+                          </button>
+                        </div>
                       </div>
                     )}
                     {/* Enrichment review cards */}
@@ -816,6 +990,55 @@ export default function OnboardingChat({
             >
               <i className="fa-solid fa-paper-plane" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Platform tour modal */}
+      {tourStep !== null && (
+        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center px-4" onClick={() => setTourStep(null)}>
+          <div className="w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 pt-6 pb-4 flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#4db6ac]/10 border border-[#4db6ac]/20 flex items-center justify-center mb-4">
+                <i className={`${TOUR_STEPS[tourStep].icon} text-2xl text-[#4db6ac]`} />
+              </div>
+              <div className="text-base font-semibold text-white mb-1.5">{TOUR_STEPS[tourStep].title}</div>
+              <div className="text-sm text-white/60 leading-relaxed">{TOUR_STEPS[tourStep].description}</div>
+            </div>
+            {/* Dot indicators */}
+            <div className="flex justify-center gap-1.5 pb-3">
+              {TOUR_STEPS.map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-1.5 h-1.5 rounded-full transition-colors ${i === tourStep ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                />
+              ))}
+            </div>
+            {/* Navigation */}
+            <div className="px-6 pb-5 flex items-center justify-between">
+              <button
+                onClick={() => setTourStep(tourStep > 0 ? tourStep - 1 : null)}
+                className="px-4 py-2 rounded-lg text-xs font-medium text-white/50 hover:text-white/80 transition-colors"
+              >
+                {tourStep > 0 ? 'Back' : 'Skip'}
+              </button>
+              <div className="text-[10px] text-white/30">{tourStep + 1} of {TOUR_STEPS.length}</div>
+              <button
+                onClick={async () => {
+                  if (tourStep < TOUR_STEPS.length - 1) {
+                    setTourStep(tourStep + 1)
+                  } else {
+                    setTourStep(null)
+                    await completeOnboarding()
+                    if (hasCommunity) onGoToCommunity()
+                    else onComplete()
+                  }
+                }}
+                className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-xs font-semibold hover:brightness-110 transition"
+              >
+                {tourStep < TOUR_STEPS.length - 1 ? 'Next' : "Let's go!"}
+              </button>
+            </div>
           </div>
         </div>
       )}

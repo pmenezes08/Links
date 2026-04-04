@@ -443,6 +443,76 @@ def onboarding_redirect_message():
         return jsonify({"success": True, "message": "Great thought! Let's finish setting up your profile first, then we can chat about anything."})
 
 
+@onboarding_bp.route("/api/onboarding/compose_bio", methods=["POST"])
+@_login_required
+def onboarding_compose_bio():
+    """Compose a polished 2-3 sentence bio from the user's brand-builder answers."""
+    data = request.get_json(silent=True) or {}
+    known_for = (data.get("known_for") or "").strip()
+    conversations = (data.get("conversations") or "").strip()
+    called_when = (data.get("called_when") or "").strip()
+    role = (data.get("role") or "").strip()
+    company = (data.get("company") or "").strip()
+
+    if not known_for and not conversations and not called_when:
+        return jsonify({"success": False, "error": "No answers provided"}), 400
+
+    if not XAI_API_KEY:
+        parts = []
+        if known_for:
+            parts.append(known_for)
+        if conversations:
+            parts.append(f"Passionate about {conversations.lower()}.")
+        if called_when:
+            parts.append(f"People call me when {called_when.lower()}.")
+        return jsonify({"success": True, "bio": " ".join(parts)})
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+
+        context = ""
+        if role and company:
+            context = f"They work as {role} at {company}. "
+        elif role:
+            context = f"Their role is {role}. "
+
+        response = client.chat.completions.create(
+            model=GROK_MODEL_FAST,
+            messages=[
+                {"role": "system", "content": (
+                    "You are a professional bio writer. Compose a polished, engaging 2-3 sentence personal bio for a professional networking platform. "
+                    "Write in first person. Be authentic and human — not corporate or generic. "
+                    "Do NOT use hashtags, emojis, or buzzwords. Just clean, compelling prose. "
+                    "Return ONLY the bio text, nothing else."
+                )},
+                {"role": "user", "content": (
+                    f"{context}"
+                    f"What people come to them for: {known_for}\n"
+                    f"Topics they're passionate about: {conversations}\n"
+                    f"People call them when: {called_when}\n\n"
+                    "Write their bio:"
+                )},
+            ],
+            max_tokens=200,
+            temperature=0.7,
+        )
+        bio = (response.choices[0].message.content or "").strip().strip('"')
+        if not bio:
+            return jsonify({"success": False, "error": "Empty response"}), 500
+        return jsonify({"success": True, "bio": bio})
+    except Exception as e:
+        logger.warning(f"compose_bio LLM error: {e}")
+        parts = []
+        if known_for:
+            parts.append(known_for)
+        if conversations:
+            parts.append(f"Passionate about {conversations.lower()}.")
+        if called_when:
+            parts.append(f"People call me when {called_when.lower()}.")
+        return jsonify({"success": True, "bio": " ".join(parts)})
+
+
 @onboarding_bp.route("/api/onboarding/enrich", methods=["POST"])
 @_login_required
 def onboarding_enrich_profile():
