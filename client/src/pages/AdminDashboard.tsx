@@ -571,7 +571,25 @@ export default function AdminDashboard() {
       const data = await res.json()
       if (data?.success) {
         setSteveProfiles(prev => prev.map(p =>
-          p.username === targetUsername ? { ...p, analysis: { _feedback: { wrongPerson: data.wrongData } } as any, lastUpdated: new Date().toISOString() } : p
+          p.username === targetUsername ? {
+            ...p,
+            analysis: {
+              _feedback: { wrongPerson: data.wrongData },
+              _schemaVersion: 3,
+              summary: '',
+              identity: {},
+              professional: {},
+              personal: {},
+              interests: {},
+              traits: [],
+              observations: '',
+              networkingValue: '',
+              conversationStarters: [],
+              dataQuality: 'sparse',
+              analysisDepth: 'quick'
+            } as any,
+            lastUpdated: new Date().toISOString()
+          } : p
         ))
       }
     } catch {}

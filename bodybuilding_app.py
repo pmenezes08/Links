@@ -7353,9 +7353,28 @@ def admin_steve_profile_wrong_person(target_username):
             'wrongData': wrong_data,
         }
 
-        write_steve_user_profile(target_username, analysis={'_feedback': preserved_feedback})
+        # Clear the entire profile but preserve the wrong person feedback
+        # This ensures the wrong identity is completely removed from both professional and personal sections
+        # while keeping the anti-target signal for future analyses
+        cleared_analysis = {
+            '_feedback': preserved_feedback,
+            '_schemaVersion': STEVE_PROFILE_SCHEMA_VERSION,
+            'summary': '',
+            'identity': {},
+            'professional': {},
+            'personal': {},
+            'interests': {},
+            'traits': [],
+            'observations': '',
+            'networkingValue': '',
+            'conversationStarters': [],
+            'dataQuality': 'sparse',
+            'analysisDepth': 'quick'
+        }
 
-        return jsonify({'success': True, 'wrongData': wrong_data})
+        write_steve_user_profile(target_username, analysis=cleared_analysis)
+
+        return jsonify({'success': True, 'wrongData': wrong_data, 'cleared': True})
     except Exception as e:
         logger.error(f"Error flagging wrong person for {target_username}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -7901,9 +7920,23 @@ PHASE 1 — CONFIRM IDENTITY (do this FIRST):
 - Do NOT proceed to Phase 2 until you are confident you have the right person.
 - If you cannot confidently identify the person, set professional.webFindings to "" and move on.
 
+MULTILINGUAL RESEARCH STRATEGY (CRITICAL):
+- 90% of professional information will likely be in English, but 10% of valuable insights may be in the user's native language
+- This 10% is often crucial for building a holistic view of the person — don't ignore native language content
+- For users with non-English names, locations, or communities, ALSO search in their likely native language
+- Israeli/Hebrew names: Search using both English AND Hebrew spellings when possible
+- Common Hebrew search patterns: "[HebrewName] סיקסט", "[HebrewName] מינכן", "[HebrewName] ישראל", "[HebrewName] תל אביב"
+- Look for native language content on:
+  * Local news sites and professional publications (Hebrew, Portuguese, German, Arabic, etc.)
+  * Native language social media (Facebook, Instagram, X/Twitter in native script)
+  * Personal blogs, Medium/Substack equivalents in native languages
+- When you find non-English content, translate and summarize the key professional and personal insights in English
+- Native language content often reveals more authentic personal interests, cultural context, local professional activities, family mentions, and unfiltered opinions that don't appear in English sources
+
 PHASE 2 — EXPAND RESEARCH (only after identity is confirmed):
 - Now that you know WHO this person is, research their company: what does it do? What sector? Stage/size?
 - Look for press mentions, speaking engagements, publications, board seats.
+- Apply the multilingual research strategy above — don't limit yourself to English sources only.
 - Only use publicly available information.
 
 IDENTITY CONFIDENCE RULES (STRICT):
@@ -7919,8 +7952,12 @@ IDENTITY CONFIDENCE RULES (STRICT):
 PHASE 3 — PERSONAL & SOCIAL MEDIA (today is {today_str}, only after Phase 1 identity is confirmed):
 - You now know this person's full identity. Use it to search precisely:
   Search "[FullName] [Company] Instagram", "[FullName] [City] marathon", "[FullName] blog" etc.
-- Check Instagram, Facebook, TikTok, X/Twitter, personal blogs, Medium, Substack, YouTube.
-- Look for hobbies, interests, sports, family mentions, personal projects, creative work.
+- Apply the MULTILINGUAL RESEARCH STRATEGY from Phase 2 — look for content in both English AND the user's native language
+- The 10% of information in native languages is often the most authentic and revealing
+- Hebrew/Israeli users often have rich personal content in Hebrew on Facebook, Instagram, and local Israeli platforms
+- Check Instagram, Facebook, TikTok, X/Twitter, personal blogs, Medium, Substack, YouTube, AND native language equivalents
+- Look for hobbies, interests, sports, family mentions, personal projects, creative work in ANY language
+- Native language personal content frequently reveals more authentic interests, cultural context, family life, local social circles, and unfiltered opinions that don't appear in English sources
 - Look for public posts, articles, videos, or statements they have made.
 - Note the DATE of every finding. Content from the last 6 months is highly relevant. >2 years old may be outdated.
 - Look for PATTERNS that connect their personal and professional worlds.
