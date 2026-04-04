@@ -739,6 +739,12 @@ export default function GroupChatThread() {
     // Capture reply state before clearing
     const replySnapshot = replyTo
 
+    // Cancel any pending draft save timer FIRST to prevent race condition
+    if (draftSaveTimeoutRef.current) {
+      clearTimeout(draftSaveTimeoutRef.current)
+      draftSaveTimeoutRef.current = null
+    }
+
     // CLEAR COMPOSER IMMEDIATELY + remove persisted draft
     if (textareaRef.current) {
       textareaRef.current.value = ''
@@ -2683,8 +2689,9 @@ export default function GroupChatThread() {
                       clearTimeout(draftSaveTimeoutRef.current)
                     }
                     draftSaveTimeoutRef.current = setTimeout(() => {
-                      if (val.trim() && group_id) {
-                        writeDeviceCache(`chat-draft:group:${group_id}`, val)
+                      const current = textareaRef.current?.value
+                      if (current && current.trim() && group_id) {
+                        writeDeviceCache(`chat-draft:group:${group_id}`, current)
                       }
                     }, 300)
 

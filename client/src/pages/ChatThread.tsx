@@ -1402,6 +1402,12 @@ export default function ChatThread(){
     
     const replySnapshot = replyTo
 
+    // Cancel any pending draft save timer FIRST to prevent race condition
+    if (draftSaveTimeoutRef.current) {
+      clearTimeout(draftSaveTimeoutRef.current)
+      draftSaveTimeoutRef.current = null
+    }
+
     // Clear composer and remove persisted draft
     if (textareaRef.current) {
       textareaRef.current.value = ''
@@ -3085,8 +3091,9 @@ export default function ChatThread(){
                     clearTimeout(draftSaveTimeoutRef.current)
                   }
                   draftSaveTimeoutRef.current = setTimeout(() => {
-                    if (val.trim()) {
-                      writeDeviceCache(`chat-draft:dm:${username}`, val)
+                    const current = textareaRef.current?.value
+                    if (current && current.trim()) {
+                      writeDeviceCache(`chat-draft:dm:${username}`, current)
                     }
                   }, 300)
 
