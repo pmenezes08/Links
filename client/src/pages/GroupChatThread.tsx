@@ -19,7 +19,7 @@ import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
-import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
+import { readDeviceCache, writeDeviceCache, clearDeviceCache } from '../utils/deviceCache'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 
 type Message = {
@@ -687,10 +687,11 @@ export default function GroupChatThread() {
   }, [loadMessages])
 
   // Restore draft when entering group chat
+  // Restore draft when entering group chat (only if there's an actual saved draft)
   useEffect(() => {
     if (!group_id || !textareaRef.current) return
     const savedDraft = readDeviceCache<string>(`chat-draft:group:${group_id}`)
-    if (savedDraft) {
+    if (savedDraft && savedDraft.trim()) {
       textareaRef.current.value = savedDraft
       draftRef.current = savedDraft
       setDraftDisplay(savedDraft)
@@ -725,14 +726,20 @@ export default function GroupChatThread() {
     
     // Capture reply state before clearing
     const replySnapshot = replyTo
-    
-    // CLEAR COMPOSER IMMEDIATELY
+
+    // CLEAR COMPOSER IMMEDIATELY + remove persisted draft
     if (textareaRef.current) {
       textareaRef.current.value = ''
     }
     draftRef.current = ''
     setDraftDisplay('')
     adjustTextareaHeight()
+
+    // Clear the saved draft from device cache when message is sent
+    if (group_id) {
+      clearDeviceCache(`chat-draft:group:${group_id}`)
+    }
+
     setReplyTo(null)
     
     // Format message with reply if needed

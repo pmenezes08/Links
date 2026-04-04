@@ -678,11 +678,11 @@ export default function ChatThread(){
     }
   }, [chatCacheKey, processRawMessages, username])
 
-  // Restore draft when entering chat
+  // Restore draft when entering chat (only if there's an actual saved draft)
   useEffect(() => {
     if (!username || !textareaRef.current) return
     const savedDraft = readDeviceCache<string>(`chat-draft:dm:${username}`)
-    if (savedDraft) {
+    if (savedDraft && savedDraft.trim()) {
       textareaRef.current.value = savedDraft
       draftRef.current = savedDraft
       setDraftDisplay(savedDraft)
@@ -1389,12 +1389,20 @@ export default function ChatThread(){
     }
     
     const replySnapshot = replyTo
+
+    // Clear composer and remove persisted draft
     if (textareaRef.current) {
       textareaRef.current.value = ''
     }
     draftRef.current = ''
     setDraftDisplay('')
     adjustTextareaHeight()
+
+    // Clear the saved draft from device cache when message is sent
+    if (username) {
+      clearDeviceCache(`chat-draft:dm:${username}`)
+    }
+
     if (replySnapshot) {
       setReplyTo(null)
     }
