@@ -7933,9 +7933,29 @@ MULTILINGUAL RESEARCH STRATEGY (CRITICAL):
 - When you find non-English content, translate and summarize the key professional and personal insights in English
 - Native language content often reveals more authentic personal interests, cultural context, local professional activities, family mentions, and unfiltered opinions that don't appear in English sources
 
-PHASE 2 — EXPAND RESEARCH (only after identity is confirmed):
-- Now that you know WHO this person is, research their company: what does it do? What sector? Stage/size?
-- Look for press mentions, speaking engagements, publications, board seats.
+PHASE 2 — PROFESSIONAL BACKGROUND RESEARCH (only after identity is confirmed):
+
+PRIORITY ORDER:
+1. CURRENT ROLE (highest weight): Focus FIRST on their most recent/current professional experience. This is the primary signal for who they are today.
+2. CAREER HISTORY (important context): Also extract previous significant roles, especially those representing substantial experience (3+ years).
+3. EXPERTISE ACCUMULATION: Note how past experiences contribute to their current expertise and potential connection points.
+
+SPECIFIC INSTRUCTIONS:
+- Start with current role/company — understand what they do now, seniority, and impact.
+- Then deliberately look for career progression: previous companies, roles, and approximate tenure.
+- Pay special attention to substantial past experiences (e.g. "7 years at Deloitte" in consulting is highly relevant).
+- Recent experience (last 5-7 years) gets more weight than older background.
+- Older professional history should be used primarily for:
+  * Understanding depth of expertise
+  * Identifying potential areas of connection with others who share similar past experiences
+  * Contextualizing their career trajectory
+
+Look specifically for:
+- "X years at [Company]" patterns
+- Previous titles like "Consultant", "Senior Consultant", "Manager at Deloitte", etc.
+- Career transitions that show progression or domain expertise
+- Both current achievements AND foundational experience
+
 - Apply the multilingual research strategy above — don't limit yourself to English sources only.
 - Only use publicly available information.
 
@@ -7970,7 +7990,7 @@ PHASE 3 — PERSONAL & SOCIAL MEDIA (today is {today_str}, only after Phase 1 id
     "role": {"title": "...", "seniority": "junior|mid|senior|executive|founder", "function": "...", "implication": "1 sentence"} or null,
     "education": "degree + school if known, else null",
     "location": {"city": "...", "country": "...", "context": "1 sentence on local ecosystem relevance"} or null,
-    "webFindings": "professional web research summary (career, achievements, press)" or "",
+    "webFindings": "professional background summary. Lead with current role and recent experience. Include relevant past experience (especially 3+ year tenures) for context and expertise depth. Highlight both current focus and foundational career experiences that shape their perspective." or "",
     "publications": [{"source": "...", "date": "YYYY-MM", "insight": "...", "relevance": "high|medium|low"}] or []
   },"""
 
