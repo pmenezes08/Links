@@ -13103,7 +13103,7 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
             c = conn.cursor()
             ph = get_sql_placeholder()
             
-            # Get recent DM history for context
+            # Get recent DM history for context - fixed parameter binding
             c.execute(f"""
                 SELECT sender, message, timestamp FROM messages
                 WHERE (sender = {ph} AND receiver = {ph})
@@ -13126,7 +13126,14 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
         user_profile_ctx = get_steve_context_for_user(sender_username)
 
         context = "Direct message conversation:\n" + "\n".join(recent[-10:])
-        context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully."
+        
+        if other_username:
+            # Steve was @mentioned in a DM between two users
+            context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully."
+        else:
+            # Direct 1:1 chat with Steve
+            context += f"\n\n{sender_username} is chatting with you directly. Respond naturally and helpfully."
+        
         context += f"\n\n[Current date and time: {current_date}]"
 
         is_admin = is_app_admin(sender_username)
@@ -13247,7 +13254,7 @@ Use this knowledge naturally — don't announce it, but let it guide your tone a
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
-        # Function calling loop
+        # Function calling loop (simplified for DMs - use same model as group chats)
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": context}
@@ -13256,7 +13263,7 @@ Use this knowledge naturally — don't announce it, but let it guide your tone a
         max_iterations = 5
         for iteration in range(max_iterations):
             response = client.responses.create(
-                model="grok-4-1-fast-non-reasoning",
+                model=GROK_MODEL_FAST,  # Use consistent model that was working before
                 input=messages,
                 tools=platform_tools + [{"type": "web_search"}, {"type": "x_search"}],
                 max_output_tokens=600,
@@ -13310,11 +13317,9 @@ Use this knowledge naturally — don't announce it, but let it guide your tone a
 
         ai_response = format_steve_response_links(ai_response)
         
-        if not ai_response:
-            logger.warning("Steve DM reply: empty response from API")
+        if not ai_response or not ai_response.strip():
+            logger.warning("Steve DM reply: empty response after formatting")
             return
-        
-        ai_response = format_steve_response_links(ai_response)
         
         # Insert Steve's reply into the correct DM thread
         # If @Steve in a DM between two users: Steve sends to the sender,
