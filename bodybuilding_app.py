@@ -7095,15 +7095,17 @@ def admin_steve_profile_analyze(target_username):
             return jsonify({'success': False, 'error': 'User not found'}), 404
 
         communities = _fetch_user_communities(target_username)
-        profile_text = _build_profile_text_for_grok(user, communities=communities)
-        if not profile_text.strip():
-            return jsonify({'success': False, 'error': 'No profile data to analyze'}), 400
 
         data = request.get_json(silent=True) or {}
         depth = data.get('depth', 'standard')
         if depth not in ('quick', 'standard', 'deep'):
             depth = 'standard'
         reset = data.get('reset', False)
+
+        activity = _fetch_user_recent_activity(target_username) if depth in ('standard', 'deep') else None
+        profile_text = _build_profile_text_for_grok(user, communities=communities, activity=activity)
+        if not profile_text.strip():
+            return jsonify({'success': False, 'error': 'No profile data to analyze'}), 400
 
         from backend.services.firestore_reads import get_steve_user_profile
         existing_profile = get_steve_user_profile(target_username)
@@ -7475,7 +7477,71 @@ def _fetch_user_communities(username: str) -> list:
         return []
 
 
-def _build_profile_text_for_grok(user_row, communities: list = None) -> str:
+def _fetch_user_recent_activity(username: str, post_limit: int = 15, reply_limit: int = 10) -> dict:
+    """Fetch a user's recent posts and replies for profile analysis."""
+    import re as _re
+    URL_PATTERN = _re.compile(r'https?://[^\s<>"\')\]]+')
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            c.execute(f"""
+                SELECT p.content, p.timestamp, c.name AS community_name
+                FROM posts p
+                LEFT JOIN communities c ON p.community_id = c.id
+                WHERE p.username = {ph} AND p.content IS NOT NULL AND TRIM(p.content) != ''
+                ORDER BY p.timestamp DESC
+                LIMIT {int(post_limit)}
+            """, (username,))
+            raw_posts = c.fetchall()
+
+            c.execute(f"""
+                SELECT r.content, r.timestamp, c.name AS community_name,
+                       SUBSTRING(p.content, 1, 100) AS parent_snippet
+                FROM replies r
+                LEFT JOIN posts p ON r.post_id = p.id
+                LEFT JOIN communities c ON r.community_id = c.id
+                WHERE r.username = {ph} AND r.content IS NOT NULL AND TRIM(r.content) != ''
+                ORDER BY r.timestamp DESC
+                LIMIT {int(reply_limit)}
+            """, (username,))
+            raw_replies = c.fetchall()
+
+        shared = []
+        original = []
+        for row in raw_posts:
+            r = dict(row) if hasattr(row, 'keys') else {'content': row[0], 'timestamp': row[1], 'community_name': row[2]}
+            content = (r.get('content') or '').strip()
+            urls = URL_PATTERN.findall(content)
+            entry = {
+                'content': content[:250],
+                'date': (r.get('timestamp') or '')[:10],
+                'community': r.get('community_name') or '',
+            }
+            if urls:
+                entry['urls'] = urls[:3]
+                shared.append(entry)
+            else:
+                original.append(entry)
+
+        replies = []
+        for row in raw_replies:
+            r = dict(row) if hasattr(row, 'keys') else {'content': row[0], 'timestamp': row[1], 'community_name': row[2], 'parent_snippet': row[3]}
+            replies.append({
+                'content': (r.get('content') or '').strip()[:200],
+                'date': (r.get('timestamp') or '')[:10],
+                'community': r.get('community_name') or '',
+                'replying_to': (r.get('parent_snippet') or '').strip()[:80],
+            })
+
+        return {'shared': shared, 'original': original, 'replies': replies}
+    except Exception as e:
+        logger.debug(f"Could not fetch activity for {username}: {e}")
+        return {'shared': [], 'original': [], 'replies': []}
+
+
+def _build_profile_text_for_grok(user_row, communities: list = None, activity: dict = None) -> str:
     """Assemble all available profile fields into a text block for Grok analysis."""
     def gv(key):
         try:
@@ -7539,6 +7605,31 @@ def _build_profile_text_for_grok(user_row, communities: list = None) -> str:
         if network_lines:
             parts.append(f"Networks/Communities: {'; '.join(network_lines)}")
 
+    if activity:
+        shared = activity.get('shared', [])
+        original = activity.get('original', [])
+        replies = activity.get('replies', [])
+
+        if shared:
+            parts.append("\n--- SHARED CONTENT (posts with links) ---")
+            for p in shared[:10]:
+                line = f"[{p.get('community', '?')}, {p.get('date', '?')}]"
+                if p.get('urls'):
+                    line += f" URL: {p['urls'][0]}"
+                line += f" — \"{p['content']}\""
+                parts.append(line)
+
+        if original:
+            parts.append("\n--- OWN THOUGHTS (text-only posts) ---")
+            for p in original[:10]:
+                parts.append(f"[{p.get('community', '?')}, {p.get('date', '?')}] \"{p['content']}\"")
+
+        if replies:
+            parts.append("\n--- REPLIES & COMMENTS ---")
+            for r in replies[:8]:
+                ctx = f" (replying to: \"{r['replying_to']}...\")" if r.get('replying_to') else ''
+                parts.append(f"[{r.get('community', '?')}, {r.get('date', '?')}]{ctx} \"{r['content']}\"")
+
     return '\n'.join(parts)
 
 
@@ -7560,7 +7651,17 @@ def _analyze_profile_with_grok(username: str, profile_text: str, prior_feedback:
 - If a bio is humorous or vague, still extract what you can.
 - Confidence scores (0.0–1.0) reflect YOUR confidence in the interest.
 - If there is very little data, say so honestly and give fewer interests with lower confidence.
-- Tag each interest as "professional", "personal", or "both"."""
+- Tag each interest as "professional", "personal", or "both".
+
+PLATFORM ACTIVITY (if provided):
+- SHARED CONTENT (posts with links): These URLs reveal the user's information diet and professional focus.
+  USE YOUR WEB SEARCH to visit/analyze each URL. Understand what the content is about and what sharing
+  it says about the user's interests and expertise. The user's comment alongside the link adds context.
+- OWN THOUGHTS (text-only posts): These reveal the user's voice — opinions, reflections, experiences, humor.
+  Pay special attention to recurring themes.
+- REPLIES & COMMENTS: These show what topics the user engages with and how they think.
+  Look for patterns in what they respond to.
+- Recent posts matter more than older ones. If a user's posts show a clear evolution, note it."""
 
         research_rules = ""
         if depth in ('standard', 'deep'):
@@ -7852,6 +7953,7 @@ def _trigger_background_profile_analysis(username: str):
             prior_feedback = (existing or {}).get('analysis', {}).get('_feedback', {})
             logger.info(f"Background profile analysis starting for {username}")
             analysis = _analyze_profile_with_grok(username, profile_text, prior_feedback=prior_feedback, depth='quick')
+            # Background auto-trigger uses 'quick' depth — no activity fetch (saves tokens)
             if analysis:
                 if prior_feedback:
                     analysis['_feedback'] = prior_feedback
