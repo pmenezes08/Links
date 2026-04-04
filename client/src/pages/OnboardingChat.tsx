@@ -140,6 +140,7 @@ export default function OnboardingChat({
   const [tourStep, setTourStep] = useState<number | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
   const [headerLogoSrc, setHeaderLogoSrc] = useState('/api/public/logo')
+  const [safeBottomPx, setSafeBottomPx] = useState(0)
 
   const NATIVE_KEYBOARD_MIN_HEIGHT = 60
   const KEYBOARD_OFFSET_EPSILON = 6
@@ -153,6 +154,37 @@ export default function OnboardingChat({
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return
+    const probe = document.createElement('div')
+    probe.style.position = 'fixed'
+    probe.style.bottom = '0'
+    probe.style.left = '0'
+    probe.style.width = '0'
+    probe.style.height = 'env(safe-area-inset-bottom, 0px)'
+    probe.style.pointerEvents = 'none'
+    probe.style.opacity = '0'
+    probe.style.zIndex = '-1'
+    document.body.appendChild(probe)
+
+    const updateSafeBottom = () => {
+      if (keyboardOffsetRef.current > 0) return
+      const rect = probe.getBoundingClientRect()
+      const next = rect.height || 0
+      setSafeBottomPx(prev => {
+        if (next < 1 && prev > 1) return prev
+        return Math.abs(prev - next) < 1 ? prev : next
+      })
+    }
+
+    updateSafeBottom()
+    window.addEventListener('resize', updateSafeBottom)
+    return () => {
+      window.removeEventListener('resize', updateSafeBottom)
+      probe.remove()
+    }
   }, [])
 
   // Native keyboard handling (Capacitor — iOS only)
@@ -772,13 +804,14 @@ export default function OnboardingChat({
   const lastSteveMsg = [...messages].reverse().find(m => m.from === 'steve')
   const showInput = lastSteveMsg?.inputType && stage !== 'enriching' && stage !== 'review' && stage !== 'complete' && !composingBio
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
-  const composerOffset = keyboardOffset > 0 ? keyboardOffset : 0
-  const composerBottom = keyboardOffset > 0 ? `${keyboardOffset}px` : 'env(safe-area-inset-bottom, 0px)'
+  const keyboardLift = keyboardOffset > 0 ? Math.max(0, keyboardOffset - safeBottomPx) : 0
+  const composerBottom = `${keyboardLift}px`
   const composerClearance = showPhotoUpload ? 124 : showInput ? 112 : 24
+  const composerPaddingBottom = keyboardLift > 0 ? '8px' : `calc(env(safe-area-inset-bottom, 0px) + 8px)`
 
   if (booting) {
     return (
-      <div className="fixed inset-0 z-50 bg-black flex items-center justify-center px-6" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      <div className="fixed inset-0 z-[1100] bg-black flex items-center justify-center px-6" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="flex flex-col items-center gap-4 text-center">
           <img
             src={headerLogoSrc}
@@ -794,9 +827,9 @@ export default function OnboardingChat({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <div className="fixed inset-0 z-[1100] bg-black flex flex-col" style={{ height: '100dvh' }}>
       {/* Header with logo */}
-      <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
+      <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="max-w-lg mx-auto px-4 pt-3 pb-2 flex flex-col items-center">
           <div className="flex items-center gap-2 mb-2">
             <img
@@ -827,7 +860,7 @@ export default function OnboardingChat({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: `${composerOffset + composerClearance}px` }}>
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: `${safeBottomPx + keyboardLift + composerClearance}px` }}>
         <div className="max-w-lg mx-auto space-y-3">
           {messages.map((msg, i) => (
             <div key={i}>
@@ -983,6 +1016,7 @@ export default function OnboardingChat({
             left: '0',
             right: '0',
             zIndex: 1000,
+            paddingBottom: composerPaddingBottom,
           }}
         >
           <div className="max-w-lg mx-auto">
@@ -1037,6 +1071,7 @@ export default function OnboardingChat({
             left: '0',
             right: '0',
             zIndex: 1000,
+            paddingBottom: composerPaddingBottom,
           }}
         >
           <div className="max-w-lg mx-auto flex gap-2">

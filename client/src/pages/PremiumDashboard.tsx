@@ -660,7 +660,7 @@ export default function PremiumDashboard() {
 
       {/* Conversational Onboarding with Steve */}
       {onboardingLaunching && !showOnboarding && (
-        <div className="fixed inset-0 z-[55] bg-black/80 backdrop-blur-sm flex items-center justify-center px-6">
+        <div className="fixed inset-0 z-[1100] bg-black/80 backdrop-blur-sm flex items-center justify-center px-6">
           <div className="flex flex-col items-center gap-4 text-center">
             <img src="/api/public/logo" alt="CPoint" className="w-14 h-14 rounded-2xl object-contain" />
             <div className="w-8 h-8 rounded-full border-2 border-white/15 border-t-[#4db6ac] animate-spin" />
