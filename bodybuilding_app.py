@@ -7591,6 +7591,7 @@ def _migrate_analysis_to_v3(analysis: dict) -> dict:
     v3['professional'] = {
         'company': old_company if old_company.get('name') or old_company.get('description') else None,
         'role': old_role if old_role.get('title') else None,
+        'careerHistory': (analysis.get('professional', {}).get('careerHistory') or []) if isinstance(analysis.get('professional'), dict) else [],
         'education': old_bg.get('education'),
         'location': old_location,
         'webFindings': old_web.get('publicSummary', ''),
@@ -7652,7 +7653,28 @@ def _merge_analyses(existing: dict, new: dict) -> dict:
         merged['identity'] = new['identity']
 
     if new.get('professional'):
-        merged['professional'] = new['professional']
+        old_pro = existing.get('professional') or {}
+        new_pro = new['professional'] or {}
+        merged_pro = dict(new_pro)
+        # Merge careerHistory: deduplicate by company+role, keep union
+        old_history = old_pro.get('careerHistory') or []
+        new_history = new_pro.get('careerHistory') or []
+        seen = set()
+        combined_history = []
+        for entry in new_history + old_history:
+            if not isinstance(entry, dict):
+                continue
+            key = (entry.get('company', '').lower().strip(), entry.get('role', '').lower().strip())
+            if key not in seen:
+                seen.add(key)
+                combined_history.append(entry)
+        merged_pro['careerHistory'] = combined_history
+        # Keep longer webFindings if new one is shorter
+        old_wf = old_pro.get('webFindings', '') or ''
+        new_wf = new_pro.get('webFindings', '') or ''
+        if len(old_wf) > len(new_wf) * 1.5 and new_wf:
+            merged_pro['webFindings'] = old_wf
+        merged['professional'] = merged_pro
     if new.get('personal'):
         merged['personal'] = new['personal']
 
@@ -7937,24 +7959,27 @@ PHASE 2 — PROFESSIONAL BACKGROUND RESEARCH (only after identity is confirmed):
 
 PRIORITY ORDER:
 1. CURRENT ROLE (highest weight): Focus FIRST on their most recent/current professional experience. This is the primary signal for who they are today.
-2. CAREER HISTORY (important context): Also extract previous significant roles, especially those representing substantial experience (3+ years).
+2. FULL CAREER HISTORY (REQUIRED): You MUST enumerate ALL professional experiences found, not just the current one. Every role that lasted 1+ years MUST appear as a separate entry in the careerHistory array. Do NOT summarize multiple roles into a single sentence — list each separately.
 3. EXPERTISE ACCUMULATION: Note how past experiences contribute to their current expertise and potential connection points.
 
 SPECIFIC INSTRUCTIONS:
 - Start with current role/company — understand what they do now, seniority, and impact.
-- Then deliberately look for career progression: previous companies, roles, and approximate tenure.
-- Pay special attention to substantial past experiences (e.g. "7 years at Deloitte" in consulting is highly relevant).
-- Recent experience (last 5-7 years) gets more weight than older background.
-- Older professional history should be used primarily for:
-  * Understanding depth of expertise
-  * Identifying potential areas of connection with others who share similar past experiences
-  * Contextualizing their career trajectory
+- Then deliberately and exhaustively look for EVERY past role: previous companies, titles, and approximate tenure.
+- The careerHistory array should be ordered from most recent to oldest.
+- Include the current role as the FIRST entry in careerHistory (with period ending in "present").
+- Include ALL types of professional experience: corporate roles, military/national service, consulting, entrepreneurship, non-profit work, board positions, advisory roles, academic positions, etc.
+- If LinkedIn shows 5 past roles, careerHistory should have at least 5 entries. Do not skip or collapse roles.
+- Pay special attention to substantial past experiences (e.g. "7 years at Deloitte" in consulting is highly relevant for networking).
+- Recent experience (last 5-7 years) gets more weight, but older roles still MUST be captured.
+- For each careerHistory entry, the "highlight" should note why it matters: expertise gained, industry knowledge, leadership experience, or potential connection points.
 
-Look specifically for:
-- "X years at [Company]" patterns
-- Previous titles like "Consultant", "Senior Consultant", "Manager at Deloitte", etc.
-- Career transitions that show progression or domain expertise
-- Both current achievements AND foundational experience
+WHAT TO LOOK FOR:
+- "X years at [Company]" patterns on LinkedIn, About pages, bios
+- Previous titles and promotions showing career progression
+- Career transitions between industries or functions (e.g. consulting → tech → startup)
+- Military service, national service, or government roles (common in Israel, South Korea, Singapore, etc.)
+- Internships or early career roles ONLY if they lasted 1+ years or are at notable organizations
+- Board memberships, advisory roles, or side ventures
 
 - Apply the multilingual research strategy above — don't limit yourself to English sources only.
 - Only use publicly available information.
@@ -7988,9 +8013,12 @@ PHASE 3 — PERSONAL & SOCIAL MEDIA (today is {today_str}, only after Phase 1 id
         professional_schema = """  "professional": {
     "company": {"name": "...", "description": "...", "sector": "...", "stage": "..."} or null,
     "role": {"title": "...", "seniority": "junior|mid|senior|executive|founder", "function": "...", "implication": "1 sentence"} or null,
+    "careerHistory": [
+      {"company": "...", "role": "...", "period": "YYYY-YYYY or YYYY-present", "duration": "~N years", "highlight": "1 sentence on relevance/expertise gained"}
+    ] or [],
     "education": "degree + school if known, else null",
     "location": {"city": "...", "country": "...", "context": "1 sentence on local ecosystem relevance"} or null,
-    "webFindings": "professional background summary. Lead with current role and recent experience. Include relevant past experience (especially 3+ year tenures) for context and expertise depth. Highlight both current focus and foundational career experiences that shape their perspective." or "",
+    "webFindings": "Narrative professional background summary tying together the full career arc. Emphasize current focus but connect it to foundational experiences." or "",
     "publications": [{"source": "...", "date": "YYYY-MM", "insight": "...", "relevance": "high|medium|low"}] or []
   },"""
 
@@ -8072,7 +8100,7 @@ Set any field to null rather than guessing with no basis."""
         max_tokens = 1000
         if depth == 'standard':
             tools = [{"type": "web_search"}]
-            max_tokens = 2000
+            max_tokens = 3000
         elif depth == 'deep':
             tools = [{"type": "web_search"}, {"type": "x_search"}]
             max_tokens = 4000
@@ -8164,6 +8192,22 @@ def get_steve_context_for_user(username: str, viewer_username: str = None) -> st
         role = pro.get('role') or {}
         if role.get('implication'):
             parts.append(f"Role: {role.get('title','')} ({role.get('seniority','')}) — {role['implication']}")
+        career = pro.get('careerHistory') or []
+        if career:
+            history_lines = []
+            for entry in career[:8]:
+                if not isinstance(entry, dict):
+                    continue
+                line = f"{entry.get('role', '?')} at {entry.get('company', '?')}"
+                if entry.get('duration'):
+                    line += f" ({entry['duration']})"
+                elif entry.get('period'):
+                    line += f" [{entry['period']}]"
+                if entry.get('highlight'):
+                    line += f" — {entry['highlight']}"
+                history_lines.append(line)
+            if history_lines:
+                parts.append(f"Career history: {'; '.join(history_lines)}")
         loc = pro.get('location') or {}
         if loc.get('context'):
             parts.append(f"Location: {loc['context']}")

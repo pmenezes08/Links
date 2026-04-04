@@ -238,6 +238,7 @@ export default function AdminDashboard() {
       professional?: {
         company?: { name?: string; description?: string; sector?: string; stage?: string } | null
         role?: { title?: string; seniority?: string; function?: string; implication?: string } | null
+        careerHistory?: { company?: string; role?: string; period?: string; duration?: string; highlight?: string }[]
         education?: string | null
         location?: { city?: string; country?: string; context?: string } | null
         webFindings?: string
@@ -2427,7 +2428,23 @@ export default function AdminDashboard() {
                                             {pro.role.implication && <div className="text-xs text-white/50 leading-relaxed mt-0.5">{pro.role.implication}</div>}
                                           </div>
                                         )}
-                                        {pro.education && <div className="text-xs text-white/50"><i className="fa-solid fa-graduation-cap mr-1" />{pro.education}</div>}
+                                        {pro.careerHistory && pro.careerHistory.length > 0 && (
+                                          <div className="mt-2 space-y-1.5">
+                                            <div className="text-[10px] font-medium text-white/40 uppercase tracking-wider">Career Timeline</div>
+                                            {pro.careerHistory.map((ch, i) => (
+                                              <div key={i} className="flex items-start gap-2 text-xs">
+                                                <div className="w-1 h-1 rounded-full bg-teal-400/50 mt-1.5 shrink-0" />
+                                                <div>
+                                                  <span className="text-white/70 font-medium">{ch.role}</span>
+                                                  {ch.company && <span className="text-white/50"> at {ch.company}</span>}
+                                                  {(ch.duration || ch.period) && <span className="text-white/30 ml-1">({ch.duration || ch.period})</span>}
+                                                  {ch.highlight && <div className="text-[10px] text-white/35 leading-relaxed">{ch.highlight}</div>}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {pro.education && <div className="text-xs text-white/50 mt-1"><i className="fa-solid fa-graduation-cap mr-1" />{pro.education}</div>}
                                         {pro.location?.context && <div className="text-xs text-white/50"><i className="fa-solid fa-location-dot mr-1" />{pro.location.context}</div>}
                                         {pro.webFindings && <div className="text-xs text-white/45 leading-relaxed italic mt-1">{pro.webFindings}</div>}
                                         {pro.publications && pro.publications.length > 0 && (
