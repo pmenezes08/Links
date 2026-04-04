@@ -175,6 +175,8 @@ export default function ChatThread(){
   const recentOptimisticRef = useRef<Map<string, { message: Message; timestamp: number }>>(new Map())
   // Pause polling briefly after sending to avoid race condition with server confirmation
   const skipNextPollsUntil = useRef<number>(0)
+  // Draft persistence - save timeout for debounced auto-save
+  const draftSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Scroll behavior
   const [showScrollDown, setShowScrollDown] = useState(false)
@@ -675,6 +677,31 @@ export default function ChatThread(){
       })
     }
   }, [chatCacheKey, processRawMessages, username])
+
+  // Restore draft when entering chat
+  useEffect(() => {
+    if (!username || !textareaRef.current) return
+    const savedDraft = readDeviceCache<string>(`chat-draft:dm:${username}`)
+    if (savedDraft) {
+      textareaRef.current.value = savedDraft
+      draftRef.current = savedDraft
+      setDraftDisplay(savedDraft)
+      adjustTextareaHeight()
+    }
+  }, [username])
+
+  // Save draft when leaving chat (cleanup)
+  useEffect(() => {
+    return () => {
+      if (draftSaveTimeoutRef.current) {
+        clearTimeout(draftSaveTimeoutRef.current)
+      }
+      const currentText = textareaRef.current?.value || draftRef.current
+      if (currentText?.trim()) {
+        writeDeviceCache(`chat-draft:dm:${username}`, currentText)
+      }
+    }
+  }, [username])
 
   // Initial load of messages and other user info (fresh fetch)
   useEffect(() => {
@@ -3032,27 +3059,37 @@ export default function ChatThread(){
                   draftRef.current = val
                   setDraftDisplay(val)
                   adjustTextareaHeight()
-                  
+
+                  // Auto-save draft with 300ms debounce (minimal impact on performance)
+                  if (draftSaveTimeoutRef.current) {
+                    clearTimeout(draftSaveTimeoutRef.current)
+                  }
+                  draftSaveTimeoutRef.current = setTimeout(() => {
+                    if (val.trim()) {
+                      writeDeviceCache(`chat-draft:dm:${username}`, val)
+                    }
+                  }, 300)
+
                   // Only send typing indicator once, not on every keystroke
                   if (!isTypingRef.current) {
                     isTypingRef.current = true
-                    fetch('/api/typing', { 
-                      method:'POST', 
-                      credentials:'include', 
-                      headers:{ 'Content-Type':'application/json' }, 
-                      body: JSON.stringify({ peer: username, is_typing: true }) 
+                    fetch('/api/typing', {
+                      method:'POST',
+                      credentials:'include',
+                      headers:{ 'Content-Type':'application/json' },
+                      body: JSON.stringify({ peer: username, is_typing: true })
                     }).catch(()=>{})
                   }
-                  
+
                   // Reset the stop-typing timer on each keystroke
                   if (typingTimer.current) clearTimeout(typingTimer.current)
                   typingTimer.current = setTimeout(() => {
                     isTypingRef.current = false
-                    fetch('/api/typing', { 
-                      method:'POST', 
-                      credentials:'include', 
-                      headers:{ 'Content-Type':'application/json' }, 
-                      body: JSON.stringify({ peer: username, is_typing: false }) 
+                    fetch('/api/typing', {
+                      method:'POST',
+                      credentials:'include',
+                      headers:{ 'Content-Type':'application/json' },
+                      body: JSON.stringify({ peer: username, is_typing: false })
                     }).catch(()=>{})
                   }, 1200)
                 }}

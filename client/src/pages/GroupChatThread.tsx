@@ -19,6 +19,7 @@ import VoiceNotePlayer from '../components/VoiceNotePlayer'
 import { sendGroupImageMessage, sendGroupMultiMedia } from '../chat/groupChatMediaSenders'
 import type { UploadProgress } from '../chat/groupChatMediaSenders'
 import { renderTextWithSourceLinks } from '../utils/linkUtils'
+import { readDeviceCache, writeDeviceCache } from '../utils/deviceCache'
 import { cacheMessages, getCachedMessages, cacheKeyVal, getCachedKeyVal, addToOutbox, removeFromOutbox, updateOutboxStatus, getOutboxEntries } from '../utils/offlineDb'
 
 type Message = {
@@ -229,6 +230,8 @@ export default function GroupChatThread() {
   const keyboardOffsetRef = useRef(0)
   const viewportBaseRef = useRef<number | null>(null)
   const lastFocusTimeRef = useRef(0)
+  // Draft persistence - save timeout for debounced auto-save
+  const draftSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Format recording time
   const formatRecordingTime = (ms: number) => {
@@ -682,6 +685,31 @@ export default function GroupChatThread() {
     window.addEventListener('outbox-drained', handler)
     return () => window.removeEventListener('outbox-drained', handler)
   }, [loadMessages])
+
+  // Restore draft when entering group chat
+  useEffect(() => {
+    if (!group_id || !textareaRef.current) return
+    const savedDraft = readDeviceCache<string>(`chat-draft:group:${group_id}`)
+    if (savedDraft) {
+      textareaRef.current.value = savedDraft
+      draftRef.current = savedDraft
+      setDraftDisplay(savedDraft)
+      adjustTextareaHeight()
+    }
+  }, [group_id])
+
+  // Save draft when leaving group chat (cleanup)
+  useEffect(() => {
+    return () => {
+      if (draftSaveTimeoutRef.current) {
+        clearTimeout(draftSaveTimeoutRef.current)
+      }
+      const currentText = textareaRef.current?.value || draftRef.current
+      if (currentText?.trim() && group_id) {
+        writeDeviceCache(`chat-draft:group:${group_id}`, currentText)
+      }
+    }
+  }, [group_id])
 
   const handleSend = useCallback(() => {
     // Get text directly from textarea (uncontrolled)
@@ -2630,11 +2658,21 @@ export default function GroupChatThread() {
                     draftRef.current = val
                     setDraftDisplay(val)
                     adjustTextareaHeight()
-                    
+
+                    // Auto-save draft with 300ms debounce (minimal impact on performance)
+                    if (draftSaveTimeoutRef.current) {
+                      clearTimeout(draftSaveTimeoutRef.current)
+                    }
+                    draftSaveTimeoutRef.current = setTimeout(() => {
+                      if (val.trim() && group_id) {
+                        writeDeviceCache(`chat-draft:group:${group_id}`, val)
+                      }
+                    }, 300)
+
                     // Detect @mention typing
                     const cursorPos = textarea.selectionStart || 0
                     const textBeforeCursor = val.slice(0, cursorPos)
-                    
+
                     // Find the last @ that starts a mention (preceded by space or start of text)
                     const mentionMatch = textBeforeCursor.match(/(?:^|\s)@(\w*)$/)
                     if (mentionMatch) {
