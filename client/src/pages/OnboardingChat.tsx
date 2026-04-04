@@ -3,15 +3,14 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 type Stage =
   | 'welcome'
   | 'name'
-  | 'display_name'
-  | 'photo'
-  | 'role'
   | 'location'
+  | 'photo'
+  | 'talk_all_day'
+  | 'recommend'
+  | 'reach_out'
+  | 'professional'
   | 'linkedin'
-  | 'brand_known_for'
-  | 'brand_conversations'
-  | 'brand_called_when'
-  | 'brand_compose'
+  | 'compose'
   | 'enriching'
   | 'review'
   | 'complete'
@@ -39,16 +38,15 @@ interface EnrichmentCard {
 interface Collected {
   firstName: string
   lastName: string
-  displayName: string
   role: string
   company: string
   city: string
   country: string
   linkedin: string
   bio: string
-  brandKnownFor: string
-  brandConversations: string
-  brandCalledWhen: string
+  talkAllDay: string
+  recommend: string
+  reachOut: string
 }
 
 interface TourStep {
@@ -83,17 +81,16 @@ function stageProgress(stage: Stage): number {
   const stepMap: Record<Stage, number> = {
     welcome: 0,
     name: 1,
-    display_name: 2,
+    location: 2,
     photo: 3,
-    role: 4,
-    location: 5,
-    linkedin: 6,
-    brand_known_for: 7,
-    brand_conversations: 7,
-    brand_called_when: 7,
-    brand_compose: 7,
-    enriching: 7.5,
-    review: 7.8,
+    talk_all_day: 4,
+    recommend: 5,
+    reach_out: 6,
+    professional: 7,
+    linkedin: 8,
+    compose: 8,
+    enriching: 8,
+    review: 8,
     complete: 8,
   }
   const step = stepMap[stage] ?? 0
@@ -104,7 +101,6 @@ export default function OnboardingChat({
   firstName: initFirst,
   lastName: initLast,
   username,
-  displayName: initDisplay,
   communityName,
   hasCommunity,
   existingProfilePic,
@@ -118,16 +114,15 @@ export default function OnboardingChat({
   const [collected, setCollected] = useState<Collected>({
     firstName: initFirst || '',
     lastName: initLast || '',
-    displayName: initDisplay || '',
     role: '',
     company: '',
     city: '',
     country: '',
     linkedin: '',
     bio: '',
-    brandKnownFor: '',
-    brandConversations: '',
-    brandCalledWhen: '',
+    talkAllDay: '',
+    recommend: '',
+    reachOut: '',
   })
   const [isTyping, setIsTyping] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
@@ -138,15 +133,40 @@ export default function OnboardingChat({
   const [initialized, setInitialized] = useState(false)
   const [composingBio, setComposingBio] = useState(false)
   const [tourStep, setTourStep] = useState<number | null>(null)
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const keyboardOffsetRef = useRef(0)
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }, [])
+
+  // iOS keyboard handling via visualViewport
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const onResize = () => {
+      const offset = window.innerHeight - viewport.height - viewport.offsetTop
+      const normalized = offset > 40 ? offset : 0
+      if (Math.abs(keyboardOffsetRef.current - normalized) < 10) return
+      keyboardOffsetRef.current = normalized
+      setKeyboardOffset(normalized)
+      if (normalized > 0) requestAnimationFrame(() => scrollToBottom())
+    }
+
+    viewport.addEventListener('resize', onResize)
+    viewport.addEventListener('scroll', onResize)
+    return () => {
+      viewport.removeEventListener('resize', onResize)
+      viewport.removeEventListener('scroll', onResize)
+    }
+  }, [scrollToBottom])
 
   const addSteveMessage = useCallback((text: string, opts?: Partial<ChatMessage>) => {
     setIsTyping(true)
@@ -218,7 +238,7 @@ export default function OnboardingChat({
         if (communityName) {
           welcomeText += ` I see you were invited to ${communityName} — exciting!`
         }
-        welcomeText += `\n\nA great profile is what powers meaningful connections here. I'll walk you through ${USER_FACING_STEPS} quick steps — it takes about 3 minutes. Ready?`
+        welcomeText += `\n\nA great profile attracts the right connections and lets you control your narrative. I'll walk you through ${USER_FACING_STEPS} quick steps — it takes about 3 minutes. Ready?`
         addSteveMessage(welcomeText, {
           options: [{ label: "Let's go!", value: 'start', icon: '🚀' }],
         })
@@ -241,63 +261,54 @@ export default function OnboardingChat({
         }
         break
       }
-      case 'display_name': {
-        const suggestion = `${data.firstName} ${data.lastName}`.trim() || username
-        addSteveMessage(`Great! How would you like to appear on the platform? Your display name can be different from your real name.`, {
-          inputType: 'text',
-          inputPlaceholder: suggestion,
-        })
-        setInputValue(suggestion)
-        break
-      }
-      case 'photo':
-        addSteveMessage("Now let's add a profile picture — it helps people recognize you.", {
-          photoUpload: true,
-          options: [{ label: 'Skip for now', value: 'skip_photo', icon: '⏭️' }],
-        })
-        break
-      case 'role':
-        addSteveMessage("What do you do professionally? Something like \"Product Manager at Google\" or \"Founder, building in fintech\" works great.", {
-          inputType: 'text',
-          inputPlaceholder: 'e.g. Product Manager at Google',
-        })
-        break
       case 'location':
         addSteveMessage('Where are you based?', {
           inputType: 'text',
           inputPlaceholder: 'e.g. Munich, Germany',
         })
         break
+      case 'photo':
+        addSteveMessage("Let's add a profile picture — it helps people recognize you.", {
+          photoUpload: true,
+          options: [{ label: 'Skip for now', value: 'skip_photo', icon: '⏭️' }],
+        })
+        break
+      case 'talk_all_day':
+        addSteveMessage("Now let's get to know the real you.\n\nWhat are the things you could talk about all day?", {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. AI, leadership, travel, startups',
+        })
+        break
+      case 'recommend':
+        addSteveMessage("Recommend a book, movie, or TV show to your network.", {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. Sapiens by Yuval Noah Harari',
+        })
+        break
+      case 'reach_out':
+        addSteveMessage("What do you want people to reach out to you about?", {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. Coffee chats, brainstorming, partnerships, new ventures',
+        })
+        break
+      case 'professional':
+        addSteveMessage('What do you do professionally? Something like "Product Manager at Google" or "Founder, building in fintech" works great.', {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. Product Manager at Google',
+        })
+        break
       case 'linkedin':
-        addSteveMessage("Got a LinkedIn URL? It really helps me learn more about your background. Feel free to skip if you'd rather not share.", {
+        addSteveMessage("Got a LinkedIn URL? It helps me learn more about your background. Feel free to skip if you'd rather not share.", {
           inputType: 'url',
           inputPlaceholder: 'https://linkedin.com/in/yourprofile',
           options: [{ label: 'Skip', value: 'skip_linkedin', icon: '⏭️' }],
         })
         break
-      case 'brand_known_for':
-        addSteveMessage("Now let's build your intro — this is how people in your networks will get to know you. I'll ask three quick questions and turn your answers into a bio.\n\nWhat's the one thing people always come to you for?", {
-          inputType: 'text',
-          inputPlaceholder: 'e.g. Making complex problems feel simple',
-        })
-        break
-      case 'brand_conversations':
-        addSteveMessage("What topic could you talk about over coffee for hours?", {
-          inputType: 'text',
-          inputPlaceholder: 'e.g. The future of AI, leadership, travel stories',
-        })
-        break
-      case 'brand_called_when':
-        addSteveMessage('Complete this: "People call me when..."', {
-          inputType: 'text',
-          inputPlaceholder: 'e.g. ...things are broken and they need someone who stays calm',
-        })
-        break
-      case 'brand_compose':
+      case 'compose':
         composeBio(data)
         break
       case 'enriching':
-        addSteveMessage("Awesome, thanks! Give me a moment — I'm looking up some public info to help build out your profile. This is based only on publicly available information. 🔍")
+        addSteveMessage("Give me a moment — I'm looking up some public info to help build out your profile. This is based only on publicly available information. 🔍")
         triggerEnrichment()
         break
       case 'review':
@@ -311,7 +322,7 @@ export default function OnboardingChat({
         }
         break
       case 'complete':
-        showComplete()
+        showCompleteMsg()
         break
     }
   }
@@ -325,10 +336,10 @@ export default function OnboardingChat({
 
   function advanceToComplete() {
     setStage('complete')
-    showComplete()
+    showCompleteMsg()
   }
 
-  function showComplete() {
+  function showCompleteMsg() {
     addSteveMessage(
       "You're all set! 🎉 Your profile is live!\n\nI'm always here if you need anything — just DM me or tag @Steve in any chat.\n\nBy the way, did you know you can create your own communities? Planning a trip with friends? Starting a book club? Organizing weekend tennis? A community is just a group of people you want to keep connected.",
       {
@@ -366,34 +377,36 @@ export default function OnboardingChat({
   async function composeBio(data?: Collected) {
     const c = data || collected
     setComposingBio(true)
-    addSteveMessage("Give me a sec — I'm crafting your bio... ✍️")
+    addSteveMessage("Nice! Give me a sec — I'm putting your identity together... ✍️")
     try {
       const r = await fetch('/api/onboarding/compose_bio', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          known_for: c.brandKnownFor,
-          conversations: c.brandConversations,
-          called_when: c.brandCalledWhen,
+          talk_all_day: c.talkAllDay,
+          recommend: c.recommend,
+          reach_out: c.reachOut,
           role: c.role,
           company: c.company,
+          city: c.city,
+          country: c.country,
         }),
       })
       const j = await r.json().catch(() => null)
       const bio = j?.bio || ''
       setComposingBio(false)
       if (bio) {
-        addSteveMessage("Here's a draft based on what you told me:", { composedBio: bio })
+        addSteveMessage("Here's your identity, based on what you told me:", { composedBio: bio })
       } else {
-        addSteveMessage("I couldn't compose a bio right now — would you like to write one yourself?", {
+        addSteveMessage("I couldn't compose your identity right now — would you like to write one yourself?", {
           inputType: 'textarea',
           inputPlaceholder: 'Write a 2-3 sentence intro...',
         })
       }
     } catch {
       setComposingBio(false)
-      addSteveMessage("Something went wrong composing your bio. Want to write one yourself?", {
+      addSteveMessage("Something went wrong. Want to write your own intro instead?", {
         inputType: 'textarea',
         inputPlaceholder: 'Write a 2-3 sentence intro...',
       })
@@ -414,7 +427,6 @@ export default function OnboardingChat({
     if (accepted.length > 0) {
       addSteveMessage(`Great choices! I've added ${accepted.length} item${accepted.length > 1 ? 's' : ''} to your profile.`)
     }
-    // Save accepted enrichment data to Firestore via state
     try {
       await fetch('/api/onboarding/state', {
         method: 'POST',
@@ -436,10 +448,13 @@ export default function OnboardingChat({
         addUserMessage("Let's go!")
         advanceTo('name')
         break
-      case 'confirm_name':
+      case 'confirm_name': {
         addUserMessage("That's correct")
-        advanceTo('display_name')
+        const displayName = `${collected.firstName} ${collected.lastName}`.trim()
+        if (displayName) saveField('display_name', displayName)
+        advanceTo('location')
         break
+      }
       case 'edit_name':
         addUserMessage('Let me fix that')
         addSteveMessage("No problem! What's your first and last name?", {
@@ -450,11 +465,11 @@ export default function OnboardingChat({
       case 'skip_photo':
         addUserMessage('Skip for now')
         addSteveMessage("No problem — you can always add one later from your profile.")
-        setTimeout(() => advanceTo('role'), 600)
+        setTimeout(() => advanceTo('talk_all_day'), 600)
         break
       case 'skip_linkedin':
         addUserMessage('Skip')
-        advanceTo('brand_known_for')
+        advanceTo('compose')
         break
       case 'use_bio': {
         const lastComposed = [...messages].reverse().find(m => m.composedBio)?.composedBio || ''
@@ -463,7 +478,7 @@ export default function OnboardingChat({
           const newCollected = { ...collected, bio: lastComposed }
           setCollected(newCollected)
           await saveField('bio', lastComposed)
-          addSteveMessage('Looks great! Your bio is set. 🎯')
+          addSteveMessage('Your identity is set! 🎯')
           setTimeout(() => advanceTo('enriching', newCollected), 600)
         }
         break
@@ -474,7 +489,7 @@ export default function OnboardingChat({
         setInputValue(bioToEdit)
         addSteveMessage("Go ahead — tweak it however you'd like:", {
           inputType: 'textarea',
-          inputPlaceholder: 'Edit your bio...',
+          inputPlaceholder: 'Edit your identity...',
         })
         break
       }
@@ -482,7 +497,7 @@ export default function OnboardingChat({
         addUserMessage('Start fresh')
         addSteveMessage('No problem — write your own intro. 2-3 sentences is perfect.', {
           inputType: 'textarea',
-          inputPlaceholder: 'Write your bio...',
+          inputPlaceholder: 'Write your intro...',
         })
         break
       case 'start_tour':
@@ -539,17 +554,44 @@ export default function OnboardingChat({
         setCollected(newCollected)
         await saveField('first_name', first)
         if (last) await saveField('last_name', last)
-        advanceTo('display_name', newCollected)
+        const displayName = `${first} ${last}`.trim()
+        await saveField('display_name', displayName)
+        advanceTo('location', newCollected)
         break
       }
-      case 'display_name': {
-        const newCollected = { ...collected, displayName: val }
+      case 'location': {
+        const locParts = val.split(',').map(s => s.trim())
+        const city = locParts[0] || val
+        const country = locParts[1] || ''
+        const newCollected = { ...collected, city, country }
         setCollected(newCollected)
-        await saveField('display_name', val)
+        await saveField('city', city)
+        if (country) await saveField('country', country)
         advanceTo('photo', newCollected)
         break
       }
-      case 'role': {
+      case 'talk_all_day': {
+        const newCollected = { ...collected, talkAllDay: val }
+        setCollected(newCollected)
+        const reactions = ['Love it!', 'Great taste!', 'Interesting!', 'Nice!']
+        addSteveMessage(reactions[Math.floor(Math.random() * reactions.length)])
+        setTimeout(() => advanceTo('recommend', newCollected), 600)
+        break
+      }
+      case 'recommend': {
+        const newCollected = { ...collected, recommend: val }
+        setCollected(newCollected)
+        addSteveMessage('Good pick! 📚')
+        setTimeout(() => advanceTo('reach_out', newCollected), 600)
+        break
+      }
+      case 'reach_out': {
+        const newCollected = { ...collected, reachOut: val }
+        setCollected(newCollected)
+        advanceTo('professional', newCollected)
+        break
+      }
+      case 'professional': {
         const roleMatch = val.match(/^(.+?)\s+at\s+(.+)$/i)
         let role = val
         let company = ''
@@ -561,27 +603,6 @@ export default function OnboardingChat({
         setCollected(newCollected)
         await saveField('role', role)
         if (company) await saveField('company', company)
-
-        const reactions = [
-          'Nice!',
-          'That sounds great!',
-          'Awesome!',
-          'Interesting!',
-          'Cool!',
-        ]
-        const reaction = reactions[Math.floor(Math.random() * reactions.length)]
-        addSteveMessage(reaction)
-        setTimeout(() => advanceTo('location', newCollected), 600)
-        break
-      }
-      case 'location': {
-        const locParts = val.split(',').map(s => s.trim())
-        const city = locParts[0] || val
-        const country = locParts[1] || ''
-        const newCollected = { ...collected, city, country }
-        setCollected(newCollected)
-        await saveField('city', city)
-        if (country) await saveField('country', country)
         advanceTo('linkedin', newCollected)
         break
       }
@@ -590,32 +611,14 @@ export default function OnboardingChat({
         setCollected(newCollected)
         await saveField('linkedin', val)
         addSteveMessage('Perfect, that will help me learn more about your background!')
-        setTimeout(() => advanceTo('brand_known_for', newCollected), 600)
+        setTimeout(() => advanceTo('compose', newCollected), 600)
         break
       }
-      case 'brand_known_for': {
-        const newCollected = { ...collected, brandKnownFor: val }
-        setCollected(newCollected)
-        advanceTo('brand_conversations', newCollected)
-        break
-      }
-      case 'brand_conversations': {
-        const newCollected = { ...collected, brandConversations: val }
-        setCollected(newCollected)
-        advanceTo('brand_called_when', newCollected)
-        break
-      }
-      case 'brand_called_when': {
-        const newCollected = { ...collected, brandCalledWhen: val }
-        setCollected(newCollected)
-        advanceTo('brand_compose', newCollected)
-        break
-      }
-      case 'brand_compose': {
+      case 'compose': {
         const newCollected = { ...collected, bio: val }
         setCollected(newCollected)
         await saveField('bio', val)
-        addSteveMessage('Looks great! Your bio is set. 🎯')
+        addSteveMessage('Your identity is set! 🎯')
         setTimeout(() => advanceTo('enriching', newCollected), 600)
         break
       }
@@ -629,8 +632,7 @@ export default function OnboardingChat({
     if (currentStage === 'name') {
       return lower.length > 60 || lower.includes('?') || /^(hey|hi|hello|what|how|can|tell|who)/.test(lower)
     }
-    if (currentStage === 'display_name') return false
-    if (currentStage === 'role') {
+    if (currentStage === 'professional') {
       return lower.length > 150 || (lower.includes('?') && !lower.includes('at'))
     }
     if (currentStage === 'location') {
@@ -640,10 +642,6 @@ export default function OnboardingChat({
       if (lower.includes('linkedin.com') || lower.includes('skip')) return false
       return lower.includes('?') || /^(hey|what|how|can|tell)/.test(lower)
     }
-    if (currentStage === 'brand_known_for') return false
-    if (currentStage === 'brand_conversations') return false
-    if (currentStage === 'brand_called_when') return false
-    if (currentStage === 'brand_compose') return false
     return false
   }
 
@@ -652,12 +650,12 @@ export default function OnboardingChat({
     try {
       const questionMap: Record<string, string> = {
         name: "What's your first and last name?",
-        role: 'What do you do professionally?',
         location: 'Where are you based?',
+        professional: 'What do you do professionally?',
         linkedin: 'Got a LinkedIn URL?',
-        brand_known_for: "What's the one thing people always come to you for?",
-        brand_conversations: 'What topic could you talk about over coffee for hours?',
-        brand_called_when: 'Complete this: People call me when...',
+        talk_all_day: 'What are the things you could talk about all day?',
+        recommend: 'Recommend a book, movie, or TV show to your network.',
+        reach_out: 'What do you want people to reach out to you about?',
       }
       const r = await fetch('/api/onboarding/redirect', {
         method: 'POST',
@@ -693,7 +691,7 @@ export default function OnboardingChat({
         addUserMessage('📷 Photo uploaded!')
         addSteveMessage('Looking great! 👌')
         setPicFile(null)
-        setTimeout(() => advanceTo('role'), 600)
+        setTimeout(() => advanceTo('talk_all_day'), 600)
       } else {
         addSteveMessage(j?.error || "Hmm, that didn't work. Try again or skip for now.", {
           photoUpload: true,
@@ -725,9 +723,11 @@ export default function OnboardingChat({
   const lastSteveMsg = [...messages].reverse().find(m => m.from === 'steve')
   const showInput = lastSteveMsg?.inputType && stage !== 'enriching' && stage !== 'review' && stage !== 'complete' && !composingBio
   const showPhotoUpload = lastSteveMsg?.photoUpload && stage === 'photo'
+  const kbOpen = keyboardOffset > 0
+  const bottomSafe = kbOpen ? '0px' : 'env(safe-area-inset-bottom, 0px)'
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}>
+    <div className="fixed inset-0 z-50 bg-black flex flex-col" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* Header with logo */}
       <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
         <div className="max-w-lg mx-auto px-4 pt-3 pb-1 flex flex-col items-center">
@@ -800,7 +800,7 @@ export default function OnboardingChat({
                       </div>
                     )}
                     {/* Composed bio preview with action buttons */}
-                    {msg.composedBio && i === messages.length - 1 && stage === 'brand_compose' && !composingBio && (
+                    {msg.composedBio && i === messages.length - 1 && stage === 'compose' && !composingBio && (
                       <div className="space-y-2 mt-1">
                         <div className="rounded-xl border border-[#4db6ac]/20 bg-[#4db6ac]/5 px-3.5 py-3">
                           <div className="text-[13px] text-white/90 leading-relaxed italic">"{msg.composedBio}"</div>
@@ -904,7 +904,10 @@ export default function OnboardingChat({
 
       {/* Photo upload area */}
       {showPhotoUpload && (
-        <div className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+        <div
+          className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
+          style={{ paddingBottom: `calc(0.75rem + ${bottomSafe})`, marginBottom: kbOpen ? `${keyboardOffset}px` : undefined }}
+        >
           <div className="max-w-lg mx-auto">
             <input
               ref={fileInputRef}
@@ -949,7 +952,10 @@ export default function OnboardingChat({
 
       {/* Text input */}
       {showInput && (
-        <div className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}>
+        <div
+          className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3"
+          style={{ paddingBottom: `calc(0.75rem + ${bottomSafe})`, marginBottom: kbOpen ? `${keyboardOffset}px` : undefined }}
+        >
           <div className="max-w-lg mx-auto flex gap-2">
             {lastSteveMsg?.inputType === 'textarea' ? (
               <textarea

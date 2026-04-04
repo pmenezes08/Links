@@ -446,52 +446,60 @@ def onboarding_redirect_message():
 @onboarding_bp.route("/api/onboarding/compose_bio", methods=["POST"])
 @_login_required
 def onboarding_compose_bio():
-    """Compose a polished 2-3 sentence bio from the user's brand-builder answers."""
+    """Compose a polished identity paragraph from the user's onboarding answers. Personal first, professional second."""
     data = request.get_json(silent=True) or {}
-    known_for = (data.get("known_for") or "").strip()
-    conversations = (data.get("conversations") or "").strip()
-    called_when = (data.get("called_when") or "").strip()
+    talk_all_day = (data.get("talk_all_day") or "").strip()
+    recommend = (data.get("recommend") or "").strip()
+    reach_out = (data.get("reach_out") or "").strip()
     role = (data.get("role") or "").strip()
     company = (data.get("company") or "").strip()
+    city = (data.get("city") or "").strip()
+    country = (data.get("country") or "").strip()
 
-    if not known_for and not conversations and not called_when:
+    if not talk_all_day and not recommend and not reach_out:
         return jsonify({"success": False, "error": "No answers provided"}), 400
 
     if not XAI_API_KEY:
         parts = []
-        if known_for:
-            parts.append(known_for)
-        if conversations:
-            parts.append(f"Passionate about {conversations.lower()}.")
-        if called_when:
-            parts.append(f"People call me when {called_when.lower()}.")
+        if talk_all_day:
+            parts.append(f"I could talk all day about {talk_all_day.lower()}.")
+        if recommend:
+            parts.append(f"Currently recommending: {recommend}.")
+        if role:
+            parts.append(f"{role}{' at ' + company if company else ''}.")
+        if reach_out:
+            parts.append(f"Reach out about {reach_out.lower()}.")
         return jsonify({"success": True, "bio": " ".join(parts)})
 
     try:
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
-        context = ""
+        location = f"{city}, {country}".strip(', ') if city else ""
+        professional = ""
         if role and company:
-            context = f"They work as {role} at {company}. "
+            professional = f"They work as {role} at {company}."
         elif role:
-            context = f"Their role is {role}. "
+            professional = f"Their role is {role}."
 
         response = client.chat.completions.create(
             model=GROK_MODEL_FAST,
             messages=[
                 {"role": "system", "content": (
-                    "You are a professional bio writer. Compose a polished, engaging 2-3 sentence personal bio for a professional networking platform. "
+                    "You are an identity writer for a networking platform. Compose a polished, engaging 2-3 sentence personal identity paragraph. "
+                    "PERSONAL comes first — who they are as a person, their passions, what makes them interesting. "
+                    "PROFESSIONAL comes second — their role is context, not the headline. "
                     "Write in first person. Be authentic and human — not corporate or generic. "
                     "Do NOT use hashtags, emojis, or buzzwords. Just clean, compelling prose. "
-                    "Return ONLY the bio text, nothing else."
+                    "Return ONLY the identity text, nothing else."
                 )},
                 {"role": "user", "content": (
-                    f"{context}"
-                    f"What people come to them for: {known_for}\n"
-                    f"Topics they're passionate about: {conversations}\n"
-                    f"People call them when: {called_when}\n\n"
-                    "Write their bio:"
+                    f"Things they could talk about all day: {talk_all_day}\n"
+                    f"They recommend: {recommend}\n"
+                    f"They want people to reach out about: {reach_out}\n"
+                    f"{professional}\n"
+                    f"{'Based in ' + location if location else ''}\n\n"
+                    "Write their identity:"
                 )},
             ],
             max_tokens=200,
@@ -504,12 +512,14 @@ def onboarding_compose_bio():
     except Exception as e:
         logger.warning(f"compose_bio LLM error: {e}")
         parts = []
-        if known_for:
-            parts.append(known_for)
-        if conversations:
-            parts.append(f"Passionate about {conversations.lower()}.")
-        if called_when:
-            parts.append(f"People call me when {called_when.lower()}.")
+        if talk_all_day:
+            parts.append(f"I could talk all day about {talk_all_day.lower()}.")
+        if recommend:
+            parts.append(f"Currently recommending: {recommend}.")
+        if role:
+            parts.append(f"{role}{' at ' + company if company else ''}.")
+        if reach_out:
+            parts.append(f"Reach out about {reach_out.lower()}.")
         return jsonify({"success": True, "bio": " ".join(parts)})
 
 
