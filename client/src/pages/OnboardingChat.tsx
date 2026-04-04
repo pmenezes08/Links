@@ -773,7 +773,7 @@ export default function OnboardingChat({
       <div className="shrink-0 border-b border-white/10 bg-black/95 backdrop-blur-sm">
         <div className="max-w-lg mx-auto px-4 pt-2 pb-1 flex flex-col items-center" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
           <div className="flex items-center gap-2 mb-2">
-            <img src="/static/logo.png" alt="CPoint" className="w-8 h-8 rounded-lg object-contain" />
+            <img src="/static/cpoint-logo.svg" alt="CPoint" className="w-8 h-8 rounded-lg object-contain" />
             <span className="text-sm font-semibold text-[#4db6ac]">CPoint</span>
           </div>
           <div className="w-full flex items-center gap-3 pb-2">
@@ -782,7 +782,6 @@ export default function OnboardingChat({
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold text-white">Steve</div>
-              <div className="text-[10px] text-white/40">Your AI assistant</div>
             </div>
             <div className="text-[10px] text-white/30">Step {Math.min(Math.ceil(stageProgress(stage) / (100 / USER_FACING_STEPS)), USER_FACING_STEPS)} of {USER_FACING_STEPS}</div>
           </div>
@@ -797,7 +796,7 @@ export default function OnboardingChat({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: keyboardOffset > 0 ? `${keyboardOffset + 80}px` : '80px' }}>
+      <div className="flex-1 overflow-y-auto px-4 py-4" style={{ paddingBottom: keyboardOffset > 0 ? `${keyboardOffset + 120}px` : '120px' }}>
         <div className="max-w-lg mx-auto space-y-3">
           {messages.map((msg, i) => (
             <div key={i}>
