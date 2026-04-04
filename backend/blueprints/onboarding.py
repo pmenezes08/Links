@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
+import threading
 from datetime import datetime
 
 from functools import wraps
@@ -11,6 +14,7 @@ from flask import (
     Blueprint,
     abort,
     current_app,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -19,8 +23,13 @@ from flask import (
     url_for,
 )
 
+from backend.services.database import get_db_connection, get_sql_placeholder
 
 onboarding_bp = Blueprint("onboarding", __name__)
+logger = logging.getLogger(__name__)
+
+XAI_API_KEY = os.getenv('XAI_API_KEY', '')
+GROK_MODEL_FAST = 'grok-3-mini-fast-beta'
 
 
 def _login_required(view_func):
@@ -340,3 +349,303 @@ def onboarding_welcome():
     except Exception as exc:
         current_app.logger.error("onboarding_welcome error: %s", exc)
         return redirect(url_for("dashboard"))
+
+
+# ── Conversational Onboarding API ────────────────────────────────────────
+
+
+def _get_firestore_client():
+    try:
+        from google.cloud.firestore import Client
+        return Client()
+    except Exception:
+        return None
+
+
+@onboarding_bp.route("/api/onboarding/state", methods=["GET"])
+@_login_required
+def get_onboarding_state():
+    """Return persisted onboarding conversation state from Firestore."""
+    username = session["username"]
+    try:
+        db = _get_firestore_client()
+        if not db:
+            return jsonify({"success": True, "state": None})
+        doc = db.collection("steve_onboarding").document(username).get()
+        if doc.exists:
+            return jsonify({"success": True, "state": doc.to_dict()})
+        return jsonify({"success": True, "state": None})
+    except Exception as e:
+        logger.warning(f"Failed to get onboarding state for {username}: {e}")
+        return jsonify({"success": True, "state": None})
+
+
+@onboarding_bp.route("/api/onboarding/state", methods=["POST"])
+@_login_required
+def save_onboarding_state():
+    """Persist onboarding conversation state to Firestore."""
+    username = session["username"]
+    data = request.get_json(silent=True) or {}
+    try:
+        db = _get_firestore_client()
+        if db:
+            db.collection("steve_onboarding").document(username).set({
+                "stage": data.get("stage", "welcome"),
+                "collected": data.get("collected", {}),
+                "messages": data.get("messages", [])[-30:],
+                "updated_at": datetime.utcnow().isoformat(),
+            }, merge=True)
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.warning(f"Failed to save onboarding state for {username}: {e}")
+        return jsonify({"success": True})
+
+
+@onboarding_bp.route("/api/onboarding/redirect", methods=["POST"])
+@_login_required
+def onboarding_redirect_message():
+    """Handle off-script user messages during onboarding. Returns a natural Steve redirect."""
+    if not XAI_API_KEY:
+        return jsonify({"success": True, "message": "That's a great question! Let's finish setting up your profile first, then I can help with that."})
+
+    data = request.get_json(silent=True) or {}
+    user_message = (data.get("message") or "").strip()
+    stage = data.get("stage", "")
+    question = data.get("currentQuestion", "")
+
+    if not user_message:
+        return jsonify({"success": True, "message": "Let's keep going!"})
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+        response = client.chat.completions.create(
+            model=GROK_MODEL_FAST,
+            messages=[
+                {"role": "system", "content": (
+                    "You are Steve, a friendly AI assistant helping a new user set up their CPoint profile. "
+                    f'The user is currently on the "{stage}" step where you asked: "{question}". '
+                    "They said something off-topic. Respond naturally in 1-2 sentences, acknowledge what they said, "
+                    "then gently steer them back to the question. Be warm and conversational, not robotic. "
+                    "Do NOT answer the off-topic question in detail — just redirect."
+                )},
+                {"role": "user", "content": user_message},
+            ],
+            max_tokens=150,
+            temperature=0.7,
+        )
+        msg = (response.choices[0].message.content or "").strip()
+        if not msg:
+            msg = "Interesting! Let's come back to that later. For now, let's finish getting you set up."
+        return jsonify({"success": True, "message": msg})
+    except Exception as e:
+        logger.warning(f"Onboarding redirect LLM error: {e}")
+        return jsonify({"success": True, "message": "Great thought! Let's finish setting up your profile first, then we can chat about anything."})
+
+
+@onboarding_bp.route("/api/onboarding/enrich", methods=["POST"])
+@_login_required
+def onboarding_enrich_profile():
+    """Trigger AI profile enrichment during onboarding. Returns enrichment results."""
+    username = session["username"]
+    try:
+        from bodybuilding_app import (
+            _build_profile_text_for_grok,
+            _analyze_profile_with_grok,
+            _fetch_user_communities,
+        )
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"""
+                SELECT u.username, u.first_name, u.last_name, u.email,
+                       u.role, u.company, u.industry, u.linkedin,
+                       u.professional_about, u.professional_interests,
+                       u.city, u.country, u.gender, u.date_of_birth,
+                       u.degree, u.school, u.skills, u.experience,
+                       p.display_name, p.bio, p.location
+                FROM users u
+                LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = {ph}
+            """, (username,))
+            row = c.fetchone()
+            if not row:
+                return jsonify({"success": False, "error": "User not found"}), 404
+
+        communities = _fetch_user_communities(username)
+        profile_text = _build_profile_text_for_grok(row, communities=communities)
+        analysis = _analyze_profile_with_grok(username, profile_text, depth='standard')
+
+        if not analysis:
+            return jsonify({"success": True, "enrichment": None})
+
+        # Save to Firestore
+        db = _get_firestore_client()
+        if db:
+            doc_ref = db.collection("steve_profiles").document(username)
+            existing = doc_ref.get()
+            if existing.exists:
+                from bodybuilding_app import _merge_analyses
+                merged = _merge_analyses(existing.to_dict().get("analysis", {}), analysis)
+                doc_ref.set({"analysis": merged, "updated_at": datetime.utcnow().isoformat()}, merge=True)
+            else:
+                doc_ref.set({"analysis": analysis, "username": username, "updated_at": datetime.utcnow().isoformat()})
+
+        # Extract review cards for the user
+        cards = _build_review_cards(analysis)
+        return jsonify({"success": True, "enrichment": cards})
+
+    except Exception as e:
+        logger.error(f"Onboarding enrichment error for {username}: {e}")
+        return jsonify({"success": True, "enrichment": None})
+
+
+def _build_review_cards(analysis: dict) -> list:
+    """Extract reviewable enrichment cards from a Grok analysis for onboarding review."""
+    cards = []
+    pro = analysis.get("professional") or {}
+
+    company = pro.get("company") or {}
+    role = pro.get("role") or {}
+    if company.get("name") or role.get("title"):
+        label = ""
+        if role.get("title") and company.get("name"):
+            label = f"{role['title']} at {company['name']}"
+        elif company.get("name"):
+            label = f"Works at {company['name']}"
+        elif role.get("title"):
+            label = role["title"]
+        detail = ""
+        if company.get("description"):
+            detail = company["description"]
+        if company.get("sector"):
+            detail += f" ({company['sector']})" if detail else company["sector"]
+        cards.append({"id": "current_role", "section": "professional", "label": label, "detail": detail, "field": "role_company"})
+
+    career = pro.get("careerHistory") or []
+    if len(career) > 1:
+        past = [e for e in career if not (e.get("period", "").endswith("present"))][:5]
+        if past:
+            lines = []
+            for e in past:
+                line = f"{e.get('role', '?')} at {e.get('company', '?')}"
+                if e.get("duration"):
+                    line += f" ({e['duration']})"
+                lines.append(line)
+            cards.append({"id": "career_history", "section": "professional", "label": "Career History", "detail": " → ".join(lines), "field": "career"})
+
+    if pro.get("education"):
+        cards.append({"id": "education", "section": "professional", "label": "Education", "detail": pro["education"], "field": "education"})
+
+    loc = pro.get("location") or {}
+    if loc.get("context"):
+        cards.append({"id": "location_context", "section": "professional", "label": "Location", "detail": loc["context"], "field": "location"})
+
+    if pro.get("webFindings"):
+        cards.append({"id": "web_findings", "section": "professional", "label": "Professional Background", "detail": pro["webFindings"][:300], "field": "web_summary"})
+
+    personal = analysis.get("personal") or {}
+    if personal.get("interests") and isinstance(personal["interests"], list):
+        cards.append({"id": "personal_interests", "section": "personal", "label": "Interests", "detail": ", ".join(personal["interests"][:8]), "field": "interests"})
+
+    if personal.get("lifestyle"):
+        cards.append({"id": "lifestyle", "section": "personal", "label": "Personal", "detail": personal["lifestyle"], "field": "lifestyle"})
+
+    summary = analysis.get("summary", "")
+    if summary:
+        cards.append({"id": "summary", "section": "identity", "label": "About You", "detail": summary, "field": "summary"})
+
+    return cards
+
+
+@onboarding_bp.route("/api/onboarding/save_field", methods=["POST"])
+@_login_required
+def onboarding_save_field():
+    """Save a single profile field during onboarding. Supports first_name, last_name, display_name, role, company, city, country, linkedin, bio."""
+    username = session["username"]
+    data = request.get_json(silent=True) or {}
+    field = data.get("field", "")
+    value = (data.get("value") or "").strip()
+
+    if not field:
+        return jsonify({"success": False, "error": "No field specified"}), 400
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+
+            user_fields = {"first_name", "last_name", "role", "company", "industry", "linkedin", "city", "country"}
+            profile_fields = {"display_name", "bio"}
+
+            if field in user_fields:
+                c.execute(f"UPDATE users SET {field} = {ph} WHERE username = {ph}", (value, username))
+                conn.commit()
+            elif field in profile_fields:
+                c.execute(f"SELECT username FROM user_profiles WHERE username = {ph}", (username,))
+                exists = c.fetchone()
+                if exists:
+                    c.execute(f"UPDATE user_profiles SET {field} = {ph}, updated_at = CURRENT_TIMESTAMP WHERE username = {ph}", (value, username))
+                else:
+                    c.execute(f"INSERT INTO user_profiles (username, {field}) VALUES ({ph}, {ph})", (username, value))
+                conn.commit()
+            else:
+                return jsonify({"success": False, "error": f"Unknown field: {field}"}), 400
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Onboarding save_field error for {username}: {e}")
+        return jsonify({"success": False, "error": "Failed to save"}), 500
+
+
+@onboarding_bp.route("/api/onboarding/complete", methods=["POST"])
+@_login_required
+def onboarding_complete():
+    """Mark onboarding as complete. Trigger background profile analysis if not already done."""
+    username = session["username"]
+    try:
+        db = _get_firestore_client()
+        if db:
+            db.collection("steve_onboarding").document(username).set({
+                "stage": "complete",
+                "completed_at": datetime.utcnow().isoformat(),
+            }, merge=True)
+
+            # Trigger background analysis if no existing profile
+            existing = db.collection("steve_profiles").document(username).get()
+            if not existing.exists or not (existing.to_dict() or {}).get("analysis", {}).get("summary"):
+                def _bg_analyze():
+                    try:
+                        from bodybuilding_app import (
+                            _build_profile_text_for_grok,
+                            _analyze_profile_with_grok,
+                            _fetch_user_communities,
+                        )
+                        with get_db_connection() as conn:
+                            c = conn.cursor()
+                            ph = get_sql_placeholder()
+                            c.execute(f"""
+                                SELECT u.*, p.display_name, p.bio, p.location
+                                FROM users u LEFT JOIN user_profiles p ON u.username = p.username
+                                WHERE u.username = {ph}
+                            """, (username,))
+                            row = c.fetchone()
+                        if row:
+                            communities = _fetch_user_communities(username)
+                            text = _build_profile_text_for_grok(row, communities=communities)
+                            analysis = _analyze_profile_with_grok(username, text, depth='standard')
+                            if analysis and db:
+                                db.collection("steve_profiles").document(username).set(
+                                    {"analysis": analysis, "username": username, "updated_at": datetime.utcnow().isoformat()},
+                                    merge=True
+                                )
+                    except Exception as bg_err:
+                        logger.error(f"Background onboarding analysis error for {username}: {bg_err}")
+
+                threading.Thread(target=_bg_analyze, daemon=True).start()
+
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"Onboarding complete error for {username}: {e}")
+        return jsonify({"success": True})

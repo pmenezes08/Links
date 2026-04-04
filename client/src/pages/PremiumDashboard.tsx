@@ -13,9 +13,8 @@ import {
 } from '../utils/dashboardCache'
 import type { DashboardCachePayload } from '../utils/dashboardCache'
 import { triggerDashboardServerPull } from '../utils/serverPull'
-import { clearAvatarCache } from '../utils/avatarCache'
-import { clearImageCache } from '../components/Avatar'
 import { handleLogoutClick } from '../utils/logout'
+import OnboardingChat from './OnboardingChat'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
@@ -23,7 +22,7 @@ const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
 // type Community = { id: number; name: string; type: string }
 
 export default function PremiumDashboard() {
-  const { profile: contextProfile, setProfile: setContextProfile } = useUserProfile()
+  const { profile: contextProfile } = useUserProfile()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [hasGymAccess, setHasGymAccess] = useState(false)
   const [communities, setCommunities] = useState<Array<{id: number, name: string, type: string}>>([])
@@ -40,19 +39,15 @@ export default function PremiumDashboard() {
   const [showVerifyFirstModal, setShowVerifyFirstModal] = useState(false)
   const [communitiesLoaded, setCommunitiesLoaded] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
-  // Onboarding steps
-  const [onbStep, setOnbStep] = useState<0|1|2|3|4|5>(0)
+  // Onboarding
+  const [showOnboarding, setShowOnboarding] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [username, setUsername] = useState('')
   const [subscription, setSubscription] = useState<string>('free')
   const [hasProfilePic, setHasProfilePic] = useState<boolean>(false)
   const [existingProfilePic, setExistingProfilePic] = useState<string>('')
-  const [savingName, setSavingName] = useState(false)
-  const [picFile, setPicFile] = useState<File | null>(null)
-  const [picPreview, setPicPreview] = useState('')
-  const [uploadingPic, setUploadingPic] = useState(false)
-  const [confirmExit, setConfirmExit] = useState(false)
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
   const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
   const onboardingTriggeredRef = useRef(false)  // Track if onboarding was already triggered
@@ -109,11 +104,11 @@ export default function PremiumDashboard() {
       setEmailVerifiedAt(profile.emailVerifiedAt)
       setUsername(profile.username)
       setFirstName(profile.firstName)
+      setLastName(profile.lastName || '')
       setDisplayName(profile.displayName)
       setSubscription(profile.subscription || 'free')
       setHasProfilePic(profile.hasProfilePic)
       setExistingProfilePic(profile.existingProfilePic || '')
-      setPicPreview(prev => prev || profile.existingProfilePic || '')
       setInitialLoading(false)
     }
     if (Array.isArray(cached.communities)) {
@@ -173,24 +168,11 @@ export default function PremiumDashboard() {
       const resume = sessionStorage.getItem(ONBOARDING_RESUME_KEY)
       if (resume) {
         sessionStorage.removeItem(ONBOARDING_RESUME_KEY)
-        const stepNumber = Number(resume)
-        if ([1, 2, 3, 4, 5].includes(stepNumber)) {
-          onboardingTriggeredRef.current = true
-          setOnbStep(stepNumber as 0 | 1 | 2 | 3 | 4 | 5)
-        }
+        onboardingTriggeredRef.current = true
+        setShowOnboarding(true)
       }
     } catch {}
   }, [])
-
-  function handleExitConfirm(){
-    try { localStorage.setItem(doneKey, '1') } catch {}
-    clearPendingInviteTarget()
-    clearOnboardingProfileHint()
-    setOnbStep(0)
-    setConfirmExit(false)
-    onboardingTriggeredRef.current = false  // Reset so it can trigger again if flag is cleared
-    window.location.href = '/premium_dashboard'
-  }
 
   const handleGoToCommunity = () => {
     try { localStorage.setItem(doneKey, '1') } catch {}
@@ -203,20 +185,6 @@ export default function PremiumDashboard() {
       return
     }
     window.location.href = '/premium_dashboard'
-  }
-
-  const handleOpenProfile = () => {
-    const profileUrl = '/profile'
-    try {
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem(ONBOARDING_PROFILE_HINT_KEY, '1')
-        sessionStorage.setItem(ONBOARDING_RESUME_KEY, '4')
-      }
-      const newTab = window.open(profileUrl, '_blank', 'noopener')
-      if (!newTab) window.location.href = profileUrl
-    } catch {
-      window.location.href = profileUrl
-    }
   }
 
   async function fetchJson(url: string, bypassCache = false){
@@ -272,18 +240,19 @@ export default function PremiumDashboard() {
         setEmailVerifiedAt(me.profile.email_verified_at || null)
         setUsername(me.profile.username || '')
         setFirstName(me.profile.first_name || '')
+        setLastName(me.profile.last_name || '')
         setDisplayName(me.profile.display_name || me.profile.username)
         const profilePicValue = me.profile.profile_picture || null
         const resolvedPic = resolveAvatar(profilePicValue)
         setHasProfilePic(!!profilePicValue)
         setExistingProfilePic(resolvedPic)
-        setPicPreview(prev => prev || resolvedPic)
         setSubscription((me.profile.subscription || 'free') as string)
         profileSnapshot = {
           emailVerified: !!me.profile.email_verified,
           emailVerifiedAt: me.profile.email_verified_at || null,
           username: me.profile.username || '',
           firstName: me.profile.first_name || '',
+          lastName: me.profile.last_name || '',
           displayName: me.profile.display_name || me.profile.username || '',
           subscription: (me.profile.subscription || 'free') as string,
           hasProfilePic: !!profilePicValue,
@@ -431,7 +400,6 @@ export default function PremiumDashboard() {
           const resolvedPic = resolveAvatar(profilePicValue)
           setHasProfilePic(!!profilePicValue)
           setExistingProfilePic(resolvedPic)
-          setPicPreview(prev => prev || resolvedPic)
           setSubscription((pj.profile.subscription || 'free') as string)
         }
         // Also refresh communities snapshot
@@ -471,59 +439,24 @@ export default function PremiumDashboard() {
     }
   }, [emailVerifiedAt, emailVerified])
 
-  // Auto-prompt onboarding for newly verified users with no communities/profile
+  // Auto-prompt conversational onboarding for newly verified users
   useEffect(() => {
-    console.log('Onboarding trigger check:', { 
-      communitiesLoaded, 
-      emailVerified, 
-      communitiesArray: Array.isArray(communities), 
-      communitiesLength: communities?.length,
-      username, 
-      onbStep, 
-      doneKey,
-      doneValue: localStorage.getItem(doneKey),
-      isRecentlyVerified,
-      hasProfilePic,
-      emailVerifiedAt,
-      alreadyTriggered: onboardingTriggeredRef.current
-    })
-    
-    // Don't re-trigger if we already triggered onboarding in this session
     if (onboardingTriggeredRef.current) return
-    
     if (!communitiesLoaded) return
-    if (emailVerified !== true) {
-      console.log('Onboarding skipped: user not verified')
-      return
-    }
+    if (emailVerified !== true) return
     if (!Array.isArray(communities)) return
     if (!username) return
-    if (onbStep !== 0) return
+    if (showOnboarding) return
     
-    // Check if user has marked onboarding as done
-    try{ if (localStorage.getItem(doneKey) === '1') {
-      console.log('Onboarding skipped: already completed')
-      return
-    }}catch{}
+    try { if (localStorage.getItem(doneKey) === '1') return } catch {}
     
-    // Trigger onboarding for first-time users (no profile pic yet) who were recently verified
-    // NOTE: Invited users may already have communities, so we check profile pic instead
-    if (hasProfilePic){
-      console.log('Onboarding not triggered: user already has profile pic')
-      return
-    }
+    if (hasProfilePic) return
     
-    // Trigger onboarding for verified users without profile who:
-    // 1. Recently verified (within 24 hours) - primary path (includes invited users)
-    // 2. OR have no verification timestamp yet (legacy users or edge cases) - fallback
     if (isRecentlyVerified || !emailVerifiedAt) {
-      console.log('🎉 Triggering onboarding flow!', isRecentlyVerified ? '(recently verified)' : '(no timestamp - legacy user)')
-      onboardingTriggeredRef.current = true  // Mark as triggered
-      setOnbStep(1)
-    } else {
-      console.log('Onboarding skipped: verified more than 24 hours ago')
+      onboardingTriggeredRef.current = true
+      setShowOnboarding(true)
     }
-  }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, onbStep, doneKey, isRecentlyVerified, emailVerifiedAt])
+  }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, showOnboarding, doneKey, isRecentlyVerified, emailVerifiedAt])
 
   // Parent-only creation: skip loading parent communities
 
@@ -539,8 +472,6 @@ export default function PremiumDashboard() {
     }
     return communities[0]?.name || 'your community'
   })()
-  const profilePreviewSrc = picPreview || existingProfilePic
-
   // Show loading screen while initial data loads
   if (initialLoading) {
     return (
@@ -711,248 +642,38 @@ export default function PremiumDashboard() {
         </div>
       </div>
 
-      {/* Onboarding Step 1: Welcome */}
-      {onbStep === 1 && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-6">
-            <div className="text-center">
-              <div className="text-2xl font-bold mb-3">Welcome {firstName || 'to CPoint'}! 👋</div>
-              <div className="text-sm text-[#9fb0b5] mb-6">
-                Let's get you set up in just a few steps. This will only take a minute.
-              </div>
-              <button 
-                className="w-full px-4 py-3 text-base rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110" 
-                onClick={() => setOnbStep(2)}
-              >
-                Get Started
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Conversational Onboarding with Steve */}
+      {showOnboarding && (
+        <OnboardingChat
+          firstName={firstName}
+          lastName={lastName}
+          username={username}
+          displayName={displayName}
+          communityName={resolvedCommunityName !== 'your community' ? resolvedCommunityName : null}
+          hasCommunity={hasAnyCommunity}
+          existingProfilePic={existingProfilePic}
+          onComplete={() => {
+            setShowOnboarding(false)
+            onboardingTriggeredRef.current = false
+            window.location.href = '/premium_dashboard'
+          }}
+          onCreateCommunity={() => {
+            setShowOnboarding(false)
+            setShowCreateModal(true)
+          }}
+          onGoToCommunity={() => {
+            setShowOnboarding(false)
+            handleGoToCommunity()
+          }}
+        />
       )}
 
-      {/* Onboarding Step 2: Display Name */}
-      {onbStep === 2 && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-5">
-            <div className="text-lg font-semibold mb-2">Choose your display name</div>
-            <div className="text-xs text-[#9fb0b5] mb-3">By default, your display name matches your username. You can change it now.</div>
-            <input value={displayName} onChange={(e)=> setDisplayName(e.target.value)} className="w-full px-3 py-3 rounded-xl border border-white/10 bg-white/[0.04] focus:border-[#4db6ac] focus:outline-none" />
-            <div className="mt-4 flex gap-2 justify-between">
-              <div>
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(1)}>Back</button>
-              </div>
-              <div className="flex gap-2">
-              <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }}>Exit</button>
-              <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(3)} disabled={savingName}>Skip</button>
-              <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={savingName} onClick={async()=>{
-                try{
-                  const fd = new FormData(); fd.append('display_name', displayName.trim())
-                  const r = await fetch('/update_public_profile', { method:'POST', credentials:'include', body: fd })
-                  if (!r.ok){ alert('Failed to save name'); return }
-                  setOnbStep(3)
-                }catch{ alert('Network error') } finally { setSavingName(false) }
-              }}>{savingName ? 'Saving…' : 'Save & continue'}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-        {/* Onboarding Step 3: Profile Picture */}
-      {onbStep === 3 && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-5">
-            <div className="text-lg font-semibold mb-2">Add a profile picture</div>
-            <div className="text-xs text-[#9fb0b5] mb-3">Help people recognize you. You can change this later in your profile.</div>
-            <input type="file" accept="image/*" onChange={(e)=>{
-              const f = e.target.files && e.target.files[0] ? e.target.files[0] : null
-              setPicFile(f as any)
-              if (f){ try{ setPicPreview(URL.createObjectURL(f)) }catch{ setPicPreview('') } }
-            }} />
-            {profilePreviewSrc && (
-              <div className="mt-3 flex items-center justify-center">
-                <img src={profilePreviewSrc} className="max-h-40 rounded-lg border border-white/10" />
-              </div>
-            )}
-            <div className="mt-4 flex gap-2 justify-between">
-              <div>
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(2)} disabled={uploadingPic}>Back</button>
-              </div>
-              <div className="flex gap-2">
-              <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={(e)=> { e.preventDefault(); setConfirmExit(true) }} disabled={uploadingPic}>Exit</button>
-                <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)} disabled={uploadingPic}>Skip</button>
-              <button className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" disabled={uploadingPic || !picFile} onClick={async()=>{
-                if (!picFile) return; setUploadingPic(true)
-                try{
-                  const fd = new FormData(); fd.append('profile_picture', picFile)
-                  const r = await fetch('/upload_profile_picture', { method:'POST', credentials:'include', body: fd })
-                  const j = await r.json().catch(()=>null)
-                  if (!r.ok || !j?.success){ alert(j?.error || 'Failed to upload'); return }
-                  if (picPreview && picPreview.startsWith('blob:')){
-                    try { URL.revokeObjectURL(picPreview) } catch {}
-                  }
-                  // Clear ALL avatar caches so new image loads fresh everywhere
-                  if (username) {
-                    clearAvatarCache(username)
-                    clearImageCache(username)
-                  }
-                  const uploadedPath = resolveAvatar(j?.profile_picture || j?.path || j?.url || '')
-                  if (uploadedPath){
-                    // Add cache-busting timestamp to force avatar refresh across the app
-                    const cacheBustedUrl = `${uploadedPath}?v=${Date.now()}`
-                    setExistingProfilePic(cacheBustedUrl)
-                    setPicPreview(cacheBustedUrl)
-                    // Directly update the context profile with new picture URL
-                    // This avoids refetching from potentially stale server cache
-                    setContextProfile(prev => {
-                      if (!prev) return prev
-                      return { ...prev, profile_picture: cacheBustedUrl }
-                    })
-                  }
-                  setHasProfilePic(true)
-                  setPicFile(null)
-                  setOnbStep(4)
-                }catch{ alert('Network error') } finally { setUploadingPic(false) }
-              }}>{uploadingPic ? 'Uploading…' : 'Upload & continue'}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-        {/* Onboarding Step 4: Complete Profile */}
-        {onbStep === 4 && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-            <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-5">
-              <div className="text-center mb-4">
-                <div className="text-4xl mb-3">👤</div>
-                <div className="text-lg font-semibold mb-2">Fill out your profile</div>
-                <div className="text-sm text-[#9fb0b5] mb-4">
-                  Keep your personal and professional details up to date so the right people can connect with you.
-                </div>
-              </div>
-              <div className="space-y-3">
-                  <button
-                    className="w-full px-4 py-3 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold hover:brightness-110 transition"
-                    onClick={handleOpenProfile}
-                  >
-                  Open My Profile in a new tab
-                </button>
-                <div className="text-xs text-[#9fb0b5] text-center">
-                  Update your bio, professional information, and personal interests. You can return here when you’re done.
-                </div>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2 justify-between">
-                <button
-                  className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]"
-                  onClick={() => setOnbStep(3)}
-                >
-                  Back
-                </button>
-                <div className="flex gap-2">
-                  <button
-                    className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]"
-                    onClick={(e) => { e.preventDefault(); setConfirmExit(true) }}
-                  >
-                    Exit
-                  </button>
-                    <button
-                      className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold"
-                      onClick={() => {
-                        clearOnboardingProfileHint()
-                        setOnbStep(5)
-                      }}
-                    >
-                    Continue
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Onboarding Step 5: Final action */}
-        {onbStep === 5 && (
-          <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-            <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-5">
-              {hasAnyCommunity ? (
-                <>
-                  <div className="text-center mb-4">
-                    <div className="text-4xl mb-3">✍️</div>
-                      <div className="text-lg font-semibold mb-2">Create or React to Your First Post!</div>
-                      <div className="text-sm text-[#9fb0b5] mb-4">
-                        Welcome to {resolvedCommunityName}! Share your thoughts, introduce yourself, or start a conversation.
-                      </div>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <div>
-                      <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)}>Back</button>
-                    </div>
-                    <div className="flex gap-2">
-                      <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
-                        <button
-                          className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold"
-                          onClick={handleGoToCommunity}
-                        >
-                        Go to Community
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="text-center mb-4">
-                    <div className="text-4xl mb-3">🏗️</div>
-                    <div className="text-lg font-semibold mb-2">Create your first community</div>
-                    <div className="text-sm text-[#9fb0b5] mb-4">
-                      You're all set. Launch a parent community to bring everyone together.
-                    </div>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <div>
-                      <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setOnbStep(4)}>Back</button>
-                    </div>
-                    <div className="flex gap-2">
-                      <button className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={handleExitConfirm}>Skip for now</button>
-                      <button
-                        className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold"
-                        onClick={() => {
-                            clearPendingInviteTarget()
-                            clearOnboardingProfileHint()
-                          setShowCreateModal(true)
-                          setOnbStep(0)
-                        }}
-                      >
-                        Create community
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
       {/* Success Toast - Subtle notification */}
       {showSuccessModal && (
         <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[60] pointer-events-none">
           <div className="px-6 py-3 rounded-full border border-[#4db6ac]/40 bg-black/90 backdrop-blur-sm shadow-lg animate-fade-in">
             <div className="text-sm font-medium text-white">
               Joined <span className="text-[#4db6ac]">{joinedCommunityName}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Global Exit confirmation modal (available on any step) */}
-      {confirmExit && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center" onClick={(e)=> e.currentTarget===e.target && setConfirmExit(false)}>
-          <div className="w-[92%] max-w-md rounded-xl border border-white/10 bg-black p-5">
-            <div className="text-base font-semibold mb-2">Exit onboarding?</div>
-            <div className="text-xs text-[#9fb0b5] mb-4">You can update these details anytime later in your Profile page.</div>
-            <div className="flex justify-end gap-2">
-              <button type="button" className="px-3 py-2 text-sm rounded-lg border border-white/10 bg-white/[0.04]" onClick={()=> setConfirmExit(false)}>Cancel</button>
-              <button type="button" className="px-3 py-2 text-sm rounded-lg bg-[#4db6ac] text-black font-semibold" onClick={handleExitConfirm}>Exit</button>
             </div>
           </div>
         </div>
@@ -1016,7 +737,7 @@ export default function PremiumDashboard() {
                           if (j?.success){
                             handleCloseCreateModal()
                             try { localStorage.setItem(doneKey, '1') } catch {}
-                            setOnbStep(0)
+                            setShowOnboarding(false)
                             await triggerDashboardServerPull()
                             const refreshed = await refreshDashboardCommunities()
                             if (refreshed) {

@@ -11,6 +11,7 @@ export type DashboardProfileSnapshot = {
   emailVerifiedAt: string | null
   username: string
   firstName: string
+  lastName: string
   displayName: string
   subscription: string
   hasProfilePic: boolean
