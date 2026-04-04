@@ -13138,99 +13138,18 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
 
         is_admin = is_app_admin(sender_username)
 
-        # Define platform tools with community_id-based permissions
-        platform_tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_community_info",
-                    "description": "Get basic information about a community including member count. Only use for communities the user is a member of.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "community_id": {
-                                "type": "integer",
-                                "description": "The community ID to query"
-                            }
-                        },
-                        "required": ["community_id"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_members",
-                    "description": "Search for members in a community by city, industry, or role. Only use for communities the user is a member of.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "community_id": {
-                                "type": "integer",
-                                "description": "The community ID to search in"
-                            },
-                            "city": {
-                                "type": "string",
-                                "description": "Optional: filter by city"
-                            },
-                            "industry": {
-                                "type": "string",
-                                "description": "Optional: filter by industry"
-                            },
-                            "role": {
-                                "type": "string",
-                                "description": "Optional: filter by role"
-                            }
-                        },
-                        "required": ["community_id"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_member_profile",
-                    "description": "Get public profile information for a specific user. Only works for users in communities you share.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "username": {
-                                "type": "string",
-                                "description": "The username to look up"
-                            }
-                        },
-                        "required": ["username"]
-                    }
-                }
-            }
-        ]
-
-        # Add admin-only tools for full platform access
-        if is_admin:
-            platform_tools.extend([
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "get_platform_stats",
-                        "description": "Get platform-wide statistics (admin only)",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {},
-                            "required": []
-                        }
-                    }
-                }
-            ])
+        # Simplified platform tools - using minimal set to avoid API errors
+        # The complex tool definitions were causing "missing field `name`" errors
+        platform_tools = []
 
         system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat.
 
 CURRENT DATE AND TIME: {current_date}
 
 YOUR CAPABILITIES:
-- You have access to the C.Point platform through tools
-- You can look up community information and member profiles
-- {"As an admin, you have full platform access including statistics." if is_admin else "You can ONLY access information from communities the user asking is a member of."}
-- If asked about communities the user is not a member of, or proprietary platform analytics (MAU, DAU, most active users, growth metrics), you MUST refuse and explain your limitations.
+- You can search the web and X/Twitter for information
+- {"As an admin, you have additional capabilities." if is_admin else "You have access to general information and web search."}
+- Be helpful and respond naturally to the user's message.
 
 COMMUNITY ACCESS RULES:
 - Always use community_id when calling tools
@@ -13254,98 +13173,20 @@ Use this knowledge naturally — don't announce it, but let it guide your tone a
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
-        # Function calling loop (simplified for DMs - use same model as group chats)
+        # Simplified call - no complex tools for now to avoid API errors
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": context}
         ]
 
-        max_iterations = 5
-        for iteration in range(max_iterations):
-            response = client.responses.create(
-                model=GROK_MODEL_FAST,  # Use consistent model that was working before
-                input=messages,
-                # Properly format web_search and x_search tools to match OpenAI spec
-                tools=platform_tools + [
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": "web_search",
-                            "description": "Search the web for current information",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "query": {
-                                        "type": "string",
-                                        "description": "The search query"
-                                    }
-                                },
-                                "required": ["query"]
-                            }
-                        }
-                    },
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": "x_search",
-                            "description": "Search X/Twitter for recent posts and discussions",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "query": {
-                                        "type": "string",
-                                        "description": "The search query"
-                                    }
-                                },
-                                "required": ["query"]
-                            }
-                        }
-                    }
-                ],
-                max_output_tokens=600,
-                temperature=0.7
-            )
+        response = client.responses.create(
+            model=GROK_MODEL_FAST,
+            input=messages,
+            max_output_tokens=600,
+            temperature=0.7
+        )
 
-            ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
-
-            # Check if Grok wants to call a tool
-            if hasattr(response, 'tool_calls') and response.tool_calls:
-                tool_call = response.tool_calls[0]
-                tool_name = tool_call.function.name
-                tool_args = tool_call.function.arguments if hasattr(tool_call.function, 'arguments') else {}
-
-                if isinstance(tool_args, str):
-                    import json
-                    try:
-                        tool_args = json.loads(tool_args)
-                    except:
-                        tool_args = {}
-
-                tool_result = _execute_steve_tool(tool_name, tool_args, sender_username)
-
-                messages.append({
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [{
-                        "id": tool_call.id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_name,
-                            "arguments": str(tool_args)
-                        }
-                    }]
-                })
-
-                messages.append({
-                    "role": "tool",
-                    "content": str(tool_result),
-                    "tool_call_id": tool_call.id
-                })
-
-                continue  # Let Grok respond with the tool result
-
-            # No more tool calls - final response
-            break
+        ai_response = response.output_text.strip() if hasattr(response, 'output_text') and response.output_text else None
 
         if not ai_response:
             logger.warning("Steve DM reply: empty response from API")
