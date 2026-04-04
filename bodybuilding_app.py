@@ -13091,89 +13091,171 @@ def _trigger_steve_dm_reply(sender_username: str, user_message: str, other_usern
     try:
         # Determine the chat thread to read context from and reply into
         if other_username:
-            # @Steve mentioned in a DM between two users
             chat_user_a = sender_username
             chat_user_b = other_username
         else:
-            # Direct chat with Steve
             chat_user_a = sender_username
             chat_user_b = 'steve'
         
-        with get_db_connection() as conn:
-            c = conn.cursor()
-            ph = get_sql_placeholder()
+        # ── Load full conversation history from Firestore (fall back to MySQL) ──
+        recent_messages = []
+        try:
+            import os
+            FIRESTORE_DATABASE = os.environ.get('FIRESTORE_DATABASE', 'cpoint')
+            from google.cloud import firestore as _firestore
+            project = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GCP_PROJECT')
+            fs = _firestore.Client(project=project, database=FIRESTORE_DATABASE) if project else _firestore.Client(database=FIRESTORE_DATABASE)
             
-            # Get recent DM history for context - fixed parameter binding
-            c.execute(f"""
-                SELECT sender, message, timestamp FROM messages
-                WHERE (sender = {ph} AND receiver = {ph})
-                   OR (sender = {ph} AND receiver = {ph})
-                ORDER BY timestamp DESC
-                LIMIT 15
-            """, (chat_user_a, chat_user_b, chat_user_b, chat_user_a))
-            
-            recent = []
-            for row in c.fetchall():
-                s = row['sender'] if hasattr(row, 'keys') else row[0]
-                m = row['message'] if hasattr(row, 'keys') else row[1]
-                if m:
-                    recent.append(f"{s}: {m}")
-            recent.reverse()
+            from backend.services.firestore_reads import _find_dm_conv_id
+            conv_id = _find_dm_conv_id(fs, chat_user_a, chat_user_b)
+            if conv_id:
+                msgs_ref = fs.collection('dm_conversations').document(conv_id).collection('messages')
+                docs = msgs_ref.order_by('created_at').stream()
+                for doc in docs:
+                    d = doc.to_dict()
+                    sender = d.get('sender', '')
+                    text = d.get('text', '')
+                    if text and sender:
+                        recent_messages.append(f"{sender}: {text}")
+                logger.info(f"Steve DM context from Firestore: {len(recent_messages)} messages for {chat_user_a}<->{chat_user_b}")
+        except Exception as fs_err:
+            logger.warning(f"Steve DM Firestore context failed, falling back to MySQL: {fs_err}")
+            recent_messages = []
+        
+        # MySQL fallback if Firestore returned nothing
+        if not recent_messages:
+            with get_db_connection() as conn:
+                c = conn.cursor()
+                ph = get_sql_placeholder()
+                c.execute(f"""
+                    SELECT sender, message, timestamp FROM messages
+                    WHERE (sender = {ph} AND receiver = {ph})
+                       OR (sender = {ph} AND receiver = {ph})
+                    ORDER BY timestamp ASC
+                """, (chat_user_a, chat_user_b, chat_user_b, chat_user_a))
+                for row in c.fetchall():
+                    s = row['sender'] if hasattr(row, 'keys') else row[0]
+                    m = row['message'] if hasattr(row, 'keys') else row[1]
+                    if m:
+                        recent_messages.append(f"{s}: {m}")
         
         current_date = datetime.now().strftime('%A, %B %d, %Y at %H:%M UTC')
         
-        # Inject Grok-analyzed profile context
+        # ── Inject Grok-analyzed profile context for the sender ──
         user_profile_ctx = get_steve_context_for_user(sender_username)
 
-        context = "Direct message conversation:\n" + "\n".join(recent[-10:])
+        # ── Detect @mentions in the message and load mentioned user profiles ──
+        mentioned_profiles = []
+        mentioned_usernames = set(re.findall(r'@(\w+)', user_message)) if user_message else set()
+        mentioned_usernames.discard('steve')
+        mentioned_usernames.discard('Steve')
+        mentioned_usernames.discard(sender_username)
+        
+        for mentioned_user in mentioned_usernames:
+            profile_ctx = get_steve_context_for_user(mentioned_user, viewer_username=sender_username)
+            if profile_ctx:
+                mentioned_profiles.append((mentioned_user, profile_ctx))
+            else:
+                # Even if no AI profile, check if user exists and shares a community
+                try:
+                    with get_db_connection() as conn:
+                        c = conn.cursor()
+                        ph = get_sql_placeholder()
+                        c.execute(f"""
+                            SELECT u.first_name, u.last_name, u.company, u.role, u.city, u.industry
+                            FROM users u
+                            WHERE u.username = {ph}
+                        """, (mentioned_user,))
+                        urow = c.fetchone()
+                        if urow:
+                            fn = (urow['first_name'] if hasattr(urow, 'keys') else urow[0]) or ''
+                            ln = (urow['last_name'] if hasattr(urow, 'keys') else urow[1]) or ''
+                            co = (urow['company'] if hasattr(urow, 'keys') else urow[2]) or ''
+                            ro = (urow['role'] if hasattr(urow, 'keys') else urow[3]) or ''
+                            ci = (urow['city'] if hasattr(urow, 'keys') else urow[4]) or ''
+                            ind = (urow['industry'] if hasattr(urow, 'keys') else urow[5]) or ''
+                            basic_ctx = f"{fn} {ln}".strip()
+                            if co: basic_ctx += f", works at {co}"
+                            if ro: basic_ctx += f" as {ro}"
+                            if ci: basic_ctx += f", based in {ci}"
+                            if ind: basic_ctx += f" ({ind})"
+                            if basic_ctx:
+                                mentioned_profiles.append((mentioned_user, basic_ctx))
+                except Exception as mu_err:
+                    logger.warning(f"Could not load basic profile for @{mentioned_user}: {mu_err}")
+
+        # ── Build conversation context with recency weighting ──
+        all_messages = recent_messages[-200:]
+        CURRENT_WINDOW = 30
+        if len(all_messages) > CURRENT_WINDOW:
+            older_messages = all_messages[:-CURRENT_WINDOW]
+            current_messages = all_messages[-CURRENT_WINDOW:]
+        else:
+            older_messages = []
+            current_messages = all_messages
+        
+        context = f"Direct message conversation between {chat_user_a} and {chat_user_b}:\n"
+        if older_messages:
+            context += f"=== OLDER CONTEXT ({len(older_messages)} messages — background reference) ===\n"
+            context += "\n".join(older_messages)
+            context += "\n\n"
+        context += f"=== CURRENT CONVERSATION (last {len(current_messages)} messages — focus here) ===\n"
+        context += "\n".join(current_messages)
         
         if other_username:
-            # Steve was @mentioned in a DM between two users
             context += f"\n\n{sender_username} mentioned you (@Steve). Respond helpfully."
         else:
-            # Direct 1:1 chat with Steve
             context += f"\n\n{sender_username} is chatting with you directly. Respond naturally and helpfully."
         
         context += f"\n\n[Current date and time: {current_date}]"
 
         is_admin = is_app_admin(sender_username)
 
-        # Simplified platform tools - using minimal set to avoid API errors
-        # The complex tool definitions were causing "missing field `name`" errors
-        platform_tools = []
-
         system_prompt = f"""You are Steve, a helpful, witty, and intelligent AI assistant in a private 1:1 chat.
 
 CURRENT DATE AND TIME: {current_date}
 
 YOUR CAPABILITIES:
+- You have access to the FULL conversation history of this chat
 - You can search the web and X/Twitter for information
-- {"As an admin, you have additional capabilities." if is_admin else "You have access to general information and web search."}
-- Be helpful and respond naturally to the user's message.
+- {"As an admin, you have full platform access." if is_admin else "You have access to general information and web search."}
 
-COMMUNITY ACCESS RULES:
-- Always use community_id when calling tools
-- For regular users: only return data from communities they belong to
-- Never reveal information about communities the user is not a member of
-- If asked "are there other networks?" or similar, say you can only share information about communities they belong to
+CONVERSATION INTELLIGENCE:
+- You have two context sections: OLDER CONTEXT (background) and CURRENT CONVERSATION (active).
+- Always maintain full awareness of the conversation history and flow.
+- Focus on the CURRENT CONVERSATION messages when responding.
+- Reference older context only when directly relevant to the current question.
+
+COMMUNITY & PRIVACY RULES:
+- You can only share information about users if the person asking shares a community with them.
+- Never reveal information about communities the user is not a member of.
+- Only share profile information that has been provided to you below — do NOT make up details about users.
+- If you don't have information about a mentioned user, say so honestly.
 
 RESPONSE STYLE:
-- Be helpful and concise (2-5 sentences)
+- Be helpful and concise (2-5 sentences for casual, longer for detailed questions)
 - Use emojis occasionally
-- When using tools, be natural — don't announce "I looked this up"
-- If you cannot answer due to permissions, be transparent about it"""
+- If you cannot answer, be transparent about it
+- NEVER hallucinate or make up information about users — only use the profile data provided below"""
 
         if user_profile_ctx:
             system_prompt += f"""
 
-WHAT YOU KNOW ABOUT @{sender_username}:
+WHAT YOU KNOW ABOUT @{sender_username} (the person you're chatting with):
 {user_profile_ctx}
 Use this knowledge naturally — don't announce it, but let it guide your tone and relevance."""
+
+        if mentioned_profiles:
+            for m_username, m_ctx in mentioned_profiles:
+                system_prompt += f"""
+
+WHAT YOU KNOW ABOUT @{m_username} (mentioned in the conversation):
+{m_ctx}
+Only share this information if asked. Be factual — do not embellish or invent details beyond what is listed here."""
 
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
 
-        # Simplified call - no complex tools for now to avoid API errors
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": context}
@@ -13182,6 +13264,7 @@ Use this knowledge naturally — don't announce it, but let it guide your tone a
         response = client.responses.create(
             model=GROK_MODEL_FAST,
             input=messages,
+            tools=[{"type": "web_search"}, {"type": "x_search"}],
             max_output_tokens=600,
             temperature=0.7
         )

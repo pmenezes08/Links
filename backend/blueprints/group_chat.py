@@ -2770,6 +2770,44 @@ def _trigger_steve_group_reply(group_id: int, group_name: str, user_message: str
         if community_context:
             context += f"\n\n{community_context}"
         
+        # ── Detect @mentions and load mentioned user profiles from Firestore ──
+        mentioned_profiles_text = ""
+        mentioned_usernames = set(re.findall(r'@(\w+)', user_message)) if user_message else set()
+        mentioned_usernames.discard('steve')
+        mentioned_usernames.discard('Steve')
+        mentioned_usernames.discard(sender_username)
+        
+        if mentioned_usernames:
+            try:
+                from bodybuilding_app import get_steve_context_for_user
+                for m_user in mentioned_usernames:
+                    profile_ctx = get_steve_context_for_user(m_user, viewer_username=sender_username)
+                    if profile_ctx:
+                        mentioned_profiles_text += f"\n\nWHAT YOU KNOW ABOUT @{m_user} (mentioned in conversation):\n{profile_ctx}\nOnly share this if asked. Be factual — do not embellish or invent details beyond what is listed here."
+                    else:
+                        # Fall back to basic MySQL profile data
+                        with get_db_connection() as conn:
+                            c = conn.cursor()
+                            ph = get_sql_placeholder()
+                            c.execute(f"SELECT first_name, last_name, company, role, city, industry FROM users WHERE username = {ph}", (m_user,))
+                            urow = c.fetchone()
+                            if urow:
+                                fn = (urow['first_name'] if hasattr(urow, 'keys') else urow[0]) or ''
+                                ln = (urow['last_name'] if hasattr(urow, 'keys') else urow[1]) or ''
+                                co = (urow['company'] if hasattr(urow, 'keys') else urow[2]) or ''
+                                ro = (urow['role'] if hasattr(urow, 'keys') else urow[3]) or ''
+                                ci = (urow['city'] if hasattr(urow, 'keys') else urow[4]) or ''
+                                ind = (urow['industry'] if hasattr(urow, 'keys') else urow[5]) or ''
+                                basic_ctx = f"{fn} {ln}".strip()
+                                if co: basic_ctx += f", works at {co}"
+                                if ro: basic_ctx += f" as {ro}"
+                                if ci: basic_ctx += f", based in {ci}"
+                                if ind: basic_ctx += f" ({ind})"
+                                if basic_ctx:
+                                    mentioned_profiles_text += f"\n\nWHAT YOU KNOW ABOUT @{m_user} (mentioned in conversation):\n{basic_ctx}\nOnly share this if asked. Be factual — do not invent details."
+            except Exception as mention_err:
+                logger.warning(f"Could not load mentioned user profiles: {mention_err}")
+        
         # Only attach images if the user's message explicitly references them
         image_keywords = ['image', 'photo', 'picture', 'pic', 'imagem', 'foto', 'see', 'look', 'show', 'what is this', 'what\'s this', 'o que é', 'vê', 'olha']
         msg_lower = user_message.lower()
@@ -2862,6 +2900,10 @@ CONVERSATION INTELLIGENCE:
 - If someone asks a direct question, answer it fully.
 - If images are attached, only describe them when explicitly asked. Do NOT proactively reference images.
 - If there are SUPPRESSED TOPICS listed, do NOT bring them up under any circumstances unless a user explicitly asks.{community_intel_prompt}
+
+USER PROFILE KNOWLEDGE:
+- NEVER hallucinate or make up information about users — only use the profile data provided below.
+- If you don't have information about a mentioned user, say so honestly.{mentioned_profiles_text}
 
 RESPONSE FORMAT:
 - For casual chat: 2-4 sentences, conversational
