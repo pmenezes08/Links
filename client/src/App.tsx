@@ -70,6 +70,7 @@ const queryClient = new QueryClient()
 
 function AppRoutes(){
   const [title, setTitle] = useState('')
+  const [headerHiddenOverride, setHeaderHiddenOverride] = useState(false)
   const [userMeta, setUserMeta] = useState<{ username?:string; displayName?:string|null; avatarUrl?:string|null }>({})
   const location = useLocation()
   const isFirstPage = location.pathname === '/'
@@ -608,9 +609,9 @@ function AppRoutes(){
     currentPath.startsWith('/reply/') ||  // Reply/thread page has its own header
     currentPath.startsWith('/community_feed_react/') ||  // Community feed has its own header
     currentPath.startsWith('/community/') && currentPath.includes('/feed')  // Community feed alternate route
-  const showHeader = authLoaded && !hideHeader
+  const showHeader = authLoaded && !hideHeader && !headerHiddenOverride
   const headerHeightValue = showHeader ? 'calc(56px + env(safe-area-inset-top, 0px))' : 'env(safe-area-inset-top, 0px)'
-  const contentOffsetValue = headerHeightValue
+  const contentOffsetValue = headerHiddenOverride ? '0px' : headerHeightValue
   const mainStyle = {
     paddingTop: contentOffsetValue,
     minHeight: '100%',
@@ -627,7 +628,7 @@ function AppRoutes(){
   return (
     <UserProfileContext.Provider value={userProfileValue}>
       <BadgeProvider>
-      <HeaderContext.Provider value={{ setTitle }}>
+      <HeaderContext.Provider value={{ setTitle, setHeaderHidden: setHeaderHiddenOverride }}>
         {showHeader && (
           <HeaderBar title={title} username={userMeta.username} displayName={userMeta.displayName || undefined} avatarUrl={userMeta.avatarUrl} />
         )}

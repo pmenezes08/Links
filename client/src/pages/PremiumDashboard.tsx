@@ -61,8 +61,13 @@ export default function PremiumDashboard() {
   const [pendingInviteTarget, setPendingInviteTarget] = useState<{ communityId: number; communityName?: string | null } | null>(null)
   const [showSuccessModal, setShowSuccessModal] = useState(false)  // Success modal for join
   const doneKey = username ? `onboarding_done:${username}` : 'onboarding_done'
-  const { setTitle } = useHeader()
+  const { setTitle, setHeaderHidden } = useHeader()
   useEffect(() => { setTitle('Dashboard') }, [setTitle])
+  useEffect(() => {
+    const hideHeaderForOnboarding = showOnboarding || onboardingLaunching
+    setHeaderHidden(hideHeaderForOnboarding)
+    return () => setHeaderHidden(false)
+  }, [showOnboarding, onboardingLaunching, setHeaderHidden])
   const navigate = useNavigate()
   const isWeb = Capacitor.getPlatform() === 'web'
   const isPremium = (subscription || 'free').toLowerCase() === 'premium'
