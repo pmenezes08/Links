@@ -160,6 +160,19 @@ export default function Networking() {
       .then(data => {
         if (!mounted) return
         const profile = data?.success ? data.profile : null
+        console.log('🔍 [NETWORKING GATE] Profile data received:', {
+          first_name: profile?.first_name,
+          last_name: profile?.last_name,
+          role: profile?.role,
+          company: profile?.company,
+          bio: profile?.bio,
+          professional_role: profile?.professional?.role,
+          professional_company: profile?.professional?.company,
+          hasRole: !!profile?.role || !!profile?.professional?.role,
+          hasCompany: !!profile?.company || !!profile?.professional?.company,
+          allKeys: profile ? Object.keys(profile) : [],
+          fullProfile: profile,
+        })
         const missing = [
           !hasValue(profile?.first_name) ? 'First Name' : null,
           !hasValue(profile?.last_name) ? 'Last Name' : null,
