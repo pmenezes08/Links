@@ -555,9 +555,15 @@ _is_cloud_run = bool(os.getenv('K_SERVICE'))
 _canonical_scheme = (os.getenv('CANONICAL_SCHEME') or '').lower()
 
 # Session configuration
+try:
+    _auth_session_lifetime_days = max(30, int(os.getenv('AUTH_SESSION_LIFETIME_DAYS', '365')))
+except Exception:
+    _auth_session_lifetime_days = 365
+app.config['AUTH_SESSION_LIFETIME_DAYS'] = _auth_session_lifetime_days
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_PATH'] = '/'
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=_auth_session_lifetime_days)
+app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 # Secure=True on Cloud Run (HTTPS); False for local dev
 app.config['SESSION_COOKIE_SECURE'] = _is_cloud_run or _canonical_scheme == 'https'
 # SameSite=None required for cross-subdomain fetch (admin.c-point.co → app.c-point.co)

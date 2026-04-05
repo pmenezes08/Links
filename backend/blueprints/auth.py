@@ -15,6 +15,7 @@ from flask import (
     Blueprint,
     abort,
     current_app,
+    g,
     flash,
     jsonify,
     make_response,
@@ -40,16 +41,24 @@ def _is_mobile_request() -> bool:
     return any(token in ua for token in MOBILE_UA_KEYWORDS)
 
 
+def _get_auth_session_lifetime_days() -> int:
+    try:
+        return max(30, int(current_app.config.get("AUTH_SESSION_LIFETIME_DAYS", 365)))
+    except Exception:
+        return 365
+
+
 def _issue_remember_token(response, username: str) -> None:
     """Create a persistent remember-me token and attach it to the response."""
     from bodybuilding_app import get_db_connection
 
     logger = current_app.logger
     try:
+        lifetime_days = _get_auth_session_lifetime_days()
         raw = secrets.token_urlsafe(48)
         token_hash = sha256(raw.encode()).hexdigest()
         now = datetime.utcnow()
-        expires = now + timedelta(days=30)
+        expires = now + timedelta(days=lifetime_days)
         with get_db_connection() as conn:
             c = conn.cursor()
             c.execute(
@@ -60,7 +69,7 @@ def _issue_remember_token(response, username: str) -> None:
         response.set_cookie(
             "remember_token",
             raw,
-            max_age=30 * 24 * 60 * 60,
+            max_age=lifetime_days * 24 * 60 * 60,
             secure=True,
             httponly=True,
             samesite="Lax",
@@ -98,8 +107,36 @@ def auto_login_from_remember_token():
             return
         session.permanent = True
         session["username"] = username
+        g.remember_token_rotation_username = username
+        g.remember_token_rotation_old_hash = token_hash
     except Exception as exc:
         current_app.logger.warning("auto_login_from_remember_token failed: %s", exc)
+
+
+@auth_bp.after_app_request
+def rotate_remember_token_after_auto_login(response):
+    """Refresh remember-token cookies after silent session restoration."""
+    username = getattr(g, "remember_token_rotation_username", None)
+    old_hash = getattr(g, "remember_token_rotation_old_hash", None)
+    if not username or not old_hash:
+        return response
+
+    try:
+        _issue_remember_token(response, username)
+    except Exception as exc:
+        current_app.logger.warning("Failed rotating remember token for %s: %s", username, exc)
+        return response
+
+    try:
+        from bodybuilding_app import get_db_connection
+
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM remember_tokens WHERE token_hash=?", (old_hash,))
+            conn.commit()
+    except Exception as exc:
+        current_app.logger.warning("Failed deleting old remember token for %s: %s", username, exc)
+    return response
 
 
 @auth_bp.route("/login", methods=["GET", "POST"], endpoint="login")
@@ -110,6 +147,8 @@ def login():
     logger = current_app.logger
     try:
         if request.method == "GET":
+            if "username" in session and request.args.get('step') != 'password':
+                return redirect("/premium_dashboard")
             # Only clear session if NOT on password step
             # If ?step=password is present, we need to keep pending_username for the password form
             if request.args.get('step') != 'password':
@@ -129,13 +168,6 @@ def login():
                     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
                     resp.headers["Pragma"] = "no-cache"
                     resp.headers["Expires"] = "0"
-                    resp.set_cookie(
-                        "remember_token",
-                        "",
-                        max_age=0,
-                        path="/",
-                        domain=current_app.config.get("SESSION_COOKIE_DOMAIN") or None,
-                    )
                 except Exception:
                     pass
                 return resp
