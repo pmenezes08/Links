@@ -840,7 +840,6 @@ export default function OnboardingChat({
               className="w-8 h-8 rounded-lg object-contain"
               onError={() => setHeaderLogoSrc('/static/cpoint-logo.svg')}
             />
-            <span className="text-sm font-semibold text-[#4db6ac]">CPoint</span>
           </div>
           <div className="w-full flex items-center gap-3 pb-2">
             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#4db6ac] to-[#2a7a72] flex items-center justify-center text-[10px] font-bold text-black shrink-0">

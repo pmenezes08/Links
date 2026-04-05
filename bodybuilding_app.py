@@ -12178,6 +12178,8 @@ def update_professional():
 @login_required
 def update_personal_info():
     username = session['username']
+    first_name = (request.form.get('first_name') or '').strip() or None
+    last_name = (request.form.get('last_name') or '').strip() or None
     display_name = (request.form.get('display_name') or '').strip()
     bio_text = (request.form.get('bio') or '').strip()
     date_of_birth = request.form.get('date_of_birth')
@@ -12208,8 +12210,8 @@ def update_personal_info():
                     age_val = int(age)
                 except Exception:
                     age_val = None
-            c.execute("""UPDATE users SET age=?, gender=?, country=?, city=?, date_of_birth=? 
-                        WHERE username=?""", (age_val, gender, country, city, date_of_birth_iso, username))
+            c.execute("""UPDATE users SET first_name=?, last_name=?, age=?, gender=?, country=?, city=?, date_of_birth=? 
+                        WHERE username=?""", (first_name, last_name, age_val, gender, country, city, date_of_birth_iso, username))
             
             if display_name:
                 try:

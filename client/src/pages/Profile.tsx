@@ -11,6 +11,8 @@ const ONBOARDING_PROFILE_HINT_KEY = 'cpoint_onboarding_profile_hint'
 const ONBOARDING_RESUME_KEY = 'cpoint_onboarding_resume_step'
 
 type PersonalForm = {
+  first_name: string
+  last_name: string
   bio: string
   display_name: string
   date_of_birth: string
@@ -39,6 +41,8 @@ type ProfileSummary = {
 }
 
 const PERSONAL_DEFAULT: PersonalForm = {
+  first_name: '',
+  last_name: '',
   bio: '',
   display_name: '',
   date_of_birth: '',
@@ -326,7 +330,8 @@ export default function Profile() {
 
   const isPersonalDirty = useCallback(() => {
     const s = serverPersonalRef.current
-    return personal.bio !== s.bio || personal.display_name !== s.display_name ||
+    return personal.first_name !== s.first_name || personal.last_name !== s.last_name ||
+      personal.bio !== s.bio || personal.display_name !== s.display_name ||
       personal.date_of_birth !== s.date_of_birth || personal.gender !== s.gender ||
       personal.country !== s.country || personal.city !== s.city
   }, [personal])
@@ -381,6 +386,8 @@ export default function Profile() {
     setSavingPersonal(true)
     try {
       const form = new FormData()
+      form.append('first_name', personal.first_name)
+      form.append('last_name', personal.last_name)
       form.append('bio', personal.bio)
       form.append('display_name', personal.display_name)
       if (personal.date_of_birth) form.append('date_of_birth', personal.date_of_birth)
@@ -564,6 +571,8 @@ export default function Profile() {
       bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about, profile.summary, profile.about),
     })
     const loadedPersonal: PersonalForm = {
+      first_name: coalesceString(profile.first_name, personalInfo.first_name, personalInfo.firstName),
+      last_name: coalesceString(profile.last_name, personalInfo.last_name, personalInfo.lastName),
       bio: coalesceString(profile.bio, personalInfo.bio, personalInfo.about),
       display_name: coalesceString(
         personalInfo.display_name,
@@ -828,6 +837,8 @@ export default function Profile() {
     setSavingPersonal(true)
     try {
       const form = new FormData()
+      form.append('first_name', personal.first_name)
+      form.append('last_name', personal.last_name)
       form.append('bio', personal.bio)
       form.append('display_name', personal.display_name)
       if (personal.date_of_birth) form.append('date_of_birth', personal.date_of_birth)
@@ -1244,6 +1255,22 @@ export default function Profile() {
               </div>
             )}
             <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-sm min-w-0">
+                First name
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
+                  value={personal.first_name}
+                  onChange={event => setPersonal(prev => ({ ...prev, first_name: event.target.value }))}
+                />
+              </label>
+              <label className="text-sm min-w-0">
+                Last name
+                <input
+                  className="mt-1 w-full rounded-md bg-black border border-white/10 px-3 py-2 text-sm leading-tight outline-none focus:border-[#4db6ac]"
+                  value={personal.last_name}
+                  onChange={event => setPersonal(prev => ({ ...prev, last_name: event.target.value }))}
+                />
+              </label>
               <label className="text-sm min-w-0">
                 Display name
                 <input
