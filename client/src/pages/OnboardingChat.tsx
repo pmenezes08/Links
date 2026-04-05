@@ -78,6 +78,7 @@ interface OnboardingChatProps {
   onComplete: () => void
   onCreateCommunity: () => void
   onGoToCommunity: () => void
+  onExit: () => void
 }
 
 const USER_FACING_STEPS = 8
@@ -111,6 +112,7 @@ export default function OnboardingChat({
   onComplete,
   onCreateCommunity,
   onGoToCommunity,
+  onExit,
 }: OnboardingChatProps) {
   const [stage, setStage] = useState<Stage>('welcome')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -847,6 +849,13 @@ export default function OnboardingChat({
             <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold text-white">Steve</div>
             </div>
+            <button
+              type="button"
+              onClick={onExit}
+              className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-medium text-white/60 hover:text-white hover:border-white/20 transition"
+            >
+              Exit for now
+            </button>
             <div className="text-[10px] text-white/30">Step {Math.min(Math.ceil(stageProgress(stage) / (100 / USER_FACING_STEPS)), USER_FACING_STEPS)} of {USER_FACING_STEPS}</div>
           </div>
         </div>

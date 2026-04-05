@@ -695,6 +695,9 @@ export default function PremiumDashboard() {
             setShowOnboarding(false)
             handleGoToCommunity()
           }}
+          onExit={() => {
+            setShowOnboarding(false)
+          }}
         />
       )}
 

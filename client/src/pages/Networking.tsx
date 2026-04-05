@@ -43,6 +43,9 @@ export default function Networking() {
   const [activeSection, setActiveSection] = useState<SectionKey>('steve')
   const [communities, setCommunities] = useState<Community[]>([])
   const [loading, setLoading] = useState(true)
+  const [profileGateLoading, setProfileGateLoading] = useState(true)
+  const [profileReadyForNetworking, setProfileReadyForNetworking] = useState(false)
+  const [missingProfileFields, setMissingProfileFields] = useState<string[]>([])
 
   // Steve state
   const [steveCommunity, setSteveCommunity] = useState<number | null>(null)
@@ -150,6 +153,40 @@ export default function Networking() {
   const [memberSearch, setMemberSearch] = useState('')
 
   useEffect(() => {
+    let mounted = true
+    const hasValue = (value?: string | null) => typeof value === 'string' && value.trim().length > 0
+    fetch('/api/profile_me', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      .then(r => r.json())
+      .then(data => {
+        if (!mounted) return
+        const profile = data?.success ? data.profile : null
+        const missing = [
+          !hasValue(profile?.first_name) ? 'First Name' : null,
+          !hasValue(profile?.last_name) ? 'Last Name' : null,
+          !hasValue(profile?.role) ? 'Role' : null,
+          !hasValue(profile?.company) ? 'Company' : null,
+          !hasValue(profile?.bio) ? 'Identity' : null,
+        ].filter(Boolean) as string[]
+        setMissingProfileFields(missing)
+        setProfileReadyForNetworking(missing.length === 0)
+      })
+      .catch(() => {
+        if (!mounted) return
+        setMissingProfileFields(['First Name', 'Last Name', 'Role', 'Company', 'Identity'])
+        setProfileReadyForNetworking(false)
+      })
+      .finally(() => {
+        if (mounted) setProfileGateLoading(false)
+      })
+    return () => { mounted = false }
+  }, [])
+
+  useEffect(() => {
+    if (profileGateLoading) return
+    if (!profileReadyForNetworking) {
+      setLoading(false)
+      return
+    }
     fetch('/api/networking/communities', { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
       .then(data => {
@@ -161,7 +198,7 @@ export default function Networking() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [profileGateLoading, profileReadyForNetworking])
 
   const loadSessions = useCallback((communityId: number) => {
     setSessionsLoading(true)
@@ -365,7 +402,41 @@ export default function Networking() {
     setAutoMatching(false)
   }
 
-  if (loading) return <div className="glass-page min-h-screen text-white flex items-center justify-center"><span className="text-[#9fb0b5]">Loading…</span></div>
+  if (loading || profileGateLoading) return <div className="glass-page min-h-screen text-white flex items-center justify-center"><span className="text-[#9fb0b5]">Loading…</span></div>
+
+  if (!profileReadyForNetworking) {
+    return (
+      <div className="glass-page min-h-screen text-white">
+        <div className="max-w-xl mx-auto px-4 pt-10">
+          <div className="rounded-2xl border border-[#4db6ac]/25 bg-[#4db6ac]/10 p-5 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-[#4db6ac]/15 border border-[#4db6ac]/25 flex items-center justify-center">
+              <i className="fa-solid fa-user-check text-[#4db6ac] text-lg" />
+            </div>
+            <div className="space-y-2">
+              <div className="text-lg font-semibold text-white">Complete your profile to unlock Networking</div>
+              <div className="text-sm text-white/70 leading-relaxed">
+                Add the basics below so Steve can make better matches and the community can understand who you are.
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {missingProfileFields.map(field => (
+                <span key={field} className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs text-white/80">
+                  {field}
+                </span>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/profile')}
+              className="rounded-full bg-[#4db6ac] px-4 py-2 text-sm font-semibold text-black hover:brightness-110 transition"
+            >
+              Complete profile
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="glass-page min-h-screen text-white">
