@@ -1,4 +1,4 @@
-const SW_VERSION = '2.64.0'
+const SW_VERSION = '2.65.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
@@ -17,7 +17,7 @@ const STATIC_ASSETS = [
 
 const STATIC_ASSET_PATHS = new Set(STATIC_ASSETS)
 // These endpoints use stale-while-revalidate (show cached first, update in background)
-// NOTE: /api/profile_me is NOT here - it must always be network-first for proper login/logout
+// User-specific endpoints (/api/profile_me, /api/profile/*) must NOT be here
 const STALE_API_ENDPOINTS = new Set([
   '/api/user_communities_hierarchical',
   '/get_user_communities_with_members',
@@ -26,9 +26,16 @@ const STALE_API_ENDPOINTS = new Set([
   '/api/chat_threads',
   '/api/group_chat/list',
   '/api/notifications',
-  '/api/profile_me',
   '/api/check_gym_membership',
   '/api/check_admin',
+])
+
+// User-specific endpoints that must NEVER be cached by the service worker.
+// These are excluded from both staleWhileRevalidate and networkFirst caching.
+const NO_CACHE_API_ENDPOINTS = new Set([
+  '/api/profile_me',
+  '/api/profile/ai_suggestions',
+  '/api/profile/ai_review',
 ])
 
 self.addEventListener('install', (event) => {
@@ -231,6 +238,11 @@ self.addEventListener('fetch', (event) => {
   if (url.origin === self.location.origin && /\.(mp4|webm|mov|m4v)$/i.test(url.pathname)){
     event.respondWith(cacheFirstMedia(request))
     return
+  }
+
+  // User-specific endpoints: always go straight to network, never cache
+  if (NO_CACHE_API_ENDPOINTS.has(url.pathname)){
+    return // Let the browser handle it directly — no SW caching
   }
 
   if (STALE_API_ENDPOINTS.has(url.pathname) && request.headers.get('accept')?.includes('application/json')){
