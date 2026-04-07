@@ -8,64 +8,64 @@ type SteveProfilePayload = {
   lastUpdated?: string | null
 }
 
-const USER_EDITABLE_SECTIONS = ['summary', 'professional', 'personal', 'interests', 'networkingValue'] as const
+/** Fixed order for the user-facing Steve page (matches product spec). */
+const SECTION_ORDER = ['summary', 'identity', 'networkingValue', 'interests'] as const
 
-function analysisSectionToText(key: string, val: unknown): string {
-  if (val == null) return ''
-  if (typeof val === 'string') return val
-  if (key === 'interests' && typeof val === 'object' && !Array.isArray(val)) {
-    return Object.keys(val as Record<string, unknown>).join(', ')
-  }
-  if (key === 'professional' && typeof val === 'object' && val !== null) {
-    const o = val as Record<string, unknown>
-    const parts: string[] = []
-    const company = o.company as Record<string, string> | undefined
-    if (company?.description) parts.push(`${company.name || 'Company'}: ${company.description}`)
-    const role = o.role as Record<string, string> | undefined
-    if (role?.title) parts.push(`${role.title}${role.implication ? ' — ' + role.implication : ''}`)
-    if (o.education) parts.push(String(o.education))
-    const loc = o.location as Record<string, string> | undefined
-    if (loc?.context) parts.push(loc.context)
-    if (o.webFindings) parts.push(String(o.webFindings))
-    return parts.join('. ')
-  }
-  if (key === 'personal' && typeof val === 'object' && val !== null) {
-    const o = val as Record<string, unknown>
-    const parts: string[] = []
-    if (o.webFindings) parts.push(String(o.webFindings))
-    if (o.lifestyle) parts.push(String(o.lifestyle))
-    const social = o.socialProfiles
-    if (Array.isArray(social)) {
-      for (const sp of social) {
-        if (typeof sp === 'object' && sp && 'url' in sp) parts.push(String((sp as { url: string }).url))
-      }
-    }
-    return parts.join('. ')
-  }
-  if (key === 'identity' && typeof val === 'object' && val !== null) {
-    const o = val as Record<string, unknown>
-    const roles = o.roles
-    if (Array.isArray(roles)) return roles.join(' · ')
-    return JSON.stringify(val, null, 2)
-  }
-  try {
-    return JSON.stringify(val, null, 2)
-  } catch {
-    return String(val)
-  }
+/** Sections the user can send text edits for via /api/profile/ai_review */
+const USER_EDITABLE_SECTIONS = ['summary', 'networkingValue', 'interests'] as const
+
+function identityHasContent(identity: Record<string, unknown> | null): boolean {
+  if (!identity || typeof identity !== 'object') return false
+  const roles = identity.roles
+  const hasRoles = Array.isArray(roles) && roles.length > 0
+  const df = identity.drivingForces
+  const bi = identity.bridgeInsight
+  return Boolean(hasRoles || (typeof df === 'string' && df.trim()) || (typeof bi === 'string' && bi.trim()))
 }
 
-const HIDDEN_FROM_USER_STEVE_VIEW = new Set(['observations', 'traits'])
+function sectionHasContent(key: string, val: unknown): boolean {
+  if (val == null || val === '') return false
+  if (key === 'identity') {
+    return identityHasContent(val as Record<string, unknown>)
+  }
+  if (key === 'interests') {
+    if (typeof val === 'object' && !Array.isArray(val)) return Object.keys(val as object).length > 0
+    if (Array.isArray(val)) return val.length > 0
+    return typeof val === 'string' && val.trim().length > 0
+  }
+  if (typeof val === 'string') return val.trim().length > 0
+  if (Array.isArray(val)) return val.length > 0
+  if (typeof val === 'object') return Object.keys(val as object).length > 0
+  return true
+}
 
-function nonEmptyAnalysisKeys(analysis: Record<string, unknown>): string[] {
-  return Object.keys(analysis).filter(k => {
-    if (k.startsWith('_') || HIDDEN_FROM_USER_STEVE_VIEW.has(k)) return false
-    const v = analysis[k]
-    if (v == null || v === '') return false
-    if (Array.isArray(v)) return v.length > 0
-    if (typeof v === 'object') return Object.keys(v as object).length > 0
-    return true
-  })
+function formatInterestsHuman(val: unknown): string {
+  if (val == null) return ''
+  if (typeof val === 'string') return val.trim()
+  if (Array.isArray(val)) return val.map(String).filter(Boolean).join(' · ')
+  if (typeof val === 'object') {
+    const entries = Object.entries(val as Record<string, { score?: number }>)
+    if (entries.length === 0) return ''
+    return entries
+      .sort((a, b) => (b[1]?.score ?? 0) - (a[1]?.score ?? 0))
+      .map(([name, o]) => {
+        const s = o?.score
+        return typeof s === 'number' ? `${name} (${Math.round(s * 100)}%)` : name
+      })
+      .join(' · ')
+  }
+  return ''
+}
+
+/** Plain text for the edit modal (matches what we can POST as user edits). */
+function sectionEditSeed(key: string, val: unknown): string {
+  if (key === 'interests') return formatInterestsHuman(val)
+  if (key === 'summary' || key === 'networkingValue') return typeof val === 'string' ? val : ''
+  return ''
+}
+
+function visibleSectionKeys(analysis: Record<string, unknown>): string[] {
+  return SECTION_ORDER.filter(k => sectionHasContent(k, analysis[k]))
 }
 
 export default function SteveKnowsMe() {
@@ -137,7 +137,7 @@ export default function SteveKnowsMe() {
   const analysis = (profile?.analysis || {}) as Record<string, unknown>
 
   async function handleApprove() {
-    const keys = nonEmptyAnalysisKeys(analysis)
+    const keys = visibleSectionKeys(analysis)
     if (keys.length === 0) {
       setFeedback('Nothing to approve yet.')
       return
@@ -160,7 +160,7 @@ export default function SteveKnowsMe() {
   }
 
   async function handleDispute() {
-    if (!window.confirm('Mark Steve’s profile as wrong? You can then refresh your data or update your public profile.')) return
+    if (!window.confirm('Mark Steve’s view as wrong? You can update your profile and ask Steve to take another look later.')) return
     setActionBusy(true)
     setFeedback(null)
     try {
@@ -169,7 +169,7 @@ export default function SteveKnowsMe() {
         acceptedSections: [],
         edits: {},
       })
-      setFeedback('Recorded. Improve your profile and use Request refresh when ready.')
+      setFeedback('Recorded. Update your profile, then use “Refresh Steve’s view” when it’s available again.')
       await load()
     } catch (e) {
       setFeedback(e instanceof Error ? e.message : 'Could not save')
@@ -189,7 +189,7 @@ export default function SteveKnowsMe() {
         edits: { [editKey]: editText },
       })
       setEditKey(null)
-      setFeedback('Section update saved.')
+      setFeedback('Your changes were saved.')
       await load()
     } catch (e) {
       setFeedback(e instanceof Error ? e.message : 'Could not save')
@@ -209,20 +209,20 @@ export default function SteveKnowsMe() {
       })
       const d = await r.json().catch(() => null)
       if (r.status === 429) {
-        setFeedback(d?.error || 'Please wait before another refresh.')
+        setFeedback(d?.error || 'Please wait before asking again.')
         await load()
         return
       }
       if (r.status === 409) {
-        setFeedback('Analysis is already running. Check back shortly.')
+        setFeedback('Steve is already updating your profile. Check back shortly.')
         await load()
         return
       }
       if (!d?.success) {
-        setFeedback(d?.error || 'Could not queue refresh')
+        setFeedback(d?.error || 'Could not start a refresh')
         return
       }
-      setFeedback(d.message || 'Queued. Refresh this page in a minute.')
+      setFeedback(d.message || 'Steve is updating your profile. Refresh this page in a minute.')
       await load()
     } catch {
       setFeedback('Network error')
@@ -233,10 +233,68 @@ export default function SteveKnowsMe() {
 
   function openEdit(key: string) {
     setEditKey(key)
-    setEditText(analysisSectionToText(key, analysis[key]))
+    setEditText(sectionEditSeed(key, analysis[key]))
   }
 
   const reviewStatus = (analysis._userReview as { status?: string } | undefined)?.status
+
+  const cooldownHours = Math.max(1, Math.round((meta.refreshCooldownSeconds || 86400) / 3600))
+
+  function renderIdentityBlock(val: unknown) {
+    const identity = (val && typeof val === 'object' ? val : {}) as Record<string, unknown>
+    const roles = Array.isArray(identity.roles) ? (identity.roles as string[]).filter(Boolean) : []
+    const driving = typeof identity.drivingForces === 'string' ? identity.drivingForces.trim() : ''
+    const bridge = typeof identity.bridgeInsight === 'string' ? identity.bridgeInsight.trim() : ''
+    return (
+      <div className="space-y-3">
+        {roles.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {roles.map((r, i) => (
+              <span
+                key={i}
+                className="text-xs px-2.5 py-1 rounded-full bg-[#4db6ac]/15 text-[#4db6ac] border border-[#4db6ac]/25"
+              >
+                {r}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {driving ? (
+          <p className="text-sm text-white/80 leading-relaxed whitespace-pre-wrap">{driving}</p>
+        ) : null}
+        {bridge ? (
+          <p className="text-sm text-[#4db6ac]/90 leading-relaxed italic whitespace-pre-wrap">{bridge}</p>
+        ) : null}
+      </div>
+    )
+  }
+
+  function renderSectionBody(key: string, val: unknown) {
+    switch (key) {
+      case 'summary':
+      case 'networkingValue':
+        return (
+          <p className="text-sm text-white/85 leading-relaxed whitespace-pre-wrap">
+            {typeof val === 'string' ? val : ''}
+          </p>
+        )
+      case 'identity':
+        return renderIdentityBlock(val)
+      case 'interests':
+        return (
+          <p className="text-sm text-white/85 leading-relaxed">{formatInterestsHuman(val)}</p>
+        )
+      default:
+        return null
+    }
+  }
+
+  const sectionTitle: Record<string, string> = {
+    summary: 'Summary',
+    identity: 'Identity',
+    networkingValue: 'Networking value',
+    interests: 'Interests',
+  }
 
   return (
     <div className="min-h-screen bg-black text-white px-4 py-6 pb-24 max-w-3xl mx-auto">
@@ -252,21 +310,20 @@ export default function SteveKnowsMe() {
 
       <h1 className="text-xl font-semibold text-[#4db6ac] mb-1">What Steve knows about you</h1>
       <p className="text-sm text-[#9fb0b5] mb-4">
-        This is not your public profile — it is Steve&apos;s analysis of you. Some internal fields are not shown here.
+        This is Steve&apos;s understanding of you — not your public profile. Use it to check accuracy and suggest corrections.
       </p>
 
       {meta.analysisInProgress ? (
         <div className="mb-4 rounded-lg border border-[#4db6ac]/40 bg-[#4db6ac]/10 px-3 py-2 text-sm text-[#4db6ac]">
           <i className="fa-solid fa-spinner fa-spin mr-2" />
-          Steve is updating your analysis… refresh this page in a bit.
+          Steve is updating your profile… refresh this page in a bit.
         </div>
       ) : null}
 
       {!meta.canRequestRefresh && !meta.analysisInProgress ? (
-        <div className="mb-4 text-xs text-white/50">
-          Next self-service refresh available after the cooldown (
-          {Math.round((meta.refreshCooldownSeconds || 86400) / 3600)}h window — override with{' '}
-          <code className="text-white/70">STEVE_SELF_REFRESH_COOLDOWN_SECONDS</code>).
+        <div className="mb-4 text-sm text-[#9fb0b5]">
+          You&apos;ve recently asked Steve to take a fresh look. You can ask again in about{' '}
+          <span className="text-white/90">{cooldownHours}</span> hour{cooldownHours !== 1 ? 's' : ''}.
         </div>
       ) : null}
 
@@ -277,11 +334,11 @@ export default function SteveKnowsMe() {
           onClick={() => void handleRequestRefresh()}
           className="px-3 py-2 rounded-lg bg-[#4db6ac]/20 border border-[#4db6ac]/40 text-sm text-[#4db6ac] hover:bg-[#4db6ac]/30 disabled:opacity-40"
         >
-          {refreshBusy ? 'Queueing…' : 'Request refresh'}
+          {refreshBusy ? 'Starting…' : 'Refresh Steve’s view'}
         </button>
         <button
           type="button"
-          disabled={actionBusy || !profile || nonEmptyAnalysisKeys(analysis).length === 0}
+          disabled={actionBusy || !profile || visibleSectionKeys(analysis).length === 0}
           onClick={() => void handleApprove()}
           className="px-3 py-2 rounded-lg bg-green-500/20 border border-green-500/40 text-sm text-green-300 hover:bg-green-500/30 disabled:opacity-40"
         >
@@ -306,7 +363,7 @@ export default function SteveKnowsMe() {
 
       {reviewStatus ? (
         <p className="text-xs text-white/50 mb-4">
-          Your last review status: <span className="text-white/80">{reviewStatus}</span>
+          Your last review: <span className="text-white/80">{reviewStatus}</span>
         </p>
       ) : null}
 
@@ -319,45 +376,48 @@ export default function SteveKnowsMe() {
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
       ) : !profile ? (
         <div className="space-y-4 text-sm text-[#9fb0b5]">
-          <p>Steve doesn&apos;t have an analysis document for you yet. Complete your profile, then use Request refresh (or ask an admin to analyze).</p>
+          <p>
+            Steve doesn&apos;t have an analysis for you yet. Fill in your public profile, then tap{' '}
+            <strong>Refresh Steve’s view</strong> (or ask a community admin for help).
+          </p>
         </div>
       ) : (
         <div className="space-y-6">
           <div className="text-xs text-white/40">Last updated: {profile.lastUpdated || '—'}</div>
 
-          <section className="rounded-xl border border-white/10 p-4 space-y-4">
-            <div className="font-semibold text-[#4db6ac]">Analysis</div>
-            {nonEmptyAnalysisKeys(analysis).length === 0 ? (
-              <p className="text-sm text-white/50">No analysis sections yet.</p>
+          <section className="rounded-xl border border-white/10 p-4 space-y-6">
+            <div className="font-semibold text-[#4db6ac]">What Steve sees</div>
+            {visibleSectionKeys(analysis).length === 0 ? (
+              <p className="text-sm text-white/50">No sections yet. Try refreshing after updating your profile.</p>
             ) : (
-              nonEmptyAnalysisKeys(analysis).map(key => (
-                <div key={key} className="border-b border-white/5 pb-4 last:border-0 last:pb-0">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-white/50">{key}</div>
+              visibleSectionKeys(analysis).map(key => (
+                <div key={key} className="border-b border-white/5 pb-5 last:border-0 last:pb-0">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div className="text-sm font-semibold text-white">{sectionTitle[key] ?? key}</div>
                     {(USER_EDITABLE_SECTIONS as readonly string[]).includes(key) ? (
                       <button
                         type="button"
                         onClick={() => openEdit(key)}
                         className="text-[11px] text-[#4db6ac] hover:underline"
                       >
-                        Edit note
+                        Suggest an edit
                       </button>
                     ) : null}
                   </div>
-                  <pre className="text-xs text-white/85 whitespace-pre-wrap font-sans leading-relaxed">
-                    {analysisSectionToText(key, analysis[key])}
-                  </pre>
+                  <div className="bg-white/[0.03] rounded-lg px-3.5 py-3 border border-white/5">
+                    {renderSectionBody(key, analysis[key])}
+                  </div>
                 </div>
               ))
             )}
           </section>
 
           <p className="text-xs text-orange-300/90">
-            If this is totally wrong, tap <strong>This is wrong</strong>, then update your{' '}
+            If something is completely off, tap <strong>This is wrong</strong>, update your{' '}
             <button type="button" className="underline" onClick={() => navigate('/profile')}>
               public profile
-            </button>{' '}
-            and activity so Steve has better inputs, and use <strong>Request refresh</strong> (rate-limited).
+            </button>
+            , then use <strong>Refresh Steve’s view</strong> when it becomes available again.
           </p>
         </div>
       )}
@@ -365,10 +425,8 @@ export default function SteveKnowsMe() {
       {editKey ? (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#111] p-5 space-y-3">
-            <div className="font-semibold text-white">Edit: {editKey}</div>
-            <p className="text-xs text-[#9fb0b5]">
-              Your note is stored on Steve&apos;s profile as a user edit (see <code className="text-white/70">_userEdits</code> in Firestore).
-            </p>
+            <div className="font-semibold text-white">Suggest an edit: {sectionTitle[editKey] ?? editKey}</div>
+            <p className="text-xs text-[#9fb0b5]">Your text is saved with your review so Steve can use your wording.</p>
             <textarea
               className="w-full min-h-[140px] rounded-lg bg-black border border-white/15 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
               value={editText}

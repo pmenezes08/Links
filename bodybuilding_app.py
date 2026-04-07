@@ -2855,7 +2855,8 @@ def add_missing_tables():
                 for col, coltype in [
                     ('role','TEXT'), ('company','TEXT'), ('industry','TEXT'), ('degree','TEXT'),
                     ('school','TEXT'), ('skills','TEXT'), ('linkedin','TEXT'), ('experience','INTEGER'),
-                    ('professional_about','TEXT'), ('professional_interests','TEXT')
+                    ('professional_about','TEXT'), ('professional_interests','TEXT'),
+                    ('professional_company_intel','TEXT'),
                 ]:
                     try:
                         c.execute(f"SHOW COLUMNS FROM users LIKE '{col}'")
@@ -7246,7 +7247,7 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
                 SELECT u.username, u.first_name, u.last_name,
                        u.role, u.company, u.industry, u.degree,
                        u.school, u.skills, u.linkedin, u.experience,
-                       u.professional_about, u.professional_interests,
+                       u.professional_about, u.professional_interests, u.professional_company_intel,
                        u.country, u.city,
                        p.display_name, p.bio AS profile_bio, p.location
                 FROM users u
@@ -7600,6 +7601,10 @@ def _steve_analysis_payload_json_safe(obj):
     return str(obj)
 
 
+# Sections shown on "What does Steve know about me" (user-facing); admin keeps full analysis in Firestore.
+STEVE_USER_SELF_VIEW_SECTIONS = frozenset({'summary', 'identity', 'networkingValue', 'interests'})
+
+
 @app.route('/api/profile/steve_analysis', methods=['GET'])
 @login_required
 def api_profile_steve_analysis():
@@ -7634,9 +7639,13 @@ def api_profile_steve_analysis():
         analysis = dict(_migrate_analysis_to_v3(profile.get('analysis', {})) or {})
         analysis.pop('observations', None)
         analysis.pop('traits', None)
+        filtered_analysis = {
+            k: v for k, v in analysis.items()
+            if k.startswith('_') or k in STEVE_USER_SELF_VIEW_SECTIONS
+        }
         safe_profile = {
             'username': username,
-            'analysis': analysis,
+            'analysis': filtered_analysis,
             'lastUpdated': _ts_to_str(profile.get('lastUpdated')),
         }
         return _no_cache(jsonify({
@@ -8026,6 +8035,8 @@ def _build_profile_text_for_grok(
         parts.append(f"Role: {gv('role')}")
     if gv('company'):
         parts.append(f"Company: {gv('company')}")
+    if gv('professional_company_intel'):
+        parts.append(f"Company intel: {gv('professional_company_intel')}")
     if gv('industry'):
         parts.append(f"Industry: {gv('industry')}")
     if gv('skills'):
@@ -8543,7 +8554,7 @@ def _trigger_background_profile_analysis(username: str):
                     SELECT u.username, u.first_name, u.last_name,
                            u.role, u.company, u.industry, u.degree,
                            u.school, u.skills, u.linkedin, u.experience,
-                           u.professional_about, u.professional_interests,
+                           u.professional_about, u.professional_interests, u.professional_company_intel,
                            u.country, u.city,
                            p.display_name, p.bio AS profile_bio, p.location
                     FROM users u
@@ -11719,7 +11730,8 @@ def api_profile_me():
                        u.first_name, u.last_name, u.gender, u.country, u.city, u.date_of_birth, u.age,
                        p.display_name, p.bio, p.location, p.website,
                        p.instagram, p.twitter, p.profile_picture, p.cover_photo,
-                       u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests
+                       u.role, u.company, u.industry, u.linkedin, u.professional_about, u.professional_interests,
+                       u.professional_company_intel
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE u.username = ?
@@ -11740,6 +11752,7 @@ def api_profile_me():
             
             # Parse interests from JSON or comma-separated string
             interests_raw = get_val('professional_interests') if hasattr(row, 'keys') else get_val(25)
+            company_intel_val = get_val('professional_company_intel') if hasattr(row, 'keys') else get_val(26)
             interests_list = []
             if interests_raw:
                 try:
@@ -11785,6 +11798,7 @@ def api_profile_me():
                     'linkedin': get_val('linkedin') if hasattr(row, 'keys') else get_val(23),
                     'about': get_val('professional_about') if hasattr(row, 'keys') else get_val(24),
                     'interests': interests_list,
+                    'company_intel': (str(company_intel_val).strip() if company_intel_val is not None else ''),
                 }
             }
             
@@ -12365,6 +12379,7 @@ def update_professional():
         linkedin = request.form.get('linkedin', '').strip()
         experience = request.form.get('experience', type=int)
         professional_about = request.form.get('about', '').strip()
+        professional_company_intel = request.form.get('company_intel', '').strip()
         interests_raw = (request.form.get('interests') or '').strip()
         interests_payload = None
         if interests_raw:
@@ -12396,12 +12411,12 @@ def update_professional():
                 UPDATE users SET 
                     role={ph}, company={ph}, industry={ph}, degree={ph}, school={ph}, 
                     skills={ph}, linkedin={ph}, experience={ph}, professional_about={ph},
-                    professional_interests={ph}, professional_share_community_id={ph}
+                    professional_interests={ph}, professional_company_intel={ph}, professional_share_community_id={ph}
                 WHERE username={ph}
             """
             c.execute(update_sql, (
                 role, company, industry, degree, school, skills, linkedin, experience, professional_about,
-                interests_payload, professional_share_community_id, username
+                interests_payload, professional_company_intel, professional_share_community_id, username
             ))
             conn.commit()
         

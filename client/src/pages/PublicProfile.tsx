@@ -306,7 +306,6 @@ export default function PublicProfile() {
               className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium bg-[#4db6ac]/15 border border-[#4db6ac]/35 text-[#4db6ac] rounded hover:bg-[#4db6ac]/25 transition"
               onClick={() => navigate('/profile/steve')}
             >
-              <i className="fa-solid fa-brain" />
               What does Steve know about me?
             </button>
           </div>

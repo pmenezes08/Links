@@ -24,6 +24,7 @@ type PersonalForm = {
 type ProfessionalForm = {
   role: string
   company: string
+  company_intel: string
   industry: string
   linkedin: string
   about: string
@@ -54,6 +55,7 @@ const PERSONAL_DEFAULT: PersonalForm = {
 const PROFESSIONAL_DEFAULT: ProfessionalForm = {
   role: '',
   company: '',
+  company_intel: '',
   industry: '',
   linkedin: '',
   about: '',
@@ -633,6 +635,10 @@ export default function Profile() {
         professionalInfo.employer,
         profile.company,
       ),
+      company_intel: coalesceString(
+        professionalInfo.company_intel,
+        professionalInfo.companyIntel,
+      ),
       industry: coalesceString(
         professionalInfo.industry,
         professionalInfo.field,
@@ -807,6 +813,17 @@ export default function Profile() {
     return () => { cancelled = true }
   }, [cachedProfile])
 
+  useEffect(() => {
+    if (!aiSuggestions?.professional || typeof aiSuggestions.professional !== 'object') return
+    const desc = (aiSuggestions.professional as { company?: { description?: string } }).company?.description
+    const d = typeof desc === 'string' ? desc.trim() : ''
+    if (!d) return
+    setProfessional(prev => {
+      if (prev.company_intel?.trim()) return prev
+      return { ...prev, company_intel: d }
+    })
+  }, [aiSuggestions])
+
   const locationPreview = personal.city || personal.country
     ? [personal.city, personal.country].filter(Boolean).join(', ')
     : summary?.location || ''
@@ -940,6 +957,7 @@ export default function Profile() {
       const form = new FormData()
       form.append('role', professional.role)
       form.append('company', professional.company)
+      form.append('company_intel', professional.company_intel)
       form.append('industry', professional.industry)
       form.append('linkedin', professional.linkedin)
       form.append('about', finalAbout)
@@ -1000,6 +1018,7 @@ export default function Profile() {
       const form = new FormData()
       form.append('role', professional.role)
       form.append('company', professional.company)
+      form.append('company_intel', professional.company_intel)
       form.append('industry', professional.industry)
       form.append('linkedin', professional.linkedin)
       form.append('about', professional.about)
@@ -1429,6 +1448,18 @@ export default function Profile() {
                   value={professional.company}
                   onChange={event => setProfessional(prev => ({ ...prev, company: event.target.value }))}
                   placeholder="Company name"
+                />
+              </label>
+              <label className="text-sm sm:col-span-2">
+                Company intel
+                <p className="text-[11px] text-[#9fb0b5] font-normal mt-0.5 mb-1">
+                  What your company does — Steve may suggest text from his research; you can edit it.
+                </p>
+                <textarea
+                  className="mt-1 w-full min-h-[72px] rounded-md bg-black border border-white/10 px-3 py-2 text-sm outline-none focus:border-[#4db6ac]"
+                  value={professional.company_intel}
+                  onChange={event => setProfessional(prev => ({ ...prev, company_intel: event.target.value }))}
+                  placeholder="Brief description of the company (optional)"
                 />
               </label>
               <label className="text-sm">
