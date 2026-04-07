@@ -24,6 +24,7 @@ from flask import (
 )
 
 from backend.services.database import get_db_connection, get_sql_placeholder
+from redis_cache import invalidate_user_cache
 
 onboarding_bp = Blueprint("onboarding", __name__)
 logger = logging.getLogger(__name__)
@@ -443,6 +444,49 @@ def onboarding_redirect_message():
         return jsonify({"success": True, "message": "Great thought! Let's finish setting up your profile first, then we can chat about anything."})
 
 
+@onboarding_bp.route("/api/onboarding/resolve_location", methods=["POST"])
+@_login_required
+def onboarding_resolve_location():
+    """Infer the country from a city name. Returns {city, country} suggestion."""
+    data = request.get_json(silent=True) or {}
+    city = (data.get("city") or "").strip()
+    if not city:
+        return jsonify({"success": False, "error": "No city provided"}), 400
+
+    if not XAI_API_KEY:
+        return jsonify({"success": True, "city": city, "country": ""})
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+        response = client.chat.completions.create(
+            model=GROK_MODEL_FAST,
+            messages=[
+                {"role": "system", "content": (
+                    "You are a geography lookup tool. Given a city name, return the most likely country. "
+                    "Return ONLY a JSON object with exactly two keys: \"city\" (properly capitalized) and \"country\" (full country name). "
+                    "If the city is ambiguous (e.g. 'Portland' could be USA or UK), pick the most commonly meant one. "
+                    "If the input is not a recognizable city, return {\"city\": \"<input>\", \"country\": \"\"}. "
+                    "Return ONLY the JSON, nothing else."
+                )},
+                {"role": "user", "content": city},
+            ],
+            max_tokens=60,
+            temperature=0,
+        )
+        raw = (response.choices[0].message.content or "").strip()
+        import json as _json
+        parsed = _json.loads(raw)
+        return jsonify({
+            "success": True,
+            "city": parsed.get("city", city),
+            "country": parsed.get("country", ""),
+        })
+    except Exception as e:
+        logger.warning(f"resolve_location error: {e}")
+        return jsonify({"success": True, "city": city, "country": ""})
+
+
 @onboarding_bp.route("/api/onboarding/compose_bio", methods=["POST"])
 @_login_required
 def onboarding_compose_bio():
@@ -574,17 +618,28 @@ def onboarding_enrich_profile():
         if not analysis:
             return jsonify({"success": True, "enrichment": None})
 
-        # Save to Firestore
-        db = _get_firestore_client()
-        if db:
-            doc_ref = db.collection("steve_profiles").document(username)
-            existing = doc_ref.get()
-            if existing.exists:
-                from bodybuilding_app import _merge_analyses
-                merged = _merge_analyses(existing.to_dict().get("analysis", {}), analysis)
-                doc_ref.set({"analysis": merged, "updated_at": datetime.utcnow().isoformat()}, merge=True)
-            else:
-                doc_ref.set({"analysis": analysis, "username": username, "updated_at": datetime.utcnow().isoformat()})
+        # Save to Firestore (steve_user_profiles — the canonical collection)
+        from backend.services.firestore_reads import get_steve_user_profile
+        from backend.services.firestore_writes import write_steve_user_profile
+        existing_profile = get_steve_user_profile(username)
+        if existing_profile and existing_profile.get("analysis"):
+            from bodybuilding_app import _merge_analyses, _get_steve_profiling_write_payloads
+            merged = _merge_analyses(existing_profile.get("analysis", {}), analysis)
+            write_steve_user_profile(
+                username,
+                analysis=merged,
+                **_get_steve_profiling_write_payloads(username),
+            )
+        else:
+            try:
+                from bodybuilding_app import _get_steve_profiling_write_payloads
+                write_steve_user_profile(
+                    username,
+                    analysis=analysis,
+                    **_get_steve_profiling_write_payloads(username),
+                )
+            except Exception:
+                write_steve_user_profile(username, analysis=analysis)
 
         # Extract review cards for the user
         cards = _build_review_cards(analysis)
@@ -688,6 +743,10 @@ def onboarding_save_field():
             else:
                 return jsonify({"success": False, "error": f"Unknown field: {field}"}), 400
 
+        try:
+            invalidate_user_cache(username)
+        except Exception:
+            pass
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Onboarding save_field error for {username}: {e}")
@@ -707,8 +766,8 @@ def onboarding_complete():
                 "completed_at": datetime.utcnow().isoformat(),
             }, merge=True)
 
-            # Trigger background analysis if no existing profile
-            existing = db.collection("steve_profiles").document(username).get()
+            # Trigger background analysis if no existing profile in steve_user_profiles
+            existing = db.collection("steve_user_profiles").document(username).get()
             if not existing.exists or not (existing.to_dict() or {}).get("analysis", {}).get("summary"):
                 def _bg_analyze():
                     try:
@@ -717,7 +776,9 @@ def onboarding_complete():
                             _analyze_profile_with_grok,
                             _fetch_onboarding_identity_context,
                             _fetch_user_communities,
+                            _get_steve_profiling_write_payloads,
                         )
+                        from backend.services.firestore_writes import write_steve_user_profile
                         with get_db_connection() as conn:
                             c = conn.cursor()
                             ph = get_sql_placeholder()
@@ -736,16 +797,21 @@ def onboarding_complete():
                                 onboarding_context=onboarding_context,
                             )
                             analysis = _analyze_profile_with_grok(username, text, depth='standard')
-                            if analysis and db:
-                                db.collection("steve_profiles").document(username).set(
-                                    {"analysis": analysis, "username": username, "updated_at": datetime.utcnow().isoformat()},
-                                    merge=True
+                            if analysis:
+                                write_steve_user_profile(
+                                    username,
+                                    analysis=analysis,
+                                    **_get_steve_profiling_write_payloads(username),
                                 )
                     except Exception as bg_err:
                         logger.error(f"Background onboarding analysis error for {username}: {bg_err}")
 
                 threading.Thread(target=_bg_analyze, daemon=True).start()
 
+        try:
+            invalidate_user_cache(username)
+        except Exception:
+            pass
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Onboarding complete error for {username}: {e}")

@@ -8,6 +8,7 @@ type Stage =
   | 'welcome'
   | 'name'
   | 'location'
+  | 'location_confirm'
   | 'photo'
   | 'talk_all_day'
   | 'reach_out'
@@ -89,6 +90,7 @@ function stageProgress(stage: Stage): number {
     welcome: 0,
     name: 1,
     location: 2,
+    location_confirm: 2,
     photo: 3,
     talk_all_day: 4,
     reach_out: 5,
@@ -354,6 +356,25 @@ export default function OnboardingChat({
           inputPlaceholder: 'e.g. Munich, Germany',
         })
         break
+      case 'location_confirm': {
+        const city = data?.city || collected.city || ''
+        const country = data?.country || collected.country || ''
+        if (city && country) {
+          addSteveMessage(`Just to confirm — did you mean ${city}, ${country}?`, {
+            options: [
+              { label: `Yes, ${city}, ${country}`, value: 'confirm_location', icon: '✅' },
+              { label: 'No, let me correct that', value: 'edit_location', icon: '✏️' },
+            ],
+          })
+        } else {
+          addSteveMessage('Where are you based?', {
+            inputType: 'text',
+            inputPlaceholder: 'e.g. Munich, Germany',
+          })
+          setStage('location')
+        }
+        break
+      }
       case 'photo':
         addSteveMessage("Let's add a profile picture — it helps people recognize you.", {
           photoUpload: true,
@@ -532,6 +553,21 @@ export default function OnboardingChat({
           inputPlaceholder: 'First Last',
         })
         break
+      case 'confirm_location': {
+        addUserMessage(`Yes, ${collected.city}, ${collected.country}`)
+        await saveField('city', collected.city)
+        await saveField('country', collected.country)
+        advanceTo('photo')
+        break
+      }
+      case 'edit_location':
+        addUserMessage('Let me correct that')
+        addSteveMessage('No problem! Where are you based? Please include the country.', {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. Munich, Germany',
+        })
+        setStage('location')
+        break
       case 'skip_photo':
         addUserMessage('Skip for now')
         addSteveMessage("No problem — you can always add one later from your profile.")
@@ -642,11 +678,43 @@ export default function OnboardingChat({
         const locParts = val.split(',').map(s => s.trim())
         const city = locParts[0] || val
         const country = locParts[1] || ''
-        const newCollected = { ...collected, city, country }
-        setCollected(newCollected)
-        await saveField('city', city)
-        if (country) await saveField('country', country)
-        advanceTo('photo', newCollected)
+        if (city && !country) {
+          setIsTyping(true)
+          try {
+            const r = await fetch('/api/onboarding/resolve_location', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ city }),
+            })
+            const j = await r.json().catch(() => null)
+            setIsTyping(false)
+            const resolvedCity = j?.city || city
+            const resolvedCountry = j?.country || ''
+            if (resolvedCountry) {
+              const newCollected = { ...collected, city: resolvedCity, country: resolvedCountry }
+              setCollected(newCollected)
+              advanceTo('location_confirm', newCollected)
+            } else {
+              const newCollected = { ...collected, city: resolvedCity, country: '' }
+              setCollected(newCollected)
+              await saveField('city', resolvedCity)
+              advanceTo('photo', newCollected)
+            }
+          } catch {
+            setIsTyping(false)
+            const newCollected = { ...collected, city, country: '' }
+            setCollected(newCollected)
+            await saveField('city', city)
+            advanceTo('photo', newCollected)
+          }
+        } else {
+          const newCollected = { ...collected, city, country }
+          setCollected(newCollected)
+          await saveField('city', city)
+          if (country) await saveField('country', country)
+          advanceTo('photo', newCollected)
+        }
         break
       }
       case 'talk_all_day': {
