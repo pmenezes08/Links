@@ -47,7 +47,7 @@ export default function PremiumDashboard() {
   const [lastName, setLastName] = useState('')
   const [username, setUsername] = useState('')
   const [subscription, setSubscription] = useState<string>('free')
-  const [hasProfilePic, setHasProfilePic] = useState<boolean>(false)
+  const [, setHasProfilePic] = useState<boolean>(false)
   const [existingProfilePic, setExistingProfilePic] = useState<string>('')
   const [emailVerifiedAt, setEmailVerifiedAt] = useState<string | null>(null)
   const [isRecentlyVerified, setIsRecentlyVerified] = useState(false)
