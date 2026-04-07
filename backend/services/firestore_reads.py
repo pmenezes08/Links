@@ -317,6 +317,33 @@ def get_steve_user_profile(username: str):
         return None
 
 
+def batch_get_steve_user_profiles(usernames: list) -> dict:
+    """Batch-read multiple steve_user_profiles in a single Firestore RPC.
+
+    Returns {username: profile_dict} for existing documents.
+    Firestore get_all supports up to 500 refs per call; larger lists are
+    chunked automatically.
+    """
+    if not usernames:
+        return {}
+    try:
+        fs = _get_client()
+        result = {}
+        CHUNK = 500
+        for i in range(0, len(usernames), CHUNK):
+            chunk = usernames[i:i + CHUNK]
+            refs = [fs.collection('steve_user_profiles').document(u) for u in chunk]
+            docs = fs.get_all(refs)
+            for doc in docs:
+                if doc.exists:
+                    data = doc.to_dict()
+                    result[doc.id] = data
+        return result
+    except Exception as e:
+        logger.warning(f"Firestore batch_get_steve_user_profiles failed: {e}")
+        return {}
+
+
 def list_steve_user_profiles(limit: int = 500):
     """List all Steve user profiles (for admin dashboard)."""
     try:

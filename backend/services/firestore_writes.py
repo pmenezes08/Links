@@ -342,6 +342,8 @@ def merge_onboarding_identity_to_steve_profile(username: str, collected: Optiona
         }
         fs.collection('steve_user_profiles').document(username).set(payload, merge=True)
         logger.debug(f"Firestore onboardingIdentity merged for {username}")
+
+        _invalidate_and_reembed(username)
     except Exception as e:
         logger.warning(f"Firestore onboardingIdentity merge failed for {username}: {e}")
 
@@ -352,7 +354,10 @@ def write_steve_user_profile(
     profiling_platform_activity: dict = None,
     profiling_shared_externals: dict = None,
 ):
-    """Write a Grok-analyzed user profile to Firestore."""
+    """Write a Grok-analyzed user profile to Firestore.
+    Also invalidates the cached context string and triggers a background
+    embedding recomputation.
+    """
     if not USE_FIRESTORE_WRITES:
         return
     try:
@@ -373,5 +378,21 @@ def write_steve_user_profile(
 
         fs.collection('steve_user_profiles').document(username).set(profile_data, merge=True)
         logger.debug(f"Firestore Steve profile written for {username}")
+
+        _invalidate_and_reembed(username)
     except Exception as e:
         logger.warning(f"Firestore steve profile write failed (non-fatal): {e}")
+
+
+def _invalidate_and_reembed(username: str):
+    """Invalidate cached context and recompute embedding in background."""
+    try:
+        from bodybuilding_app import invalidate_steve_context_cache
+        invalidate_steve_context_cache(username)
+    except Exception:
+        pass
+    try:
+        from backend.services.embedding_service import compute_and_store_embedding_background
+        compute_and_store_embedding_background(username)
+    except Exception as e:
+        logger.debug(f"Background embedding trigger skipped for {username}: {e}")

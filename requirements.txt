@@ -12,7 +12,9 @@ cryptography>=41.0.0  # Needed by pywebpush and Firebase for VAPID/JWT
 redis==5.0.1  # Redis caching for performance
 PyMySQL==1.1.0  # MySQL database connector
 Pillow>=10.4.0  # Image optimization and compression
-openai>=1.0.0  # OpenAI API for audio transcription and xAI/Grok via compatible API
+openai>=1.0.0  # OpenAI API for audio transcription, xAI/Grok, and embeddings
+numpy>=1.24.0  # Vector operations for embedding search
+faiss-cpu>=1.7.4  # FAISS vector similarity search (optional, falls back to numpy)
 pyyaml
 boto3>=1.34.0  # AWS S3-compatible client for Cloudflare R2 CDN
 flask-compress>=1.14  # gzip/brotli compression for responses

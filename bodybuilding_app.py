@@ -8473,126 +8473,196 @@ def _onboarding_identity_from_steve_profile(username: str) -> dict:
         return {}
 
 
-def get_steve_context_for_user(username: str, viewer_username: str = None) -> str:
-    """Read the analyzed profile from Firestore, migrate to v3 if needed,
-    and return a concise context string for Steve's system prompts.
-    If viewer_username is provided, scrub community names not shared between target and viewer."""
+STEVE_CTX_CACHE_TTL = 600  # 10 minutes
+
+
+def _build_context_from_profile(profile: dict, username: str) -> str:
+    """Build a context string from a pre-loaded steve_user_profiles document.
+    This is the pure computation step — no Firestore reads, no caching."""
+    if not profile:
+        return ''
+    analysis = _migrate_analysis_to_v3(profile.get('analysis', {}))
+    has_summary = bool(analysis and analysis.get('summary'))
+
+    parts = []
+    if has_summary:
+        parts.append(analysis['summary'])
+
+        identity = analysis.get('identity') or {}
+        if identity.get('bridgeInsight'):
+            parts.append(identity['bridgeInsight'])
+        if identity.get('drivingForces'):
+            parts.append(f"Driving forces: {identity['drivingForces']}")
+        if identity.get('roles'):
+            parts.append(f"Roles: {', '.join(identity['roles'][:5])}")
+
+        pro = analysis.get('professional') or {}
+        co = pro.get('company') or {}
+        if co.get('description'):
+            parts.append(f"Company ({co.get('name','?')}): {co['description']} [{co.get('sector','')} / {co.get('stage','')}]")
+        role = pro.get('role') or {}
+        if role.get('implication'):
+            parts.append(f"Role: {role.get('title','')} ({role.get('seniority','')}) — {role['implication']}")
+        career = pro.get('careerHistory') or []
+        if career:
+            history_lines = []
+            for entry in career[:8]:
+                if not isinstance(entry, dict):
+                    continue
+                line = f"{entry.get('role', '?')} at {entry.get('company', '?')}"
+                if entry.get('duration'):
+                    line += f" ({entry['duration']})"
+                elif entry.get('period'):
+                    line += f" [{entry['period']}]"
+                if entry.get('highlight'):
+                    line += f" — {entry['highlight']}"
+                history_lines.append(line)
+            if history_lines:
+                parts.append(f"Career history: {'; '.join(history_lines)}")
+        loc = pro.get('location') or {}
+        if loc.get('context'):
+            parts.append(f"Location: {loc['context']}")
+        if pro.get('webFindings'):
+            parts.append(f"Professional background: {pro['webFindings']}")
+        edu = pro.get('education')
+        if edu:
+            if isinstance(edu, list):
+                edu_lines = []
+                for e in edu[:5]:
+                    if isinstance(e, dict):
+                        edu_lines.append(f"{e.get('degree', '')} @ {e.get('institution', '')} {e.get('year', '')}".strip())
+                    elif isinstance(e, str):
+                        edu_lines.append(e)
+                if edu_lines:
+                    parts.append(f"Education: {'; '.join(edu_lines)}")
+            elif isinstance(edu, str) and edu.strip():
+                parts.append(f"Education: {edu.strip()}")
+
+        personal = analysis.get('personal') or {}
+        if personal.get('lifestyle'):
+            parts.append(f"Personal: {personal['lifestyle']}")
+        if personal.get('webFindings'):
+            parts.append(f"Personal context: {personal['webFindings']}")
+        public_posts = personal.get('publicPosts') or []
+        if public_posts:
+            recent = [p for p in public_posts if isinstance(p, dict) and p.get('relevance') in ('high', 'medium')][:3]
+            if recent:
+                parts.append('Recent activity: ' + '; '.join(p.get('insight', '') for p in recent if p.get('insight')))
+
+        interests = analysis.get('interests') or {}
+        if interests:
+            top = sorted(interests.items(), key=lambda x: x[1].get('score', 0) if isinstance(x[1], dict) else 0, reverse=True)[:8]
+            interest_frags = []
+            for k, v in top:
+                if not isinstance(v, dict):
+                    continue
+                frag = f"{k} ({int(v.get('score', 0)*100)}%)"
+                src = (v.get('source') or '').strip()
+                if src:
+                    frag += f" [{src[:200]}]"
+                interest_frags.append(frag)
+            if interest_frags:
+                parts.append('Interests: ' + '; '.join(interest_frags))
+
+        traits = analysis.get('traits') or []
+        if traits:
+            parts.append('Traits: ' + ', '.join(traits[:4]))
+
+        if analysis.get('networkingValue'):
+            parts.append(f"Networking: {analysis['networkingValue']}")
+
+        starters = analysis.get('conversationStarters') or []
+        if starters:
+            parts.append('Conversation starters: ' + '; '.join(starters[:4]))
+
+        if analysis.get('observations'):
+            parts.append(analysis['observations'])
+
+    _append_onboarding_identity_verbatim_from_profile(profile, parts, username=username)
+
+    if not parts:
+        return ''
+    return ' | '.join(parts)
+
+
+def get_steve_context_for_user(username: str, viewer_username: str = None, _profile: dict = None) -> str:
+    """Return a concise context string for Steve's system prompts.
+
+    If *_profile* is provided (from a batch read), uses it directly instead
+    of hitting Firestore.  Results (without viewer scrubbing) are cached in
+    Redis for STEVE_CTX_CACHE_TTL seconds.
+    """
+    from redis_cache import cache
+    cache_key = f"steve_ctx:{username}"
+
     try:
-        from backend.services.firestore_reads import get_steve_user_profile
-        profile = get_steve_user_profile(username)
-        if not profile or profile.get('username') != username:
-            return ''
-        analysis = _migrate_analysis_to_v3(profile.get('analysis', {}))
-        has_summary = bool(analysis and analysis.get('summary'))
+        cached = cache.get(cache_key)
+        if cached is not None and isinstance(cached, str):
+            result = cached
+        else:
+            if _profile is None:
+                from backend.services.firestore_reads import get_steve_user_profile
+                _profile = get_steve_user_profile(username)
+            if not _profile or _profile.get('username') != username:
+                return ''
+            result = _build_context_from_profile(_profile, username)
+            if result:
+                cache.set(cache_key, result, STEVE_CTX_CACHE_TTL)
 
-        parts = []
-        if has_summary:
-            parts.append(analysis['summary'])
-
-            identity = analysis.get('identity') or {}
-            if identity.get('bridgeInsight'):
-                parts.append(identity['bridgeInsight'])
-            if identity.get('drivingForces'):
-                parts.append(f"Driving forces: {identity['drivingForces']}")
-            if identity.get('roles'):
-                parts.append(f"Roles: {', '.join(identity['roles'][:5])}")
-
-            pro = analysis.get('professional') or {}
-            co = pro.get('company') or {}
-            if co.get('description'):
-                parts.append(f"Company ({co.get('name','?')}): {co['description']} [{co.get('sector','')} / {co.get('stage','')}]")
-            role = pro.get('role') or {}
-            if role.get('implication'):
-                parts.append(f"Role: {role.get('title','')} ({role.get('seniority','')}) — {role['implication']}")
-            career = pro.get('careerHistory') or []
-            if career:
-                history_lines = []
-                for entry in career[:8]:
-                    if not isinstance(entry, dict):
-                        continue
-                    line = f"{entry.get('role', '?')} at {entry.get('company', '?')}"
-                    if entry.get('duration'):
-                        line += f" ({entry['duration']})"
-                    elif entry.get('period'):
-                        line += f" [{entry['period']}]"
-                    if entry.get('highlight'):
-                        line += f" — {entry['highlight']}"
-                    history_lines.append(line)
-                if history_lines:
-                    parts.append(f"Career history: {'; '.join(history_lines)}")
-            loc = pro.get('location') or {}
-            if loc.get('context'):
-                parts.append(f"Location: {loc['context']}")
-            if pro.get('webFindings'):
-                parts.append(f"Professional background: {pro['webFindings']}")
-            edu = pro.get('education')
-            if edu:
-                if isinstance(edu, list):
-                    edu_lines = []
-                    for e in edu[:5]:
-                        if isinstance(e, dict):
-                            edu_lines.append(f"{e.get('degree', '')} @ {e.get('institution', '')} {e.get('year', '')}".strip())
-                        elif isinstance(e, str):
-                            edu_lines.append(e)
-                    if edu_lines:
-                        parts.append(f"Education: {'; '.join(edu_lines)}")
-                elif isinstance(edu, str) and edu.strip():
-                    parts.append(f"Education: {edu.strip()}")
-
-            personal = analysis.get('personal') or {}
-            if personal.get('lifestyle'):
-                parts.append(f"Personal: {personal['lifestyle']}")
-            if personal.get('webFindings'):
-                parts.append(f"Personal context: {personal['webFindings']}")
-            public_posts = personal.get('publicPosts') or []
-            if public_posts:
-                recent = [p for p in public_posts if isinstance(p, dict) and p.get('relevance') in ('high', 'medium')][:3]
-                if recent:
-                    parts.append('Recent activity: ' + '; '.join(p.get('insight', '') for p in recent if p.get('insight')))
-
-            interests = analysis.get('interests') or {}
-            if interests:
-                top = sorted(interests.items(), key=lambda x: x[1].get('score', 0) if isinstance(x[1], dict) else 0, reverse=True)[:8]
-                interest_frags = []
-                for k, v in top:
-                    if not isinstance(v, dict):
-                        continue
-                    frag = f"{k} ({int(v.get('score', 0)*100)}%)"
-                    src = (v.get('source') or '').strip()
-                    if src:
-                        frag += f" [{src[:200]}]"
-                    interest_frags.append(frag)
-                if interest_frags:
-                    parts.append('Interests: ' + '; '.join(interest_frags))
-
-            traits = analysis.get('traits') or []
-            if traits:
-                parts.append('Traits: ' + ', '.join(traits[:4]))
-
-            if analysis.get('networkingValue'):
-                parts.append(f"Networking: {analysis['networkingValue']}")
-
-            starters = analysis.get('conversationStarters') or []
-            if starters:
-                parts.append('Conversation starters: ' + '; '.join(starters[:4]))
-
-            if analysis.get('observations'):
-                parts.append(analysis['observations'])
-
-        _append_onboarding_identity_verbatim_from_profile(profile, parts, username=username)
-
-        if not parts:
-            return ''
-
-        result = ' | '.join(parts)
-
-        if viewer_username:
+        if viewer_username and result:
             result = _scrub_community_names(result, username, viewer_username)
-
         return result
     except Exception as e:
         logger.debug(f"Could not load Steve profile for {username}: {e}")
         return ''
+
+
+def invalidate_steve_context_cache(username: str):
+    """Clear cached context string for a user. Call after profile analysis or onboarding merge."""
+    try:
+        from redis_cache import cache
+        cache.delete(f"steve_ctx:{username}")
+    except Exception:
+        pass
+
+
+def batch_get_steve_contexts(
+    usernames: list,
+    viewer_username: str = None,
+) -> dict:
+    """Build context strings for multiple users using a single Firestore
+    batch read.  Returns {username: context_string}.
+    """
+    from redis_cache import cache
+    from backend.services.firestore_reads import batch_get_steve_user_profiles
+
+    results = {}
+    to_fetch = []
+    for u in usernames:
+        cached = cache.get(f"steve_ctx:{u}")
+        if cached is not None and isinstance(cached, str):
+            results[u] = cached
+        else:
+            to_fetch.append(u)
+
+    if to_fetch:
+        profiles = batch_get_steve_user_profiles(to_fetch)
+        for u in to_fetch:
+            p = profiles.get(u)
+            if p and p.get('username') == u:
+                ctx = _build_context_from_profile(p, u)
+                if ctx:
+                    cache.set(f"steve_ctx:{u}", ctx, STEVE_CTX_CACHE_TTL)
+                results[u] = ctx or ''
+            else:
+                results[u] = ''
+
+    if viewer_username:
+        for u in list(results.keys()):
+            if results[u]:
+                results[u] = _scrub_community_names(results[u], u, viewer_username)
+
+    return results
 
 
 def _scrub_community_names(text: str, target_username: str, viewer_username: str) -> str:
@@ -14875,6 +14945,62 @@ def api_networking_community_members(community_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+NETWORKING_ENRICHMENT_CAP = 40  # max members to send with full AI insight to the LLM
+
+
+def _ensure_embedding_index():
+    """Lazily load the FAISS index on first networking call."""
+    from backend.services.embedding_service import profile_index, load_index_from_firestore
+    if not profile_index.is_ready:
+        load_index_from_firestore()
+
+
+def _networking_build_members_text(
+    member_rows, all_member_usernames, user_subcommunities, recent_posts_map,
+    viewer_username, query_text=None, _v=None,
+):
+    """Build the members block for the Grok prompt.
+
+    When the community is large (> NETWORKING_ENRICHMENT_CAP), uses embedding
+    search to select the most relevant subset.  Always enriches only the
+    selected subset with full AI context via batch_get_steve_contexts.
+    """
+    from backend.services.embedding_service import search_similar_profiles, profile_index
+
+    _ensure_embedding_index()
+
+    enriched_usernames = set(all_member_usernames)
+    if len(all_member_usernames) > NETWORKING_ENRICHMENT_CAP and query_text and profile_index.is_ready:
+        top_usernames = search_similar_profiles(query_text, all_member_usernames, k=NETWORKING_ENRICHMENT_CAP)
+        enriched_usernames = set(top_usernames)
+
+    ctx_map = batch_get_steve_contexts(list(enriched_usernames), viewer_username=viewer_username)
+
+    member_row_map = {}
+    for r in member_rows:
+        uname = str(_v(r, 0))
+        member_row_map[uname] = r
+
+    members_lines = []
+    ordered = list(enriched_usernames) if enriched_usernames != set(all_member_usernames) else all_member_usernames
+    for uname in ordered:
+        r = member_row_map.get(uname)
+        if not r:
+            continue
+        line = f"- {uname} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}"
+        subcoms = user_subcommunities.get(uname, [])
+        if subcoms:
+            line += f" | Groups: {', '.join(subcoms)}"
+        recent = recent_posts_map.get(uname, [])
+        if recent:
+            line += f" | Recent posts: {'; '.join(recent)}"
+        profile_ctx = ctx_map.get(uname, '')
+        if profile_ctx:
+            line += f" | AI insight: {profile_ctx}"
+        members_lines.append(line)
+    return "\n".join(members_lines)
+
+
 @app.route('/api/networking/steve_match', methods=['POST'])
 @login_required
 def api_networking_steve_match():
@@ -14892,14 +15018,12 @@ def api_networking_steve_match():
         with get_db_connection() as conn:
             c = conn.cursor()
             ph = get_sql_placeholder()
-            # Get parent + child community IDs with names
             c.execute(f"SELECT id, name FROM communities WHERE id = {ph} OR parent_community_id = {ph}", (community_id, community_id))
             comm_rows = c.fetchall()
             community_ids = [(r['id'] if hasattr(r, 'keys') else r[0]) for r in comm_rows]
             community_names = {(r['id'] if hasattr(r, 'keys') else r[0]): (r['name'] if hasattr(r, 'keys') else r[1]) for r in comm_rows}
             comm_ph = ','.join([ph] * len(community_ids))
 
-            # Build sub-community membership map: {username: [community_names]}
             c.execute(f"""
                 SELECT u.username, uc.community_id
                 FROM users u JOIN user_communities uc ON u.id = uc.user_id
@@ -14914,7 +15038,6 @@ def api_networking_steve_match():
                 if cname:
                     user_subcommunities[uname].append(cname)
 
-            # User profile
             c.execute(f"SELECT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u LEFT JOIN user_profiles p ON u.username=p.username WHERE u.username={ph}", (username,))
             ur = c.fetchone()
             def _v(r, i):
@@ -14925,12 +15048,11 @@ def api_networking_steve_match():
             if _ob_prompt:
                 user_profile = f"{user_profile}\nUser-stated onboarding (verbatim):\n{_ob_prompt}" if user_profile else f"User-stated onboarding (verbatim):\n{_ob_prompt}"
 
-            # Members (exclude admin and steve) with sub-community info
             c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
+            all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
 
-            # Fetch recent posts per member (last 30 days, max 2 per user)
             recent_posts_map = {}
             try:
                 c.execute(f"""
@@ -14949,23 +15071,11 @@ def api_networking_steve_match():
             except Exception:
                 pass
 
-            members_lines = []
-            for r in member_rows:
-                uname = str(_v(r, 0))
-                line = f"- {uname} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}"
-                subcoms = user_subcommunities.get(uname, [])
-                if subcoms:
-                    line += f" | Groups: {', '.join(subcoms)}"
-                recent = recent_posts_map.get(uname, [])
-                if recent:
-                    line += f" | Recent posts: {'; '.join(recent)}"
-                profile_ctx = get_steve_context_for_user(uname, viewer_username=username)
-                if profile_ctx:
-                    line += f" | AI insight: {profile_ctx}"
-                members_lines.append(line)
-            members_text = "\n".join(members_lines)
+            members_text = _networking_build_members_text(
+                member_rows, all_member_usernames, user_subcommunities,
+                recent_posts_map, viewer_username=username, query_text=message, _v=_v,
+            )
 
-            # Community hierarchy context
             parent_name = community_names.get(community_id, '')
             sub_names = [n for cid, n in community_names.items() if cid != community_id]
             hierarchy_ctx = f"Parent community: {parent_name}"
@@ -15051,7 +15161,6 @@ def api_networking_steve_auto_match():
             community_names = {(r['id'] if hasattr(r, 'keys') else r[0]): (r['name'] if hasattr(r, 'keys') else r[1]) for r in comm_rows}
             comm_ph = ','.join([ph] * len(community_ids))
 
-            # Sub-community membership map
             c.execute(f"""
                 SELECT u.username, uc.community_id
                 FROM users u JOIN user_communities uc ON u.id = uc.user_id
@@ -15076,11 +15185,16 @@ def api_networking_steve_auto_match():
             if _ob_prompt_am:
                 user_profile = f"{user_profile}\nUser-stated onboarding (verbatim):\n{_ob_prompt_am}" if user_profile else f"User-stated onboarding (verbatim):\n{_ob_prompt_am}"
 
+            requester_profile_ctx = get_steve_context_for_user(username)
+            enriched_user_profile = user_profile
+            if requester_profile_ctx:
+                enriched_user_profile += f"\nAI insight: {requester_profile_ctx}"
+
             c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
+            all_member_usernames = [str(_v(r, 0)) for r in member_rows]
             member_names = [(str(_v(r, 0)), str(_v(r, 1))) for r in member_rows]
 
-            # Recent posts
             recent_posts_map = {}
             try:
                 c.execute(f"""
@@ -15099,32 +15213,18 @@ def api_networking_steve_auto_match():
             except Exception:
                 pass
 
-            members_lines = []
-            for r in member_rows:
-                uname = str(_v(r, 0))
-                line = f"- {uname} | {_v(r,1)} | Bio: {_v(r,2) or ''} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'} | Interests: {_v(r,8) or ''} | About: {_v(r,9) or ''}"
-                subcoms = user_subcommunities.get(uname, [])
-                if subcoms:
-                    line += f" | Groups: {', '.join(subcoms)}"
-                recent = recent_posts_map.get(uname, [])
-                if recent:
-                    line += f" | Recent posts: {'; '.join(recent)}"
-                profile_ctx = get_steve_context_for_user(uname, viewer_username=username)
-                if profile_ctx:
-                    line += f" | AI insight: {profile_ctx}"
-                members_lines.append(line)
-            members_text = "\n".join(members_lines)
+            # For auto_match the "query" is the requester's own profile context
+            members_text = _networking_build_members_text(
+                member_rows, all_member_usernames, user_subcommunities,
+                recent_posts_map, viewer_username=username,
+                query_text=enriched_user_profile, _v=_v,
+            )
 
             parent_name = community_names.get(community_id, '')
             sub_names = [n for cid, n in community_names.items() if cid != community_id]
             hierarchy_ctx = f"Parent community: {parent_name}"
             if sub_names:
                 hierarchy_ctx += f"\nSub-communities: {', '.join(sub_names)}"
-
-            requester_profile_ctx = get_steve_context_for_user(username)
-            enriched_user_profile = user_profile
-            if requester_profile_ctx:
-                enriched_user_profile += f"\nAI insight: {requester_profile_ctx}"
 
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
@@ -37627,6 +37727,82 @@ try:
     register_signal_endpoints(app, get_db_connection, logger)
 except Exception as e:
     logger.error(f"Failed to register signal endpoints: {e}")
+
+
+@app.route('/api/admin/embeddings/backfill', methods=['POST'])
+@login_required
+def admin_embeddings_backfill():
+    """Backfill embeddings for all steve_user_profiles that are missing one.
+    Runs in a background thread. Returns immediately with a count of profiles
+    that will be processed."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.firestore_reads import _get_client as _get_fs_client
+        from backend.services.embedding_service import EMBEDDING_DIMS
+        fs = _get_fs_client()
+        to_embed = []
+        for doc in fs.collection('steve_user_profiles').stream():
+            data = doc.to_dict()
+            emb = data.get('embedding')
+            if not emb or not isinstance(emb, list) or len(emb) != EMBEDDING_DIMS:
+                to_embed.append(doc.id)
+
+        if not to_embed:
+            return jsonify({'success': True, 'message': 'All profiles already have embeddings', 'count': 0})
+
+        import threading
+        def _run_backfill(usernames):
+            from backend.services.embedding_service import compute_and_store_embedding
+            ok = 0
+            for u in usernames:
+                try:
+                    if compute_and_store_embedding(u):
+                        ok += 1
+                except Exception as e:
+                    logger.warning(f"Backfill embedding failed for {u}: {e}")
+            logger.info(f"Embedding backfill complete: {ok}/{len(usernames)} succeeded")
+
+        t = threading.Thread(target=_run_backfill, args=(to_embed,), daemon=True)
+        t.start()
+        return jsonify({'success': True, 'message': f'Backfill started for {len(to_embed)} profiles', 'count': len(to_embed)})
+    except Exception as e:
+        logger.error(f"Embedding backfill error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/embeddings/status', methods=['GET'])
+@login_required
+def admin_embeddings_status():
+    """Check how many profiles have embeddings and the FAISS index size."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.embedding_service import profile_index
+        from backend.services.firestore_reads import _get_client as _get_fs_client
+        from backend.services.embedding_service import EMBEDDING_DIMS
+        fs = _get_fs_client()
+        total = 0
+        with_emb = 0
+        for doc in fs.collection('steve_user_profiles').stream():
+            total += 1
+            data = doc.to_dict()
+            emb = data.get('embedding')
+            if emb and isinstance(emb, list) and len(emb) == EMBEDDING_DIMS:
+                with_emb += 1
+        return jsonify({
+            'success': True,
+            'total_profiles': total,
+            'with_embedding': with_emb,
+            'missing_embedding': total - with_emb,
+            'faiss_index_size': profile_index.size,
+            'faiss_ready': profile_index.is_ready,
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8080)
