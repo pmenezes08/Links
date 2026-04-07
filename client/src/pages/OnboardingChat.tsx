@@ -6,6 +6,9 @@ import type { KeyboardInfo } from '@capacitor/keyboard'
 
 type Stage =
   | 'welcome'
+  | 'profile_builder_summary'
+  | 'pb_confirm_field'
+  | 'pb_edit_field'
   | 'name'
   | 'location'
   | 'location_confirm'
@@ -25,6 +28,8 @@ type Stage =
   | 'enriching'
   | 'review'
   | 'complete'
+
+type PbFieldKey = 'city' | 'country' | 'role' | 'company'
 
 interface ChatMessage {
   from: 'steve' | 'user'
@@ -94,6 +99,9 @@ interface OnboardingChatProps {
 function stageProgress(stage: Stage): number {
   const stepMap: Record<Stage, number> = {
     welcome: 0,
+    profile_builder_summary: 0,
+    pb_confirm_field: 0,
+    pb_edit_field: 0,
     name: 1,
     location: 2,
     location_confirm: 2,
@@ -119,8 +127,49 @@ function stageProgress(stage: Stage): number {
 }
 
 const STAGES_REQUIRING_VALIDATION: Stage[] = [
-  'talk_all_day', 'reach_out', 'professional', 'recommend', 'journey',
+  'talk_all_day', 'reach_out', 'professional', 'recommend', 'journey', 'pb_edit_field',
 ]
+
+const PB_FIELD_ORDER: PbFieldKey[] = ['city', 'country', 'role', 'company']
+
+function buildProfileBuilderConfirmQueue(c: Collected): PbFieldKey[] {
+  return PB_FIELD_ORDER.filter(k => {
+    const v = c[k]
+    return typeof v === 'string' && v.trim().length > 0
+  })
+}
+
+function pbFieldLabel(field: PbFieldKey): string {
+  switch (field) {
+    case 'city':
+      return 'city'
+    case 'country':
+      return 'country'
+    case 'role':
+      return 'role / title'
+    case 'company':
+      return 'company'
+    default:
+      return field
+  }
+}
+
+function profileSummaryBlock(c: Collected): string {
+  const lines: string[] = []
+  const name = `${c.firstName} ${c.lastName}`.trim()
+  if (name) lines.push(`• **Name:** ${name}`)
+  if (c.city?.trim()) lines.push(`• **City:** ${c.city.trim()}`)
+  if (c.country?.trim()) lines.push(`• **Country:** ${c.country.trim()}`)
+  if (c.role?.trim()) lines.push(`• **Role:** ${c.role.trim()}`)
+  if (c.company?.trim()) lines.push(`• **Company:** ${c.company.trim()}`)
+  if (c.bio?.trim()) {
+    const t = c.bio.trim()
+    lines.push(`• **Bio:** ${t.length > 220 ? `${t.slice(0, 217)}…` : t}`)
+  }
+  if (c.linkedin?.trim()) lines.push('• **LinkedIn:** on file')
+  if (lines.length === 0) return 'Nothing is on your public profile yet — we’ll build it together.'
+  return lines.join('\n')
+}
 
 function looksLikeMeaninglessInput(val: string): boolean {
   const trimmed = val.trim()
@@ -174,6 +223,13 @@ export default function OnboardingChat({
   const [initialized, setInitialized] = useState(false)
   const [booting, setBooting] = useState(true)
   const gibberishReturnStage = useRef<Stage | null>(null)
+  const pbConfirmQueueRef = useRef<PbFieldKey[]>([])
+  const pbEditFieldRef = useRef<PbFieldKey | null>(null)
+  const originalPublicBioRef = useRef('')
+  const profileBuilderPostPbRef = useRef<{ skipLocation: boolean; skipProfessional: boolean }>({
+    skipLocation: false,
+    skipProfessional: false,
+  })
   const stageHistory = useRef<Stage[]>([])
   const [composingBio, setComposingBio] = useState(false)
   const [tourStep, setTourStep] = useState<number | null>(null)
@@ -328,6 +384,34 @@ export default function OnboardingChat({
     setInitialized(true)
     ;(async () => {
       if (mode === 'profile_builder') {
+        profileBuilderPostPbRef.current = { skipLocation: false, skipProfessional: false }
+        try {
+          const pr = await fetch('/api/profile_me', { credentials: 'include', headers: { Accept: 'application/json' } })
+          const pj = await pr.json().catch(() => null)
+          const p = pj?.profile
+          if (pj?.success && p) {
+            const next: Collected = {
+              firstName: (p.first_name || initFirst || '').trim(),
+              lastName: (p.last_name || initLast || '').trim(),
+              role: (p.professional?.role || p.role || '').trim(),
+              company: (p.professional?.company || p.company || '').trim(),
+              city: (p.personal?.city || p.city || '').trim(),
+              country: (p.personal?.country || p.country || '').trim(),
+              linkedin: (p.professional?.linkedin || p.linkedin || '').trim(),
+              bio: (p.personal?.bio || p.bio || '').trim(),
+              talkAllDay: '',
+              recommend: '',
+              reachOut: '',
+              journey: '',
+            }
+            originalPublicBioRef.current = next.bio
+            setCollected(next)
+            startStage('welcome', next)
+            setBooting(false)
+            return
+          }
+        } catch {}
+        originalPublicBioRef.current = ''
         startStage('welcome', collected)
         setBooting(false)
         return
@@ -371,6 +455,42 @@ export default function OnboardingChat({
         }
         addSteveMessage(welcomeText, {
           options: [{ label: "Let's go!", value: 'start', icon: '🚀' }],
+        })
+        break
+      }
+      case 'profile_builder_summary': {
+        const summary = profileSummaryBlock(data)
+        addSteveMessage(
+          `Here's what I already see on your public profile:\n\n${summary}\n\nNext, we'll confirm each filled-in field one at a time — then continue with the rest of your profile.`,
+          { options: [{ label: 'Continue', value: 'pb_summary_continue', icon: '➡️' }] }
+        )
+        break
+      }
+      case 'pb_confirm_field': {
+        const queue = pbConfirmQueueRef.current
+        const field = queue[0]
+        if (!field) {
+          finishProfileBuilderQueueAndGoName(data)
+          break
+        }
+        const raw = (data[field] || '').trim()
+        addSteveMessage(`I have your **${pbFieldLabel(field)}** as **${raw}** — still correct?`, {
+          options: [
+            { label: 'Yes', value: 'pb_confirm_yes', icon: '✅' },
+            { label: 'Update', value: 'pb_confirm_update', icon: '✏️' },
+          ],
+        })
+        break
+      }
+      case 'pb_edit_field': {
+        const field = pbEditFieldRef.current
+        if (!field) {
+          finishProfileBuilderQueueAndGoName(data)
+          break
+        }
+        addSteveMessage(`What should I use for your **${pbFieldLabel(field)}**?`, {
+          inputType: 'text',
+          inputPlaceholder: 'Type your answer…',
         })
         break
       }
@@ -432,18 +552,24 @@ export default function OnboardingChat({
         })
         break
       case 'talk_all_day':
-        addSteveMessage("Now let's get to know the real you.\n\nWhat are the things you could talk about all day?", {
-          inputType: 'text',
-          inputPlaceholder: 'e.g. AI, leadership, travel, startups',
-          options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
-        })
+        addSteveMessage(
+          "Now let's get to know the real you.\n\nWhat are the things you could talk about all day?\n\nExamples: AI, leadership, travel, startups",
+          {
+            inputType: 'text',
+            inputPlaceholder: 'Type your answer…',
+            options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
+          }
+        )
         break
       case 'reach_out':
-        addSteveMessage("What do you want people to reach out to you about?", {
-          inputType: 'text',
-          inputPlaceholder: 'e.g. Coffee chats, brainstorming, partnerships, new ventures',
-          options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
-        })
+        addSteveMessage(
+          "What do you want people to reach out to you about?\n\nExamples: Coffee chats, brainstorming, partnerships, new ventures",
+          {
+            inputType: 'text',
+            inputPlaceholder: 'Type your answer…',
+            options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
+          }
+        )
         break
       case 'professional':
         addSteveMessage('What do you do professionally? Something like "Product Manager at Google" or "Founder, building in fintech" works great.', {
@@ -543,6 +669,16 @@ export default function OnboardingChat({
     startStage(next, c)
   }
 
+  function finishProfileBuilderQueueAndGoName(c: Collected) {
+    profileBuilderPostPbRef.current = {
+      skipLocation: !!(c.city?.trim() && c.country?.trim()),
+      skipProfessional: !!(c.role?.trim() && c.company?.trim()),
+    }
+    pbConfirmQueueRef.current = []
+    pbEditFieldRef.current = null
+    advanceTo('name', c)
+  }
+
   function advanceToComplete() {
     setStage('complete')
     showCompleteMsg()
@@ -579,6 +715,10 @@ export default function OnboardingChat({
           company: c.company,
           city: c.city,
           country: c.country,
+          existing_bio:
+            mode === 'profile_builder'
+              ? (originalPublicBioRef.current || '').trim()
+              : (c.bio || '').trim(),
         }),
       })
       const j = await r.json().catch(() => null)
@@ -634,13 +774,58 @@ export default function OnboardingChat({
     switch (value) {
       case 'start':
         addUserMessage("Let's go!")
-        advanceTo('name')
+        if (mode === 'profile_builder') {
+          advanceTo('profile_builder_summary')
+        } else {
+          advanceTo('name')
+        }
         break
+      case 'pb_summary_continue': {
+        addUserMessage('Continue')
+        const q = buildProfileBuilderConfirmQueue(collected)
+        pbConfirmQueueRef.current = q
+        if (q.length === 0) {
+          finishProfileBuilderQueueAndGoName(collected)
+        } else {
+          advanceTo('pb_confirm_field')
+        }
+        break
+      }
+      case 'pb_confirm_yes': {
+        addUserMessage('Yes')
+        const rest = pbConfirmQueueRef.current.slice(1)
+        pbConfirmQueueRef.current = rest
+        if (rest.length === 0) {
+          finishProfileBuilderQueueAndGoName(collected)
+        } else {
+          setStage('pb_confirm_field')
+          saveState('pb_confirm_field', collected)
+          startStage('pb_confirm_field', collected)
+        }
+        break
+      }
+      case 'pb_confirm_update': {
+        addUserMessage('Update')
+        const head = pbConfirmQueueRef.current[0]
+        if (!head) {
+          finishProfileBuilderQueueAndGoName(collected)
+          break
+        }
+        pbEditFieldRef.current = head
+        setStage('pb_edit_field')
+        saveState('pb_edit_field', collected)
+        startStage('pb_edit_field', collected)
+        break
+      }
       case 'confirm_name': {
         addUserMessage("That's correct")
         const displayName = `${collected.firstName} ${collected.lastName}`.trim()
         if (displayName) saveField('display_name', displayName)
-        advanceTo('location')
+        if (mode === 'profile_builder' && profileBuilderPostPbRef.current.skipLocation) {
+          advanceTo('photo')
+        } else {
+          advanceTo('location')
+        }
         break
       }
       case 'edit_name':
@@ -861,7 +1046,11 @@ export default function OnboardingChat({
         if (last) await saveField('last_name', last)
         const displayName = `${first} ${last}`.trim()
         await saveField('display_name', displayName)
-        advanceTo('location', newCollected)
+        if (mode === 'profile_builder' && profileBuilderPostPbRef.current.skipLocation) {
+          advanceTo('photo', newCollected)
+        } else {
+          advanceTo('location', newCollected)
+        }
         break
       }
       case 'location': {
@@ -921,7 +1110,29 @@ export default function OnboardingChat({
       case 'reach_out': {
         const newCollected = { ...collected, reachOut: val }
         setCollected(newCollected)
-        advanceTo('professional', newCollected)
+        const nextProf =
+          mode === 'profile_builder' && profileBuilderPostPbRef.current.skipProfessional
+            ? 'linkedin'
+            : 'professional'
+        advanceTo(nextProf, newCollected)
+        break
+      }
+      case 'pb_edit_field': {
+        const field = pbEditFieldRef.current
+        if (!field) break
+        const newCollected: Collected = { ...collected, [field]: val }
+        setCollected(newCollected)
+        await saveField(field, val)
+        const rest = pbConfirmQueueRef.current.slice(1)
+        pbConfirmQueueRef.current = rest
+        pbEditFieldRef.current = null
+        if (rest.length === 0) {
+          finishProfileBuilderQueueAndGoName(newCollected)
+        } else {
+          setStage('pb_confirm_field')
+          saveState('pb_confirm_field', newCollected)
+          startStage('pb_confirm_field', newCollected)
+        }
         break
       }
       case 'professional': {
@@ -1025,6 +1236,7 @@ export default function OnboardingChat({
         talk_all_day: 'What are the things you could talk about all day?',
         recommend: 'Recommend a book, movie, or TV show to your network.',
         reach_out: 'What do you want people to reach out to you about?',
+        pb_edit_field: 'Update this profile field.',
       }
       const r = await fetch('/api/onboarding/redirect', {
         method: 'POST',

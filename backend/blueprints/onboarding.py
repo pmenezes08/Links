@@ -610,6 +610,7 @@ def onboarding_compose_bio():
     company = (data.get("company") or "").strip()
     city = (data.get("city") or "").strip()
     country = (data.get("country") or "").strip()
+    existing_bio = (data.get("existing_bio") or "").strip()
 
     if not talk_all_day and not recommend and not reach_out and not journey:
         return jsonify({"success": False, "error": "No answers provided"}), 400
@@ -626,7 +627,12 @@ def onboarding_compose_bio():
             parts.append(f"{role}{' at ' + company if company else ''}.")
         if reach_out:
             parts.append(f"Reach out about {reach_out.lower()}.")
-        return jsonify({"success": True, "bio": " ".join(parts)})
+        new_text = " ".join(parts)
+        if existing_bio and new_text:
+            return jsonify({"success": True, "bio": f"{existing_bio} {new_text}"})
+        if existing_bio and not new_text:
+            return jsonify({"success": True, "bio": existing_bio})
+        return jsonify({"success": True, "bio": new_text})
 
     try:
         from openai import OpenAI
@@ -640,26 +646,35 @@ def onboarding_compose_bio():
             professional = f"Their role is {role}."
 
         journey_text = f"Highlight from their journey: {journey}" if journey else ""
+        existing_block = (
+            f"Their current public profile bio (preserve accurate facts and voice unless new answers clearly replace them):\n{existing_bio}\n\n"
+            if existing_bio
+            else ""
+        )
 
         response = client.chat.completions.create(
             model=GROK_MODEL_FAST,
             messages=[
                 {"role": "system", "content": (
-                    "You are an identity writer for a networking platform. Compose a polished, engaging 2-3 sentence personal identity paragraph. "
+                    "You are an identity writer for a networking platform. Compose a polished, engaging 2-4 sentence personal identity paragraph. "
                     "PERSONAL comes first — who they are as a person, their passions, what makes them interesting. "
                     "PROFESSIONAL comes second — their role is context, not the headline. "
+                    "If an existing public bio is provided, weave it together with the new onboarding answers into one coherent whole — "
+                    "do not drop important specifics from the old bio unless they clearly contradict new information. "
                     "Write in first person. Be authentic and human — not corporate or generic. "
                     "Do NOT use hashtags, emojis, or buzzwords. Just clean, compelling prose. "
                     "Return ONLY the identity text, nothing else."
                 )},
                 {"role": "user", "content": (
+                    existing_block
+                    + f"New details from onboarding:\n"
                     f"Things they could talk about all day: {talk_all_day}\n"
                     f"They recommend: {recommend}\n"
                     f"They want people to reach out about: {reach_out}\n"
                     f"{journey_text}\n"
                     f"{professional}\n"
                     f"{'Based in ' + location if location else ''}\n\n"
-                    "Write their identity:"
+                    "Write their unified identity:"
                 )},
             ],
             max_tokens=200,
@@ -682,7 +697,12 @@ def onboarding_compose_bio():
             parts.append(f"{role}{' at ' + company if company else ''}.")
         if reach_out:
             parts.append(f"Reach out about {reach_out.lower()}.")
-        return jsonify({"success": True, "bio": " ".join(parts)})
+        new_text = " ".join(parts)
+        if existing_bio and new_text:
+            return jsonify({"success": True, "bio": f"{existing_bio} {new_text}"})
+        if existing_bio and not new_text:
+            return jsonify({"success": True, "bio": existing_bio})
+        return jsonify({"success": True, "bio": new_text})
 
 
 @onboarding_bp.route("/api/onboarding/enrich", methods=["POST"])
