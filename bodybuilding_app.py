@@ -7511,10 +7511,11 @@ def api_profile_ai_suggestions():
             if val is not None and val != [] and val != {} and val != '':
                 filtered[key] = val
         if not filtered:
-            return _no_cache(jsonify({'success': True, 'suggestions': None}))
+            return _no_cache(jsonify({'success': True, 'suggestions': None, 'forUser': username}))
         return _no_cache(jsonify({
             'success': True,
             'suggestions': filtered,
+            'forUser': username,
             'userReview': user_review,
             'acceptedSections': analysis.get('_acceptedSections', []),
         }))

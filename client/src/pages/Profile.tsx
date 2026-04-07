@@ -786,6 +786,7 @@ export default function Profile() {
 
   useEffect(() => {
     let cancelled = false
+    const myUsername = (cachedProfile as any)?.username
     fetch(`/api/profile/ai_suggestions?_t=${Date.now()}`, {
       credentials: 'include',
       cache: 'no-store',
@@ -795,6 +796,10 @@ export default function Profile() {
       .then(d => {
         if (cancelled) return
         if (d.success && d.suggestions) {
+          if (myUsername && d.forUser && d.forUser !== myUsername) {
+            console.warn(`AI suggestions mismatch: got ${d.forUser}, expected ${myUsername}`)
+            return
+          }
           setAiSuggestions(d.suggestions)
           setAiAccepted(new Set(d.acceptedSections || []))
           setAiReviewStatus(d.userReview?.status || null)
@@ -802,7 +807,7 @@ export default function Profile() {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [])
+  }, [cachedProfile])
 
   const locationPreview = personal.city || personal.country
     ? [personal.city, personal.country].filter(Boolean).join(', ')

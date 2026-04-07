@@ -9,6 +9,7 @@ type Stage =
   | 'name'
   | 'location'
   | 'location_confirm'
+  | 'location_city'
   | 'photo'
   | 'talk_all_day'
   | 'reach_out'
@@ -18,6 +19,7 @@ type Stage =
   | 'linkedin'
   | 'journey'
   | 'compose'
+  | 'gibberish_check'
   | 'enriching'
   | 'review'
   | 'complete'
@@ -92,6 +94,7 @@ function stageProgress(stage: Stage): number {
     name: 1,
     location: 2,
     location_confirm: 2,
+    location_city: 2,
     photo: 3,
     talk_all_day: 4,
     reach_out: 5,
@@ -101,12 +104,30 @@ function stageProgress(stage: Stage): number {
     journey: 8,
     recommend: 9,
     compose: 9,
+    gibberish_check: 0,
     enriching: 8,
     review: 8,
     complete: 8,
   }
   const step = stepMap[stage] ?? 0
   return Math.round((step / USER_FACING_STEPS) * 100)
+}
+
+const STAGES_REQUIRING_VALIDATION: Stage[] = [
+  'talk_all_day', 'reach_out', 'professional', 'recommend', 'journey',
+]
+
+function looksLikeMeaninglessInput(val: string): boolean {
+  const trimmed = val.trim()
+  if (trimmed.length < 3) return true
+  if (/^(.)\1{2,}$/i.test(trimmed)) return true
+  const words = trimmed.split(/\s+/)
+  const hasVowelWord = words.some(w => /[aeiouAEIOU]/.test(w) && w.length > 1)
+  if (!hasVowelWord && trimmed.length < 8) return true
+  if (/^[^a-zA-Z0-9\s]*$/.test(trimmed)) return true
+  const consonantRun = trimmed.replace(/[^a-zA-Z]/g, '')
+  if (consonantRun.length >= 4 && !/[aeiouAEIOU]/.test(consonantRun)) return true
+  return false
 }
 
 export default function OnboardingChat({
@@ -146,6 +167,8 @@ export default function OnboardingChat({
   const enriching = false
   const [initialized, setInitialized] = useState(false)
   const [booting, setBooting] = useState(true)
+  const gibberishReturnStage = useRef<Stage | null>(null)
+  const stageHistory = useRef<Stage[]>([])
   const [composingBio, setComposingBio] = useState(false)
   const [tourStep, setTourStep] = useState<number | null>(null)
   const [keyboardOffset, setKeyboardOffset] = useState(0)
@@ -377,6 +400,15 @@ export default function OnboardingChat({
         }
         break
       }
+      case 'location_city': {
+        const country = data?.country || collected.country || ''
+        addSteveMessage(`${country} — great! Which city are you based in?`, {
+          inputType: 'text',
+          inputPlaceholder: `e.g. Berlin`,
+          options: [{ label: 'Skip — just use country', value: 'skip_city', icon: '⏭️' }],
+        })
+        break
+      }
       case 'photo':
         addSteveMessage("Let's add a profile picture — it helps people recognize you.", {
           photoUpload: true,
@@ -387,18 +419,21 @@ export default function OnboardingChat({
         addSteveMessage("Now let's get to know the real you.\n\nWhat are the things you could talk about all day?", {
           inputType: 'text',
           inputPlaceholder: 'e.g. AI, leadership, travel, startups',
+          options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
         })
         break
       case 'reach_out':
         addSteveMessage("What do you want people to reach out to you about?", {
           inputType: 'text',
           inputPlaceholder: 'e.g. Coffee chats, brainstorming, partnerships, new ventures',
+          options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
         })
         break
       case 'professional':
         addSteveMessage('What do you do professionally? Something like "Product Manager at Google" or "Founder, building in fintech" works great.', {
           inputType: 'text',
           inputPlaceholder: 'e.g. Product Manager at Google',
+          options: stageHistory.current.length > 1 ? [{ label: '← Go back', value: 'go_back', icon: '↩️' }] : undefined,
         })
         break
       case 'professional_confirm': {
@@ -427,25 +462,35 @@ export default function OnboardingChat({
         }
         break
       }
-      case 'recommend':
+      case 'recommend': {
+        const recOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_recommend', icon: '⏭️' }]
+        if (stageHistory.current.length > 1) recOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
         addSteveMessage("As a gift to your network — recommend a book, movie, or TV show.", {
           inputType: 'text',
           inputPlaceholder: 'e.g. Sapiens by Yuval Noah Harari',
-          options: [{ label: 'Skip', value: 'skip_recommend', icon: '⏭️' }],
+          options: recOpts,
         })
         break
-      case 'linkedin':
+      }
+      case 'linkedin': {
+        const lnOpts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_linkedin', icon: '⏭️' }]
+        if (stageHistory.current.length > 1) lnOpts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
         addSteveMessage("Got a LinkedIn URL? It helps me learn more about your background. Feel free to skip if you'd rather not share.", {
           inputType: 'url',
           inputPlaceholder: 'https://linkedin.com/in/yourprofile',
-          options: [{ label: 'Skip', value: 'skip_linkedin', icon: '⏭️' }],
+          options: lnOpts,
         })
         break
+      }
       case 'journey':
         addSteveMessage(`What should your network remember about your journey?\n\n${'Totally optional. Share a highlight from work or life—something you’re proud of or that shapes how you show up today.'}\n\nExamples: “Consulting background • Two marathons • Former competitive athlete”`, {
           inputType: 'textarea',
           inputPlaceholder: 'e.g. Consulting background • Two marathons • Former competitive athlete',
-          options: [{ label: 'Skip', value: 'skip_journey', icon: '⏭️' }],
+          options: (() => {
+            const opts: ChatMessage['options'] = [{ label: 'Skip', value: 'skip_journey', icon: '⏭️' }]
+            if (stageHistory.current.length > 1) opts.push({ label: '← Go back', value: 'go_back', icon: '↩️' })
+            return opts
+          })(),
         })
         break
       case 'compose':
@@ -469,6 +514,11 @@ export default function OnboardingChat({
 
   function advanceTo(next: Stage, data?: Collected) {
     const c = data || collected
+    const mainStages: Stage[] = ['name', 'location', 'photo', 'talk_all_day', 'reach_out', 'professional', 'linkedin', 'journey', 'recommend', 'compose']
+    if (mainStages.includes(next)) {
+      const hist = stageHistory.current
+      if (hist[hist.length - 1] !== next) hist.push(next)
+    }
     setStage(next)
     saveState(next, c)
     startStage(next, c)
@@ -614,6 +664,54 @@ export default function OnboardingChat({
         })
         setStage('professional')
         break
+      case 'skip_city': {
+        addUserMessage('Skip — just use country')
+        await saveField('country', collected.country)
+        advanceTo('photo')
+        break
+      }
+      case 'go_back': {
+        addUserMessage('Go back')
+        const hist = stageHistory.current
+        if (hist.length >= 2) {
+          hist.pop()
+          const prev = hist[hist.length - 1]
+          addSteveMessage("Sure — let's revisit that question.")
+          setTimeout(() => {
+            setStage(prev)
+            startStage(prev)
+          }, 400)
+        } else {
+          addSteveMessage("We're at the beginning — no previous questions to go back to.")
+        }
+        break
+      }
+      case 'gibberish_skip': {
+        addUserMessage('Yes, skip it')
+        const skipMap: Partial<Record<Stage, Stage>> = {
+          talk_all_day: 'reach_out',
+          reach_out: 'professional',
+          professional: 'linkedin',
+          recommend: 'compose',
+          journey: 'recommend',
+        }
+        const returnStage = gibberishReturnStage.current
+        gibberishReturnStage.current = null
+        const nextStage = (returnStage && skipMap[returnStage]) || 'photo'
+        addSteveMessage("No problem — you can always fill this in later from your profile.")
+        setTimeout(() => advanceTo(nextStage), 600)
+        break
+      }
+      case 'gibberish_retry': {
+        addUserMessage('Let me try again')
+        const retryStage = gibberishReturnStage.current
+        gibberishReturnStage.current = null
+        if (retryStage) {
+          startStage(retryStage)
+          setStage(retryStage)
+        }
+        break
+      }
       case 'skip_photo':
         addUserMessage('Skip for now')
         addSteveMessage("No problem — you can always add one later from your profile.")
@@ -699,6 +797,17 @@ export default function OnboardingChat({
       return
     }
 
+    if (STAGES_REQUIRING_VALIDATION.includes(stage) && looksLikeMeaninglessInput(val)) {
+      gibberishReturnStage.current = stage
+      addSteveMessage("Hmm, that doesn't look quite right. Would you like to skip this question?", {
+        options: [
+          { label: 'Yes, skip it', value: 'gibberish_skip', icon: '⏭️' },
+          { label: 'No, let me try again', value: 'gibberish_retry', icon: '✏️' },
+        ],
+      })
+      return
+    }
+
     switch (stage) {
       case 'name': {
         const parts = val.split(/\s+/)
@@ -724,43 +833,46 @@ export default function OnboardingChat({
         const locParts = val.split(',').map(s => s.trim())
         const city = locParts[0] || val
         const country = locParts[1] || ''
-        if (city && !country) {
+        if (city && country) {
+          const newCollected = { ...collected, city, country }
+          setCollected(newCollected)
+          advanceTo('location_confirm', newCollected)
+        } else {
           setIsTyping(true)
           try {
             const r = await fetch('/api/onboarding/resolve_location', {
               method: 'POST',
               credentials: 'include',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ city }),
+              body: JSON.stringify({ city: val }),
             })
             const j = await r.json().catch(() => null)
             setIsTyping(false)
-            const resolvedCity = j?.city || city
-            const resolvedCountry = j?.country || ''
-            if (resolvedCountry) {
-              const newCollected = { ...collected, city: resolvedCity, country: resolvedCountry }
+            const locType = j?.type || 'unrecognized'
+            if (locType === 'country_only') {
+              const newCollected = { ...collected, city: '', country: j?.country || val }
+              setCollected(newCollected)
+              advanceTo('location_city', newCollected)
+            } else if (locType === 'city_and_country' && j?.city && j?.country) {
+              const newCollected = { ...collected, city: j.city, country: j.country }
               setCollected(newCollected)
               advanceTo('location_confirm', newCollected)
             } else {
-              const newCollected = { ...collected, city: resolvedCity, country: '' }
-              setCollected(newCollected)
-              await saveField('city', resolvedCity)
-              advanceTo('photo', newCollected)
+              addSteveMessage("I couldn't quite place that location. No worries — you can set it later from your profile.")
+              setTimeout(() => advanceTo('photo'), 800)
             }
           } catch {
             setIsTyping(false)
-            const newCollected = { ...collected, city, country: '' }
-            setCollected(newCollected)
-            await saveField('city', city)
-            advanceTo('photo', newCollected)
+            addSteveMessage("I couldn't quite place that location. No worries — you can set it later from your profile.")
+            setTimeout(() => advanceTo('photo'), 800)
           }
-        } else {
-          const newCollected = { ...collected, city, country }
-          setCollected(newCollected)
-          await saveField('city', city)
-          if (country) await saveField('country', country)
-          advanceTo('photo', newCollected)
         }
+        break
+      }
+      case 'location_city': {
+        const newCollected = { ...collected, city: val }
+        setCollected(newCollected)
+        advanceTo('location_confirm', newCollected)
         break
       }
       case 'talk_all_day': {

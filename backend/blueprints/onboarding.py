@@ -496,44 +496,84 @@ def onboarding_resolve_role():
 @onboarding_bp.route("/api/onboarding/resolve_location", methods=["POST"])
 @_login_required
 def onboarding_resolve_location():
-    """Infer the country from a city name. Returns {city, country} suggestion."""
+    """Infer city/country from free-text location input.
+    Returns {city, country, type} where type is:
+      - 'city_and_country': both resolved
+      - 'country_only': input is a country name, need city
+      - 'unrecognized': input not recognized
+    """
     data = request.get_json(silent=True) or {}
-    city = (data.get("city") or "").strip()
-    if not city:
-        return jsonify({"success": False, "error": "No city provided"}), 400
+    text = (data.get("city") or data.get("text") or "").strip()
+    if not text:
+        return jsonify({"success": False, "error": "No location provided"}), 400
+
+    from bodybuilding_app import get_cached_countries
+    try:
+        known_countries = get_cached_countries()
+        country_names = [c["name"] for c in known_countries if c.get("name")]
+    except Exception:
+        country_names = []
+
+    text_lower = text.lower()
+    matched_country = next(
+        (c for c in country_names if c.lower() == text_lower),
+        None,
+    )
+    if matched_country:
+        return jsonify({
+            "success": True,
+            "city": "",
+            "country": matched_country,
+            "type": "country_only",
+        })
 
     if not XAI_API_KEY:
-        return jsonify({"success": True, "city": city, "country": ""})
+        return jsonify({"success": True, "city": text, "country": "", "type": "unrecognized"})
 
     try:
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+        country_hint = ", ".join(country_names[:30]) + "..." if country_names else ""
         response = client.chat.completions.create(
             model=GROK_MODEL_FAST,
             messages=[
                 {"role": "system", "content": (
-                    "You are a geography lookup tool. Given a city name, return the most likely country. "
-                    "Return ONLY a JSON object with exactly two keys: \"city\" (properly capitalized) and \"country\" (full country name). "
-                    "If the city is ambiguous (e.g. 'Portland' could be USA or UK), pick the most commonly meant one. "
-                    "If the input is not a recognizable city, return {\"city\": \"<input>\", \"country\": \"\"}. "
-                    "Return ONLY the JSON, nothing else."
+                    "You are a geography lookup tool. Given a location input, determine the city and country. "
+                    "Return ONLY a JSON object with three keys: "
+                    "\"city\" (properly capitalized city name), "
+                    "\"country\" (full country name), "
+                    "\"type\" (one of: \"city_and_country\", \"country_only\", \"unrecognized\"). "
+                    "If the input is clearly a country (e.g. 'Germany', 'Brazil'), return type='country_only' with empty city. "
+                    "If the input is a recognizable city, return type='city_and_country' with the city and its country. "
+                    "If the input is gibberish or not a real place, return type='unrecognized'. "
+                    f"Known countries for validation: {country_hint}"
+                    "\nReturn ONLY the JSON, nothing else."
                 )},
-                {"role": "user", "content": city},
+                {"role": "user", "content": text},
             ],
-            max_tokens=60,
+            max_tokens=80,
             temperature=0,
         )
         raw = (response.choices[0].message.content or "").strip()
         import json as _json
         parsed = _json.loads(raw)
+        resolved_country = parsed.get("country", "")
+        if resolved_country and country_names:
+            best = next(
+                (c for c in country_names if c.lower() == resolved_country.lower()),
+                None,
+            )
+            if best:
+                resolved_country = best
         return jsonify({
             "success": True,
-            "city": parsed.get("city", city),
-            "country": parsed.get("country", ""),
+            "city": parsed.get("city", ""),
+            "country": resolved_country,
+            "type": parsed.get("type", "city_and_country" if parsed.get("city") else "unrecognized"),
         })
     except Exception as e:
         logger.warning(f"resolve_location error: {e}")
-        return jsonify({"success": True, "city": city, "country": ""})
+        return jsonify({"success": True, "city": text, "country": "", "type": "unrecognized"})
 
 
 @onboarding_bp.route("/api/onboarding/compose_bio", methods=["POST"])
