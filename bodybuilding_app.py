@@ -7489,14 +7489,21 @@ def admin_steve_profile_feedback(target_username):
 def api_profile_ai_suggestions():
     """Return the logged-in user's AI-generated profile suggestions (user-visible sections only)."""
     username = session.get('username')
+
+    def _no_cache(resp):
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+        return resp
+
     try:
         from backend.services.firestore_reads import get_steve_user_profile
         profile = get_steve_user_profile(username)
         if not profile or profile.get('username') != username:
-            return jsonify({'success': True, 'suggestions': None})
+            return _no_cache(jsonify({'success': True, 'suggestions': None}))
         analysis = _migrate_analysis_to_v3(profile.get('analysis', {}))
         if not analysis:
-            return jsonify({'success': True, 'suggestions': None})
+            return _no_cache(jsonify({'success': True, 'suggestions': None}))
         user_review = analysis.get('_userReview', {})
         filtered = {}
         for key in STEVE_USER_VISIBLE_SECTIONS:
@@ -7504,16 +7511,16 @@ def api_profile_ai_suggestions():
             if val is not None and val != [] and val != {} and val != '':
                 filtered[key] = val
         if not filtered:
-            return jsonify({'success': True, 'suggestions': None})
-        return jsonify({
+            return _no_cache(jsonify({'success': True, 'suggestions': None}))
+        return _no_cache(jsonify({
             'success': True,
             'suggestions': filtered,
             'userReview': user_review,
             'acceptedSections': analysis.get('_acceptedSections', []),
-        })
+        }))
     except Exception as e:
         logger.error(f"Error fetching AI suggestions for {username}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': 'Server error'}), 500
+        return _no_cache(jsonify({'success': False, 'error': 'Server error'})), 500
 
 
 @app.route('/api/profile/ai_review', methods=['POST'])

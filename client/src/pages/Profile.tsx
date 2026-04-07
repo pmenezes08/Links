@@ -786,7 +786,11 @@ export default function Profile() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/profile/ai_suggestions', { credentials: 'include' })
+    fetch(`/api/profile/ai_suggestions?_t=${Date.now()}`, {
+      credentials: 'include',
+      cache: 'no-store',
+      headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
+    })
       .then(r => r.json())
       .then(d => {
         if (cancelled) return

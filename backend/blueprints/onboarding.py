@@ -444,6 +444,55 @@ def onboarding_redirect_message():
         return jsonify({"success": True, "message": "Great thought! Let's finish setting up your profile first, then we can chat about anything."})
 
 
+@onboarding_bp.route("/api/onboarding/resolve_role", methods=["POST"])
+@_login_required
+def onboarding_resolve_role():
+    """Parse a free-text professional description into role and company."""
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"success": False, "error": "No text provided"}), 400
+
+    if not XAI_API_KEY:
+        return jsonify({"success": True, "role": text, "company": ""})
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+        response = client.chat.completions.create(
+            model=GROK_MODEL_FAST,
+            messages=[
+                {"role": "system", "content": (
+                    "You are a job title parser. Given a free-text description of someone's professional role, "
+                    "extract the job title/role and the company name (if mentioned). "
+                    "Return ONLY a JSON object with exactly two keys: \"role\" (the job title) and \"company\" (the company name, or empty string if not mentioned). "
+                    "Examples:\n"
+                    "- 'Product Manager at Google' -> {\"role\": \"Product Manager\", \"company\": \"Google\"}\n"
+                    "- 'CEO Google' -> {\"role\": \"CEO\", \"company\": \"Google\"}\n"
+                    "- 'Founder, building in fintech' -> {\"role\": \"Founder\", \"company\": \"\"}\n"
+                    "- 'Program Manager @ Google' -> {\"role\": \"Program Manager\", \"company\": \"Google\"}\n"
+                    "- 'Software Engineer - Meta' -> {\"role\": \"Software Engineer\", \"company\": \"Meta\"}\n"
+                    "- 'I work in consulting' -> {\"role\": \"Consultant\", \"company\": \"\"}\n"
+                    "Return ONLY the JSON, nothing else."
+                )},
+                {"role": "user", "content": text},
+            ],
+            max_tokens=80,
+            temperature=0,
+        )
+        raw = (response.choices[0].message.content or "").strip()
+        import json as _json
+        parsed = _json.loads(raw)
+        return jsonify({
+            "success": True,
+            "role": parsed.get("role", text),
+            "company": parsed.get("company", ""),
+        })
+    except Exception as e:
+        logger.warning(f"resolve_role error: {e}")
+        return jsonify({"success": True, "role": text, "company": ""})
+
+
 @onboarding_bp.route("/api/onboarding/resolve_location", methods=["POST"])
 @_login_required
 def onboarding_resolve_location():

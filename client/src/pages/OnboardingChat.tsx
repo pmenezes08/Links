@@ -13,6 +13,7 @@ type Stage =
   | 'talk_all_day'
   | 'reach_out'
   | 'professional'
+  | 'professional_confirm'
   | 'recommend'
   | 'linkedin'
   | 'journey'
@@ -95,6 +96,7 @@ function stageProgress(stage: Stage): number {
     talk_all_day: 4,
     reach_out: 5,
     professional: 6,
+    professional_confirm: 6,
     linkedin: 7,
     journey: 8,
     recommend: 9,
@@ -399,6 +401,32 @@ export default function OnboardingChat({
           inputPlaceholder: 'e.g. Product Manager at Google',
         })
         break
+      case 'professional_confirm': {
+        const role = data?.role || collected.role || ''
+        const company = data?.company || collected.company || ''
+        if (role && company) {
+          addSteveMessage(`Got it — ${role} at ${company}. Is that right?`, {
+            options: [
+              { label: `Yes, that's correct`, value: 'confirm_professional', icon: '✅' },
+              { label: 'No, let me fix that', value: 'edit_professional', icon: '✏️' },
+            ],
+          })
+        } else if (role) {
+          addSteveMessage(`Got it — ${role}. Did I get that right?`, {
+            options: [
+              { label: `Yes, that's correct`, value: 'confirm_professional', icon: '✅' },
+              { label: 'No, let me fix that', value: 'edit_professional', icon: '✏️' },
+            ],
+          })
+        } else {
+          addSteveMessage('What do you do professionally?', {
+            inputType: 'text',
+            inputPlaceholder: 'e.g. Product Manager at Google',
+          })
+          setStage('professional')
+        }
+        break
+      }
       case 'recommend':
         addSteveMessage("As a gift to your network — recommend a book, movie, or TV show.", {
           inputType: 'text',
@@ -568,6 +596,24 @@ export default function OnboardingChat({
         })
         setStage('location')
         break
+      case 'confirm_professional': {
+        const profLabel = collected.company
+          ? `${collected.role} at ${collected.company}`
+          : collected.role
+        addUserMessage(`Yes, ${profLabel}`)
+        await saveField('role', collected.role)
+        if (collected.company) await saveField('company', collected.company)
+        advanceTo('linkedin')
+        break
+      }
+      case 'edit_professional':
+        addUserMessage('Let me fix that')
+        addSteveMessage('No problem! What do you do professionally?', {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. Product Manager at Google',
+        })
+        setStage('professional')
+        break
       case 'skip_photo':
         addUserMessage('Skip for now')
         addSteveMessage("No problem — you can always add one later from your profile.")
@@ -732,18 +778,27 @@ export default function OnboardingChat({
         break
       }
       case 'professional': {
-        const roleMatch = val.match(/^(.+?)\s+at\s+(.+)$/i)
-        let role = val
-        let company = ''
-        if (roleMatch) {
-          role = roleMatch[1].trim()
-          company = roleMatch[2].trim()
+        setIsTyping(true)
+        try {
+          const r = await fetch('/api/onboarding/resolve_role', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: val }),
+          })
+          const j = await r.json().catch(() => null)
+          setIsTyping(false)
+          const role = j?.role || val
+          const company = j?.company || ''
+          const newCollected = { ...collected, role, company }
+          setCollected(newCollected)
+          advanceTo('professional_confirm', newCollected)
+        } catch {
+          setIsTyping(false)
+          const newCollected = { ...collected, role: val, company: '' }
+          setCollected(newCollected)
+          advanceTo('professional_confirm', newCollected)
         }
-        const newCollected = { ...collected, role, company }
-        setCollected(newCollected)
-        await saveField('role', role)
-        if (company) await saveField('company', company)
-        advanceTo('linkedin', newCollected)
         break
       }
       case 'recommend': {
