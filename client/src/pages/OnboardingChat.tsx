@@ -83,6 +83,7 @@ interface OnboardingChatProps {
   communityName?: string | null
   hasCommunity: boolean
   existingProfilePic: string
+  mode?: 'fresh' | 'profile_builder'
   onComplete: () => void
   onCreateCommunity: () => void
   onGoToCommunity: () => void
@@ -145,6 +146,7 @@ export default function OnboardingChat({
   onCreateCommunity,
   onGoToCommunity,
   onExit,
+  mode = 'fresh',
 }: OnboardingChatProps) {
   const [stage, setStage] = useState<Stage>('welcome')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -325,6 +327,11 @@ export default function OnboardingChat({
     if (initialized) return
     setInitialized(true)
     ;(async () => {
+      if (mode === 'profile_builder') {
+        startStage('welcome', collected)
+        setBooting(false)
+        return
+      }
       try {
         const r = await fetch('/api/onboarding/state', { credentials: 'include' })
         const j = await r.json().catch(() => null)
@@ -352,11 +359,16 @@ export default function OnboardingChat({
         const greeting = data.firstName
           ? `Hey ${data.firstName}! 👋`
           : 'Hey there! 👋'
-        let welcomeText = `${greeting} I'm Steve here at CPoint.`
-        if (communityName) {
-          welcomeText += ` I see you were invited to ${communityName} — exciting!`
+        let welcomeText: string
+        if (mode === 'profile_builder') {
+          welcomeText = `${greeting} Let's update your profile together.\n\nI'll walk you through a few quick questions — anything you've already filled in, we can skip. Ready?`
+        } else {
+          welcomeText = `${greeting} I'm Steve here at CPoint.`
+          if (communityName) {
+            welcomeText += ` I see you were invited to ${communityName} — exciting!`
+          }
+          welcomeText += `\n\nA great profile attracts the right connections and lets you control your narrative. I'll walk you through ${USER_FACING_STEPS} quick steps — it takes about 3 minutes. Ready?`
         }
-        welcomeText += `\n\nA great profile attracts the right connections and lets you control your narrative. I'll walk you through ${USER_FACING_STEPS} quick steps — it takes about 3 minutes. Ready?`
         addSteveMessage(welcomeText, {
           options: [{ label: "Let's go!", value: 'start', icon: '🚀' }],
         })

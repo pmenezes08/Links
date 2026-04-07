@@ -41,6 +41,7 @@ export default function PremiumDashboard() {
   const [initialLoading, setInitialLoading] = useState(true)
   // Onboarding
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [onboardingMode, setOnboardingMode] = useState<'fresh' | 'profile_builder'>('fresh')
   const [onboardingLaunching, setOnboardingLaunching] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [firstName, setFirstName] = useState('')
@@ -175,6 +176,7 @@ export default function PremiumDashboard() {
       if (resume) {
         sessionStorage.removeItem(ONBOARDING_RESUME_KEY)
         onboardingTriggeredRef.current = true
+        setOnboardingMode('profile_builder')
         setShowOnboarding(true)
       }
     } catch {}
@@ -687,6 +689,7 @@ export default function PremiumDashboard() {
           communityName={resolvedCommunityName !== 'your community' ? resolvedCommunityName : null}
           hasCommunity={hasAnyCommunity}
           existingProfilePic={existingProfilePic}
+          mode={onboardingMode}
           onComplete={() => {
             setShowOnboarding(false)
             onboardingTriggeredRef.current = false

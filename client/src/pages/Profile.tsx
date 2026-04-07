@@ -324,17 +324,16 @@ export default function Profile() {
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, any> | null>(null)
   const [aiAccepted, setAiAccepted] = useState<Set<string>>(new Set())
   const [aiEdits, setAiEdits] = useState<Record<string, string>>({})
-  const [aiReviewStatus, setAiReviewStatus] = useState<string | null>(null)
-  const [aiSaving, setAiSaving] = useState(false)
   const [aiEditingSection, setAiEditingSection] = useState<string | null>(null)
 
   const isPersonalDirty = useCallback(() => {
+    if (aiAccepted.size > 0) return true
     const s = serverPersonalRef.current
     return personal.first_name !== s.first_name || personal.last_name !== s.last_name ||
       personal.bio !== s.bio || personal.display_name !== s.display_name ||
       personal.date_of_birth !== s.date_of_birth || personal.gender !== s.gender ||
       personal.country !== s.country || personal.city !== s.city
-  }, [personal])
+  }, [personal, aiAccepted])
 
   // Persist personal form as draft on every change
   useEffect(() => {
@@ -802,7 +801,6 @@ export default function Profile() {
           }
           setAiSuggestions(d.suggestions)
           setAiAccepted(new Set(d.acceptedSections || []))
-          setAiReviewStatus(d.userReview?.status || null)
         }
       })
       .catch(() => {})
@@ -839,16 +837,50 @@ export default function Profile() {
         : 'Type to add a city'
     : 'Select a country first'
 
+  const AI_SECTION_PERSONAL = ['summary', 'identity'] as const
+  const AI_SECTION_PROFESSIONAL = ['professional', 'personal', 'networkingValue', 'conversationStarters'] as const
+  const AI_SECTION_INTERESTS = ['interests'] as const
+
+  function getAcceptedAiText(keys: readonly string[]): string {
+    const parts: string[] = []
+    for (const key of keys) {
+      if (!aiAccepted.has(key) || !aiSuggestions?.[key]) continue
+      const text = aiEdits[key] ?? getAiSectionText(key, aiSuggestions[key])
+      if (text) parts.push(text)
+    }
+    return parts.join('\n\n')
+  }
+
+  async function recordAiReview() {
+    if (aiAccepted.size === 0) return
+    try {
+      const hasEdits = Object.keys(aiEdits).length > 0
+      await fetch('/api/profile/ai_review', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: hasEdits ? 'edited' : 'confirmed',
+          acceptedSections: Array.from(aiAccepted),
+          edits: aiEdits,
+        }),
+      })
+    } catch {}
+  }
+
   async function handlePersonalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!navigator.onLine) { alert('Go back online to save changes'); return }
     if (savingPersonal) return
     setSavingPersonal(true)
     try {
+      const aiText = getAcceptedAiText(AI_SECTION_PERSONAL)
+      const finalBio = aiText
+        ? (personal.bio ? personal.bio + '\n\n' + aiText : aiText)
+        : personal.bio
       const form = new FormData()
       form.append('first_name', personal.first_name)
       form.append('last_name', personal.last_name)
-      form.append('bio', personal.bio)
+      form.append('bio', finalBio)
       form.append('display_name', personal.display_name)
       if (personal.date_of_birth) form.append('date_of_birth', personal.date_of_birth)
       form.append('gender', personal.gender)
@@ -857,7 +889,13 @@ export default function Profile() {
       const response = await fetch('/update_personal_info', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
-        serverPersonalRef.current = { ...personal }
+        if (aiText) {
+          setPersonal(prev => ({ ...prev, bio: finalBio }))
+          recordAiReview()
+          for (const k of AI_SECTION_PERSONAL) aiAccepted.delete(k)
+          setAiAccepted(new Set(aiAccepted))
+        }
+        serverPersonalRef.current = { ...personal, bio: finalBio }
         try { sessionStorage.removeItem(PROFILE_DRAFT_KEY) } catch {}
         setFeedback('Personal information saved')
         setSummary(prev => {
@@ -867,7 +905,7 @@ export default function Profile() {
             ...prev,
             display_name: personal.display_name || prev.display_name,
             location: updatedLocation,
-            bio: personal.bio,
+            bio: finalBio,
           }
         })
         try {
@@ -896,22 +934,30 @@ export default function Profile() {
       ) {
         setProfessional(prev => ({ ...prev, interests: interestList }))
       }
+      const aiText = getAcceptedAiText(AI_SECTION_PROFESSIONAL)
+      const finalAbout = aiText
+        ? (professional.about ? professional.about + '\n\n' + aiText : aiText)
+        : professional.about
       const form = new FormData()
       form.append('role', professional.role)
       form.append('company', professional.company)
       form.append('industry', professional.industry)
       form.append('linkedin', professional.linkedin)
-      form.append('about', professional.about)
+      form.append('about', finalAbout)
       form.append('interests', JSON.stringify(interestList))
       const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
+        if (aiText) {
+          setProfessional(prev => ({ ...prev, about: finalAbout }))
+          recordAiReview()
+          for (const k of AI_SECTION_PROFESSIONAL) aiAccepted.delete(k)
+          setAiAccepted(new Set(aiAccepted))
+        }
         setFeedback('Professional information saved')
         try {
           await refreshUserProfile()
-        } catch {
-          // Ignore refresh errors; context will retry on navigation
-        }
+        } catch {}
       } else {
         setFeedback(payload?.error || 'Unable to save professional information')
       }
@@ -959,15 +1005,28 @@ export default function Profile() {
       form.append('linkedin', professional.linkedin)
       form.append('about', professional.about)
       form.append('interests', JSON.stringify(interestList))
+      if (aiAccepted.has('interests') && aiSuggestions?.interests) {
+        const aiInterestText = aiEdits['interests'] ?? getAiSectionText('interests', aiSuggestions.interests)
+        if (aiInterestText) {
+          const aiItems = aiInterestText.split(',').map((s: string) => s.trim()).filter(Boolean)
+          const merged = normalizeInterests([...interestList, ...aiItems])
+          interestList = merged.slice(0, MAX_INTERESTS)
+          form.set('interests', JSON.stringify(interestList))
+        }
+      }
       const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
+        if (aiAccepted.has('interests')) {
+          setProfessional(prev => ({ ...prev, interests: interestList }))
+          recordAiReview()
+          aiAccepted.delete('interests')
+          setAiAccepted(new Set(aiAccepted))
+        }
         setFeedback('Personal interests saved')
         try {
           await refreshUserProfile()
-        } catch {
-          // Ignore refresh errors; context will retry on navigation
-        }
+        } catch {}
       } else {
         setFeedback(payload?.error || 'Unable to save personal interests')
       }
@@ -1117,35 +1176,8 @@ export default function Profile() {
     return typeof val === 'object' ? JSON.stringify(val) : String(val)
   }
 
-  async function saveAiReview() {
-    setAiSaving(true)
-    try {
-      const hasEdits = Object.keys(aiEdits).length > 0
-      const status = hasEdits ? 'edited' : 'confirmed'
-      const res = await fetch('/api/profile/ai_review', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, acceptedSections: Array.from(aiAccepted), edits: aiEdits }),
-      })
-      const d = await res.json()
-      if (d.success) {
-        setAiReviewStatus(status)
-        setAiEditingSection(null)
-        setFeedback('Profile enhancements saved!')
-        try { invalidate_user_cache() } catch {}
-      } else {
-        setFeedback(d.error || 'Failed to save')
-      }
-    } catch {
-      setFeedback('Failed to save enhancements')
-    } finally {
-      setAiSaving(false)
-    }
-  }
 
-  function invalidate_user_cache() {
-    fetch('/api/profile_me', { credentials: 'include', headers: { 'Cache-Control': 'no-cache' } })
-  }
+
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error || !summary) return <div className="p-4 text-red-400">{error || 'Something went wrong'}</div>
@@ -1361,7 +1393,7 @@ export default function Profile() {
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingPersonal}
             >
-              {savingPersonal ? 'Saving…' : 'Save bio and personal info'}
+              {savingPersonal ? 'Saving…' : AI_SECTION_PERSONAL.some(k => aiAccepted.has(k)) ? 'Save bio and personal info + Steve insights' : 'Save bio and personal info'}
             </button>
           </form>
         </section>
@@ -1433,7 +1465,7 @@ export default function Profile() {
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingProfessional}
             >
-              {savingProfessional ? 'Saving…' : 'Save professional info'}
+              {savingProfessional ? 'Saving…' : AI_SECTION_PROFESSIONAL.some(k => aiAccepted.has(k)) ? 'Save professional info + Steve insights' : 'Save professional info'}
             </button>
           </form>
         </section>
@@ -1499,25 +1531,15 @@ export default function Profile() {
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingInterests}
             >
-              {savingInterests ? 'Saving…' : 'Save personal interests'}
+              {savingInterests ? 'Saving…' : aiAccepted.has('interests') ? 'Save personal interests + Steve insights' : 'Save personal interests'}
             </button>
           </form>
         </section>
 
-        {aiSuggestions && aiAccepted.size > 0 && (
-          <div className="flex flex-col items-center gap-1">
-            <button
-              type="button"
-              onClick={saveAiReview}
-              disabled={aiSaving}
-              className="px-6 py-2 rounded-full bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50 transition flex items-center gap-2"
-            >
-              <i className="fa-solid fa-wand-magic-sparkles" />
-              {aiSaving ? 'Saving…' : `Save ${aiAccepted.size} enhancement${aiAccepted.size !== 1 ? 's' : ''} to profile`}
-            </button>
-            {aiReviewStatus && aiReviewStatus !== 'pending' && (
-              <span className="text-[10px] text-[#4db6ac]/60">{aiReviewStatus === 'confirmed' ? 'Saved' : aiReviewStatus === 'edited' ? 'Saved (edited)' : ''}</span>
-            )}
+        {aiAccepted.size > 0 && (
+          <div className="text-center text-xs text-[#4db6ac]/80 animate-pulse">
+            <i className="fa-solid fa-wand-magic-sparkles mr-1" />
+            You have {aiAccepted.size} Steve enhancement{aiAccepted.size !== 1 ? 's' : ''} toggled on — hit the section's Save button to apply {aiAccepted.size !== 1 ? 'them' : 'it'}.
           </div>
         )}
 
@@ -1531,7 +1553,11 @@ export default function Profile() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
             <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] p-5 space-y-4">
               <h3 className="text-base font-semibold text-white">Unsaved changes</h3>
-              <p className="text-sm text-[#a7b8be]">You have unsaved profile changes. Would you like to save before leaving?</p>
+              <p className="text-sm text-[#a7b8be]">
+                {aiAccepted.size > 0
+                  ? `You have ${aiAccepted.size} Steve enhancement${aiAccepted.size !== 1 ? 's' : ''} toggled on that haven't been saved yet. Hit the section's Save button to apply them.`
+                  : 'You have unsaved profile changes. Would you like to save before leaving?'}
+              </p>
               <div className="flex flex-col gap-2">
                 <button
                   onClick={handleSaveAndLeave}
