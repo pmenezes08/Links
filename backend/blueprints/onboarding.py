@@ -25,6 +25,7 @@ from flask import (
 
 from backend.services.database import get_db_connection, get_sql_placeholder
 from redis_cache import invalidate_user_cache
+from backend.services.firestore_writes import merge_onboarding_identity_to_steve_profile
 
 onboarding_bp = Blueprint("onboarding", __name__)
 logger = logging.getLogger(__name__)
@@ -417,6 +418,10 @@ def save_onboarding_state():
                 "messages": data.get("messages", [])[-30:],
                 "updated_at": datetime.utcnow().isoformat(),
             }, merge=True)
+        try:
+            merge_onboarding_identity_to_steve_profile(username, data.get("collected") or {})
+        except Exception as merge_err:
+            logger.warning(f"onboardingIdentity sync failed for {username}: {merge_err}")
         return jsonify({"success": True})
     except Exception as e:
         logger.warning(f"Failed to save onboarding state for {username}: {e}")
@@ -891,10 +896,17 @@ def onboarding_complete():
     try:
         db = _get_firestore_client()
         if db:
-            db.collection("steve_onboarding").document(username).set({
+            doc_ref = db.collection("steve_onboarding").document(username)
+            doc_ref.set({
                 "stage": "complete",
                 "completed_at": datetime.utcnow().isoformat(),
             }, merge=True)
+            try:
+                snap = doc_ref.get()
+                collected = (snap.to_dict() or {}).get("collected") or {}
+                merge_onboarding_identity_to_steve_profile(username, collected)
+            except Exception as merge_err:
+                logger.warning(f"onboardingIdentity sync on complete failed for {username}: {merge_err}")
 
             # Trigger background analysis if no existing profile in steve_user_profiles
             existing = db.collection("steve_user_profiles").document(username).get()

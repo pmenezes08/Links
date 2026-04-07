@@ -9,6 +9,7 @@ still intact and a warning is logged. The app never breaks.
 import os
 import logging
 from datetime import datetime
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -315,6 +316,34 @@ def merge_steve_user_profiling_fields(
         logger.debug(f"Firestore Steve profiling fields written for {username}")
     except Exception as e:
         logger.warning(f"Firestore Steve profiling merge failed (non-fatal): {e}")
+
+
+def merge_onboarding_identity_to_steve_profile(username: str, collected: Optional[dict]):
+    """Merge verbatim onboarding answers onto steve_user_profiles for Steve (networking, context).
+
+    Keys match OnboardingChat collected: journey, talkAllDay, reachOut, recommend.
+    """
+    if not USE_FIRESTORE_WRITES or not username:
+        return
+    if not isinstance(collected, dict):
+        return
+    try:
+        fs = _get_client()
+        now = datetime.utcnow()
+        payload = {
+            'username': username,
+            'onboardingIdentity': {
+                'journey': (collected.get('journey') or '').strip(),
+                'talkAllDay': (collected.get('talkAllDay') or '').strip(),
+                'reachOut': (collected.get('reachOut') or '').strip(),
+                'recommend': (collected.get('recommend') or '').strip(),
+                'updatedAt': now,
+            },
+        }
+        fs.collection('steve_user_profiles').document(username).set(payload, merge=True)
+        logger.debug(f"Firestore onboardingIdentity merged for {username}")
+    except Exception as e:
+        logger.warning(f"Firestore onboardingIdentity merge failed for {username}: {e}")
 
 
 def write_steve_user_profile(

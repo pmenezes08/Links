@@ -8407,6 +8407,53 @@ Set any field to null rather than guessing with no basis."""
         return {}
 
 
+def _append_onboarding_identity_verbatim_from_profile(profile: dict, parts: list) -> None:
+    """Append user-stated onboarding lines from steve_user_profiles.onboardingIdentity."""
+    raw = profile.get('onboardingIdentity') or {}
+    if not isinstance(raw, dict):
+        return
+    mapping = (
+        ('journey', 'User-stated journey'),
+        ('talkAllDay', 'Could talk all day about'),
+        ('reachOut', 'Wants reach-outs about'),
+        ('recommend', 'Recommends to network'),
+    )
+    for key, label in mapping:
+        v = (raw.get(key) or '').strip()
+        if v:
+            parts.append(f"{label}: {v}")
+
+
+def _format_onboarding_identity_for_networking_prompt(identity: dict) -> str:
+    """Compact block for networking prompts from onboardingIdentity dict."""
+    if not isinstance(identity, dict):
+        return ''
+    lines = []
+    mapping = (
+        ('journey', 'Journey (verbatim)'),
+        ('talkAllDay', 'Could talk all day about'),
+        ('reachOut', 'Wants reach-outs about'),
+        ('recommend', 'Recommends'),
+    )
+    for key, label in mapping:
+        v = (identity.get(key) or '').strip()
+        if v:
+            lines.append(f"- {label}: {v}")
+    return '\n'.join(lines) if lines else ''
+
+
+def _onboarding_identity_from_steve_profile(username: str) -> dict:
+    try:
+        from backend.services.firestore_reads import get_steve_user_profile
+        p = get_steve_user_profile(username) or {}
+        if p.get('username') != username:
+            return {}
+        ob = p.get('onboardingIdentity')
+        return ob if isinstance(ob, dict) else {}
+    except Exception:
+        return {}
+
+
 def get_steve_context_for_user(username: str, viewer_username: str = None) -> str:
     """Read the analyzed profile from Firestore, migrate to v3 if needed,
     and return a concise context string for Steve's system prompts.
@@ -8417,76 +8464,81 @@ def get_steve_context_for_user(username: str, viewer_username: str = None) -> st
         if not profile or profile.get('username') != username:
             return ''
         analysis = _migrate_analysis_to_v3(profile.get('analysis', {}))
-        if not analysis or not analysis.get('summary'):
-            return ''
+        has_summary = bool(analysis and analysis.get('summary'))
 
         parts = []
-        parts.append(analysis['summary'])
+        if has_summary:
+            parts.append(analysis['summary'])
 
-        identity = analysis.get('identity') or {}
-        if identity.get('bridgeInsight'):
-            parts.append(identity['bridgeInsight'])
-        if identity.get('roles'):
-            parts.append(f"Roles: {', '.join(identity['roles'][:5])}")
+            identity = analysis.get('identity') or {}
+            if identity.get('bridgeInsight'):
+                parts.append(identity['bridgeInsight'])
+            if identity.get('roles'):
+                parts.append(f"Roles: {', '.join(identity['roles'][:5])}")
 
-        pro = analysis.get('professional') or {}
-        co = pro.get('company') or {}
-        if co.get('description'):
-            parts.append(f"Company ({co.get('name','?')}): {co['description']} [{co.get('sector','')} / {co.get('stage','')}]")
-        role = pro.get('role') or {}
-        if role.get('implication'):
-            parts.append(f"Role: {role.get('title','')} ({role.get('seniority','')}) — {role['implication']}")
-        career = pro.get('careerHistory') or []
-        if career:
-            history_lines = []
-            for entry in career[:8]:
-                if not isinstance(entry, dict):
-                    continue
-                line = f"{entry.get('role', '?')} at {entry.get('company', '?')}"
-                if entry.get('duration'):
-                    line += f" ({entry['duration']})"
-                elif entry.get('period'):
-                    line += f" [{entry['period']}]"
-                if entry.get('highlight'):
-                    line += f" — {entry['highlight']}"
-                history_lines.append(line)
-            if history_lines:
-                parts.append(f"Career history: {'; '.join(history_lines)}")
-        loc = pro.get('location') or {}
-        if loc.get('context'):
-            parts.append(f"Location: {loc['context']}")
-        if pro.get('webFindings'):
-            parts.append(f"Professional background: {pro['webFindings']}")
+            pro = analysis.get('professional') or {}
+            co = pro.get('company') or {}
+            if co.get('description'):
+                parts.append(f"Company ({co.get('name','?')}): {co['description']} [{co.get('sector','')} / {co.get('stage','')}]")
+            role = pro.get('role') or {}
+            if role.get('implication'):
+                parts.append(f"Role: {role.get('title','')} ({role.get('seniority','')}) — {role['implication']}")
+            career = pro.get('careerHistory') or []
+            if career:
+                history_lines = []
+                for entry in career[:8]:
+                    if not isinstance(entry, dict):
+                        continue
+                    line = f"{entry.get('role', '?')} at {entry.get('company', '?')}"
+                    if entry.get('duration'):
+                        line += f" ({entry['duration']})"
+                    elif entry.get('period'):
+                        line += f" [{entry['period']}]"
+                    if entry.get('highlight'):
+                        line += f" — {entry['highlight']}"
+                    history_lines.append(line)
+                if history_lines:
+                    parts.append(f"Career history: {'; '.join(history_lines)}")
+            loc = pro.get('location') or {}
+            if loc.get('context'):
+                parts.append(f"Location: {loc['context']}")
+            if pro.get('webFindings'):
+                parts.append(f"Professional background: {pro['webFindings']}")
 
-        personal = analysis.get('personal') or {}
-        if personal.get('lifestyle'):
-            parts.append(f"Personal: {personal['lifestyle']}")
-        if personal.get('webFindings'):
-            parts.append(f"Personal context: {personal['webFindings']}")
-        public_posts = personal.get('publicPosts') or []
-        if public_posts:
-            recent = [p for p in public_posts if isinstance(p, dict) and p.get('relevance') in ('high', 'medium')][:3]
-            if recent:
-                parts.append('Recent activity: ' + '; '.join(p.get('insight', '') for p in recent if p.get('insight')))
+            personal = analysis.get('personal') or {}
+            if personal.get('lifestyle'):
+                parts.append(f"Personal: {personal['lifestyle']}")
+            if personal.get('webFindings'):
+                parts.append(f"Personal context: {personal['webFindings']}")
+            public_posts = personal.get('publicPosts') or []
+            if public_posts:
+                recent = [p for p in public_posts if isinstance(p, dict) and p.get('relevance') in ('high', 'medium')][:3]
+                if recent:
+                    parts.append('Recent activity: ' + '; '.join(p.get('insight', '') for p in recent if p.get('insight')))
 
-        interests = analysis.get('interests') or {}
-        if interests:
-            top = sorted(interests.items(), key=lambda x: x[1].get('score', 0) if isinstance(x[1], dict) else 0, reverse=True)[:5]
-            parts.append('Interests: ' + ', '.join(f"{k} ({int(v.get('score', 0)*100)}%)" for k, v in top if isinstance(v, dict)))
+            interests = analysis.get('interests') or {}
+            if interests:
+                top = sorted(interests.items(), key=lambda x: x[1].get('score', 0) if isinstance(x[1], dict) else 0, reverse=True)[:5]
+                parts.append('Interests: ' + ', '.join(f"{k} ({int(v.get('score', 0)*100)}%)" for k, v in top if isinstance(v, dict)))
 
-        traits = analysis.get('traits') or []
-        if traits:
-            parts.append('Traits: ' + ', '.join(traits[:4]))
+            traits = analysis.get('traits') or []
+            if traits:
+                parts.append('Traits: ' + ', '.join(traits[:4]))
 
-        if analysis.get('networkingValue'):
-            parts.append(f"Networking: {analysis['networkingValue']}")
+            if analysis.get('networkingValue'):
+                parts.append(f"Networking: {analysis['networkingValue']}")
 
-        starters = analysis.get('conversationStarters') or []
-        if starters:
-            parts.append('Conversation starters: ' + '; '.join(starters[:2]))
+            starters = analysis.get('conversationStarters') or []
+            if starters:
+                parts.append('Conversation starters: ' + '; '.join(starters[:2]))
 
-        if analysis.get('observations'):
-            parts.append(analysis['observations'])
+            if analysis.get('observations'):
+                parts.append(analysis['observations'])
+
+        _append_onboarding_identity_verbatim_from_profile(profile, parts)
+
+        if not parts:
+            return ''
 
         result = ' | '.join(parts)
 
@@ -8514,7 +8566,8 @@ def _scrub_community_names(text: str, target_username: str, viewer_username: str
             return text
 
         import re as _re
-        for name in private_names:
+        # Longer names first so "Kellogg Global Network" replaces before "Kellogg"
+        for name in sorted(private_names, key=len, reverse=True):
             if len(name) >= 3:
                 text = _re.sub(_re.escape(name), 'a private network', text, flags=_re.IGNORECASE)
         return text
@@ -14824,6 +14877,9 @@ def api_networking_steve_match():
                 try: return r[i] if not hasattr(r, 'keys') else list(r.values())[i]
                 except: return ''
             user_profile = f"User: {_v(ur,0)} | {_v(ur,1)} | Bio: {_v(ur,2) or ''} | City: {_v(ur,3) or ''} | Country: {_v(ur,4) or ''} | Industry: {_v(ur,5) or ''} | Role: {_v(ur,6) or ''} | Company: {_v(ur,7) or ''}" if ur else ""
+            _ob_prompt = _format_onboarding_identity_for_networking_prompt(_onboarding_identity_from_steve_profile(username))
+            if _ob_prompt:
+                user_profile = f"{user_profile}\nUser-stated onboarding (verbatim):\n{_ob_prompt}" if user_profile else f"User-stated onboarding (verbatim):\n{_ob_prompt}"
 
             # Members (exclude admin and steve) with sub-community info
             c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
@@ -14903,6 +14959,7 @@ RULES:
 - Always use @username format.
 - Speak naturally and conversationally — like a helpful friend, not a search engine.
 - NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "City: Lisbon", "AI insight", "profile data", "structured data", or "no members list X as their location". Just speak naturally about what you know.
+- C-POINT COMMUNITY PRIVACY: Only mention someone's membership in an on-platform (C-Point) community if both they and the requester share that community. The roster "Groups:" field lists sub-communities within THIS session's community tree only; do not name or infer other C-Point communities the requester does not share. External / off-platform affiliations may be mentioned when helpful and clearly grounded in the provided context.
 - NEVER say "I won't recommend" or explain what you're choosing not to do. Focus on what you CAN offer.
 - This is a multi-turn conversation. Pay close attention to what was discussed previously. If the user asks a follow-up (e.g., "suggest a message to send him", "tell me more about her"), refer back to the person or topic from the prior exchange. Do NOT start a new unrelated recommendation unless the user explicitly asks for something different.
 - The requester's profile is provided as background context ONLY — so you know who they are and can craft better introductions. When the user makes a specific request, match ONLY based on what they asked for. Do NOT bring the requester's own interests, industry, or background into the recommendation rationale unless they explicitly ask for connections related to their own profile (e.g., "people in my industry", "people with similar interests"). If the user asks about race cars, recommend people connected to race cars — not people who share the requester's AI interests."""}
@@ -14971,6 +15028,9 @@ def api_networking_steve_auto_match():
                 try: return r[i] if not hasattr(r, 'keys') else list(r.values())[i]
                 except: return ''
             user_profile = f"User: {_v(ur,0)} | {_v(ur,1)} | Bio: {_v(ur,2) or ''} | City: {_v(ur,3) or ''} | Country: {_v(ur,4) or ''} | Industry: {_v(ur,5) or ''} | Role: {_v(ur,6) or ''} | Company: {_v(ur,7) or ''} | Interests: {_v(ur,8) or ''} | About: {_v(ur,9) or ''}" if ur else ""
+            _ob_prompt_am = _format_onboarding_identity_for_networking_prompt(_onboarding_identity_from_steve_profile(username))
+            if _ob_prompt_am:
+                user_profile = f"{user_profile}\nUser-stated onboarding (verbatim):\n{_ob_prompt_am}" if user_profile else f"User-stated onboarding (verbatim):\n{_ob_prompt_am}"
 
             c.execute(f"SELECT DISTINCT u.username, COALESCE(p.display_name,u.username), p.bio, u.city, u.country, u.industry, u.role, u.company, u.professional_interests, u.professional_about FROM users u JOIN user_communities uc ON u.id=uc.user_id LEFT JOIN user_profiles p ON u.username=p.username WHERE uc.community_id IN ({comm_ph}) AND u.username!={ph} AND LOWER(u.username) NOT IN ('admin','steve')", tuple(community_ids) + (username,))
             member_rows = c.fetchall()
@@ -15047,6 +15107,7 @@ RULES:
 - Only reference members from the provided list.
 - Always use @username format.
 - NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "AI insight", "profile data", "structured data", or similar. Just speak naturally about what you know.
+- C-POINT COMMUNITY PRIVACY: Only mention someone's membership in an on-platform (C-Point) community if both they and the requester share that community. The roster "Groups:" field lists sub-communities within THIS session's community tree only; do not name or infer other C-Point communities the requester does not share. External / off-platform affiliations may be mentioned when helpful and clearly grounded in the provided context.
 - Be concise and friendly."""},
                 {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
             ],
