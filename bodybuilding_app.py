@@ -8407,9 +8407,28 @@ Set any field to null rather than guessing with no basis."""
         return {}
 
 
-def _append_onboarding_identity_verbatim_from_profile(profile: dict, parts: list) -> None:
+def _ensure_onboarding_identity(profile: dict, username: str) -> dict:
+    """Return onboardingIdentity from the profile dict.  If missing, attempt lazy
+    backfill from steve_onboarding and merge onto steve_user_profiles so future
+    reads don't need the extra hop."""
+    raw = profile.get('onboardingIdentity')
+    if isinstance(raw, dict) and any((raw.get(k) or '').strip() for k in ('journey', 'talkAllDay', 'reachOut', 'recommend')):
+        return raw
+
+    fallback = _fetch_onboarding_identity_context(username)
+    if not any(v for v in fallback.values()):
+        return {}
+    try:
+        from backend.services.firestore_writes import merge_onboarding_identity_to_steve_profile
+        merge_onboarding_identity_to_steve_profile(username, fallback)
+    except Exception:
+        pass
+    return fallback
+
+
+def _append_onboarding_identity_verbatim_from_profile(profile: dict, parts: list, username: str = '') -> None:
     """Append user-stated onboarding lines from steve_user_profiles.onboardingIdentity."""
-    raw = profile.get('onboardingIdentity') or {}
+    raw = _ensure_onboarding_identity(profile, username) if username else (profile.get('onboardingIdentity') or {})
     if not isinstance(raw, dict):
         return
     mapping = (
@@ -8473,6 +8492,8 @@ def get_steve_context_for_user(username: str, viewer_username: str = None) -> st
             identity = analysis.get('identity') or {}
             if identity.get('bridgeInsight'):
                 parts.append(identity['bridgeInsight'])
+            if identity.get('drivingForces'):
+                parts.append(f"Driving forces: {identity['drivingForces']}")
             if identity.get('roles'):
                 parts.append(f"Roles: {', '.join(identity['roles'][:5])}")
 
@@ -8504,6 +8525,19 @@ def get_steve_context_for_user(username: str, viewer_username: str = None) -> st
                 parts.append(f"Location: {loc['context']}")
             if pro.get('webFindings'):
                 parts.append(f"Professional background: {pro['webFindings']}")
+            edu = pro.get('education')
+            if edu:
+                if isinstance(edu, list):
+                    edu_lines = []
+                    for e in edu[:5]:
+                        if isinstance(e, dict):
+                            edu_lines.append(f"{e.get('degree', '')} @ {e.get('institution', '')} {e.get('year', '')}".strip())
+                        elif isinstance(e, str):
+                            edu_lines.append(e)
+                    if edu_lines:
+                        parts.append(f"Education: {'; '.join(edu_lines)}")
+                elif isinstance(edu, str) and edu.strip():
+                    parts.append(f"Education: {edu.strip()}")
 
             personal = analysis.get('personal') or {}
             if personal.get('lifestyle'):
@@ -8518,8 +8552,18 @@ def get_steve_context_for_user(username: str, viewer_username: str = None) -> st
 
             interests = analysis.get('interests') or {}
             if interests:
-                top = sorted(interests.items(), key=lambda x: x[1].get('score', 0) if isinstance(x[1], dict) else 0, reverse=True)[:5]
-                parts.append('Interests: ' + ', '.join(f"{k} ({int(v.get('score', 0)*100)}%)" for k, v in top if isinstance(v, dict)))
+                top = sorted(interests.items(), key=lambda x: x[1].get('score', 0) if isinstance(x[1], dict) else 0, reverse=True)[:8]
+                interest_frags = []
+                for k, v in top:
+                    if not isinstance(v, dict):
+                        continue
+                    frag = f"{k} ({int(v.get('score', 0)*100)}%)"
+                    src = (v.get('source') or '').strip()
+                    if src:
+                        frag += f" [{src[:200]}]"
+                    interest_frags.append(frag)
+                if interest_frags:
+                    parts.append('Interests: ' + '; '.join(interest_frags))
 
             traits = analysis.get('traits') or []
             if traits:
@@ -8530,12 +8574,12 @@ def get_steve_context_for_user(username: str, viewer_username: str = None) -> st
 
             starters = analysis.get('conversationStarters') or []
             if starters:
-                parts.append('Conversation starters: ' + '; '.join(starters[:2]))
+                parts.append('Conversation starters: ' + '; '.join(starters[:4]))
 
             if analysis.get('observations'):
                 parts.append(analysis['observations'])
 
-        _append_onboarding_identity_verbatim_from_profile(profile, parts)
+        _append_onboarding_identity_verbatim_from_profile(profile, parts, username=username)
 
         if not parts:
             return ''
