@@ -329,6 +329,9 @@ def list_steve_user_profiles(limit: int = 500):
                 'username': p.get('username', doc.id),
                 'analysis': analysis,
                 'lastUpdated': _ts_to_str(p.get('lastUpdated')),
+                'profilingPlatformActivity': p.get('profilingPlatformActivity'),
+                'profilingSharedExternals': p.get('profilingSharedExternals'),
+                'profilingContextUpdatedAt': _ts_to_str(p.get('profilingContextUpdatedAt')),
             })
         return profiles
     except Exception as e:

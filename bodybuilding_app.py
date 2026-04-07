@@ -18,7 +18,7 @@ import urllib.error
 import time
 import base64
 from io import BytesIO
-import imghdr
+# imghdr was removed in Python 3.13 - using PIL instead where available
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from functools import wraps
@@ -39,7 +39,7 @@ from redis_cache import (
     user_community_tree_cache_key,
 )
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
-from urllib.parse import urlencode, urljoin, quote_plus
+from urllib.parse import urlencode, urljoin, quote_plus, urlparse
 from typing import Optional, Dict, Any, List, Iterable, Tuple, Set, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from encryption_endpoints import register_encryption_endpoints
@@ -95,10 +95,10 @@ except ImportError:
 try:
     from openai import OpenAI
     OPENAI_AVAILABLE = True
-    print("✅ OpenAI package imported successfully")
+    print("OK OpenAI package imported successfully")
 except ImportError as e:
     OPENAI_AVAILABLE = False
-    print(f"❌ OpenAI not available: {e}")
+    print(f"ERROR OpenAI not available: {e}")
     print("   Run: pip install openai")
 
 # Note: xAI SDK with web_search requires specific setup that doesn't work via OpenAI-compatible API
@@ -4859,16 +4859,18 @@ def runway_create_image_to_video_job(image_bytes: bytes, style_prompt: str) -> s
     width = height = None
     mime_type = None
     try:
-        kind = imghdr.what(None, h=image_bytes)
-        if kind:
-            if kind == 'jpeg':
-                mime_type = 'image/jpeg'
-            elif kind == 'png':
-                mime_type = 'image/png'
-            elif kind == 'gif':
-                mime_type = 'image/gif'
-            elif kind == 'webp':
-                mime_type = 'image/webp'
+        # Use PIL to detect image type (replaces deprecated imghdr)
+        if PIL_AVAILABLE:
+            with Image.open(BytesIO(image_bytes)) as img:
+                fmt = img.format.lower() if img.format else None
+                if fmt == 'jpeg':
+                    mime_type = 'image/jpeg'
+                elif fmt == 'png':
+                    mime_type = 'image/png'
+                elif fmt == 'gif':
+                    mime_type = 'image/gif'
+                elif fmt == 'webp':
+                    mime_type = 'image/webp'
     except Exception:
         mime_type = None
 
@@ -7258,6 +7260,7 @@ def admin_steve_profile_analyze(target_username):
             return jsonify({'success': False, 'error': 'User not found'}), 404
 
         communities = _fetch_user_communities(target_username)
+        onboarding_context = _fetch_onboarding_identity_context(target_username)
 
         data = request.get_json(silent=True) or {}
         depth = data.get('depth', 'standard')
@@ -7266,7 +7269,12 @@ def admin_steve_profile_analyze(target_username):
         reset = data.get('reset', False)
 
         activity = _fetch_user_recent_activity(target_username) if depth in ('standard', 'deep') else None
-        profile_text = _build_profile_text_for_grok(user, communities=communities, activity=activity)
+        profile_text = _build_profile_text_for_grok(
+            user,
+            communities=communities,
+            activity=activity,
+            onboarding_context=onboarding_context,
+        )
         if not profile_text.strip():
             return jsonify({'success': False, 'error': 'No profile data to analyze'}), 400
 
@@ -7286,7 +7294,11 @@ def admin_steve_profile_analyze(target_username):
         else:
             final = _merge_analyses(existing_analysis, analysis)
 
-        write_steve_user_profile(target_username, analysis=final)
+        write_steve_user_profile(
+            target_username,
+            analysis=final,
+            **_get_steve_profiling_write_payloads(target_username),
+        )
 
         return jsonify({
             'success': True,
@@ -7307,7 +7319,11 @@ def admin_steve_profile_delete(target_username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         from backend.services.firestore_writes import write_steve_user_profile
-        write_steve_user_profile(target_username, analysis={})
+        write_steve_user_profile(
+            target_username,
+            analysis={},
+            **_get_steve_profiling_write_payloads(target_username),
+        )
         return jsonify({'success': True})
     except Exception as e:
         logger.error(f"Error deleting profile for {target_username}: {e}", exc_info=True)
@@ -7378,7 +7394,11 @@ def admin_steve_profile_wrong_person(target_username):
             'analysisDepth': 'quick'
         }
 
-        write_steve_user_profile(target_username, analysis=cleared_analysis)
+        write_steve_user_profile(
+            target_username,
+            analysis=cleared_analysis,
+            **_get_steve_profiling_write_payloads(target_username),
+        )
 
         return jsonify({'success': True, 'wrongData': wrong_data, 'cleared': True})
     except Exception as e:
@@ -7409,7 +7429,11 @@ def admin_steve_profile_patch(target_username):
         for section in to_remove:
             analysis[section] = None
         from backend.services.firestore_writes import write_steve_user_profile
-        write_steve_user_profile(target_username, analysis=analysis)
+        write_steve_user_profile(
+            target_username,
+            analysis=analysis,
+            **_get_steve_profiling_write_payloads(target_username),
+        )
         return jsonify({'success': True, 'analysis': analysis})
     except Exception as e:
         logger.error(f"Error patching profile for {target_username}: {e}", exc_info=True)
@@ -7449,7 +7473,11 @@ def admin_steve_profile_feedback(target_username):
         analysis['_feedback'] = feedback
 
         from backend.services.firestore_writes import write_steve_user_profile
-        write_steve_user_profile(target_username, analysis=analysis)
+        write_steve_user_profile(
+            target_username,
+            analysis=analysis,
+            **_get_steve_profiling_write_payloads(target_username),
+        )
         return jsonify({'success': True, 'feedback': feedback})
     except Exception as e:
         logger.error(f"Error recording feedback for {target_username}: {e}", exc_info=True)
@@ -7523,7 +7551,11 @@ def api_profile_ai_review():
                     analysis['_userEdits'][section] = new_val
 
         from backend.services.firestore_writes import write_steve_user_profile
-        write_steve_user_profile(username, analysis=analysis)
+        write_steve_user_profile(
+            username,
+            analysis=analysis,
+            **_get_steve_profiling_write_payloads(username),
+        )
 
         try:
             invalidate_user_cache(username)
@@ -7734,6 +7766,48 @@ def _fetch_user_communities(username: str) -> list:
         return []
 
 
+def _fetch_onboarding_identity_context(username: str) -> dict:
+    """Fetch persisted onboarding identity signals from steve_onboarding."""
+    try:
+        from backend.blueprints.onboarding import _get_firestore_client
+
+        db = _get_firestore_client()
+        if not db:
+            return {}
+        doc = db.collection("steve_onboarding").document(username).get()
+        if not doc.exists:
+            return {}
+        collected = (doc.to_dict() or {}).get("collected") or {}
+        return {
+            "talkAllDay": (collected.get("talkAllDay") or "").strip(),
+            "reachOut": (collected.get("reachOut") or "").strip(),
+            "recommend": (collected.get("recommend") or "").strip(),
+            "journey": (collected.get("journey") or "").strip(),
+        }
+    except Exception as e:
+        logger.debug(f"Could not fetch onboarding identity context for {username}: {e}")
+        return {}
+
+
+def _get_steve_profiling_write_payloads(username: str) -> dict:
+    """Build Steve profiling payload kwargs for Firestore profile writes."""
+    try:
+        from backend.services.steve_profiling_snapshot import (
+            build_steve_profiling_firestore_payloads,
+        )
+
+        profiling_platform_activity, profiling_shared_externals = (
+            build_steve_profiling_firestore_payloads(username)
+        )
+        return {
+            'profiling_platform_activity': profiling_platform_activity,
+            'profiling_shared_externals': profiling_shared_externals,
+        }
+    except Exception as e:
+        logger.debug(f"Could not build profiling write payloads for {username}: {e}")
+        return {}
+
+
 def _fetch_user_recent_activity(username: str, post_limit: int = 15, reply_limit: int = 10) -> dict:
     """Fetch a user's recent posts and replies for profile analysis."""
     import re as _re
@@ -7744,7 +7818,7 @@ def _fetch_user_recent_activity(username: str, post_limit: int = 15, reply_limit
             ph = get_sql_placeholder()
 
             c.execute(f"""
-                SELECT p.content, p.timestamp, c.name AS community_name
+                SELECT p.id, p.content, p.timestamp, c.name AS community_name
                 FROM posts p
                 LEFT JOIN communities c ON p.community_id = c.id
                 WHERE p.username = {ph} AND p.content IS NOT NULL AND TRIM(p.content) != ''
@@ -7768,16 +7842,18 @@ def _fetch_user_recent_activity(username: str, post_limit: int = 15, reply_limit
         shared = []
         original = []
         for row in raw_posts:
-            r = dict(row) if hasattr(row, 'keys') else {'content': row[0], 'timestamp': row[1], 'community_name': row[2]}
+            r = dict(row) if hasattr(row, 'keys') else {'id': row[0], 'content': row[1], 'timestamp': row[2], 'community_name': row[3]}
             content = (r.get('content') or '').strip()
             urls = URL_PATTERN.findall(content)
             entry = {
+                'postId': r.get('id'),
                 'content': content[:250],
                 'date': (r.get('timestamp') or '')[:10],
                 'community': r.get('community_name') or '',
             }
             if urls:
                 entry['urls'] = urls[:3]
+                entry['domains'] = [(urlparse(u).netloc or '').lower() for u in urls[:3] if (urlparse(u).netloc or '').lower()]
                 shared.append(entry)
             else:
                 original.append(entry)
@@ -7798,7 +7874,12 @@ def _fetch_user_recent_activity(username: str, post_limit: int = 15, reply_limit
         return {'shared': [], 'original': [], 'replies': []}
 
 
-def _build_profile_text_for_grok(user_row, communities: list = None, activity: dict = None) -> str:
+def _build_profile_text_for_grok(
+    user_row,
+    communities: list = None,
+    activity: dict = None,
+    onboarding_context: dict = None,
+) -> str:
     """Assemble all available profile fields into a text block for Grok analysis."""
     def gv(key):
         try:
@@ -7844,6 +7925,24 @@ def _build_profile_text_for_grok(user_row, communities: list = None, activity: d
         parts.append(f"Location: {gv('location')}")
     if gv('linkedin'):
         parts.append(f"LinkedIn: {gv('linkedin')}")
+
+    if onboarding_context:
+        if onboarding_context.get('talkAllDay'):
+            parts.append(
+                f"Onboarding - could talk all day about: {onboarding_context['talkAllDay']}"
+            )
+        if onboarding_context.get('reachOut'):
+            parts.append(
+                f"Onboarding - wants people to reach out about: {onboarding_context['reachOut']}"
+            )
+        if onboarding_context.get('journey'):
+            parts.append(
+                f"Onboarding - what the network should remember about their journey: {onboarding_context['journey']}"
+            )
+        if onboarding_context.get('recommend'):
+            parts.append(
+                f"Onboarding - recommendation for the network: {onboarding_context['recommend']}"
+            )
 
     if communities:
         network_lines = []
@@ -8330,7 +8429,12 @@ def _trigger_background_profile_analysis(username: str):
                 return
 
             communities = _fetch_user_communities(username)
-            profile_text = _build_profile_text_for_grok(user, communities=communities)
+            onboarding_context = _fetch_onboarding_identity_context(username)
+            profile_text = _build_profile_text_for_grok(
+                user,
+                communities=communities,
+                onboarding_context=onboarding_context,
+            )
             if not profile_text.strip():
                 logger.info(f"Background analysis: no profile data for {username}")
                 return
@@ -8342,7 +8446,11 @@ def _trigger_background_profile_analysis(username: str):
             if analysis:
                 if prior_feedback:
                     analysis['_feedback'] = prior_feedback
-                write_steve_user_profile(username, analysis=analysis)
+                write_steve_user_profile(
+                    username,
+                    analysis=analysis,
+                    **_get_steve_profiling_write_payloads(username),
+                )
                 logger.info(f"Background profile analysis completed for {username}")
             else:
                 logger.warning(f"Background profile analysis returned empty for {username}")
@@ -18131,6 +18239,13 @@ def post_status():
                           media_paths=media_paths if media_paths else None)
             except Exception:
                 pass
+            try:
+                from backend.services.steve_profiling_snapshot import (
+                    schedule_steve_profiling_snapshot_refresh,
+                )
+                schedule_steve_profiling_snapshot_refresh(username)
+            except Exception:
+                pass
 
             # Auto-flag content if it contains objectionable material (Apple App Store requirement)
             try:
@@ -18459,6 +18574,13 @@ def post_reply():
                 from backend.services.firestore_writes import write_reply
                 write_reply(post_id=post_id, reply_id=reply_id, username=username, content=content,
                            parent_reply_id=parent_reply_id, image_path=image_path)
+            except Exception:
+                pass
+            try:
+                from backend.services.steve_profiling_snapshot import (
+                    schedule_steve_profiling_snapshot_refresh,
+                )
+                schedule_steve_profiling_snapshot_refresh(username)
             except Exception:
                 pass
 
@@ -23453,6 +23575,13 @@ def edit_post():
             )
         except Exception as fs_err:
             logger.warning(f"Firestore post update after edit failed (non-fatal): {fs_err}")
+        try:
+            from backend.services.steve_profiling_snapshot import (
+                schedule_steve_profiling_snapshot_refresh,
+            )
+            schedule_steve_profiling_snapshot_refresh(username)
+        except Exception as snapshot_err:
+            logger.warning(f"Profiling snapshot refresh after edit failed (non-fatal): {snapshot_err}")
         
         return jsonify({'success': True, 'image_path': new_image_path, 'video_path': new_video_path})
     except Exception as e:
@@ -29946,11 +30075,25 @@ def api_toggle_key_post():
             if existing:
                 c.execute("DELETE FROM key_posts WHERE username = ? AND post_id = ?", (username, post_id))
                 conn.commit()
+                try:
+                    from backend.services.steve_profiling_snapshot import (
+                        schedule_steve_profiling_snapshot_refresh,
+                    )
+                    schedule_steve_profiling_snapshot_refresh(username)
+                except Exception:
+                    pass
                 return jsonify({'success': True, 'starred': False})
             else:
                 now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 c.execute("INSERT INTO key_posts (username, post_id, community_id, created_at) VALUES (?, ?, ?, ?)", (str(username), post_id, community_id, now))
                 conn.commit()
+                try:
+                    from backend.services.steve_profiling_snapshot import (
+                        schedule_steve_profiling_snapshot_refresh,
+                    )
+                    schedule_steve_profiling_snapshot_refresh(username)
+                except Exception:
+                    pass
                 return jsonify({'success': True, 'starred': True})
     except Exception as e:
         logger.error(f"toggle key post error: {e}")

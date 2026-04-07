@@ -14,6 +14,7 @@ type Stage =
   | 'professional'
   | 'recommend'
   | 'linkedin'
+  | 'journey'
   | 'compose'
   | 'enriching'
   | 'review'
@@ -51,6 +52,7 @@ interface Collected {
   talkAllDay: string
   recommend: string
   reachOut: string
+  journey: string
 }
 
 interface TourStep {
@@ -81,7 +83,7 @@ interface OnboardingChatProps {
   onExit: () => void
 }
 
-const USER_FACING_STEPS = 8
+const USER_FACING_STEPS = 9
 function stageProgress(stage: Stage): number {
   const stepMap: Record<Stage, number> = {
     welcome: 0,
@@ -91,12 +93,13 @@ function stageProgress(stage: Stage): number {
     talk_all_day: 4,
     reach_out: 5,
     professional: 6,
-    recommend: 7,
-    linkedin: 8,
-    compose: 8,
-    enriching: 8,
-    review: 8,
-    complete: 8,
+    linkedin: 7,
+    journey: 8,
+    recommend: 9,
+    compose: 9,
+    enriching: 9,
+    review: 9,
+    complete: 9,
   }
   const step = stepMap[stage] ?? 0
   return Math.round((step / USER_FACING_STEPS) * 100)
@@ -129,6 +132,7 @@ export default function OnboardingChat({
     talkAllDay: '',
     recommend: '',
     reachOut: '',
+    journey: '',
   })
   const [isTyping, setIsTyping] = useState(false)
   const [picFile, setPicFile] = useState<File | null>(null)
@@ -378,6 +382,7 @@ export default function OnboardingChat({
         addSteveMessage("As a gift to your network — recommend a book, movie, or TV show.", {
           inputType: 'text',
           inputPlaceholder: 'e.g. Sapiens by Yuval Noah Harari',
+          options: [{ label: 'Skip', value: 'skip_recommend', icon: '⏭️' }],
         })
         break
       case 'linkedin':
@@ -385,6 +390,13 @@ export default function OnboardingChat({
           inputType: 'url',
           inputPlaceholder: 'https://linkedin.com/in/yourprofile',
           options: [{ label: 'Skip', value: 'skip_linkedin', icon: '⏭️' }],
+        })
+        break
+      case 'journey':
+        addSteveMessage(`What should your network remember about your journey?\n\n${'Totally optional. Share a highlight from work or life—something you’re proud of or that shapes how you show up today.'}\n\nExamples: “Consulting background • Two marathons • Former competitive athlete”`, {
+          inputType: 'textarea',
+          inputPlaceholder: 'e.g. Consulting background • Two marathons • Former competitive athlete',
+          options: [{ label: 'Skip', value: 'skip_journey', icon: '⏭️' }],
         })
         break
       case 'compose':
@@ -470,6 +482,7 @@ export default function OnboardingChat({
           talk_all_day: c.talkAllDay,
           recommend: c.recommend,
           reach_out: c.reachOut,
+          journey: c.journey,
           role: c.role,
           company: c.company,
           city: c.city,
@@ -551,6 +564,14 @@ export default function OnboardingChat({
         setTimeout(() => advanceTo('talk_all_day'), 600)
         break
       case 'skip_linkedin':
+        addUserMessage('Skip')
+        advanceTo('journey')
+        break
+      case 'skip_journey':
+        addUserMessage('Skip')
+        advanceTo('recommend')
+        break
+      case 'skip_recommend':
         addUserMessage('Skip')
         advanceTo('compose')
         break
@@ -679,14 +700,14 @@ export default function OnboardingChat({
         setCollected(newCollected)
         await saveField('role', role)
         if (company) await saveField('company', company)
-        advanceTo('recommend', newCollected)
+        advanceTo('linkedin', newCollected)
         break
       }
       case 'recommend': {
         const newCollected = { ...collected, recommend: val }
         setCollected(newCollected)
         addSteveMessage('Good pick! 📚')
-        setTimeout(() => advanceTo('linkedin', newCollected), 600)
+        setTimeout(() => advanceTo('compose', newCollected), 600)
         break
       }
       case 'linkedin': {
@@ -694,7 +715,14 @@ export default function OnboardingChat({
         setCollected(newCollected)
         await saveField('linkedin', val)
         addSteveMessage('Perfect, that will help me learn more about your background!')
-        setTimeout(() => advanceTo('compose', newCollected), 600)
+        setTimeout(() => advanceTo('journey', newCollected), 600)
+        break
+      }
+      case 'journey': {
+        const newCollected = { ...collected, journey: val }
+        setCollected(newCollected)
+        addSteveMessage("Thanks for sharing — this helps paint a fuller picture of who you are.")
+        setTimeout(() => advanceTo('recommend', newCollected), 800)
         break
       }
       case 'compose': {
@@ -736,6 +764,7 @@ export default function OnboardingChat({
         location: 'Where are you based?',
         professional: 'What do you do professionally?',
         linkedin: 'Got a LinkedIn URL?',
+        journey: 'What should your network remember about your journey?',
         talk_all_day: 'What are the things you could talk about all day?',
         recommend: 'Recommend a book, movie, or TV show to your network.',
         reach_out: 'What do you want people to reach out to you about?',

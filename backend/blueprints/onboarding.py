@@ -451,18 +451,21 @@ def onboarding_compose_bio():
     talk_all_day = (data.get("talk_all_day") or "").strip()
     recommend = (data.get("recommend") or "").strip()
     reach_out = (data.get("reach_out") or "").strip()
+    journey = (data.get("journey") or "").strip()
     role = (data.get("role") or "").strip()
     company = (data.get("company") or "").strip()
     city = (data.get("city") or "").strip()
     country = (data.get("country") or "").strip()
 
-    if not talk_all_day and not recommend and not reach_out:
+    if not talk_all_day and not recommend and not reach_out and not journey:
         return jsonify({"success": False, "error": "No answers provided"}), 400
 
     if not XAI_API_KEY:
         parts = []
         if talk_all_day:
             parts.append(f"I could talk all day about {talk_all_day.lower()}.")
+        if journey:
+            parts.append(f"What shaped how I show up today: {journey}.")
         if recommend:
             parts.append(f"Currently recommending: {recommend}.")
         if role:
@@ -482,6 +485,8 @@ def onboarding_compose_bio():
         elif role:
             professional = f"Their role is {role}."
 
+        journey_text = f"Highlight from their journey: {journey}" if journey else ""
+
         response = client.chat.completions.create(
             model=GROK_MODEL_FAST,
             messages=[
@@ -497,6 +502,7 @@ def onboarding_compose_bio():
                     f"Things they could talk about all day: {talk_all_day}\n"
                     f"They recommend: {recommend}\n"
                     f"They want people to reach out about: {reach_out}\n"
+                    f"{journey_text}\n"
                     f"{professional}\n"
                     f"{'Based in ' + location if location else ''}\n\n"
                     "Write their identity:"
@@ -514,6 +520,8 @@ def onboarding_compose_bio():
         parts = []
         if talk_all_day:
             parts.append(f"I could talk all day about {talk_all_day.lower()}.")
+        if journey:
+            parts.append(f"What shaped how I show up today: {journey}.")
         if recommend:
             parts.append(f"Currently recommending: {recommend}.")
         if role:
@@ -532,6 +540,7 @@ def onboarding_enrich_profile():
         from bodybuilding_app import (
             _build_profile_text_for_grok,
             _analyze_profile_with_grok,
+            _fetch_onboarding_identity_context,
             _fetch_user_communities,
         )
 
@@ -554,7 +563,12 @@ def onboarding_enrich_profile():
                 return jsonify({"success": False, "error": "User not found"}), 404
 
         communities = _fetch_user_communities(username)
-        profile_text = _build_profile_text_for_grok(row, communities=communities)
+        onboarding_context = _fetch_onboarding_identity_context(username)
+        profile_text = _build_profile_text_for_grok(
+            row,
+            communities=communities,
+            onboarding_context=onboarding_context,
+        )
         analysis = _analyze_profile_with_grok(username, profile_text, depth='standard')
 
         if not analysis:
@@ -658,6 +672,7 @@ def onboarding_save_field():
 
             user_fields = {"first_name", "last_name", "role", "company", "industry", "linkedin", "city", "country"}
             profile_fields = {"display_name", "bio"}
+            # journey is stored only in onboarding state (not in main profile table)
 
             if field in user_fields:
                 c.execute(f"UPDATE users SET {field} = {ph} WHERE username = {ph}", (value, username))
@@ -700,6 +715,7 @@ def onboarding_complete():
                         from bodybuilding_app import (
                             _build_profile_text_for_grok,
                             _analyze_profile_with_grok,
+                            _fetch_onboarding_identity_context,
                             _fetch_user_communities,
                         )
                         with get_db_connection() as conn:
@@ -713,7 +729,12 @@ def onboarding_complete():
                             row = c.fetchone()
                         if row:
                             communities = _fetch_user_communities(username)
-                            text = _build_profile_text_for_grok(row, communities=communities)
+                            onboarding_context = _fetch_onboarding_identity_context(username)
+                            text = _build_profile_text_for_grok(
+                                row,
+                                communities=communities,
+                                onboarding_context=onboarding_context,
+                            )
                             analysis = _analyze_profile_with_grok(username, text, depth='standard')
                             if analysis and db:
                                 db.collection("steve_profiles").document(username).set(

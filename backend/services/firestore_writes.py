@@ -285,13 +285,49 @@ def write_reaction(post_id: int, username: str, reaction_type: str,
         logger.warning(f"Firestore reaction write failed (non-fatal): {e}")
 
 
-def write_steve_user_profile(username: str, analysis: dict = None):
+def merge_steve_user_profiling_fields(
+    username: str,
+    platform_activity: dict = None,
+    shared_externals: dict = None,
+):
+    """Merge Steve profiling snapshot fields into Firestore."""
+    if not USE_FIRESTORE_WRITES:
+        return
+    try:
+        fs = _get_client()
+        now = datetime.utcnow()
+        profile_data = {
+            'username': username,
+            'profilingPlatformActivity': platform_activity or {
+                'updatedAt': now,
+                'authoredPosts': [],
+                'replies': [],
+                'starredPosts': [],
+            },
+            'profilingSharedExternals': shared_externals or {
+                'updatedAt': now,
+                'note': '',
+                'items': [],
+            },
+            'profilingContextUpdatedAt': now,
+        }
+        fs.collection('steve_user_profiles').document(username).set(profile_data, merge=True)
+        logger.debug(f"Firestore Steve profiling fields written for {username}")
+    except Exception as e:
+        logger.warning(f"Firestore Steve profiling merge failed (non-fatal): {e}")
+
+
+def write_steve_user_profile(
+    username: str,
+    analysis: dict = None,
+    profiling_platform_activity: dict = None,
+    profiling_shared_externals: dict = None,
+):
     """Write a Grok-analyzed user profile to Firestore."""
     if not USE_FIRESTORE_WRITES:
         return
     try:
         fs = _get_client()
-        from datetime import datetime
         now = datetime.utcnow()
 
         profile_data = {
@@ -299,6 +335,12 @@ def write_steve_user_profile(username: str, analysis: dict = None):
             'analysis': analysis or {},
             'lastUpdated': now,
         }
+        if profiling_platform_activity is not None:
+            profile_data['profilingPlatformActivity'] = profiling_platform_activity
+            profile_data['profilingContextUpdatedAt'] = now
+        if profiling_shared_externals is not None:
+            profile_data['profilingSharedExternals'] = profiling_shared_externals
+            profile_data['profilingContextUpdatedAt'] = now
 
         fs.collection('steve_user_profiles').document(username).set(profile_data, merge=True)
         logger.debug(f"Firestore Steve profile written for {username}")
