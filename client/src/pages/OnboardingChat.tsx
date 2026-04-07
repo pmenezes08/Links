@@ -83,7 +83,7 @@ interface OnboardingChatProps {
   onExit: () => void
 }
 
-const USER_FACING_STEPS = 9
+  const USER_FACING_STEPS = 8
 function stageProgress(stage: Stage): number {
   const stepMap: Record<Stage, number> = {
     welcome: 0,
@@ -97,9 +97,9 @@ function stageProgress(stage: Stage): number {
     journey: 8,
     recommend: 9,
     compose: 9,
-    enriching: 9,
-    review: 9,
-    complete: 9,
+    enriching: 8,
+    review: 8,
+    complete: 8,
   }
   const step = stepMap[stage] ?? 0
   return Math.round((step / USER_FACING_STEPS) * 100)
@@ -403,18 +403,14 @@ export default function OnboardingChat({
         composeBio(data)
         break
       case 'enriching':
-        addSteveMessage("Give me a moment — I'm looking up some public info to help build out your profile. This is based only on publicly available information. 🔍")
-        triggerEnrichment()
+        // Enrichment disabled for normal users (admin-only on profile edit page)
+        addSteveMessage("Your profile is complete! No public enrichment step for now.")
+        setTimeout(() => advanceToComplete(), 800)
         break
       case 'review':
-        if (enrichmentCards.length > 0) {
-          addSteveMessage("Here's what I found about you publicly. You can accept or dismiss each one:", {
-            cards: enrichmentCards,
-          })
-        } else {
-          addSteveMessage("I couldn't find additional public information right now — no worries! Your profile is looking great with what you've provided.")
-          setTimeout(() => advanceToComplete(), 800)
-        }
+        // Review/enrichment step disabled for normal users
+        addSteveMessage("Profile setup complete! You can always edit details later.")
+        setTimeout(() => advanceToComplete(), 800)
         break
       case 'complete':
         showCompleteMsg()
@@ -447,26 +443,12 @@ export default function OnboardingChat({
     )
   }
 
+  // triggerEnrichment disabled - public info fetch is now admin-only on edit profile page (monetization/admin feature)
+  // Keeping function stub to avoid breaking references in handleOptionClick / stage logic
   async function triggerEnrichment() {
-    setEnriching(true)
-    try {
-      const r = await fetch('/api/onboarding/enrich', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      const j = await r.json().catch(() => null)
-      if (j?.success && j.enrichment && j.enrichment.length > 0) {
-        const cards = j.enrichment.map((c: EnrichmentCard) => ({ ...c, status: 'pending' as const }))
-        setEnrichmentCards(cards)
-        setEnriching(false)
-        advanceTo('review')
-        return
-      }
-    } catch {}
     setEnriching(false)
-    addSteveMessage("I couldn't find additional public information right now — no worries! Your profile is looking great with what you've provided.")
-    setTimeout(() => advanceToComplete(), 1200)
+    addSteveMessage("Public enrichment is now an admin-only feature on the profile edit page.")
+    setTimeout(() => advanceToComplete(), 800)
   }
 
   async function composeBio(data?: Collected) {
@@ -583,7 +565,8 @@ export default function OnboardingChat({
           setCollected(newCollected)
           await saveField('bio', lastComposed)
           addSteveMessage('Your identity is set! 🎯')
-          setTimeout(() => advanceTo('enriching', newCollected), 600)
+          // Removed automatic enrichment call per requirements - now admin-only feature on edit profile
+          setTimeout(() => advanceToComplete(), 800)
         }
         break
       }
@@ -1034,9 +1017,7 @@ export default function OnboardingChat({
                   <div className="w-2 h-2 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
-              {enriching && (
-                <div className="text-[10px] text-white/30 self-center ml-1">Looking you up...</div>
-              )}
+              {/* enriching indicator hidden as feature is now admin-only */}
             </div>
           )}
           <div ref={messagesEndRef} />

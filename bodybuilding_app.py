@@ -7492,7 +7492,7 @@ def api_profile_ai_suggestions():
     try:
         from backend.services.firestore_reads import get_steve_user_profile
         profile = get_steve_user_profile(username)
-        if not profile:
+        if not profile or profile.get('username') != username:
             return jsonify({'success': True, 'suggestions': None})
         analysis = _migrate_analysis_to_v3(profile.get('analysis', {}))
         if not analysis:
@@ -7532,7 +7532,7 @@ def api_profile_ai_review():
 
         from backend.services.firestore_reads import get_steve_user_profile
         profile = get_steve_user_profile(username)
-        if not profile:
+        if not profile or profile.get('username') != username:
             return jsonify({'success': False, 'error': 'No AI profile found'}), 404
 
         analysis = profile.get('analysis', {})
@@ -8275,7 +8275,7 @@ def get_steve_context_for_user(username: str, viewer_username: str = None) -> st
     try:
         from backend.services.firestore_reads import get_steve_user_profile
         profile = get_steve_user_profile(username)
-        if not profile:
+        if not profile or profile.get('username') != username:
             return ''
         analysis = _migrate_analysis_to_v3(profile.get('analysis', {}))
         if not analysis or not analysis.get('summary'):
@@ -8392,7 +8392,7 @@ def _trigger_background_profile_analysis(username: str):
             from backend.services.firestore_writes import write_steve_user_profile
 
             existing = get_steve_user_profile(username)
-            if existing and existing.get('lastUpdated'):
+            if existing and existing.get('username') == username and existing.get('lastUpdated'):
                 from datetime import datetime, timezone
                 last = existing['lastUpdated']
                 if hasattr(last, 'timestamp'):
@@ -10345,7 +10345,7 @@ def api_public_profile(username):
             try:
                 from backend.services.firestore_reads import get_steve_user_profile
                 steve_profile = get_steve_user_profile(actual_username)
-                if steve_profile:
+                if steve_profile and steve_profile.get('username') == actual_username:
                     analysis = _migrate_analysis_to_v3(steve_profile.get('analysis', {}))
                     accepted = analysis.get('_acceptedSections', [])
                     user_edits = analysis.get('_userEdits', {})

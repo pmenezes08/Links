@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 try:
     import redis
     REDIS_AVAILABLE = True
-    print(f"✅ redis module imported successfully from: {redis.__file__}", flush=True)
+    print(f"OK redis module imported successfully from: {redis.__file__}", flush=True)
 except ImportError as e:
     REDIS_AVAILABLE = False
-    msg = f"❌ Failed to import redis: {e}"
+    msg = f"ERROR Failed to import redis: {e}"
     logger.info(msg)
     print(msg, flush=True)
     import sys
@@ -54,7 +54,7 @@ class MemoryCache:
         self.expiry = {}
         self.lock = Lock()
         self.enabled = CACHE_ENABLED
-        logger.info("✅ In-memory cache initialized")
+        logger.info("OK In-memory cache initialized")
     
     def _cleanup_expired(self):
         """Remove expired entries"""
@@ -173,12 +173,12 @@ class RedisCache:
             # Test connection
             self.redis_client.ping()
             self.enabled = True
-            msg = f"✅ Redis connected successfully at {REDIS_HOST}:{REDIS_PORT}"
+            msg = f"OK Redis connected successfully at {REDIS_HOST}:{REDIS_PORT}"
             logger.info(msg)
             print(msg, flush=True)  # Ensure it appears in error log
             
         except Exception as e:
-            msg1 = f"⚠️ Redis connection failed: {e}"
+            msg1 = f"WARNING Redis connection failed: {e}"
             msg2 = "Falling back to in-memory cache"
             logger.warning(msg1)
             logger.warning(msg2)
@@ -271,7 +271,7 @@ def create_optimal_cache():
                     print(msg, flush=True)
                     return redis_cache
                 else:
-                    msg = f"⚠️ Redis too slow (ping: {ping_time:.1f}ms), using in-memory cache"
+                    msg = f"WARNING Redis too slow (ping: {ping_time:.1f}ms), using in-memory cache"
                     logger.warning(msg)
                     print(msg, flush=True)
                     return MemoryCache()
@@ -281,13 +281,13 @@ def create_optimal_cache():
                 print(msg, flush=True)
                 return MemoryCache()
     
-    msg = "💾 Using optimized in-memory cache"
+    msg = "Using optimized in-memory cache"
     logger.info(msg)
     print(msg, flush=True)
     return MemoryCache()
 
 # Global cache instance - automatically selects fastest option
-print("🔧 Initializing cache system...", flush=True)
+print("Initializing cache system...", flush=True)
 print(f"   REDIS_ENABLED: {REDIS_ENABLED}", flush=True)
 print(f"   REDIS_AVAILABLE: {REDIS_AVAILABLE}", flush=True)
 print(f"   CACHE_ENABLED: {CACHE_ENABLED}", flush=True)
@@ -295,7 +295,7 @@ if REDIS_ENABLED:
     print(f"   REDIS_HOST: {REDIS_HOST}", flush=True)
     print(f"   REDIS_PORT: {REDIS_PORT}", flush=True)
 cache = create_optimal_cache()
-print(f"✅ Cache initialized: {type(cache).__name__}", flush=True)
+print(f"OK Cache initialized: {type(cache).__name__}", flush=True)
 
 # Cache key generators
 def user_cache_key(username):
