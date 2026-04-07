@@ -323,19 +323,13 @@ export default function Profile() {
     refresh: refreshUserProfile,
   } = useUserProfile()
 
-  const [aiSuggestions, setAiSuggestions] = useState<Record<string, any> | null>(null)
-  const [aiAccepted, setAiAccepted] = useState<Set<string>>(new Set())
-  const [aiEdits, setAiEdits] = useState<Record<string, string>>({})
-  const [aiEditingSection, setAiEditingSection] = useState<string | null>(null)
-
   const isPersonalDirty = useCallback(() => {
-    if (aiAccepted.size > 0) return true
     const s = serverPersonalRef.current
     return personal.first_name !== s.first_name || personal.last_name !== s.last_name ||
       personal.bio !== s.bio || personal.display_name !== s.display_name ||
       personal.date_of_birth !== s.date_of_birth || personal.gender !== s.gender ||
       personal.country !== s.country || personal.city !== s.city
-  }, [personal, aiAccepted])
+  }, [personal])
 
   // Persist personal form as draft on every change
   useEffect(() => {
@@ -789,40 +783,33 @@ export default function Profile() {
     return () => window.clearTimeout(timer)
   }, [feedback])
 
+  // Prefill Company intel from Steve (no suggestion cards on this page)
   useEffect(() => {
     let cancelled = false
     const myUsername = (cachedProfile as any)?.username
+    if (!myUsername) return
     fetch(`/api/profile/ai_suggestions?_t=${Date.now()}`, {
       credentials: 'include',
       cache: 'no-store',
-      headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
+      headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
     })
       .then(r => r.json())
       .then(d => {
-        if (cancelled) return
-        if (d.success && d.suggestions) {
-          if (myUsername && d.forUser && d.forUser !== myUsername) {
-            console.warn(`AI suggestions mismatch: got ${d.forUser}, expected ${myUsername}`)
-            return
-          }
-          setAiSuggestions(d.suggestions)
-          setAiAccepted(new Set(d.acceptedSections || []))
-        }
+        if (cancelled || !d?.success || !d.suggestions) return
+        if (d.forUser && d.forUser !== myUsername) return
+        const pro = d.suggestions.professional
+        if (!pro || typeof pro !== 'object') return
+        const desc = (pro as { company?: { description?: string } }).company?.description
+        const text = typeof desc === 'string' ? desc.trim() : ''
+        if (!text) return
+        setProfessional(prev => {
+          if (prev.company_intel?.trim()) return prev
+          return { ...prev, company_intel: text }
+        })
       })
       .catch(() => {})
     return () => { cancelled = true }
   }, [cachedProfile])
-
-  useEffect(() => {
-    if (!aiSuggestions?.professional || typeof aiSuggestions.professional !== 'object') return
-    const desc = (aiSuggestions.professional as { company?: { description?: string } }).company?.description
-    const d = typeof desc === 'string' ? desc.trim() : ''
-    if (!d) return
-    setProfessional(prev => {
-      if (prev.company_intel?.trim()) return prev
-      return { ...prev, company_intel: d }
-    })
-  }, [aiSuggestions])
 
   const locationPreview = personal.city || personal.country
     ? [personal.city, personal.country].filter(Boolean).join(', ')
@@ -854,49 +841,16 @@ export default function Profile() {
         : 'Type to add a city'
     : 'Select a country first'
 
-  const AI_SECTION_PERSONAL = ['summary', 'identity'] as const
-  const AI_SECTION_PROFESSIONAL = ['professional', 'personal', 'networkingValue', 'conversationStarters'] as const
-
-  function getAcceptedAiText(keys: readonly string[]): string {
-    const parts: string[] = []
-    for (const key of keys) {
-      if (!aiAccepted.has(key) || !aiSuggestions?.[key]) continue
-      const text = aiEdits[key] ?? getAiSectionText(key, aiSuggestions[key])
-      if (text) parts.push(text)
-    }
-    return parts.join('\n\n')
-  }
-
-  async function recordAiReview() {
-    if (aiAccepted.size === 0) return
-    try {
-      const hasEdits = Object.keys(aiEdits).length > 0
-      await fetch('/api/profile/ai_review', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: hasEdits ? 'edited' : 'confirmed',
-          acceptedSections: Array.from(aiAccepted),
-          edits: aiEdits,
-        }),
-      })
-    } catch {}
-  }
-
   async function handlePersonalSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!navigator.onLine) { alert('Go back online to save changes'); return }
     if (savingPersonal) return
     setSavingPersonal(true)
     try {
-      const aiText = getAcceptedAiText(AI_SECTION_PERSONAL)
-      const finalBio = aiText
-        ? (personal.bio ? personal.bio + '\n\n' + aiText : aiText)
-        : personal.bio
       const form = new FormData()
       form.append('first_name', personal.first_name)
       form.append('last_name', personal.last_name)
-      form.append('bio', finalBio)
+      form.append('bio', personal.bio)
       form.append('display_name', personal.display_name)
       if (personal.date_of_birth) form.append('date_of_birth', personal.date_of_birth)
       form.append('gender', personal.gender)
@@ -905,13 +859,7 @@ export default function Profile() {
       const response = await fetch('/update_personal_info', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
-        if (aiText) {
-          setPersonal(prev => ({ ...prev, bio: finalBio }))
-          recordAiReview()
-          for (const k of AI_SECTION_PERSONAL) aiAccepted.delete(k)
-          setAiAccepted(new Set(aiAccepted))
-        }
-        serverPersonalRef.current = { ...personal, bio: finalBio }
+        serverPersonalRef.current = { ...personal }
         try { sessionStorage.removeItem(PROFILE_DRAFT_KEY) } catch {}
         setFeedback('Personal information saved')
         setSummary(prev => {
@@ -921,7 +869,7 @@ export default function Profile() {
             ...prev,
             display_name: personal.display_name || prev.display_name,
             location: updatedLocation,
-            bio: finalBio,
+            bio: personal.bio,
           }
         })
         try {
@@ -950,27 +898,17 @@ export default function Profile() {
       ) {
         setProfessional(prev => ({ ...prev, interests: interestList }))
       }
-      const aiText = getAcceptedAiText(AI_SECTION_PROFESSIONAL)
-      const finalAbout = aiText
-        ? (professional.about ? professional.about + '\n\n' + aiText : aiText)
-        : professional.about
       const form = new FormData()
       form.append('role', professional.role)
       form.append('company', professional.company)
       form.append('company_intel', professional.company_intel)
       form.append('industry', professional.industry)
       form.append('linkedin', professional.linkedin)
-      form.append('about', finalAbout)
+      form.append('about', professional.about)
       form.append('interests', JSON.stringify(interestList))
       const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
-        if (aiText) {
-          setProfessional(prev => ({ ...prev, about: finalAbout }))
-          recordAiReview()
-          for (const k of AI_SECTION_PROFESSIONAL) aiAccepted.delete(k)
-          setAiAccepted(new Set(aiAccepted))
-        }
         setFeedback('Professional information saved')
         try {
           await refreshUserProfile()
@@ -1023,24 +961,9 @@ export default function Profile() {
       form.append('linkedin', professional.linkedin)
       form.append('about', professional.about)
       form.append('interests', JSON.stringify(interestList))
-      if (aiAccepted.has('interests') && aiSuggestions?.interests) {
-        const aiInterestText = aiEdits['interests'] ?? getAiSectionText('interests', aiSuggestions.interests)
-        if (aiInterestText) {
-          const aiItems = aiInterestText.split(',').map((s: string) => s.trim()).filter(Boolean)
-          const merged = normalizeInterests([...interestList, ...aiItems])
-          interestList = merged.slice(0, MAX_INTERESTS)
-          form.set('interests', JSON.stringify(interestList))
-        }
-      }
       const response = await fetch('/update_professional', { method: 'POST', credentials: 'include', body: form })
       const payload = await response.json().catch(() => null)
       if (payload?.success) {
-        if (aiAccepted.has('interests')) {
-          setProfessional(prev => ({ ...prev, interests: interestList }))
-          recordAiReview()
-          aiAccepted.delete('interests')
-          setAiAccepted(new Set(aiAccepted))
-        }
         setFeedback('Personal interests saved')
         try {
           await refreshUserProfile()
@@ -1112,90 +1035,6 @@ export default function Profile() {
     const file = event.target.files?.[0]
     if (file) handlePhotoUpload(file)
   }
-
-  function toggleAiSection(key: string) {
-    setAiAccepted(prev => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
-
-  function renderAiCard(key: string, label: string) {
-    if (!aiSuggestions || !(key in aiSuggestions) || aiSuggestions[key] === null) return null
-    const val = aiSuggestions[key]
-    const accepted = aiAccepted.has(key)
-    const editing = aiEditingSection === key
-    const editValue = aiEdits[key] ?? getAiSectionText(key, val)
-    return (
-      <div className={`mt-2 rounded-lg border p-2.5 transition-all ${
-        accepted ? 'border-[#4db6ac]/30 bg-[#4db6ac]/5' : 'border-dashed border-white/10 bg-white/[0.02]'
-      }`}>
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] text-[#4db6ac] flex items-center gap-1">
-            <i className="fa-solid fa-wand-magic-sparkles text-[8px]" />
-            {label}
-          </span>
-          <div className="flex items-center gap-1.5">
-            {accepted && !editing && (
-              <button type="button" onClick={() => setAiEditingSection(key)} className="text-[10px] text-[#4db6ac]/60 hover:text-[#4db6ac]">edit</button>
-            )}
-            <button
-              type="button"
-              onClick={() => toggleAiSection(key)}
-              className={`relative w-8 h-4 rounded-full transition-colors ${accepted ? 'bg-[#4db6ac]' : 'bg-white/15'}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${accepted ? 'translate-x-4' : ''}`} />
-            </button>
-          </div>
-        </div>
-        {editing ? (
-          <div className="mt-1.5">
-            <textarea
-              value={editValue}
-              onChange={e => setAiEdits(prev => ({ ...prev, [key]: e.target.value }))}
-              rows={2}
-              className="w-full rounded-md border border-white/10 bg-black/50 px-2 py-1.5 text-xs text-white outline-none focus:border-[#4db6ac]/50 resize-none"
-            />
-            <button type="button" onClick={() => setAiEditingSection(null)} className="text-[10px] text-[#4db6ac] mt-1">done</button>
-          </div>
-        ) : (
-          <p className="mt-1 text-[11px] text-[#a7b8be] leading-relaxed">{key in aiEdits ? aiEdits[key] : getAiSectionText(key, val)}</p>
-        )}
-      </div>
-    )
-  }
-
-  function getAiSectionText(key: string, val: any): string {
-    if (typeof val === 'string') return val
-    if (key === 'interests' && typeof val === 'object' && !Array.isArray(val))
-      return Object.keys(val).join(', ')
-    if (key === 'professional' && typeof val === 'object') {
-      const parts: string[] = []
-      if (val.company?.description) parts.push(`${val.company.name}: ${val.company.description}`)
-      if (val.role?.title) parts.push(`${val.role.title}${val.role.implication ? ' — ' + val.role.implication : ''}`)
-      if (val.education) parts.push(val.education)
-      if (val.location?.context) parts.push(val.location.context)
-      if (val.webFindings) parts.push(val.webFindings)
-      return parts.join('. ')
-    }
-    if (key === 'personal' && typeof val === 'object') {
-      const parts: string[] = []
-      if (val.lifestyle) parts.push(val.lifestyle)
-      if (val.interests?.length) parts.push(`Interests: ${val.interests.join(', ')}`)
-      if (val.webFindings) parts.push(val.webFindings)
-      return parts.join('. ')
-    }
-    if (key === 'identity' && typeof val === 'object')
-      return [val.bridgeInsight, val.drivingForces].filter(Boolean).join(' — ')
-    if (key === 'conversationStarters' && Array.isArray(val))
-      return val.join('; ')
-    return typeof val === 'object' ? JSON.stringify(val) : String(val)
-  }
-
-
-
 
   if (loading) return <div className="p-4 text-[#9fb0b5]">Loading…</div>
   if (error || !summary) return <div className="p-4 text-red-400">{error || 'Something went wrong'}</div>
@@ -1404,14 +1243,12 @@ export default function Profile() {
                   </div>
                 </label>
             </div>
-            {renderAiCard('summary', 'Steve found a professional summary for you')}
-            {renderAiCard('identity', 'Steve identified what makes you unique')}
             <button
               type="submit"
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingPersonal}
             >
-              {savingPersonal ? 'Saving…' : AI_SECTION_PERSONAL.some(k => aiAccepted.has(k)) ? 'Save bio and personal info + Steve insights' : 'Save bio and personal info'}
+              {savingPersonal ? 'Saving…' : 'Save bio and personal info'}
             </button>
           </form>
         </section>
@@ -1486,16 +1323,12 @@ export default function Profile() {
                 />
               </label>
             </div>
-            {renderAiCard('professional', 'Steve found insights about your professional background')}
-            {renderAiCard('personal', 'Steve discovered personal context from public sources')}
-            {renderAiCard('networkingValue', 'Steve identified your networking value')}
-            {renderAiCard('conversationStarters', 'Conversation starters Steve suggests')}
             <button
               type="submit"
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingProfessional}
             >
-              {savingProfessional ? 'Saving…' : AI_SECTION_PROFESSIONAL.some(k => aiAccepted.has(k)) ? 'Save professional info + Steve insights' : 'Save professional info'}
+              {savingProfessional ? 'Saving…' : 'Save professional info'}
             </button>
           </form>
         </section>
@@ -1555,23 +1388,15 @@ export default function Profile() {
                 />
               ) : null}
             </div>
-            {renderAiCard('interests', 'Steve identified interests from your profile')}
             <button
               type="submit"
               className="px-4 py-2 rounded-md bg-[#4db6ac] text-black text-sm font-medium hover:brightness-110 disabled:opacity-50"
               disabled={savingInterests}
             >
-              {savingInterests ? 'Saving…' : aiAccepted.has('interests') ? 'Save personal interests + Steve insights' : 'Save personal interests'}
+              {savingInterests ? 'Saving…' : 'Save personal interests'}
             </button>
           </form>
         </section>
-
-        {aiAccepted.size > 0 && (
-          <div className="text-center text-xs text-[#4db6ac]/80 animate-pulse">
-            <i className="fa-solid fa-wand-magic-sparkles mr-1" />
-            You have {aiAccepted.size} Steve enhancement{aiAccepted.size !== 1 ? 's' : ''} toggled on — hit the section's Save button to apply {aiAccepted.size !== 1 ? 'them' : 'it'}.
-          </div>
-        )}
 
         {feedback ? (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full border border-white/10 bg-white/10 text-sm text-white">
@@ -1584,9 +1409,7 @@ export default function Profile() {
             <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] p-5 space-y-4">
               <h3 className="text-base font-semibold text-white">Unsaved changes</h3>
               <p className="text-sm text-[#a7b8be]">
-                {aiAccepted.size > 0
-                  ? `You have ${aiAccepted.size} Steve enhancement${aiAccepted.size !== 1 ? 's' : ''} toggled on that haven't been saved yet. Hit the section's Save button to apply them.`
-                  : 'You have unsaved profile changes. Would you like to save before leaving?'}
+                You have unsaved profile changes. Would you like to save before leaving?
               </p>
               <div className="flex flex-col gap-2">
                 <button

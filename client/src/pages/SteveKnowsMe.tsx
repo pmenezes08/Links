@@ -48,10 +48,7 @@ function formatInterestsHuman(val: unknown): string {
     if (entries.length === 0) return ''
     return entries
       .sort((a, b) => (b[1]?.score ?? 0) - (a[1]?.score ?? 0))
-      .map(([name, o]) => {
-        const s = o?.score
-        return typeof s === 'number' ? `${name} (${Math.round(s * 100)}%)` : name
-      })
+      .map(([name]) => name)
       .join(' · ')
   }
   return ''
