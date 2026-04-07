@@ -19,6 +19,7 @@ type PersonalInfo = {
 type ProfessionalInfo = {
   role?: string | null
   company?: string | null
+  company_intel?: string | null
   industry?: string | null
   linkedin?: string | null
   degree?: string | null
@@ -198,6 +199,7 @@ export default function PublicProfile() {
   const hasProfessional =
     professional.role ||
     professional.company ||
+    (professional.company_intel && String(professional.company_intel).trim()) ||
     professional.industry ||
     professional.degree ||
     professional.school ||
@@ -356,6 +358,12 @@ export default function PublicProfile() {
                 <div>
                   <span className="text-[#9fb0b5] mr-2">Company:</span>
                   {professional.company}
+                </div>
+              ) : null}
+              {professional.company_intel?.trim() ? (
+                <div>
+                  <span className="text-[#9fb0b5] mr-2">Company intel:</span>
+                  <span className="whitespace-pre-wrap leading-relaxed">{renderTextWithSourceLinks(professional.company_intel.trim())}</span>
                 </div>
               ) : null}
               {professional.industry ? (

@@ -10361,7 +10361,7 @@ def api_public_profile(username):
                        u.role, u.company, u.industry, u.degree, u.school,
                        u.skills, u.linkedin, u.experience,
                        u.professional_about, u.professional_interests,
-                       u.professional_share_community_id
+                       u.professional_share_community_id, u.professional_company_intel
                 FROM users u
                 LEFT JOIN user_profiles p ON u.username = p.username
                 WHERE LOWER(u.username) = LOWER({ph})
@@ -10437,9 +10437,10 @@ def api_public_profile(username):
             has_professional = any(gv(k, i) for k, i in [
                 ('role', 18), ('company', 19), ('industry', 20), ('degree', 21),
                 ('school', 22), ('skills', 23), ('linkedin', 24), ('experience', 25),
-                ('professional_about', 26),
+                ('professional_about', 26), ('professional_company_intel', 29),
             ]) or interests_list
             if has_professional:
+                company_intel_val = gv('professional_company_intel', 29)
                 profile['professional'] = {
                     'role': gv('role', 18),
                     'company': gv('company', 19),
@@ -10451,7 +10452,8 @@ def api_public_profile(username):
                     'experience': gv('experience', 25),
                     'about': gv('professional_about', 26),
                     'interests': interests_list,
-                    'share_community_id': gv('professional_share_community_id', 28)
+                    'share_community_id': gv('professional_share_community_id', 28),
+                    'company_intel': (str(company_intel_val).strip() if company_intel_val is not None else ''),
                 }
 
             profile['is_self'] = viewer_username == actual_username

@@ -323,6 +323,21 @@ export default function Profile() {
     refresh: refreshUserProfile,
   } = useUserProfile()
 
+  /** Warm / refetch public profile API so /profile/:username shows latest data after saves (server cache is busted separately). */
+  const prefetchPublicProfileApi = useCallback(async () => {
+    const u = summary?.username?.trim()
+    if (!u) return
+    try {
+      await fetch(`/api/profile/${encodeURIComponent(u)}?_warm=${Date.now()}`, {
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      })
+    } catch {
+      /* non-fatal */
+    }
+  }, [summary?.username])
+
   const isPersonalDirty = useCallback(() => {
     const s = serverPersonalRef.current
     return personal.first_name !== s.first_name || personal.last_name !== s.last_name ||
@@ -394,7 +409,10 @@ export default function Profile() {
       if (payload?.success) {
         serverPersonalRef.current = { ...personal }
         try { sessionStorage.removeItem(PROFILE_DRAFT_KEY) } catch {}
-        try { await refreshUserProfile() } catch {}
+        try {
+          await refreshUserProfile()
+          await prefetchPublicProfileApi()
+        } catch {}
       }
     } catch {}
     setSavingPersonal(false)
@@ -405,7 +423,7 @@ export default function Profile() {
       navigate(pendingNavRef.current)
     }
     pendingNavRef.current = null
-  }, [personal, navigate, refreshUserProfile])
+  }, [personal, navigate, refreshUserProfile, prefetchPublicProfileApi])
 
   const handleCancelLeave = useCallback(() => {
     setShowLeaveModal(false)
@@ -874,6 +892,7 @@ export default function Profile() {
         })
         try {
           await refreshUserProfile()
+          await prefetchPublicProfileApi()
         } catch {}
       } else {
         setFeedback(payload?.error || 'Unable to save personal information')
@@ -912,6 +931,7 @@ export default function Profile() {
         setFeedback('Professional information saved')
         try {
           await refreshUserProfile()
+          await prefetchPublicProfileApi()
         } catch {}
       } else {
         setFeedback(payload?.error || 'Unable to save professional information')
@@ -967,6 +987,7 @@ export default function Profile() {
         setFeedback('Personal interests saved')
         try {
           await refreshUserProfile()
+          await prefetchPublicProfileApi()
         } catch {}
       } else {
         setFeedback(payload?.error || 'Unable to save personal interests')
@@ -1017,6 +1038,7 @@ export default function Profile() {
           if (!prev) return prev
           return { ...prev, profile_picture: cacheBustedUrl }
         })
+        void prefetchPublicProfileApi()
       } else {
         setLocalPhotoPreview(null) // Revert to old image on error
         setFeedback(payload?.error || 'Unable to upload picture')

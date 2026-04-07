@@ -189,11 +189,11 @@ export default function OnboardingChat({
   lastName: initLast,
   username,
   communityName,
-  hasCommunity,
+  hasCommunity: _hasCommunity,
   existingProfilePic,
   onComplete,
   onCreateCommunity,
-  onGoToCommunity,
+  onGoToCommunity: _onGoToCommunity,
   onExit,
   mode = 'fresh',
 }: OnboardingChatProps) {
@@ -690,7 +690,7 @@ export default function OnboardingChat({
       {
         options: [
           { label: 'Show me around', value: 'start_tour', icon: '🗺️' },
-          { label: hasCommunity ? 'Take me to my feed' : 'Explore the platform', value: 'go_feed', icon: '🚀' },
+          { label: 'Take me to the dashboard', value: 'go_feed', icon: '🚀' },
           { label: 'Create a community', value: 'create_community', icon: '➕' },
         ],
       }
@@ -985,11 +985,7 @@ export default function OnboardingChat({
         break
       case 'go_feed':
         await completeOnboarding()
-        if (hasCommunity) {
-          onGoToCommunity()
-        } else {
-          onComplete()
-        }
+        onComplete()
         break
       case 'create_community':
         await completeOnboarding()
@@ -1658,8 +1654,7 @@ export default function OnboardingChat({
                   } else {
                     setTourStep(null)
                     await completeOnboarding()
-                    if (hasCommunity) onGoToCommunity()
-                    else onComplete()
+                    onComplete()
                   }
                 }}
                 className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-xs font-semibold hover:brightness-110 transition"
