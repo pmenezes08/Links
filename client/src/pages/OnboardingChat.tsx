@@ -139,7 +139,7 @@ export default function OnboardingChat({
   const [picPreview, setPicPreview] = useState(existingProfilePic || '')
   const [uploadingPic, setUploadingPic] = useState(false)
   const [enrichmentCards, setEnrichmentCards] = useState<EnrichmentCard[]>([])
-  const [enriching, setEnriching] = useState(false)
+  const enriching = false
   const [initialized, setInitialized] = useState(false)
   const [booting, setBooting] = useState(true)
   const [composingBio, setComposingBio] = useState(false)
@@ -443,14 +443,6 @@ export default function OnboardingChat({
     )
   }
 
-  // triggerEnrichment disabled - public info fetch is now admin-only on edit profile page (monetization/admin feature)
-  // Keeping function stub to avoid breaking references in handleOptionClick / stage logic
-  async function triggerEnrichment() {
-    setEnriching(false)
-    addSteveMessage("Public enrichment is now an admin-only feature on the profile edit page.")
-    setTimeout(() => advanceToComplete(), 800)
-  }
-
   async function composeBio(data?: Collected) {
     const c = data || collected
     setComposingBio(true)
@@ -713,7 +705,7 @@ export default function OnboardingChat({
         setCollected(newCollected)
         await saveField('bio', val)
         addSteveMessage('Your identity is set! 🎯')
-        setTimeout(() => advanceTo('enriching', newCollected), 600)
+        setTimeout(() => advanceToComplete(), 800)
         break
       }
       default:
