@@ -7603,7 +7603,7 @@ def _steve_analysis_payload_json_safe(obj):
 @app.route('/api/profile/steve_analysis', methods=['GET'])
 @login_required
 def api_profile_steve_analysis():
-    """Full Steve Firestore profile for the logged-in user (testing: includes profiling snapshots)."""
+    """Steve analysis for the logged-in user: no observations/traits, no profiling activity snapshots."""
     username = session.get('username')
 
     def _no_cache(resp):
@@ -7631,13 +7631,13 @@ def api_profile_steve_analysis():
                 'refreshCooldownSeconds': STEVE_SELF_REFRESH_COOLDOWN_SECONDS,
             }))
 
+        analysis = dict(_migrate_analysis_to_v3(profile.get('analysis', {})) or {})
+        analysis.pop('observations', None)
+        analysis.pop('traits', None)
         safe_profile = {
             'username': username,
-            'analysis': _migrate_analysis_to_v3(profile.get('analysis', {})),
+            'analysis': analysis,
             'lastUpdated': _ts_to_str(profile.get('lastUpdated')),
-            'profilingPlatformActivity': profile.get('profilingPlatformActivity'),
-            'profilingSharedExternals': profile.get('profilingSharedExternals'),
-            'profilingContextUpdatedAt': _ts_to_str(profile.get('profilingContextUpdatedAt')),
         }
         return _no_cache(jsonify({
             'success': True,

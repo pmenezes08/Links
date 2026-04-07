@@ -6,9 +6,6 @@ type SteveProfilePayload = {
   username: string
   analysis: Record<string, unknown>
   lastUpdated?: string | null
-  profilingPlatformActivity?: unknown
-  profilingSharedExternals?: unknown
-  profilingContextUpdatedAt?: string | null
 }
 
 const USER_EDITABLE_SECTIONS = ['summary', 'professional', 'personal', 'interests', 'networkingValue'] as const
@@ -58,9 +55,11 @@ function analysisSectionToText(key: string, val: unknown): string {
   }
 }
 
+const HIDDEN_FROM_USER_STEVE_VIEW = new Set(['observations', 'traits'])
+
 function nonEmptyAnalysisKeys(analysis: Record<string, unknown>): string[] {
   return Object.keys(analysis).filter(k => {
-    if (k.startsWith('_')) return false
+    if (k.startsWith('_') || HIDDEN_FROM_USER_STEVE_VIEW.has(k)) return false
     const v = analysis[k]
     if (v == null || v === '') return false
     if (Array.isArray(v)) return v.length > 0
@@ -253,7 +252,7 @@ export default function SteveKnowsMe() {
 
       <h1 className="text-xl font-semibold text-[#4db6ac] mb-1">What Steve knows about you</h1>
       <p className="text-sm text-[#9fb0b5] mb-4">
-        Full internal view for testing — we can hide sections later. This is not your public profile; it is Steve’s model of you in Firestore.
+        This is not your public profile — it is Steve&apos;s analysis of you. Some internal fields are not shown here.
       </p>
 
       {meta.analysisInProgress ? (
@@ -324,12 +323,7 @@ export default function SteveKnowsMe() {
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="text-xs text-white/40">
-            Last updated: {profile.lastUpdated || '—'}
-            {profile.profilingContextUpdatedAt ? (
-              <span className="ml-2">· Profiling data: {profile.profilingContextUpdatedAt}</span>
-            ) : null}
-          </div>
+          <div className="text-xs text-white/40">Last updated: {profile.lastUpdated || '—'}</div>
 
           <section className="rounded-xl border border-white/10 p-4 space-y-4">
             <div className="font-semibold text-[#4db6ac]">Analysis</div>
@@ -357,19 +351,6 @@ export default function SteveKnowsMe() {
               ))
             )}
           </section>
-
-          <details className="rounded-xl border border-white/10 p-4">
-            <summary className="cursor-pointer text-sm font-semibold text-white/70">profilingPlatformActivity (raw)</summary>
-            <pre className="mt-3 text-[10px] text-white/60 overflow-x-auto max-h-64 overflow-y-auto">
-              {JSON.stringify(profile.profilingPlatformActivity ?? null, null, 2)}
-            </pre>
-          </details>
-          <details className="rounded-xl border border-white/10 p-4">
-            <summary className="cursor-pointer text-sm font-semibold text-white/70">profilingSharedExternals (raw)</summary>
-            <pre className="mt-3 text-[10px] text-white/60 overflow-x-auto max-h-64 overflow-y-auto">
-              {JSON.stringify(profile.profilingSharedExternals ?? null, null, 2)}
-            </pre>
-          </details>
 
           <p className="text-xs text-orange-300/90">
             If this is totally wrong, tap <strong>This is wrong</strong>, then update your{' '}
