@@ -7227,17 +7227,16 @@ def admin_steve_profiles():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/admin/steve_profiles/<target_username>/analyze', methods=['POST'])
-@login_required
-def admin_steve_profile_analyze(target_username):
-    """Analyze a single user's profile with Grok on-demand.
-    Tenant-aware: when g.tenant_id is set, verifies user belongs to that tenant."""
-    username = session.get('username')
-    if not is_app_admin(username):
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-
+def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard', reset: bool = False):
+    """Run Grok Steve analysis for one user and persist to Firestore.
+    Returns (success, payload, http_status). On success payload is dict with username and analysis.
+    On failure payload is an error string and http_status is the suggested HTTP code."""
     try:
         from backend.services.firestore_writes import write_steve_user_profile
+        from backend.services.firestore_reads import get_steve_user_profile
+
+        if depth not in ('quick', 'standard', 'deep'):
+            depth = 'standard'
 
         tf, tp = _tenant_filter('u.tenant_id')
         with get_db_connection() as conn:
@@ -7257,16 +7256,10 @@ def admin_steve_profile_analyze(target_username):
             user = c.fetchone()
 
         if not user:
-            return jsonify({'success': False, 'error': 'User not found'}), 404
+            return False, 'User not found', 404
 
         communities = _fetch_user_communities(target_username)
         onboarding_context = _fetch_onboarding_identity_context(target_username)
-
-        data = request.get_json(silent=True) or {}
-        depth = data.get('depth', 'standard')
-        if depth not in ('quick', 'standard', 'deep'):
-            depth = 'standard'
-        reset = data.get('reset', False)
 
         activity = _fetch_user_recent_activity(target_username) if depth in ('standard', 'deep') else None
         profile_text = _build_profile_text_for_grok(
@@ -7276,16 +7269,15 @@ def admin_steve_profile_analyze(target_username):
             onboarding_context=onboarding_context,
         )
         if not profile_text.strip():
-            return jsonify({'success': False, 'error': 'No profile data to analyze'}), 400
+            return False, 'No profile data to analyze', 400
 
-        from backend.services.firestore_reads import get_steve_user_profile
         existing_profile = get_steve_user_profile(target_username)
         existing_analysis = _migrate_analysis_to_v3((existing_profile or {}).get('analysis', {})) or {}
         prior_feedback = existing_analysis.get('_feedback', {})
 
         analysis = _analyze_profile_with_grok(target_username, profile_text, prior_feedback=prior_feedback, depth=depth)
         if not analysis:
-            return jsonify({'success': False, 'error': 'Grok analysis returned empty'}), 502
+            return False, 'Grok analysis returned empty', 502
 
         if reset:
             if prior_feedback:
@@ -7300,14 +7292,31 @@ def admin_steve_profile_analyze(target_username):
             **_get_steve_profiling_write_payloads(target_username),
         )
 
-        return jsonify({
-            'success': True,
-            'username': target_username,
-            'analysis': final,
-        })
+        return True, {'username': target_username, 'analysis': final}, None
     except Exception as e:
-        logger.error(f"Error analyzing profile for {target_username}: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logger.error(f"_execute_steve_profile_analysis failed for {target_username}: {e}", exc_info=True)
+        return False, str(e), 500
+
+
+@app.route('/api/admin/steve_profiles/<target_username>/analyze', methods=['POST'])
+@login_required
+def admin_steve_profile_analyze(target_username):
+    """Analyze a single user's profile with Grok on-demand.
+    Tenant-aware: when g.tenant_id is set, verifies user belongs to that tenant."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    data = request.get_json(silent=True) or {}
+    depth = data.get('depth', 'standard')
+    if depth not in ('quick', 'standard', 'deep'):
+        depth = 'standard'
+    reset = data.get('reset', False)
+
+    ok, payload, err_status = _execute_steve_profile_analysis(target_username, depth=depth, reset=reset)
+    if not ok:
+        return jsonify({'success': False, 'error': payload}), err_status
+    return jsonify({'success': True, **payload})
 
 
 @app.route('/api/admin/steve_profiles/<target_username>/analysis', methods=['DELETE'])
@@ -7574,6 +7583,117 @@ def api_profile_ai_review():
     except Exception as e:
         logger.error(f"Error saving AI review for {username}: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Server error'}), 500
+
+
+STEVE_SELF_REFRESH_COOLDOWN_SECONDS = int(os.environ.get('STEVE_SELF_REFRESH_COOLDOWN_SECONDS', '86400'))
+STEVE_SELF_ANALYZE_LOCK_SECONDS = int(os.environ.get('STEVE_SELF_ANALYZE_LOCK_SECONDS', '900'))
+
+
+def _steve_analysis_payload_json_safe(obj):
+    """Recursively coerce Firestore-ish values to JSON-serializable primitives."""
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, dict):
+        return {str(k): _steve_analysis_payload_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_steve_analysis_payload_json_safe(v) for v in obj]
+    return str(obj)
+
+
+@app.route('/api/profile/steve_analysis', methods=['GET'])
+@login_required
+def api_profile_steve_analysis():
+    """Full Steve Firestore profile for the logged-in user (testing: includes profiling snapshots)."""
+    username = session.get('username')
+
+    def _no_cache(resp):
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        resp.headers['Pragma'] = 'no-cache'
+        resp.headers['Expires'] = '0'
+        return resp
+
+    try:
+        from backend.services.firestore_reads import get_steve_user_profile, _ts_to_str
+
+        cooldown_key = f"steve_self_refresh_cooldown:{username}"
+        lock_key = f"steve_self_analyze_lock:{username}"
+        can_refresh = cache.get(cooldown_key) is None
+        in_progress = cache.get(lock_key) is not None
+
+        profile = get_steve_user_profile(username)
+        if not profile or profile.get('username') != username:
+            return _no_cache(jsonify({
+                'success': True,
+                'profile': None,
+                'forUser': username,
+                'canRequestRefresh': can_refresh,
+                'analysisInProgress': in_progress,
+                'refreshCooldownSeconds': STEVE_SELF_REFRESH_COOLDOWN_SECONDS,
+            }))
+
+        safe_profile = {
+            'username': username,
+            'analysis': _migrate_analysis_to_v3(profile.get('analysis', {})),
+            'lastUpdated': _ts_to_str(profile.get('lastUpdated')),
+            'profilingPlatformActivity': profile.get('profilingPlatformActivity'),
+            'profilingSharedExternals': profile.get('profilingSharedExternals'),
+            'profilingContextUpdatedAt': _ts_to_str(profile.get('profilingContextUpdatedAt')),
+        }
+        return _no_cache(jsonify({
+            'success': True,
+            'profile': _steve_analysis_payload_json_safe(safe_profile),
+            'forUser': username,
+            'canRequestRefresh': can_refresh,
+            'analysisInProgress': in_progress,
+            'refreshCooldownSeconds': STEVE_SELF_REFRESH_COOLDOWN_SECONDS,
+        }))
+    except Exception as e:
+        logger.error(f"Error in api_profile_steve_analysis for {username}: {e}", exc_info=True)
+        return _no_cache(jsonify({'success': False, 'error': 'Server error'})), 500
+
+
+@app.route('/api/profile/steve_request_refresh', methods=['POST'])
+@login_required
+def api_profile_steve_request_refresh():
+    """Queue a standard-depth Steve re-analysis for the logged-in user (rate-limited)."""
+    username = session.get('username')
+    cooldown_key = f"steve_self_refresh_cooldown:{username}"
+    lock_key = f"steve_self_analyze_lock:{username}"
+
+    if cache.get(lock_key):
+        return jsonify({
+            'success': False,
+            'error': 'Analysis already in progress',
+            'analysisInProgress': True,
+        }), 409
+
+    if cache.get(cooldown_key):
+        return jsonify({
+            'success': False,
+            'error': 'Please wait before requesting another refresh',
+            'retryAfterSeconds': STEVE_SELF_REFRESH_COOLDOWN_SECONDS,
+        }), 429
+
+    cache.set(lock_key, '1', ttl=STEVE_SELF_ANALYZE_LOCK_SECONDS)
+    cache.set(cooldown_key, '1', ttl=STEVE_SELF_REFRESH_COOLDOWN_SECONDS)
+
+    def _run():
+        try:
+            ok, _payload, _err = _execute_steve_profile_analysis(username, depth='standard', reset=False)
+            if ok:
+                try:
+                    invalidate_user_cache(username)
+                except Exception:
+                    pass
+        finally:
+            cache.delete(lock_key)
+
+    _threading.Thread(target=_run, daemon=True).start()
+    return jsonify({
+        'success': True,
+        'queued': True,
+        'message': 'Steve is updating your profile analysis. Refresh this page in a minute.',
+    })
 
 
 STEVE_PROFILE_SCHEMA_VERSION = 3

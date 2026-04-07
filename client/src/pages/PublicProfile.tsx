@@ -293,13 +293,23 @@ export default function PublicProfile() {
           </section>
 
         {isSelf && (
-          <button
-            className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium bg-black border border-white/10 rounded hover:bg-white/5 transition"
-            onClick={() => navigate('/profile')}
-          >
-            <i className="fa-solid fa-pen-to-square" />
-            Edit Profile
-          </button>
+          <div className="flex flex-col gap-2 w-full">
+            <button
+              className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium bg-black border border-white/10 rounded hover:bg-white/5 transition"
+              onClick={() => navigate('/profile')}
+            >
+              <i className="fa-solid fa-pen-to-square" />
+              Edit Profile
+            </button>
+            <button
+              type="button"
+              className="w-full flex items-center justify-center gap-2 py-2 text-sm font-medium bg-[#4db6ac]/15 border border-[#4db6ac]/35 text-[#4db6ac] rounded hover:bg-[#4db6ac]/25 transition"
+              onClick={() => navigate('/profile/steve')}
+            >
+              <i className="fa-solid fa-brain" />
+              What does Steve know about me?
+            </button>
+          </div>
         )}
 
         {(bioText || formattedDob || location) ? (

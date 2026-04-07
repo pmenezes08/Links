@@ -1,4 +1,4 @@
-const SW_VERSION = '2.65.0'
+const SW_VERSION = '2.66.0'
 const APP_SHELL_CACHE = `cp-shell-${SW_VERSION}`
 const RUNTIME_CACHE = `cp-runtime-${SW_VERSION}`
 const MEDIA_CACHE = `cp-media-${SW_VERSION}`
@@ -36,6 +36,8 @@ const NO_CACHE_API_ENDPOINTS = new Set([
   '/api/profile_me',
   '/api/profile/ai_suggestions',
   '/api/profile/ai_review',
+  '/api/profile/steve_analysis',
+  '/api/profile/steve_request_refresh',
 ])
 
 self.addEventListener('install', (event) => {
