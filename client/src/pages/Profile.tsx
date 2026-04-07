@@ -839,7 +839,6 @@ export default function Profile() {
 
   const AI_SECTION_PERSONAL = ['summary', 'identity'] as const
   const AI_SECTION_PROFESSIONAL = ['professional', 'personal', 'networkingValue', 'conversationStarters'] as const
-  const AI_SECTION_INTERESTS = ['interests'] as const
 
   function getAcceptedAiText(keys: readonly string[]): string {
     const parts: string[] = []
