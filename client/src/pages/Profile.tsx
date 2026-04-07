@@ -1162,7 +1162,7 @@ export default function Profile() {
             />
           </div>
         ) : null}
-          {showOnboardingReturn && (
+          {showOnboardingReturn ? (
             <div className="rounded-xl border border-[#4db6ac]/30 bg-[#4db6ac]/10 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-sm text-white">
                 Finished updating your profile? Jump back to onboarding to complete the setup.
@@ -1175,6 +1175,21 @@ export default function Profile() {
                 Return to onboarding
               </button>
             </div>
+          ) : (
+            <button
+              type="button"
+              className="w-full rounded-xl border border-dashed border-[#4db6ac]/40 bg-[#4db6ac]/5 hover:bg-[#4db6ac]/10 px-4 py-3 flex items-center gap-3 transition-colors"
+              onClick={handleReturnToOnboarding}
+            >
+              <span className="flex items-center justify-center w-8 h-8 rounded-full bg-[#4db6ac]/20 text-[#4db6ac] text-sm">
+                <i className="fa-solid fa-robot" />
+              </span>
+              <div className="text-left">
+                <div className="text-sm font-medium text-white">Let Steve build your profile</div>
+                <div className="text-[11px] text-white/50">Answer a few quick questions instead of filling in fields manually</div>
+              </div>
+              <i className="fa-solid fa-chevron-right text-white/30 ml-auto text-xs" />
+            </button>
           )}
 
         <div className="flex flex-wrap items-center gap-4">

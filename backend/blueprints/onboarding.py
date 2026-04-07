@@ -366,19 +366,40 @@ def _get_firestore_client():
 @onboarding_bp.route("/api/onboarding/state", methods=["GET"])
 @_login_required
 def get_onboarding_state():
-    """Return persisted onboarding conversation state from Firestore."""
+    """Return persisted onboarding conversation state from Firestore,
+    plus a profile_complete flag based on SQL profile data."""
     username = session["username"]
+
+    profile_complete = False
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"""
+                SELECT u.first_name, u.last_name, u.role, u.company,
+                       u.country, u.city, p.bio
+                FROM users u LEFT JOIN user_profiles p ON u.username = p.username
+                WHERE u.username = {ph}
+            """, (username,))
+            row = c.fetchone()
+            if row:
+                vals = [row[i] if not hasattr(row, 'keys') else list(row.values())[i] for i in range(7)]
+                filled = sum(1 for v in vals if v and str(v).strip())
+                profile_complete = filled >= 4
+    except Exception as e:
+        logger.warning(f"Profile completeness check failed for {username}: {e}")
+
     try:
         db = _get_firestore_client()
         if not db:
-            return jsonify({"success": True, "state": None})
+            return jsonify({"success": True, "state": None, "profileComplete": profile_complete})
         doc = db.collection("steve_onboarding").document(username).get()
         if doc.exists:
-            return jsonify({"success": True, "state": doc.to_dict()})
-        return jsonify({"success": True, "state": None})
+            return jsonify({"success": True, "state": doc.to_dict(), "profileComplete": profile_complete})
+        return jsonify({"success": True, "state": None, "profileComplete": profile_complete})
     except Exception as e:
         logger.warning(f"Failed to get onboarding state for {username}: {e}")
-        return jsonify({"success": True, "state": None})
+        return jsonify({"success": True, "state": None, "profileComplete": profile_complete})
 
 
 @onboarding_bp.route("/api/onboarding/state", methods=["POST"])

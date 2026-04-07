@@ -457,17 +457,22 @@ export default function PremiumDashboard() {
     try { if (localStorage.getItem(doneKey) === '1') return } catch {}
 
     if (!isRecentlyVerified) return
-    if (hasProfilePic) return
 
-    // Check server-side completion before triggering
+    // Check server-side completion AND profile completeness before triggering
     ;(async () => {
       setOnboardingLaunching(true)
       try {
         const r = await fetch('/api/onboarding/state', { credentials: 'include' })
         const j = await r.json().catch(() => null)
-        if (j?.success && j.state && (j.state.stage === 'complete' || j.state.completed_at)) {
-          try { localStorage.setItem(doneKey, '1') } catch {}
-          return
+        if (j?.success) {
+          if (j.state && (j.state.stage === 'complete' || j.state.completed_at)) {
+            try { localStorage.setItem(doneKey, '1') } catch {}
+            return
+          }
+          if (j.profileComplete) {
+            try { localStorage.setItem(doneKey, '1') } catch {}
+            return
+          }
         }
       } catch {}
       onboardingTriggeredRef.current = true
@@ -477,7 +482,7 @@ export default function PremiumDashboard() {
     })().finally(() => {
       if (!onboardingTriggeredRef.current) setOnboardingLaunching(false)
     })
-  }, [communitiesLoaded, emailVerified, communities, hasProfilePic, username, showOnboarding, doneKey, isRecentlyVerified])
+  }, [communitiesLoaded, emailVerified, communities, username, showOnboarding, doneKey, isRecentlyVerified])
 
   // Parent-only creation: skip loading parent communities
 

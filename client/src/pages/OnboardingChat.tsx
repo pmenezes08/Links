@@ -15,6 +15,8 @@ type Stage =
   | 'reach_out'
   | 'professional'
   | 'professional_confirm'
+  | 'fix_role'
+  | 'fix_company'
   | 'recommend'
   | 'linkedin'
   | 'journey'
@@ -100,6 +102,8 @@ function stageProgress(stage: Stage): number {
     reach_out: 5,
     professional: 6,
     professional_confirm: 6,
+    fix_role: 6,
+    fix_company: 6,
     linkedin: 7,
     journey: 8,
     recommend: 9,
@@ -440,17 +444,20 @@ export default function OnboardingChat({
         const role = data?.role || collected.role || ''
         const company = data?.company || collected.company || ''
         if (role && company) {
-          addSteveMessage(`Got it — ${role} at ${company}. Is that right?`, {
+          addSteveMessage(`Here's what I got:\n\n**Role:** ${role}\n**Company:** ${company}\n\nDoes that look right?`, {
             options: [
               { label: `Yes, that's correct`, value: 'confirm_professional', icon: '✅' },
-              { label: 'No, let me fix that', value: 'edit_professional', icon: '✏️' },
+              { label: 'Fix role', value: 'edit_role_only', icon: '✏️' },
+              { label: 'Fix company', value: 'edit_company_only', icon: '✏️' },
+              { label: 'Fix both', value: 'edit_professional', icon: '✏️' },
             ],
           })
         } else if (role) {
-          addSteveMessage(`Got it — ${role}. Did I get that right?`, {
+          addSteveMessage(`Here's what I got:\n\n**Role:** ${role}\n**Company:** not specified\n\nDoes that look right, or would you like to add a company?`, {
             options: [
               { label: `Yes, that's correct`, value: 'confirm_professional', icon: '✅' },
-              { label: 'No, let me fix that', value: 'edit_professional', icon: '✏️' },
+              { label: 'Add company', value: 'edit_company_only', icon: '✏️' },
+              { label: 'Fix role', value: 'edit_role_only', icon: '✏️' },
             ],
           })
         } else {
@@ -657,12 +664,28 @@ export default function OnboardingChat({
         break
       }
       case 'edit_professional':
-        addUserMessage('Let me fix that')
+        addUserMessage('Let me fix both')
         addSteveMessage('No problem! What do you do professionally?', {
           inputType: 'text',
           inputPlaceholder: 'e.g. Product Manager at Google',
         })
         setStage('professional')
+        break
+      case 'edit_role_only':
+        addUserMessage('Fix role')
+        addSteveMessage(`No problem! What's your role/title?`, {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. Product Manager',
+        })
+        setStage('fix_role')
+        break
+      case 'edit_company_only':
+        addUserMessage(collected.company ? 'Fix company' : 'Add company')
+        addSteveMessage(`What company do you work at?`, {
+          inputType: 'text',
+          inputPlaceholder: 'e.g. Google',
+        })
+        setStage('fix_company')
         break
       case 'skip_city': {
         addUserMessage('Skip — just use country')
@@ -911,6 +934,18 @@ export default function OnboardingChat({
           setCollected(newCollected)
           advanceTo('professional_confirm', newCollected)
         }
+        break
+      }
+      case 'fix_role': {
+        const newCollected = { ...collected, role: val }
+        setCollected(newCollected)
+        advanceTo('professional_confirm', newCollected)
+        break
+      }
+      case 'fix_company': {
+        const newCollected = { ...collected, company: val }
+        setCollected(newCollected)
+        advanceTo('professional_confirm', newCollected)
         break
       }
       case 'recommend': {
