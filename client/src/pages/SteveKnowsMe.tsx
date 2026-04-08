@@ -81,6 +81,7 @@ export default function SteveKnowsMe() {
   const [actionBusy, setActionBusy] = useState(false)
   const [editKey, setEditKey] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
+  const [showRefreshExplainer, setShowRefreshExplainer] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -157,7 +158,7 @@ export default function SteveKnowsMe() {
   }
 
   async function handleDispute() {
-    if (!window.confirm('Mark Steve’s view as wrong? You can update your profile and ask Steve to take another look later.')) return
+    if (!window.confirm('Mark this as not you? Update your profile elsewhere if needed, then use refresh when it’s available again.')) return
     setActionBusy(true)
     setFeedback(null)
     try {
@@ -166,7 +167,7 @@ export default function SteveKnowsMe() {
         acceptedSections: [],
         edits: {},
       })
-      setFeedback('Recorded. Update your profile, then use “Refresh Steve’s view” when it’s available again.')
+      setFeedback('Recorded. Update your profile if needed, then tap refresh when it’s available again.')
       await load()
     } catch (e) {
       setFeedback(e instanceof Error ? e.message : 'Could not save')
@@ -324,14 +325,20 @@ export default function SteveKnowsMe() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 mb-6">
+      <div className="flex flex-wrap items-center gap-2 mb-6">
         <button
           type="button"
+          title={
+            !meta.canRequestRefresh && !meta.analysisInProgress
+              ? `Available again in about ${cooldownHours} hour${cooldownHours !== 1 ? 's' : ''}`
+              : 'Refresh Steve’s view'
+          }
           disabled={refreshBusy || meta.analysisInProgress || !meta.canRequestRefresh}
-          onClick={() => void handleRequestRefresh()}
-          className="px-3 py-2 rounded-lg bg-[#4db6ac]/20 border border-[#4db6ac]/40 text-sm text-[#4db6ac] hover:bg-[#4db6ac]/30 disabled:opacity-40"
+          onClick={() => setShowRefreshExplainer(true)}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#4db6ac]/20 border border-[#4db6ac]/40 text-[#4db6ac] hover:bg-[#4db6ac]/30 disabled:opacity-40"
+          aria-label="Refresh Steve’s view"
         >
-          {refreshBusy ? 'Starting…' : 'Refresh Steve’s view'}
+          {refreshBusy ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-arrows-rotate" />}
         </button>
         <button
           type="button"
@@ -339,7 +346,7 @@ export default function SteveKnowsMe() {
           onClick={() => void handleApprove()}
           className="px-3 py-2 rounded-lg bg-green-500/20 border border-green-500/40 text-sm text-green-300 hover:bg-green-500/30 disabled:opacity-40"
         >
-          Approve Steve&apos;s view
+          Approve
         </button>
         <button
           type="button"
@@ -347,14 +354,7 @@ export default function SteveKnowsMe() {
           onClick={() => void handleDispute()}
           className="px-3 py-2 rounded-lg bg-orange-500/15 border border-orange-500/35 text-sm text-orange-300 hover:bg-orange-500/25 disabled:opacity-40"
         >
-          This is wrong
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate('/profile')}
-          className="px-3 py-2 rounded-lg border border-white/15 text-sm text-white/80 hover:bg-white/10"
-        >
-          Edit public profile
+          This is not me
         </button>
       </div>
 
@@ -374,8 +374,8 @@ export default function SteveKnowsMe() {
       ) : !profile ? (
         <div className="space-y-4 text-sm text-[#9fb0b5]">
           <p>
-            Steve doesn&apos;t have an analysis for you yet. Fill in your public profile, then tap{' '}
-            <strong>Refresh Steve’s view</strong> (or ask a community admin for help).
+            Steve doesn&apos;t have an analysis for you yet. Update your profile information, then tap the{' '}
+            <strong>refresh</strong> icon above (or ask a community admin for help).
           </p>
         </div>
       ) : (
@@ -410,11 +410,8 @@ export default function SteveKnowsMe() {
           </section>
 
           <p className="text-xs text-orange-300/90">
-            If something is completely off, tap <strong>This is wrong</strong>, update your{' '}
-            <button type="button" className="underline" onClick={() => navigate('/profile')}>
-              public profile
-            </button>
-            , then use <strong>Refresh Steve’s view</strong> when it becomes available again.
+            If something is completely off, tap <strong>This is not me</strong>, update your profile if needed, then use the{' '}
+            <strong>refresh</strong> icon when it becomes available again.
           </p>
         </div>
       )}
@@ -444,6 +441,38 @@ export default function SteveKnowsMe() {
                 className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm font-medium disabled:opacity-50"
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showRefreshExplainer ? (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#111] p-5 space-y-4">
+            <div className="font-semibold text-white">Refresh Steve&apos;s view</div>
+            <p className="text-sm text-[#9fb0b5] leading-relaxed">
+              When you refresh, Steve looks for updates to his picture of you — using your profile and public sources
+              (for example the web). This can take a minute. You can only do this occasionally.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowRefreshExplainer(false)}
+                className="px-3 py-2 text-sm text-white/60 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={refreshBusy || meta.analysisInProgress || !meta.canRequestRefresh}
+                onClick={() => {
+                  setShowRefreshExplainer(false)
+                  void handleRequestRefresh()
+                }}
+                className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-sm font-medium disabled:opacity-50"
+              >
+                Refresh
               </button>
             </div>
           </div>
