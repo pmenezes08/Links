@@ -8260,6 +8260,22 @@ CAREER HISTORY RULES (ABSOLUTE):
 - If LinkedIn shows 5 past roles, careerHistory should have at least 5 entries.
 - For each entry, the "highlight" should note why it matters for networking.
 
+TENURE AND DATES (STRICT — DO NOT HALLUCINATE TIME IN ROLE):
+- Fill "period" and "duration" ONLY when a source states them EXPLICITLY (e.g. "2015–2019", "Jan 2020 – present",
+  "3 years at Company X", LinkedIn-style start/end dates). Prefer copying the source wording for ranges.
+- NEVER invent, estimate, or round to "~N years" to make an entry look complete. If dates are not stated in any source,
+  set "period" to "Unknown" and omit "duration" OR set "duration" to "Unknown".
+- In "highlight", add a brief provenance note when dates are known (e.g. "Dates from LinkedIn") or state that tenure was
+  not found in public sources when period is Unknown.
+- If two sources conflict on dates, prefer structured career profiles (e.g. LinkedIn) over generic articles; if still
+  conflicting, use "Unknown" for period/duration and note the conflict briefly in "highlight".
+
+OVERLAPPING ROLES (EXPECTED):
+- People often hold multiple roles at the same time (e.g. board + operating role, MD of several entities, investor + advisor).
+  Do NOT force a single non-overlapping timeline. Each distinct role gets its own careerHistory entry; overlapping
+  date ranges are correct and encouraged when sources support them. Order entries from most recent primary role first,
+  but do not drop concurrent roles to fix artificial chronology.
+
 WHAT COUNTS AS A CAREER ENTRY:
 - Any paid professional role (even if brief or unconventional)
 - Military or national service
@@ -8319,7 +8335,7 @@ PHASE 3 — PERSONAL & SOCIAL DEEP DIVE (today is {today_str}, only after Phase 
     "company": {"name": "...", "description": "...", "sector": "...", "stage": "..."} or null,
     "role": {"title": "...", "seniority": "junior|mid|senior|executive|founder", "function": "...", "implication": "1 sentence"} or null,
     "careerHistory": [
-      {"company": "...", "role": "...", "period": "YYYY-YYYY or YYYY-present", "duration": "~N years", "highlight": "1 sentence on relevance/expertise gained"}
+      {"company": "...", "role": "...", "period": "Explicit YYYY–YYYY or YYYY–present from a source, or Unknown if not stated", "duration": "ONLY if explicitly stated (e.g. 3 years); omit or Unknown — never guessed", "highlight": "Relevance for networking; add date provenance when period is known"}
     ] or [],
     "education": "degree + school if known, else null",
     "location": {"city": "...", "country": "...", "context": "1 sentence on local ecosystem relevance"} or null,
