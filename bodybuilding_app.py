@@ -7830,6 +7830,136 @@ def _migrate_analysis_to_v3(analysis: dict) -> dict:
     return v3
 
 
+def _career_entry_has_guessed_tenure(entry: dict) -> bool:
+    """True if duration looks like an invented ~N years (not explicit dates)."""
+    if not isinstance(entry, dict):
+        return False
+    d = (entry.get('duration') or '').strip()
+    if d and '~' in d:
+        return True
+    if d and re.match(r'^~\s*\d', d):
+        return True
+    if d and re.match(r'^\d+\+?\s*years?\b', d, re.I):
+        return True
+    return False
+
+
+def _career_preference_score(entry: dict) -> float:
+    """Higher = better row to keep when deduping (prefer honest Unknown over guessed tenure)."""
+    if not isinstance(entry, dict):
+        return 0.0
+    s = 0.0
+    if not _career_entry_has_guessed_tenure(entry):
+        s += 2.0
+    p = (entry.get('period') or '').strip().lower()
+    if p == 'unknown' or not p:
+        s += 1.0
+    elif '~' not in p:
+        s += 0.5
+    return s
+
+
+def _normalize_company_loose(company: str) -> str:
+    c = (company or '').lower().strip()
+    c = re.sub(r'\s+', ' ', c)
+    c = re.sub(r'\s*\([^)]*\)\s*', ' ', c)
+    return re.sub(r'\s+', ' ', c).strip()
+
+
+def _role_token_jaccard(role_a: str, role_b: str) -> float:
+    def tok(s):
+        s = re.sub(r'[^\w\s]', ' ', (s or '').lower())
+        return {w for w in s.split() if len(w) > 2}
+
+    ta, tb = tok(role_a), tok(role_b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+def _normalize_career_history_key(company: str, role: str) -> str:
+    """Light normalization for dedup (format only, not semantic expansion)."""
+    c = (company or '').lower().strip()
+    r = (role or '').lower().strip()
+    c = re.sub(r'\s+', ' ', c)
+    r = re.sub(r'\s+', ' ', r)
+    c = re.sub(r'\s*\([^)]{1,50}\)\s*$', '', c).strip()
+    return f'{c}|||{r}'
+
+
+def _collapse_career_history_near_duplicates(entries: list) -> list:
+    """Within same employer (loose company match), drop near-duplicate roles; keep better tenure row."""
+    if not entries or len(entries) < 2:
+        return entries
+    by_comp = {}
+    for i, e in enumerate(entries):
+        if not isinstance(e, dict):
+            continue
+        ck = _normalize_company_loose(e.get('company', ''))
+        if ck:
+            by_comp.setdefault(ck, []).append(i)
+    remove = set()
+    for _ck, idxs in by_comp.items():
+        if len(idxs) < 2:
+            continue
+        keepers = []
+        for i in idxs:
+            if i in remove:
+                continue
+            e = entries[i]
+            replaced = False
+            for j, kidx in enumerate(keepers):
+                if kidx in remove:
+                    continue
+                ke = entries[kidx]
+                if _role_token_jaccard(e.get('role', ''), ke.get('role', '')) < 0.42:
+                    continue
+                se, sk = _career_preference_score(e), _career_preference_score(ke)
+                if se > sk:
+                    remove.add(kidx)
+                    keepers[j] = i
+                elif sk > se:
+                    remove.add(i)
+                else:
+                    remove.add(max(i, kidx))
+                replaced = True
+                break
+            if not replaced:
+                keepers.append(i)
+    return [e for i, e in enumerate(entries) if i not in remove]
+
+
+def _merge_career_history_lists(new_hist: list, old_hist: list) -> list:
+    """Merge careerHistory: light key dedup, prefer non-guessed tenure, collapse same-employer near-dupes."""
+    new_order_keys = []
+    new_by_key = {}
+    for e in new_hist or []:
+        if not isinstance(e, dict):
+            continue
+        k = _normalize_career_history_key(e.get('company', ''), e.get('role', ''))
+        if k not in new_by_key:
+            new_by_key[k] = e
+            new_order_keys.append(k)
+        else:
+            a, b = new_by_key[k], e
+            if _career_preference_score(b) > _career_preference_score(a):
+                new_by_key[k] = b
+            elif _career_preference_score(a) == _career_preference_score(b):
+                if _career_entry_has_guessed_tenure(a) and not _career_entry_has_guessed_tenure(b):
+                    new_by_key[k] = b
+    merged_keys = set(new_order_keys)
+    result = [new_by_key[k] for k in new_order_keys if k in new_by_key]
+    for e in old_hist or []:
+        if not isinstance(e, dict):
+            continue
+        k = _normalize_career_history_key(e.get('company', ''), e.get('role', ''))
+        if k in merged_keys:
+            continue
+        merged_keys.add(k)
+        result.append(e)
+    return _collapse_career_history_near_duplicates(result)
+
+
 def _merge_analyses(existing: dict, new: dict) -> dict:
     """Merge a new Grok analysis into an existing one, preserving richer data."""
     if not existing:
@@ -7852,19 +7982,10 @@ def _merge_analyses(existing: dict, new: dict) -> dict:
         old_pro = existing.get('professional') or {}
         new_pro = new['professional'] or {}
         merged_pro = dict(new_pro)
-        # Merge careerHistory: deduplicate by company+role, keep union
+        # Merge careerHistory: light key dedup, prefer Unknown over guessed ~N years, collapse same-employer near-dupes
         old_history = old_pro.get('careerHistory') or []
         new_history = new_pro.get('careerHistory') or []
-        seen = set()
-        combined_history = []
-        for entry in new_history + old_history:
-            if not isinstance(entry, dict):
-                continue
-            key = (entry.get('company', '').lower().strip(), entry.get('role', '').lower().strip())
-            if key not in seen:
-                seen.add(key)
-                combined_history.append(entry)
-        merged_pro['careerHistory'] = combined_history
+        merged_pro['careerHistory'] = _merge_career_history_lists(new_history, old_history)
         # Keep longer webFindings if new one is shorter
         old_wf = old_pro.get('webFindings', '') or ''
         new_wf = new_pro.get('webFindings', '') or ''
