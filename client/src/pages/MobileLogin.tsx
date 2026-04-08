@@ -1,12 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { triggerDashboardServerPull } from '../utils/serverPull'
-import {
-  isClipboardInviteConsumed,
-  markClipboardInviteConsumed,
-  parseInviteTokenFromClipboard,
-} from '../utils/clipboardInvite'
+import { markClipboardInviteConsumed, parseInviteTokenFromClipboard } from '../utils/clipboardInvite'
 import { extractInviteToken } from '../utils/internalLinkHandler'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
@@ -32,7 +28,7 @@ export default function MobileLogin() {
     token: string
     communityName: string
   } | null>(null)
-  const clipboardInviteProbeRef = useRef(false)
+  const [inviteFromInstallBusy, setInviteFromInstallBusy] = useState(false)
   // PWA install state (removed install UI)
 
   // Check invitation token
@@ -72,41 +68,45 @@ export default function MobileLogin() {
     if (inviteToken) setClipboardInviteModal(null)
   }, [inviteToken])
 
-  // Native: detect invite in clipboard (install-then-open flow) and offer simple Yes/No modal
-  useEffect(() => {
-    if (Capacitor.getPlatform() === 'web') return
-    if (inviteToken) return
-    if (step === 'password') return
-    if (!authCheckDone) return
-    if (clipboardInviteProbeRef.current) return
-    clipboardInviteProbeRef.current = true
-
-    ;(async () => {
-      try {
-        const text = await navigator.clipboard.readText()
-        const raw = text.trim()
-        let token = parseInviteTokenFromClipboard(raw)
-        if (!token && (raw.startsWith('http') || raw.startsWith('cpoint://'))) {
-          token = extractInviteToken(raw)
-        }
-        if (!token) return
-        if (isClipboardInviteConsumed(token)) return
-        try {
-          if (sessionStorage.getItem(INVITE_MODAL_DECLINED_KEY) === token) return
-        } catch {}
-
-        const r = await fetch(`/api/invitation/verify?token=${encodeURIComponent(token)}`, {
-          credentials: 'include',
-          headers: { Accept: 'application/json' },
-        })
-        const j = await r.json()
-        if (!j?.success || !j.community_name) return
-        setClipboardInviteModal({ token, communityName: j.community_name })
-      } catch {
-        // Silent read often fails on iOS; user can still open the invite link
+  /** User gesture (tap) is required for reliable clipboard read on iOS. */
+  const tryInviteFromInstallTap = useCallback(async () => {
+    setError(null)
+    setInviteFromInstallBusy(true)
+    try {
+      const text = await navigator.clipboard.readText()
+      const raw = text.trim()
+      let token = parseInviteTokenFromClipboard(raw)
+      if (!token && (raw.startsWith('http') || raw.startsWith('cpoint://'))) {
+        token = extractInviteToken(raw)
       }
-    })()
-  }, [authCheckDone, inviteToken, step])
+      if (!token) {
+        setError('No invite found. Open the link from your invitation, then tap here again.')
+        return
+      }
+
+      const r = await fetch(`/api/invitation/verify?token=${encodeURIComponent(token)}`, {
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      })
+      const j = await r.json()
+      if (!j?.success || !j.community_name) {
+        setError('This invite is not valid or has already been used.')
+        return
+      }
+
+      try {
+        if (sessionStorage.getItem(INVITE_MODAL_DECLINED_KEY) === token) {
+          sessionStorage.removeItem(INVITE_MODAL_DECLINED_KEY)
+        }
+      } catch {}
+
+      setClipboardInviteModal({ token, communityName: j.community_name })
+    } catch {
+      setError('Could not read your invite. Open the link from your invitation, then try again.')
+    } finally {
+      setInviteFromInstallBusy(false)
+    }
+  }, [])
 
   // If already authenticated, auto-join community if invited
   useEffect(() => {
@@ -499,6 +499,22 @@ export default function MobileLogin() {
         <div className="text-center mt-3">
           <button onClick={() => { setShowForgot(true); setResetSent(false) }} className="text-teal-300 text-sm">Forgot Password?</button>
         </div>
+
+        {Capacitor.getPlatform() !== 'web' && step !== 'password' && !inviteToken && authCheckDone && (
+          <div className="text-center mt-4">
+            <button
+              type="button"
+              disabled={inviteFromInstallBusy}
+              onClick={() => void tryInviteFromInstallTap()}
+              className="w-full rounded-lg border border-[#4db6ac]/40 bg-[#4db6ac]/10 py-2.5 text-sm font-medium text-[#4db6ac] active:opacity-90 disabled:opacity-50"
+            >
+              {inviteFromInstallBusy ? 'Checking…' : 'I was invited — continue'}
+            </button>
+            <p className="text-white/40 text-[11px] mt-2 px-1 leading-snug">
+              Use this after installing the app from an invite link.
+            </p>
+          </div>
+        )}
 
         {step !== 'password' && (
           <>
