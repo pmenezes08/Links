@@ -27879,14 +27879,14 @@ def invite_landing(token):
     app_store_url = APP_STORE_URL if 'APP_STORE_URL' in dir() else "https://apps.apple.com/app/id6755534074"
     play_store_url = f"https://play.google.com/store/apps/details?id=co.cpoint.app"
     
-    store_btn = ""
-    if is_ios:
-        store_btn = f'<a href="{app_store_url}" class="btn btn-secondary">Download from App Store</a>'
-    elif is_android:
-        store_btn = f'<a href="{play_store_url}" class="btn btn-secondary">Download from Google Play</a>'
-    else:
-        store_btn = f'<a href="{app_store_url}" class="btn btn-secondary">Download the App</a>'
-    
+    store_href = app_store_url if is_ios else (play_store_url if is_android else app_store_url)
+    store_label = "Download from App Store" if is_ios else ("Download from Google Play" if is_android else "Download the App")
+    store_btn = f'<a href="{store_href}" class="btn btn-secondary" id="storeDownloadBtn">{store_label}</a>'
+    invite_https_url = f"{base_url}/invite/{token}"
+    token_js = json.dumps(token)
+    invite_https_js = json.dumps(invite_https_url)
+    store_href_js = json.dumps(store_href)
+
     return f"""<!DOCTYPE html>
 <html><head>
     <meta charset="UTF-8">
@@ -27907,6 +27907,7 @@ def invite_landing(token):
         .btn-primary {{ background:#4db6ac; color:#000; }}
         .btn-secondary {{ background:#1a1a1a; color:#fff; border:1px solid #333; }}
         .hint {{ color:#666; font-size:12px; margin-top:16px; line-height:1.5; }}
+        .btn-tertiary {{ background:transparent; color:#888; font-size:13px; padding:10px; margin-top:4px; }}
     </style>
 </head>
 <body>
@@ -27918,20 +27919,64 @@ def invite_landing(token):
         <a href="{app_url}" class="btn btn-primary" id="openAppBtn">Open in C.Point App</a>
         <p style="color:#555; font-size:12px; margin:14px 0 10px;">Don't have the app yet?</p>
         {store_btn}
-        <p class="hint">C.Point is a mobile app. Please download it to join this community.</p>
+        <button type="button" class="btn btn-tertiary" id="copyInviteLinkBtn">Copy invite link</button>
+        <p class="hint">After you install, open the app from your home screen — we save your invite automatically when you tap Download above. If you don&apos;t land in the right community, open this page again and tap &quot;Open in C.Point App&quot;, or on Sign in use &quot;Use invite from clipboard&quot;.</p>
     </div>
     <script>
-        document.getElementById('openAppBtn').addEventListener('click', function(e) {{
-            var start = Date.now();
-            setTimeout(function() {{
-                if (Date.now() - start < 2000) {{
-                    if (confirm('C.Point app not found. Would you like to download it?')) {{
-                        window.location.href = '{"" + app_store_url if is_ios else play_store_url if is_android else app_store_url}';
+(function() {{
+        var INVITE_TOKEN = {token_js};
+        var INVITE_HTTPS_URL = {invite_https_js};
+        var STORE_HREF = {store_href_js};
+        var clipPayload = 'cpoint:invite:' + INVITE_TOKEN;
+        function copyDeferredInvite() {{
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                return navigator.clipboard.writeText(clipPayload);
+            }}
+            return Promise.reject();
+        }}
+        function copyInviteHttps() {{
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                return navigator.clipboard.writeText(INVITE_HTTPS_URL);
+            }}
+            return Promise.reject();
+        }}
+        var openBtn = document.getElementById('openAppBtn');
+        if (openBtn) {{
+            openBtn.addEventListener('click', function(e) {{
+                copyDeferredInvite().catch(function() {{}});
+                var start = Date.now();
+                var t = setTimeout(function() {{
+                    if (Date.now() - start < 2000) {{
+                        if (confirm('C.Point app not found. Would you like to download it?')) {{
+                            window.location.href = STORE_HREF;
+                        }}
                     }}
-                }}
-            }}, 1500);
-            window.addEventListener('pagehide', function() {{ clearTimeout(0); }});
-        }});
+                }}, 1500);
+                window.addEventListener('pagehide', function() {{ clearTimeout(t); }});
+            }});
+        }}
+        var storeBtn = document.getElementById('storeDownloadBtn');
+        if (storeBtn) {{
+            storeBtn.addEventListener('click', function(e) {{
+                e.preventDefault();
+                var href = storeBtn.getAttribute('href') || STORE_HREF;
+                copyDeferredInvite().then(function() {{
+                    window.location.href = href;
+                }}).catch(function() {{
+                    window.location.href = href;
+                }});
+            }});
+        }}
+        var copyLinkBtn = document.getElementById('copyInviteLinkBtn');
+        if (copyLinkBtn) {{
+            copyLinkBtn.addEventListener('click', function() {{
+                copyInviteHttps().then(function() {{
+                    copyLinkBtn.textContent = 'Copied!';
+                    setTimeout(function() {{ copyLinkBtn.textContent = 'Copy invite link'; }}, 2000);
+                }}).catch(function() {{}});
+            }});
+        }}
+}})();
     </script>
 </body></html>"""
 

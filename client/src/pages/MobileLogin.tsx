@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
 import { triggerDashboardServerPull } from '../utils/serverPull'
+import {
+  markClipboardInviteConsumed,
+  parseInviteTokenFromClipboard,
+} from '../utils/clipboardInvite'
+import { extractInviteToken } from '../utils/internalLinkHandler'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
 
@@ -20,6 +26,7 @@ export default function MobileLogin() {
   const [authCheckDone, setAuthCheckDone] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [showComingSoonGoogle, setShowComingSoonGoogle] = useState(false)
+  const [pasteInviteBusy, setPasteInviteBusy] = useState(false)
   // PWA install state (removed install UI)
 
   // Check invitation token
@@ -446,6 +453,40 @@ export default function MobileLogin() {
         <div className="text-center mt-3">
           <button onClick={() => { setShowForgot(true); setResetSent(false) }} className="text-teal-300 text-sm">Forgot Password?</button>
         </div>
+
+        {Capacitor.getPlatform() !== 'web' && step !== 'password' && !inviteToken && (
+          <div className="text-center mt-2">
+            <button
+              type="button"
+              disabled={pasteInviteBusy}
+              onClick={async () => {
+                setPasteInviteBusy(true)
+                setError(null)
+                try {
+                  const text = await navigator.clipboard.readText()
+                  const raw = text.trim()
+                  let token = parseInviteTokenFromClipboard(raw)
+                  if (!token && (raw.startsWith('http') || raw.startsWith('cpoint://'))) {
+                    token = extractInviteToken(raw)
+                  }
+                  if (!token) {
+                    setError('Clipboard does not contain a C.Point invite. Copy it from your invite message or open the invite link in Safari first.')
+                    return
+                  }
+                  markClipboardInviteConsumed(token)
+                  navigate(`/login?invite=${encodeURIComponent(token)}`, { replace: true })
+                } catch {
+                  setError('Could not read the clipboard. Paste your invite link in Safari, or open the invite page and tap Open in App.')
+                } finally {
+                  setPasteInviteBusy(false)
+                }
+              }}
+              className="text-teal-300/90 text-xs underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              {pasteInviteBusy ? 'Reading…' : 'Use invite from clipboard'}
+            </button>
+          </div>
+        )}
 
         {step !== 'password' && (
           <>

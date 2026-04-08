@@ -6,6 +6,11 @@ import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import type { KeyboardInfo } from '@capacitor/keyboard'
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { extractInviteToken, joinCommunityWithInvite } from './utils/internalLinkHandler'
+import {
+  isClipboardInviteConsumed,
+  markClipboardInviteConsumed,
+  parseInviteTokenFromClipboard,
+} from './utils/clipboardInvite'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ErrorBoundary from './components/ErrorBoundary'
 import MobileLogin from './pages/MobileLogin'
@@ -175,6 +180,8 @@ function AppRoutes(){
   
   // Track processed URLs to prevent infinite loops - use sessionStorage for persistence across page reloads
   const processedUrlsRef = useRef<Set<string>>(new Set())
+  /** One attempt per session to read deferred invite from clipboard (install-then-open flow). */
+  const clipboardInviteAttemptedRef = useRef(false)
   
   // Initialize from sessionStorage on first render
   useEffect(() => {
@@ -218,6 +225,76 @@ function AppRoutes(){
     return false
   }, [])
 
+  const applyInviteTokenFromDeepLink = useCallback(
+    async (inviteToken: string, sourceUrl: string) => {
+      const clipboardDedupeKey = `clipboard:${inviteToken}`
+      if (isUrlProcessed(sourceUrl) || isUrlProcessed(clipboardDedupeKey)) {
+        console.log('🔗 URL already processed (persisted), skipping:', sourceUrl)
+        return
+      }
+
+      console.log('🔗 Invite token found:', inviteToken.slice(0, 12) + '…')
+
+      const currentUrl = window.location.href
+      const currentPath = window.location.pathname
+
+      if (currentUrl.includes(`invite=${inviteToken}`)) {
+        console.log('🔗 Already on login page with this invite token, skipping redirect')
+        markUrlProcessed(sourceUrl)
+        markUrlProcessed(clipboardDedupeKey)
+        return
+      }
+
+      if (currentPath.startsWith('/community_feed_react/')) {
+        console.log('🔗 Already on community feed, marking URL as processed')
+        markUrlProcessed(sourceUrl)
+        markUrlProcessed(clipboardDedupeKey)
+        return
+      }
+
+      markUrlProcessed(sourceUrl)
+      markUrlProcessed(clipboardDedupeKey)
+
+      try {
+        sessionStorage.setItem('cpoint_pending_invite', JSON.stringify({ inviteToken }))
+        console.log('🔗 Stored invite token in sessionStorage')
+      } catch (e) {
+        console.error('🔗 Failed to store invite token:', e)
+      }
+
+      if (profileData) {
+        console.log('🔗 User is authenticated, attempting to join community')
+        try {
+          const result = await joinCommunityWithInvite(inviteToken)
+          console.log('🔗 Join result:', result)
+
+          if (result.success && result.communityId) {
+            if (result.communityName) {
+              setDeepLinkJoin({ name: result.communityName, id: result.communityId })
+              setTimeout(() => {
+                setDeepLinkJoin(null)
+                navigate(`/community_feed_react/${result.communityId}`)
+              }, 2500)
+            } else {
+              navigate(`/community_feed_react/${result.communityId}`)
+            }
+          } else if (result.alreadyMember && result.communityId) {
+            console.log('🔗 Already a member, navigating to community')
+            navigate(`/community_feed_react/${result.communityId}`)
+          } else {
+            console.log('🔗 Join failed but user is logged in:', result.error)
+          }
+        } catch (err) {
+          console.error('🔗 Error processing invite:', err)
+        }
+      } else {
+        console.log('🔗 User not authenticated, redirecting to login with invite token')
+        navigate(`/login?invite=${inviteToken}`)
+      }
+    },
+    [navigate, profileData, isUrlProcessed, markUrlProcessed],
+  )
+
   // Handle deep links (Universal Links) when app is opened from external sources
   // IMPORTANT: Wait for authLoaded before processing to avoid race conditions
   useEffect(() => {
@@ -232,85 +309,10 @@ function AppRoutes(){
 
     const handleDeepLink = async (url: string, source: string) => {
       console.log(`🔗 Deep link received (${source}):`, url)
-      
-      // Prevent processing the same URL multiple times (persisted check)
-      if (isUrlProcessed(url)) {
-        console.log('🔗 URL already processed (persisted), skipping:', url)
-        return
-      }
-      
-      // Check if this is an invite link
+
       const inviteToken = extractInviteToken(url)
       if (inviteToken) {
-        console.log('🔗 Invite token found:', inviteToken)
-        
-        const currentUrl = window.location.href
-        const currentPath = window.location.pathname
-        
-        // Check if we're already on the login page with this invite token
-        if (currentUrl.includes(`invite=${inviteToken}`)) {
-          console.log('🔗 Already on login page with this invite token, skipping redirect')
-          markUrlProcessed(url)
-          return
-        }
-        
-        // Check if we're already on a community feed page (prevent redirect loop)
-        if (currentPath.startsWith('/community_feed_react/')) {
-          console.log('🔗 Already on community feed, marking URL as processed')
-          markUrlProcessed(url)
-          return
-        }
-        
-        // Mark as processed BEFORE any async operations
-        markUrlProcessed(url)
-        
-        // Store invite token immediately so it persists through login flow
-        try {
-          sessionStorage.setItem('cpoint_pending_invite', JSON.stringify({ inviteToken }))
-          console.log('🔗 Stored invite token in sessionStorage')
-        } catch (e) {
-          console.error('🔗 Failed to store invite token:', e)
-        }
-        
-        // If user is already logged in (profileData exists), try to join
-        if (profileData) {
-          console.log('🔗 User is authenticated, attempting to join community')
-          try {
-            const result = await joinCommunityWithInvite(inviteToken)
-            console.log('🔗 Join result:', result)
-            
-            if (result.success && result.communityId) {
-              // Successfully joined - show modal and navigate
-              if (result.communityName) {
-                setDeepLinkJoin({ name: result.communityName, id: result.communityId })
-                // Auto-dismiss and navigate after 2.5 seconds
-                setTimeout(() => {
-                  setDeepLinkJoin(null)
-                  navigate(`/community_feed_react/${result.communityId}`)
-                }, 2500)
-              } else {
-                navigate(`/community_feed_react/${result.communityId}`)
-              }
-            } else if (result.alreadyMember && result.communityId) {
-              // Already a member - just navigate (use navigate instead of window.location.href)
-              console.log('🔗 Already a member, navigating to community')
-              navigate(`/community_feed_react/${result.communityId}`)
-            } else {
-              // Join failed for some reason (but user is logged in)
-              console.log('🔗 Join failed but user is logged in:', result.error)
-              // Don't redirect to login - user is already logged in
-              // The error will be shown in the community if they navigate there
-            }
-          } catch (err) {
-            console.error('🔗 Error processing invite:', err)
-            // Don't redirect to login on error if user is already logged in
-          }
-        } else {
-          console.log('🔗 User not authenticated, redirecting to login with invite token')
-          // User not authenticated - redirect to login with invite token
-          // Use navigate instead of window.location.href to avoid page reload
-          navigate(`/login?invite=${inviteToken}`)
-        }
+        await applyInviteTokenFromDeepLink(inviteToken, url)
       }
     }
 
@@ -333,7 +335,32 @@ function AppRoutes(){
     return () => {
       listenerHandle?.remove()
     }
-  }, [navigate, authLoaded, profileData, isUrlProcessed, markUrlProcessed])
+  }, [authLoaded, applyInviteTokenFromDeepLink])
+
+  // Deferred invite: clipboard payload from invite landing page (install-then-open flow)
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+    if (!authLoaded) return
+    if (clipboardInviteAttemptedRef.current) return
+    clipboardInviteAttemptedRef.current = true
+
+    const search = typeof window !== 'undefined' ? window.location.search : ''
+    if (search.includes('invite=')) {
+      return
+    }
+
+    ;(async () => {
+      try {
+        const text = await navigator.clipboard.readText()
+        const token = parseInviteTokenFromClipboard(text)
+        if (!token || isClipboardInviteConsumed(token)) return
+        await applyInviteTokenFromDeepLink(token, `clipboard:${token}`)
+        markClipboardInviteConsumed(token)
+      } catch {
+        // iOS may block silent clipboard read; MobileLogin offers "Paste invite"
+      }
+    })()
+  }, [authLoaded, applyInviteTokenFromDeepLink])
 
   const resetScrollPosition = useCallback(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
