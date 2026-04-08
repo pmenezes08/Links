@@ -188,6 +188,27 @@ try:
                 created_at TEXT DEFAULT (datetime('now')),
                 FOREIGN KEY (session_id) REFERENCES steve_chat_sessions(id) ON DELETE CASCADE
             )""")
+        if USE_MYSQL:
+            _scc.execute("""CREATE TABLE IF NOT EXISTS steve_recommendation_feedback (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                session_id INT NOT NULL,
+                recommended_username VARCHAR(191) NOT NULL,
+                feedback ENUM('up','down') NOT NULL,
+                created_by VARCHAR(191) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_session_user_by (session_id, recommended_username, created_by),
+                INDEX idx_feedback_user (recommended_username)
+            )""")
+        else:
+            _scc.execute("""CREATE TABLE IF NOT EXISTS steve_recommendation_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                recommended_username TEXT NOT NULL,
+                feedback TEXT NOT NULL CHECK(feedback IN ('up','down')),
+                created_by TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(session_id, recommended_username, created_by)
+            )""")
         _sc.commit()
     print("[STARTUP] Steve chat tables ensured", file=sys.stderr, flush=True)
 except Exception as _se:
@@ -14955,16 +14976,28 @@ def _ensure_embedding_index():
         load_index_from_firestore()
 
 
+def _get_or_build_context(username: str, profile: dict) -> str:
+    """Return cached context string for *username*, building from *profile* on miss."""
+    cache_key = f"steve_ctx:{username}"
+    cached = cache.get(cache_key)
+    if cached is not None and isinstance(cached, str):
+        return cached
+    ctx = _build_context_from_profile(profile, username)
+    if ctx:
+        cache.set(cache_key, ctx, STEVE_CTX_CACHE_TTL)
+    return ctx or ''
+
+
 def _networking_build_members_text(
     member_rows, all_member_usernames, user_subcommunities, recent_posts_map,
     viewer_username, query_text=None, _v=None,
 ):
     """Build the members block for the Grok prompt.
 
-    When the community is large (> NETWORKING_ENRICHMENT_CAP), uses embedding
-    search to select the most relevant subset.  Always enriches only the
-    selected subset with full AI context via batch_get_steve_contexts.
-    Includes recommendation frequency so Grok can balance load.
+    When the community is large (> NETWORKING_ENRICHMENT_CAP), uses chunked
+    embedding search to select the most relevant subset.  Does a SINGLE
+    Firestore batch read and derives context strings, recommendation counts,
+    and feedback scores from the same data.
     """
     from backend.services.embedding_service import search_similar_profiles, profile_index
     from backend.services.firestore_reads import batch_get_steve_user_profiles
@@ -14976,12 +15009,24 @@ def _networking_build_members_text(
         top_usernames = search_similar_profiles(query_text, all_member_usernames, k=NETWORKING_ENRICHMENT_CAP)
         enriched_usernames = set(top_usernames)
 
-    ctx_map = batch_get_steve_contexts(list(enriched_usernames), viewer_username=viewer_username)
-
     profiles_raw = batch_get_steve_user_profiles(list(enriched_usernames))
+
+    ctx_map = {}
     rec_counts = {}
-    for uname, prof in profiles_raw.items():
-        rec_counts[uname] = prof.get('recommendationCount30d', 0) or 0
+    feedback_scores = {}
+    for uname in enriched_usernames:
+        prof = profiles_raw.get(uname)
+        if prof:
+            ctx = _get_or_build_context(uname, prof)
+            if viewer_username and ctx:
+                ctx = _scrub_community_names(ctx, uname, viewer_username)
+            ctx_map[uname] = ctx
+            rec_counts[uname] = prof.get('recommendationCount30d', 0) or 0
+            feedback_scores[uname] = prof.get('feedbackScore', 0) or 0
+        else:
+            ctx_map[uname] = ''
+            rec_counts[uname] = 0
+            feedback_scores[uname] = 0
 
     member_row_map = {}
     for r in member_rows:
@@ -14998,6 +15043,12 @@ def _networking_build_members_text(
         count = rec_counts.get(uname, 0)
         if count > 0:
             line += f" | Recommended {count}x recently"
+        fb = feedback_scores.get(uname, 0)
+        if fb > 0:
+            line += " | Well-rated by previous recommenders"
+        resp_rate = (profiles_raw.get(uname) or {}).get('introductionResponseRate')
+        if resp_rate is not None and resp_rate >= 0.7:
+            line += " | Highly responsive to introductions"
         subcoms = user_subcommunities.get(uname, [])
         if subcoms:
             line += f" | Groups: {', '.join(subcoms)}"
@@ -15112,11 +15163,13 @@ HOW TO MATCH:
 4. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
 5. Never recommend someone with zero connection to the ask. If someone shares an interest in AI but the user asked about Lisbon, that person is not relevant.
 
-LOAD BALANCING — VERY IMPORTANT:
+LOAD BALANCING & QUALITY SIGNALS — VERY IMPORTANT:
 - Some members are tagged "Recommended Nx recently". This means Steve has already recommended them N times in the past 30 days. High-frequency members risk being overloaded with connection requests.
 - If a frequently-recommended member is the ONLY person who can help (uniquely qualified — no one else has similar expertise for this specific request), recommend them anyway. Unique value justifies the load.
 - If there are other members with comparable skills or relevance, prefer those less-recommended alternatives. Spread the load across the community.
-- NEVER mention recommendation counts, load balancing, or frequency to the user. This is internal logic only.
+- Members tagged "Well-rated by previous recommenders" have received positive feedback from past introductions — they are reliable connectors.
+- Members tagged "Highly responsive to introductions" actively engage when introduced — slightly prefer them when choosing between similar candidates.
+- NEVER mention recommendation counts, load balancing, feedback scores, response rates, or frequency to the user. This is internal logic only.
 
 HOW TO RESPOND:
 - For each recommendation, give the person's @username and a brief, natural rationale explaining WHY they're relevant to the request.
@@ -15261,11 +15314,13 @@ HOW TO MATCH:
 3. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
 4. Every recommendation must have a clear rationale — why would these two people benefit from connecting?
 
-LOAD BALANCING — VERY IMPORTANT:
+LOAD BALANCING & QUALITY SIGNALS — VERY IMPORTANT:
 - Some members are tagged "Recommended Nx recently". This means Steve has already recommended them N times in the past 30 days. High-frequency members risk being overloaded with connection requests.
 - If a frequently-recommended member is the ONLY person who can help (uniquely qualified — no one else has similar expertise for this specific request), recommend them anyway. Unique value justifies the load.
 - If there are other members with comparable skills or relevance, prefer those less-recommended alternatives. Spread the load across the community.
-- NEVER mention recommendation counts, load balancing, or frequency to the user. This is internal logic only.
+- Members tagged "Well-rated by previous recommenders" have received positive feedback from past introductions — they are reliable connectors.
+- Members tagged "Highly responsive to introductions" actively engage when introduced — slightly prefer them when choosing between similar candidates.
+- NEVER mention recommendation counts, load balancing, feedback scores, response rates, or frequency to the user. This is internal logic only.
 
 HOW TO RESPOND:
 - For each recommendation, give the person's @username and a brief, natural rationale.
@@ -15334,7 +15389,7 @@ def api_steve_sessions():
 @app.route('/api/networking/steve_session/<int:session_id>/messages', methods=['GET'])
 @login_required
 def api_steve_session_messages(session_id):
-    """Load messages for a specific Steve chat session."""
+    """Load messages and feedback for a specific Steve chat session."""
     username = session.get('username')
     try:
         with get_db_connection() as conn:
@@ -15350,7 +15405,16 @@ def api_steve_session_messages(session_id):
                     messages.append({'role': r['role'], 'text': r['text']})
                 else:
                     messages.append({'role': r[0], 'text': r[1]})
-            return jsonify({'success': True, 'messages': messages})
+            feedback = {}
+            try:
+                c.execute(f"SELECT recommended_username, feedback FROM steve_recommendation_feedback WHERE session_id = {ph} AND created_by = {ph}", (session_id, username))
+                for r in c.fetchall():
+                    ru = r['recommended_username'] if hasattr(r, 'keys') else r[0]
+                    fb = r['feedback'] if hasattr(r, 'keys') else r[1]
+                    feedback[ru] = fb
+            except Exception:
+                pass
+            return jsonify({'success': True, 'messages': messages, 'feedback': feedback})
     except Exception as e:
         logger.error(f"Error loading steve session messages: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Failed to load messages'}), 500
@@ -15422,6 +15486,85 @@ def api_steve_session_delete(session_id):
     except Exception as e:
         logger.error(f"Error deleting steve session: {e}", exc_info=True)
         return jsonify({'success': False, 'error': 'Failed to delete session'}), 500
+
+
+@app.route('/api/networking/steve_feedback', methods=['POST'])
+@login_required
+def api_steve_feedback():
+    """Submit thumbs-up/down feedback on a recommended member.
+
+    Request: {session_id, recommended_username, feedback: 'up'|'down'|null}
+    If feedback is null, removes the existing entry (un-click).
+    """
+    username = session.get('username')
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    rec_username = (data.get('recommended_username') or '').strip()
+    feedback = data.get('feedback')
+    if not session_id or not rec_username:
+        return jsonify({'success': False, 'error': 'session_id and recommended_username required'}), 400
+    if feedback is not None and feedback not in ('up', 'down'):
+        return jsonify({'success': False, 'error': 'feedback must be up, down, or null'}), 400
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT id FROM steve_chat_sessions WHERE id = {ph} AND username = {ph}", (session_id, username))
+            if not c.fetchone():
+                return jsonify({'success': False, 'error': 'Session not found'}), 404
+            if feedback is None:
+                c.execute(f"DELETE FROM steve_recommendation_feedback WHERE session_id = {ph} AND recommended_username = {ph} AND created_by = {ph}", (session_id, rec_username, username))
+            elif USE_MYSQL:
+                c.execute(f"""INSERT INTO steve_recommendation_feedback (session_id, recommended_username, feedback, created_by)
+                    VALUES ({ph}, {ph}, {ph}, {ph})
+                    ON DUPLICATE KEY UPDATE feedback = VALUES(feedback)""",
+                    (session_id, rec_username, feedback, username))
+            else:
+                c.execute(f"""INSERT INTO steve_recommendation_feedback (session_id, recommended_username, feedback, created_by)
+                    VALUES ({ph}, {ph}, {ph}, {ph})
+                    ON CONFLICT(session_id, recommended_username, created_by) DO UPDATE SET feedback = excluded.feedback""",
+                    (session_id, rec_username, feedback, username))
+            conn.commit()
+
+        import threading
+        def _aggregate(target_username):
+            try:
+                _aggregate_feedback_to_firestore(target_username)
+            except Exception as e:
+                logger.debug(f"Feedback aggregation failed for {target_username}: {e}")
+        threading.Thread(target=_aggregate, args=(rec_username,), daemon=True).start()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error saving steve feedback: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Failed to save feedback'}), 500
+
+
+def _aggregate_feedback_to_firestore(target_username: str):
+    """Aggregate all feedback for a user into a net score on Firestore."""
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            ph = get_sql_placeholder()
+            c.execute(f"SELECT feedback, COUNT(*) as cnt FROM steve_recommendation_feedback WHERE recommended_username = {ph} GROUP BY feedback", (target_username,))
+            ups = 0
+            downs = 0
+            for r in c.fetchall():
+                fb = r['feedback'] if hasattr(r, 'keys') else r[0]
+                cnt = r['cnt'] if hasattr(r, 'keys') else r[1]
+                if fb == 'up':
+                    ups = cnt
+                elif fb == 'down':
+                    downs = cnt
+        net_score = ups - downs
+        from backend.services.firestore_writes import _get_client as _get_fs
+        fs = _get_fs()
+        fs.collection('steve_user_profiles').document(target_username).set(
+            {'feedbackScore': net_score, 'feedbackUps': ups, 'feedbackDowns': downs},
+            merge=True
+        )
+    except Exception as e:
+        logger.warning(f"_aggregate_feedback_to_firestore failed for {target_username}: {e}")
 
 
 @app.route('/audio_compat/<path:filename>')
@@ -18621,6 +18764,11 @@ def post_status():
                     schedule_steve_profiling_snapshot_refresh,
                 )
                 schedule_steve_profiling_snapshot_refresh(username)
+            except Exception:
+                pass
+            try:
+                from backend.services.embedding_service import compute_and_store_embeddings_background
+                compute_and_store_embeddings_background(username, chunk_types=['social'])
             except Exception:
                 pass
 
@@ -37799,37 +37947,40 @@ except Exception as e:
 @app.route('/api/admin/embeddings/backfill', methods=['POST'])
 @login_required
 def admin_embeddings_backfill():
-    """Backfill embeddings for all steve_user_profiles that are missing one.
-    Runs in a background thread. Returns immediately with a count of profiles
-    that will be processed."""
+    """Backfill chunked embeddings for profiles missing any chunks.
+    Runs in a background thread."""
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
         from backend.services.firestore_reads import _get_client as _get_fs_client
-        from backend.services.embedding_service import EMBEDDING_DIMS
+        from backend.services.embedding_service import CHUNK_TYPES, EMBEDDING_DIMS
         fs = _get_fs_client()
         to_embed = []
         for doc in fs.collection('steve_user_profiles').stream():
             data = doc.to_dict()
-            emb = data.get('embedding')
-            if not emb or not isinstance(emb, list) or len(emb) != EMBEDDING_DIMS:
+            embs = data.get('embeddings') or {}
+            has_all = all(
+                isinstance(embs.get(ct), list) and len(embs.get(ct, [])) == EMBEDDING_DIMS
+                for ct in CHUNK_TYPES
+            )
+            if not has_all:
                 to_embed.append(doc.id)
 
         if not to_embed:
-            return jsonify({'success': True, 'message': 'All profiles already have embeddings', 'count': 0})
+            return jsonify({'success': True, 'message': 'All profiles already have full chunked embeddings', 'count': 0})
 
         import threading
         def _run_backfill(usernames):
-            from backend.services.embedding_service import compute_and_store_embedding
+            from backend.services.embedding_service import compute_and_store_embeddings
             ok = 0
             for u in usernames:
                 try:
-                    if compute_and_store_embedding(u):
+                    if compute_and_store_embeddings(u):
                         ok += 1
                 except Exception as e:
                     logger.warning(f"Backfill embedding failed for {u}: {e}")
-            logger.info(f"Embedding backfill complete: {ok}/{len(usernames)} succeeded")
+            logger.info(f"Chunked embedding backfill complete: {ok}/{len(usernames)} succeeded")
 
         t = threading.Thread(target=_run_backfill, args=(to_embed,), daemon=True)
         t.start()
@@ -37842,30 +37993,84 @@ def admin_embeddings_backfill():
 @app.route('/api/admin/embeddings/status', methods=['GET'])
 @login_required
 def admin_embeddings_status():
-    """Check how many profiles have embeddings and the FAISS index size."""
+    """Report chunked embedding coverage and FAISS index health."""
     username = session.get('username')
     if not is_app_admin(username):
         return jsonify({'success': False, 'error': 'Unauthorized'}), 403
     try:
-        from backend.services.embedding_service import profile_index
+        from backend.services.embedding_service import profile_index, CHUNK_TYPES, EMBEDDING_DIMS
         from backend.services.firestore_reads import _get_client as _get_fs_client
-        from backend.services.embedding_service import EMBEDDING_DIMS
         fs = _get_fs_client()
         total = 0
-        with_emb = 0
+        with_chunked = 0
+        with_legacy = 0
+        chunk_counts = {ct: 0 for ct in CHUNK_TYPES}
         for doc in fs.collection('steve_user_profiles').stream():
             total += 1
             data = doc.to_dict()
-            emb = data.get('embedding')
-            if emb and isinstance(emb, list) and len(emb) == EMBEDDING_DIMS:
-                with_emb += 1
+            embs = data.get('embeddings') or {}
+            if isinstance(embs, dict) and any(
+                isinstance(embs.get(ct), list) and len(embs.get(ct, [])) == EMBEDDING_DIMS
+                for ct in CHUNK_TYPES
+            ):
+                with_chunked += 1
+                for ct in CHUNK_TYPES:
+                    if isinstance(embs.get(ct), list) and len(embs.get(ct, [])) == EMBEDDING_DIMS:
+                        chunk_counts[ct] += 1
+            elif data.get('embedding') and isinstance(data['embedding'], list) and len(data['embedding']) == EMBEDDING_DIMS:
+                with_legacy += 1
         return jsonify({
             'success': True,
             'total_profiles': total,
-            'with_embedding': with_emb,
-            'missing_embedding': total - with_emb,
-            'faiss_index_size': profile_index.size,
+            'with_chunked_embeddings': with_chunked,
+            'with_legacy_embedding': with_legacy,
+            'missing_any_embedding': total - with_chunked - with_legacy,
+            'chunk_coverage': chunk_counts,
+            'faiss_index_vectors': profile_index.size,
+            'faiss_index_users': profile_index.user_count,
             'faiss_ready': profile_index.is_ready,
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/networking/health', methods=['GET'])
+@login_required
+def admin_networking_health():
+    """Networking health dashboard data: load distribution, feedback, outcomes."""
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        from backend.services.firestore_reads import _get_client as _get_fs_client
+        fs = _get_fs_client()
+        load_distribution = []
+        feedback_summary = {'total_up': 0, 'total_down': 0, 'users_with_feedback': 0}
+        outcome_summary = {'users_with_outcomes': 0, 'avg_response_rate': 0}
+        response_rates = []
+        for doc in fs.collection('steve_user_profiles').stream():
+            data = doc.to_dict()
+            rec_count = data.get('recommendationCount30d', 0) or 0
+            if rec_count > 0:
+                load_distribution.append({'username': doc.id, 'count': rec_count})
+            fb_ups = data.get('feedbackUps', 0) or 0
+            fb_downs = data.get('feedbackDowns', 0) or 0
+            if fb_ups or fb_downs:
+                feedback_summary['total_up'] += fb_ups
+                feedback_summary['total_down'] += fb_downs
+                feedback_summary['users_with_feedback'] += 1
+            rr = data.get('introductionResponseRate')
+            if rr is not None:
+                response_rates.append(rr)
+                outcome_summary['users_with_outcomes'] += 1
+        load_distribution.sort(key=lambda x: -x['count'])
+        if response_rates:
+            outcome_summary['avg_response_rate'] = round(sum(response_rates) / len(response_rates), 2)
+        return jsonify({
+            'success': True,
+            'load_distribution': load_distribution[:50],
+            'feedback_summary': feedback_summary,
+            'outcome_summary': outcome_summary,
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -37946,6 +38151,99 @@ def admin_steve_profiles_refresh_stale():
     except Exception as e:
         logger.error(f"Stale refresh error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/networking/compute_outcomes', methods=['POST'])
+@login_required
+def admin_compute_networking_outcomes():
+    """Correlate Steve recommendations with DM history to compute response rates.
+
+    For each user who has been recommended, checks whether the requester
+    opened a DM within 7 days and whether the recommended person replied.
+    Writes introductionResponseRate to Firestore.
+    """
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    try:
+        import threading
+        def _run():
+            try:
+                _compute_all_outcome_rates()
+            except Exception as e:
+                logger.error(f"Outcome computation failed: {e}", exc_info=True)
+        threading.Thread(target=_run, daemon=True).start()
+        return jsonify({'success': True, 'message': 'Outcome computation started in background'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _compute_all_outcome_rates():
+    """Scan recommendation logs and correlate with DM data to compute response rates."""
+    from backend.services.firestore_reads import _get_client as _get_fs_client
+    from backend.services.firestore_writes import _get_client as _get_fs_write_client
+    from datetime import timedelta
+
+    fs_r = _get_fs_client()
+    fs_w = _get_fs_write_client()
+
+    user_recs = {}
+    for doc in fs_r.collection('steve_user_profiles').stream():
+        data = doc.to_dict()
+        recs = data.get('recentRecommendations', [])
+        if recs:
+            user_recs[doc.id] = recs
+
+    if not user_recs:
+        logger.info("No recommendation data to compute outcomes for")
+        return
+
+    try:
+        with get_db_connection() as conn:
+            c = conn.cursor()
+            stats = {}
+            for rec_username, recs in user_recs.items():
+                intros_received = 0
+                intros_replied = 0
+                for rec in recs:
+                    requester = rec.get('by', '')
+                    rec_date = rec.get('date')
+                    if not requester or not rec_date:
+                        continue
+                    window_end = rec_date + timedelta(days=7)
+                    ph = get_sql_placeholder()
+                    c.execute(f"""
+                        SELECT COUNT(*) FROM messages
+                        WHERE sender = {ph} AND receiver = {ph}
+                        AND timestamp > {ph} AND timestamp < {ph}
+                    """, (requester, rec_username, str(rec_date)[:19], str(window_end)[:19]))
+                    row = c.fetchone()
+                    dm_count = row[0] if row and not hasattr(row, 'keys') else (row.get('COUNT(*)', 0) if row else 0)
+                    if dm_count > 0:
+                        intros_received += 1
+                        c.execute(f"""
+                            SELECT COUNT(*) FROM messages
+                            WHERE sender = {ph} AND receiver = {ph}
+                            AND timestamp > {ph} AND timestamp < {ph}
+                        """, (rec_username, requester, str(rec_date)[:19], str(window_end)[:19]))
+                        reply_row = c.fetchone()
+                        reply_count = reply_row[0] if reply_row and not hasattr(reply_row, 'keys') else (reply_row.get('COUNT(*)', 0) if reply_row else 0)
+                        if reply_count > 0:
+                            intros_replied += 1
+
+                if intros_received > 0:
+                    rate = round(intros_replied / intros_received, 2)
+                    stats[rec_username] = {
+                        'introductionResponseRate': rate,
+                        'introductionsReceived': intros_received,
+                        'introductionsReplied': intros_replied,
+                    }
+
+            for uname, data in stats.items():
+                fs_w.collection('steve_user_profiles').document(uname).set(data, merge=True)
+            logger.info(f"Outcome rates computed for {len(stats)} users")
+    except Exception as e:
+        logger.error(f"_compute_all_outcome_rates error: {e}", exc_info=True)
 
 
 if __name__ == '__main__':

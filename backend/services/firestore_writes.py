@@ -395,6 +395,7 @@ def record_steve_recommendations(
     Stores a rolling list of recent recommendations capped at 50 entries.
     Each entry: {by, communityId, context (first 120 chars), date}.
     Also maintains a fast-read counter ``recommendationCount30d``.
+    Uses a Firestore batch for atomic writes.
     """
     if not USE_FIRESTORE_WRITES or not recommended_usernames:
         return
@@ -402,12 +403,12 @@ def record_steve_recommendations(
         fs = _get_client()
         now = datetime.utcnow()
         cutoff_30d = now - timedelta(days=30)
+        refs = [fs.collection('steve_user_profiles').document(u) for u in recommended_usernames]
+        docs = {doc.id: doc.to_dict() or {} for doc in fs.get_all(refs) if doc.exists}
+
+        batch = fs.batch()
         for uname in recommended_usernames:
-            doc_ref = fs.collection('steve_user_profiles').document(uname)
-            doc = doc_ref.get()
-            existing = []
-            if doc.exists:
-                existing = (doc.to_dict() or {}).get('recentRecommendations', [])
+            existing = docs.get(uname, {}).get('recentRecommendations', [])
             fresh = [r for r in existing if r.get('date') and r['date'] > cutoff_30d]
             fresh.append({
                 'by': requested_by,
@@ -416,24 +417,30 @@ def record_steve_recommendations(
                 'date': now,
             })
             fresh = fresh[-50:]
-            doc_ref.set({
+            ref = fs.collection('steve_user_profiles').document(uname)
+            batch.set(ref, {
                 'recentRecommendations': fresh,
                 'recommendationCount30d': len(fresh),
             }, merge=True)
+        batch.commit()
         logger.debug(f"Recorded {len(recommended_usernames)} recommendation(s) by {requested_by}")
     except Exception as e:
         logger.warning(f"record_steve_recommendations failed (non-fatal): {e}")
 
 
-def _invalidate_and_reembed(username: str):
-    """Invalidate cached context and recompute embedding in background."""
+def _invalidate_and_reembed(username: str, chunk_types: list = None):
+    """Invalidate cached context and recompute chunked embeddings in background.
+
+    If *chunk_types* is provided, only those chunks are recomputed (e.g.
+    ['social'] after a new post).  Otherwise all chunks are rebuilt.
+    """
     try:
         from bodybuilding_app import invalidate_steve_context_cache
         invalidate_steve_context_cache(username)
     except Exception:
         pass
     try:
-        from backend.services.embedding_service import compute_and_store_embedding_background
-        compute_and_store_embedding_background(username)
+        from backend.services.embedding_service import compute_and_store_embeddings_background
+        compute_and_store_embeddings_background(username, chunk_types=chunk_types)
     except Exception as e:
         logger.debug(f"Background embedding trigger skipped for {username}: {e}")

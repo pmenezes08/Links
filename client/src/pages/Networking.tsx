@@ -59,6 +59,7 @@ export default function Networking() {
   const [showSessionList, setShowSessionList] = useState(false)
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null)
+  const [steveFeedback, setSteveFeedback] = useState<Record<string, 'up' | 'down'>>({})
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressActiveRef = useRef(false)
 
@@ -241,6 +242,7 @@ export default function Networking() {
         if (data.success) {
           setSteveSessionId(data.session_id)
           setSteveMessages([])
+          setSteveFeedback({})
           setShowSessionList(false)
           loadSessions(steveCommunity)
         }
@@ -253,7 +255,12 @@ export default function Networking() {
     setShowSessionList(false)
     fetch(`/api/networking/steve_session/${sessionId}/messages`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
       .then(r => r.json())
-      .then(d => { if (d.success) setSteveMessages(d.messages || []) })
+      .then(d => {
+        if (d.success) {
+          setSteveMessages(d.messages || [])
+          setSteveFeedback(d.feedback || {})
+        }
+      })
       .catch(() => {})
   }, [])
 
@@ -316,6 +323,27 @@ export default function Networking() {
   const handleMentionClick = useCallback((username: string) => {
     navigate(`/profile/${username}`)
   }, [navigate])
+
+  const extractMentions = useCallback((text: string): string[] => {
+    const matches = text.match(/@([a-zA-Z0-9_]+)/g)
+    return matches ? [...new Set(matches.map(m => m.slice(1)))] : []
+  }, [])
+
+  const submitFeedback = useCallback((recUsername: string, feedback: 'up' | 'down') => {
+    if (!steveSessionId) return
+    const current = steveFeedback[recUsername]
+    const newFeedback = current === feedback ? null : feedback
+    setSteveFeedback(prev => {
+      const next = { ...prev }
+      if (newFeedback) next[recUsername] = newFeedback
+      else delete next[recUsername]
+      return next
+    })
+    fetch('/api/networking/steve_feedback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ session_id: steveSessionId, recommended_username: recUsername, feedback: newFeedback })
+    }).catch(() => {})
+  }, [steveSessionId, steveFeedback])
 
   const deleteSession = useCallback((sessionId: number) => {
     if (!steveCommunity) return
@@ -486,7 +514,7 @@ export default function Networking() {
               {/* Community selector */}
               <select
                 value={steveCommunity || ''}
-                onChange={e => { setSteveCommunity(Number(e.target.value)); setSteveMessages([]); setSteveSessionId(null); setShowSessionList(false) }}
+                onChange={e => { setSteveCommunity(Number(e.target.value)); setSteveMessages([]); setSteveSessionId(null); setShowSessionList(false); setSteveFeedback({}) }}
                 className="w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-xs text-white focus:outline-none focus:border-[#4db6ac]"
               >
                 {communities.map(c => <option key={c.id} value={c.id} className="bg-black">{c.name}</option>)}
@@ -570,19 +598,43 @@ export default function Networking() {
                     </div>
                   </div>
                 ) : (
-                  steveMessages.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
-                        msg.role === 'user'
-                          ? 'bg-white/10 text-white rounded-br-md'
-                          : 'bg-transparent text-[#c8d6db] rounded-bl-md'
-                      }`}>
-                        {msg.role === 'steve' ? (
-                          <div className="whitespace-pre-wrap">{renderTextWithSourceLinks(msg.text, false, handleMentionClick)}</div>
-                        ) : msg.text}
+                  steveMessages.map((msg, i) => {
+                    const mentions = msg.role === 'steve' ? extractMentions(msg.text) : []
+                    return (
+                      <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed ${
+                          msg.role === 'user'
+                            ? 'bg-white/10 text-white rounded-br-md'
+                            : 'bg-transparent text-[#c8d6db] rounded-bl-md'
+                        }`}>
+                          {msg.role === 'steve' ? (
+                            <>
+                              <div className="whitespace-pre-wrap">{renderTextWithSourceLinks(msg.text, false, handleMentionClick)}</div>
+                              {mentions.length > 0 && (
+                                <div className="mt-2 pt-1.5 border-t border-white/[0.06] flex flex-wrap gap-x-3 gap-y-1">
+                                  {mentions.map(u => (
+                                    <span key={u} className="inline-flex items-center gap-1 text-[11px] text-white/40">
+                                      <span className="text-white/25">@{u}</span>
+                                      <button
+                                        onClick={() => submitFeedback(u, 'up')}
+                                        className={`p-0.5 rounded transition ${steveFeedback[u] === 'up' ? 'text-[#4db6ac]' : 'text-white/20 hover:text-white/50'}`}
+                                        title="Good recommendation"
+                                      ><i className="fa-solid fa-thumbs-up text-[10px]" /></button>
+                                      <button
+                                        onClick={() => submitFeedback(u, 'down')}
+                                        className={`p-0.5 rounded transition ${steveFeedback[u] === 'down' ? 'text-red-400/80' : 'text-white/20 hover:text-white/50'}`}
+                                        title="Not relevant"
+                                      ><i className="fa-solid fa-thumbs-down text-[10px]" /></button>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          ) : msg.text}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
                 {(steveSending || autoMatching) && (
                   <div className="flex justify-start">
