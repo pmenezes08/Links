@@ -34,6 +34,22 @@ const NATIVE_KEYBOARD_MIN_HEIGHT = 60
 const KEYBOARD_OFFSET_EPSILON = 6
 const VISUAL_VIEWPORT_KEYBOARD_THRESHOLD = 48
 
+/** Steve empty-thread welcome (variant A) — community name + active member count from networking API */
+function SteveWelcomeCopy({ communityName, activeMemberCount }: { communityName: string; activeMemberCount: number }) {
+  return (
+    <div className="space-y-3 text-[13px] leading-relaxed text-[#c8d6db]">
+      <p>
+        {communityName} has {activeMemberCount} active member{activeMemberCount !== 1 ? 's' : ''}—and your next breakthrough might be one conversation away.
+      </p>
+      <p>
+        <span className="font-semibold text-white/95">How can I help today—what are you looking for?</span>
+        {' '}
+        A venture partner, investment conversations, clients, a mentor, hiring, industry peers, or local connections while traveling.
+      </p>
+    </div>
+  )
+}
+
 export default function Networking() {
   const { setTitle } = useHeader()
   const navigate = useNavigate()
@@ -60,6 +76,8 @@ export default function Networking() {
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [deletingSessionId, setDeletingSessionId] = useState<number | null>(null)
   const [steveFeedback, setSteveFeedback] = useState<Record<string, 'up' | 'down'>>({})
+  const [steveMemberCount, setSteveMemberCount] = useState<number | null>(null)
+  const [steveMembersLoading, setSteveMembersLoading] = useState(false)
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressActiveRef = useRef(false)
 
@@ -231,6 +249,23 @@ export default function Networking() {
     if (steveCommunity) loadSessions(steveCommunity)
   }, [steveCommunity, loadSessions])
 
+  useEffect(() => {
+    if (!steveCommunity) return
+    let cancelled = false
+    setSteveMembersLoading(true)
+    setSteveMemberCount(null)
+    fetch(`/api/networking/community_members/${steveCommunity}`, { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return
+        if (data.success) setSteveMemberCount((data.members || []).length)
+        else setSteveMemberCount(0)
+      })
+      .catch(() => { if (!cancelled) setSteveMemberCount(0) })
+      .finally(() => { if (!cancelled) setSteveMembersLoading(false) })
+    return () => { cancelled = true }
+  }, [steveCommunity])
+
   const startNewChat = useCallback(() => {
     if (!steveCommunity) return
     fetch('/api/networking/steve_session', {
@@ -271,7 +306,7 @@ export default function Networking() {
     }).catch(() => {})
   }, [])
 
-  useEffect(() => { steveEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [steveMessages])
+  useEffect(() => { steveEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [steveMessages, steveMemberCount, steveMembersLoading])
 
   // Personal: load filters + members
   useEffect(() => {
@@ -588,15 +623,20 @@ export default function Networking() {
               {/* Chat area */}
               <div className="rounded-xl border border-white/10 bg-black/50 p-3 min-h-[280px] max-h-[50vh] overflow-y-auto space-y-3">
                 {steveMessages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 space-y-4 text-center">
-                    <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center">
-                      <i className="fa-solid fa-wand-magic-sparkles text-xl text-[#4db6ac]/50" />
+                  (sessionsLoading || steveMembersLoading || steveMemberCount === null) ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <p className="text-sm text-[#9fb0b5]">Loading…</p>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-[#9fb0b5]">What's on your mind?</p>
-                      <p className="text-[11px] text-[#6f7c81]">e.g. "I want to meet people who work in tech" or "Find members from Lisbon"</p>
+                  ) : (
+                    <div className="flex justify-start">
+                      <div className="max-w-[85%] rounded-2xl rounded-bl-md px-3.5 py-2 text-[13px] leading-relaxed bg-transparent text-[#c8d6db]">
+                        <SteveWelcomeCopy
+                          communityName={communities.find(c => c.id === steveCommunity)?.name ?? 'This community'}
+                          activeMemberCount={steveMemberCount}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )
                 ) : (
                   steveMessages.map((msg, i) => {
                     const mentions = msg.role === 'steve' ? extractMentions(msg.text) : []
