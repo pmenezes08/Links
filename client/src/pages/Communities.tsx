@@ -37,18 +37,24 @@ const COMMUNITIES_GUIDE_STEPS = [
     title: 'Sub-communities',
     description: 'Smaller sections inside your network, organized by topic, location, or purpose.',
     icon: 'fa-solid fa-diagram-project',
+    tab: 'management' as const,
   },
   {
     title: 'Home Timeline',
     description: 'The main feed for this community, showing the activity that happened in the last 48h.',
     icon: 'fa-solid fa-house',
+    tab: 'timeline' as const,
   },
   {
     title: 'Groups',
     description: 'Focused spaces for smaller discussions, coordination, and shared interests.',
     icon: 'fa-solid fa-users',
+    tab: 'groups' as const,
   },
 ] as const
+
+/** New key so users who completed the old full-screen intro still see this spotlight tour once. */
+const COMMUNITIES_SPOTLIGHT_TOUR_PREFIX = 'communities_spotlight_tour_v1:'
 
 function collectDescendantIds(nodes?: Community[]): number[] {
   if (!nodes) return []
@@ -266,7 +272,7 @@ export default function Communities(){
   const [groupsModalCommunityId, setGroupsModalCommunityId] = useState<number|null>(null)
   const openGroups = (cid: number) => { setGroupsModalCommunityId(cid); setShowGroupsModal(true) }
   const communitiesGuideKey = useMemo(
-    () => (_data?.username ? `communities_intro_seen:${_data.username}` : null),
+    () => (_data?.username ? `${COMMUNITIES_SPOTLIGHT_TOUR_PREFIX}${_data.username}` : null),
     [_data?.username],
   )
   const showTrainingTab = useMemo(() => {
@@ -386,20 +392,17 @@ export default function Communities(){
   }, [])
 
   useEffect(() => {
-    setCommunitiesGuideDismissed(false)
-    setCommunitiesGuideStep(null)
-  }, [communitiesGuideKey])
-
-  useEffect(() => {
-    if (loading || error || communitiesGuideDismissed || !communitiesGuideKey) return
+    if (loading || error || !communitiesGuideKey) return
     try {
       if (window.localStorage.getItem(communitiesGuideKey) === '1') {
         setCommunitiesGuideDismissed(true)
+        setCommunitiesGuideStep(null)
         return
       }
     } catch {}
-    setCommunitiesGuideStep(0)
-  }, [loading, error, communitiesGuideDismissed, communitiesGuideKey])
+    setCommunitiesGuideDismissed(false)
+    setCommunitiesGuideStep(prev => (prev === null ? 0 : prev))
+  }, [loading, error, communitiesGuideKey])
 
   const dismissCommunitiesGuide = useCallback(() => {
     if (communitiesGuideKey) {
@@ -408,6 +411,58 @@ export default function Communities(){
     setCommunitiesGuideDismissed(true)
     setCommunitiesGuideStep(null)
   }, [communitiesGuideKey])
+
+  const loadGroupsTabData = useCallback(() => {
+    setMyGroupsLoading(true)
+    fetch('/api/groups/my', { credentials: 'include', headers: { 'Accept': 'application/json' } })
+      .then(r => r.json())
+      .then(j => {
+        if (j?.success) {
+          setJoinedGroups(j.joined || [])
+          setAvailableGroups(j.available || [])
+          setGroupCommunities(j.communities || [])
+          const parentIdParam = new URLSearchParams(location.search).get('parent_id')
+          if (parentIdParam) {
+            const parentIdNum = parseInt(parentIdParam)
+            const communities = j.communities || []
+            const matchingCommunity = communities.find((c: { id: number; parent_community_id?: number | null }) =>
+              c.id === parentIdNum || c.parent_community_id === parentIdNum
+            )
+            if (matchingCommunity) {
+              setJoinedFilter(String(matchingCommunity.id))
+              setAvailableFilter(String(matchingCommunity.id))
+            } else {
+              const directMatch = communities.find((c: { id: number }) => c.id === parentIdNum)
+              if (directMatch) {
+                setJoinedFilter(String(parentIdNum))
+                setAvailableFilter(String(parentIdNum))
+              }
+            }
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setMyGroupsLoading(false))
+  }, [location.search])
+
+  useEffect(() => {
+    if (communitiesGuideStep === null) return
+    const step = COMMUNITIES_GUIDE_STEPS[communitiesGuideStep]
+    if (!step) return
+    setActiveTab(step.tab)
+    if (step.tab === 'timeline') {
+      const pidLocal = new URLSearchParams(location.search).get('parent_id')
+      if (pidLocal) {
+        requestAnimationFrame(() => {
+          const el = document.getElementById('parent-timeline')
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        })
+      }
+    }
+    if (step.tab === 'groups') {
+      loadGroupsTabData()
+    }
+  }, [communitiesGuideStep, location.search, loadGroupsTabData])
 
   useEffect(() => {
     // Skip network fetches when offline — rely on cached data
@@ -530,13 +585,15 @@ export default function Communities(){
     else setTitle('Community Management')
   }, [setTitle, parentName])
 
+  const guideHighlightTab = communitiesGuideStep !== null ? COMMUNITIES_GUIDE_STEPS[communitiesGuideStep]?.tab : null
+
   return (
     <div className="min-h-screen bg-black text-white relative pb-safe">
       {/* Global header used from App */}
 
       {/* Secondary nav like X - fixed below global header */}
       <div 
-        className="fixed left-0 right-0 h-12 bg-black/95 backdrop-blur z-40 border-b border-white/5" 
+        className={`fixed left-0 right-0 h-12 bg-black/95 backdrop-blur border-b border-white/5 ${communitiesGuideStep !== null ? 'z-[100]' : 'z-40'}`}
         style={{
           top: 'var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px)))',
           '--app-subnav-height': '48px',
@@ -546,7 +603,10 @@ export default function Communities(){
           <button
             type="button"
             className="mr-2 p-2 rounded-full hover:bg-white/5"
-            onClick={()=> navigate('/premium_dashboard')}
+            onClick={()=> {
+              if (communitiesGuideStep !== null) return
+              navigate('/premium_dashboard')
+            }}
             aria-label="Back"
           >
             <i className="fa-solid fa-arrow-left" />
@@ -554,16 +614,20 @@ export default function Communities(){
           <div className="flex-1 flex items-center justify-center gap-8 overflow-x-auto no-scrollbar" style={{ WebkitOverflowScrolling: 'touch' as any }}>
             <button 
               type="button" 
-              className={`text-sm font-medium ${activeTab==='management' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
-              onClick={()=> setActiveTab('management')}
+              className={`text-sm font-medium transition-opacity ${activeTab==='management' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'} ${communitiesGuideStep !== null && guideHighlightTab === 'management' ? 'ring-2 ring-[#4db6ac] ring-offset-2 ring-offset-black/95 rounded-lg px-1 -mx-0.5' : ''} ${communitiesGuideStep !== null && guideHighlightTab !== 'management' ? 'opacity-45' : ''}`}
+              onClick={()=> {
+                if (communitiesGuideStep !== null) return
+                setActiveTab('management')
+              }}
             >
               <div className="pt-2 whitespace-nowrap text-center">Sub-communities</div>
               <div className={`h-0.5 ${activeTab==='management' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
             </button>
             <button 
               type="button" 
-              className={`text-sm font-medium ${activeTab==='timeline' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`} 
+              className={`text-sm font-medium transition-opacity ${activeTab==='timeline' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'} ${communitiesGuideStep !== null && guideHighlightTab === 'timeline' ? 'ring-2 ring-[#4db6ac] ring-offset-2 ring-offset-black/95 rounded-lg px-1 -mx-0.5' : ''} ${communitiesGuideStep !== null && guideHighlightTab !== 'timeline' ? 'opacity-45' : ''}`}
               onClick={()=> {
+                if (communitiesGuideStep !== null) return
                 const pidLocal = new URLSearchParams(location.search).get('parent_id')
                 if (!pidLocal) { navigate('/home'); return }
                 setActiveTab('timeline')
@@ -576,42 +640,11 @@ export default function Communities(){
             </button>
             <button 
               type="button" 
-              className={`text-sm font-medium ${activeTab==='groups' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
+              className={`text-sm font-medium transition-opacity ${activeTab==='groups' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'} ${communitiesGuideStep !== null && guideHighlightTab === 'groups' ? 'ring-2 ring-[#4db6ac] ring-offset-2 ring-offset-black/95 rounded-lg px-1 -mx-0.5' : ''} ${communitiesGuideStep !== null && guideHighlightTab !== 'groups' ? 'opacity-45' : ''}`}
               onClick={()=> {
+                if (communitiesGuideStep !== null) return
                 setActiveTab('groups')
-                setMyGroupsLoading(true)
-                fetch('/api/groups/my', { credentials: 'include', headers: { 'Accept': 'application/json' } })
-                  .then(r => r.json())
-                  .then(j => {
-                    if (j?.success) {
-                      setJoinedGroups(j.joined || [])
-                      setAvailableGroups(j.available || [])
-                      setGroupCommunities(j.communities || [])
-                      // Auto-select filter based on parent_id from URL
-                      const parentIdParam = new URLSearchParams(location.search).get('parent_id')
-                      if (parentIdParam) {
-                        const parentIdNum = parseInt(parentIdParam)
-                        const communities = j.communities || []
-                        // Find the parent or first matching community
-                        const matchingCommunity = communities.find((c: { id: number; parent_community_id?: number | null }) => 
-                          c.id === parentIdNum || c.parent_community_id === parentIdNum
-                        )
-                        if (matchingCommunity) {
-                          setJoinedFilter(String(matchingCommunity.id))
-                          setAvailableFilter(String(matchingCommunity.id))
-                        } else {
-                          // If parent_id itself is a valid community
-                          const directMatch = communities.find((c: { id: number }) => c.id === parentIdNum)
-                          if (directMatch) {
-                            setJoinedFilter(String(parentIdNum))
-                            setAvailableFilter(String(parentIdNum))
-                          }
-                        }
-                      }
-                    }
-                  })
-                  .catch(() => {})
-                  .finally(() => setMyGroupsLoading(false))
+                loadGroupsTabData()
               }}
             >
               <div className="pt-2 whitespace-nowrap text-center">Groups</div>
@@ -620,8 +653,11 @@ export default function Communities(){
             {showTrainingTab && (
               <button 
                 type="button" 
-                className={`text-sm font-medium ${activeTab==='training' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'}`}
-                onClick={()=> setActiveTab('training')}
+                className={`text-sm font-medium transition-opacity ${activeTab==='training' ? 'text-white/95' : 'text-[#9fb0b5] hover:text-white/90'} ${communitiesGuideStep !== null ? 'opacity-45' : ''}`}
+                onClick={()=> {
+                  if (communitiesGuideStep !== null) return
+                  setActiveTab('training')
+                }}
               >
                 <div className="pt-2 whitespace-nowrap text-center">Your Training</div>
                 <div className={`h-0.5 ${activeTab==='training' ? 'bg-[#4db6ac]' : 'bg-transparent'} rounded-full w-16 mx-auto mt-1`} />
@@ -637,48 +673,64 @@ export default function Communities(){
         communityId={groupsModalCommunityId}
       />
       {communitiesGuideStep !== null && (
-        <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center px-4" onClick={dismissCommunitiesGuide}>
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="px-6 pt-6 pb-4 flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-2xl bg-[#4db6ac]/10 border border-[#4db6ac]/20 flex items-center justify-center mb-4">
-                <i className={`${COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].icon} text-2xl text-[#4db6ac]`} />
+        <>
+          <div
+            className="fixed left-0 right-0 bottom-0 z-[75] bg-black/55 pointer-events-auto"
+            style={{
+              top: 'calc(var(--app-header-height, calc(56px + env(safe-area-inset-top, 0px))) + 48px)',
+            } as CSSProperties}
+            aria-hidden
+          />
+          <div
+            className="fixed left-0 right-0 z-[110] px-3 pointer-events-none max-w-2xl mx-auto"
+            style={{
+              bottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))',
+            } as CSSProperties}
+          >
+            <div className="pointer-events-auto rounded-2xl border border-white/10 bg-[#111] shadow-2xl px-4 pt-4 pb-4">
+              <div className="flex gap-3">
+                <div className="w-11 h-11 shrink-0 rounded-xl bg-[#4db6ac]/10 border border-[#4db6ac]/20 flex items-center justify-center">
+                  <i className={`${COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].icon} text-lg text-[#4db6ac]`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-white mb-1">{COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].title}</div>
+                  <div className="text-xs text-white/60 leading-relaxed">{COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].description}</div>
+                </div>
               </div>
-              <div className="text-base font-semibold text-white mb-1.5">{COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].title}</div>
-              <div className="text-sm text-white/60 leading-relaxed">{COMMUNITIES_GUIDE_STEPS[communitiesGuideStep].description}</div>
-            </div>
-            <div className="flex justify-center gap-1.5 pb-3">
-              {COMMUNITIES_GUIDE_STEPS.map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-1.5 h-1.5 rounded-full transition-colors ${i === communitiesGuideStep ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
-                />
-              ))}
-            </div>
-            <div className="px-6 pb-5 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => {
-                  if (communitiesGuideStep > 0) setCommunitiesGuideStep(communitiesGuideStep - 1)
-                  else dismissCommunitiesGuide()
-                }}
-                className="px-4 py-2 rounded-lg text-xs font-medium text-white/50 hover:text-white/80 transition-colors"
-              >
-                {communitiesGuideStep > 0 ? 'Back' : 'Skip'}
-              </button>
-              <div className="text-[10px] text-white/30">{communitiesGuideStep + 1} of {COMMUNITIES_GUIDE_STEPS.length}</div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1) setCommunitiesGuideStep(communitiesGuideStep + 1)
-                  else dismissCommunitiesGuide()
-                }}
-                className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-xs font-semibold hover:brightness-110 transition"
-              >
-                {communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1 ? 'Next' : 'Got it'}
-              </button>
+              <div className="flex justify-center gap-1.5 mt-3">
+                {COMMUNITIES_GUIDE_STEPS.map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-1.5 h-1.5 rounded-full transition-colors ${i === communitiesGuideStep ? 'bg-[#4db6ac]' : 'bg-white/20'}`}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (communitiesGuideStep > 0) setCommunitiesGuideStep(communitiesGuideStep - 1)
+                    else dismissCommunitiesGuide()
+                  }}
+                  className="px-3 py-2 rounded-lg text-xs font-medium text-white/50 hover:text-white/80 transition-colors"
+                >
+                  {communitiesGuideStep > 0 ? 'Back' : 'Skip'}
+                </button>
+                <div className="text-[10px] text-white/30">{communitiesGuideStep + 1} of {COMMUNITIES_GUIDE_STEPS.length}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1) setCommunitiesGuideStep(communitiesGuideStep + 1)
+                    else dismissCommunitiesGuide()
+                  }}
+                  className="px-4 py-2 rounded-lg bg-[#4db6ac] text-black text-xs font-semibold hover:brightness-110 transition"
+                >
+                  {communitiesGuideStep < COMMUNITIES_GUIDE_STEPS.length - 1 ? 'Next' : 'Got it'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Slide-out menu (90% width) same as feed */}
