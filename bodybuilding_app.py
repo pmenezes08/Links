@@ -18768,7 +18768,7 @@ def post_status():
                 pass
             try:
                 from backend.services.embedding_service import compute_and_store_embeddings_background
-                compute_and_store_embeddings_background(username, chunk_types=['social'])
+                compute_and_store_embeddings_background(username)
             except Exception:
                 pass
 
