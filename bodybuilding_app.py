@@ -1510,7 +1510,7 @@ TYPING_TTL_SECONDS = 5
 # Using 4.20 multi-agent only for complex networking/community analysis to control costs
 GROK_MODEL_FAST = "grok-4-1-fast-non-reasoning"          # Default for most interactions
 GROK_MODEL_REASONING = "grok-4-1-fast-reasoning"         # For group chat reasoning
-GROK_MODEL_MULTI_AGENT = "grok-4.20-multi-agent-0309"    # Only for networking/community analysis
+GROK_MODEL_MULTI_AGENT = "grok-4.20-multi-agent-0309"    # Only for profile analysis (web_search tool use)
 
 
 
@@ -15126,9 +15126,9 @@ RULES:
                     grok_input.append({"role": role, "content": content})
         grok_input.append({"role": "user", "content": f"(Background context about me — use only if relevant to my request):\n{enriched_user_profile}\n\nMy request: {message}\n\nCommunity members:\n{members_text}"})
         response = client.responses.create(
-            model=GROK_MODEL_MULTI_AGENT,
+            model=GROK_MODEL_FAST,
             input=grok_input,
-            tools=[{"type": "web_search"}, {"type": "x_search"}],
+            tools=[{"type": "web_search"}],
             max_output_tokens=800, temperature=0.5
         )
         ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
@@ -15229,7 +15229,7 @@ def api_networking_steve_auto_match():
         from openai import OpenAI
         client = OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
         response = client.responses.create(
-            model=GROK_MODEL_MULTI_AGENT,
+            model=GROK_MODEL_FAST,
             input=[
                 {"role": "system", "content": f"""You are Steve, a friendly and helpful networking assistant inside a private professional network. You speak like a knowledgeable friend — warm, concise, and natural. Never sound like a database or a computer.
 
@@ -15255,7 +15255,6 @@ RULES:
 - Be concise and friendly."""},
                 {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
             ],
-            tools=[{"type": "web_search"}, {"type": "x_search"}],
             max_output_tokens=800, temperature=0.5
         )
         ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
