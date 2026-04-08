@@ -8220,31 +8220,57 @@ MULTILINGUAL RESEARCH STRATEGY (CRITICAL):
 - When you find non-English content, translate and summarize the key professional and personal insights in English
 - Native language content often reveals more authentic personal interests, cultural context, local professional activities, family mentions, and unfiltered opinions that don't appear in English sources
 
-PHASE 2 — PROFESSIONAL BACKGROUND RESEARCH (only after identity is confirmed):
+PHASE 2 — BROAD DISCOVERY SWEEP (only after identity is confirmed):
 
-PRIORITY ORDER:
-1. CURRENT ROLE (highest weight): Focus FIRST on their most recent/current professional experience. This is the primary signal for who they are today.
-2. FULL CAREER HISTORY (REQUIRED): You MUST enumerate ALL professional experiences found, not just the current one. Every role that lasted 1+ years MUST appear as a separate entry in the careerHistory array. Do NOT summarize multiple roles into a single sentence — list each separately.
-3. EXPERTISE ACCUMULATION: Note how past experiences contribute to their current expertise and potential connection points.
+Do an initial broad search to map out ALL facets of this person's life and career.
+From your initial search results, identify every distinct THREAD — a thread is any domain,
+career, hobby, skill, or life chapter you encounter. Examples of threads:
+- A past career ("former professional pilot")
+- A sport or hobby ("competitive glider", "marathon runner")
+- An industry or expertise ("real estate investing", "AI startups")
+- A life chapter ("military service", "lived in Singapore for 5 years")
 
-SPECIFIC INSTRUCTIONS:
-- Start with current role/company — understand what they do now, seniority, and impact.
-- Then deliberately and exhaustively look for EVERY past role: previous companies, titles, and approximate tenure.
-- The careerHistory array should be ordered from most recent to oldest.
-- Include the current role as the FIRST entry in careerHistory (with period ending in "present").
-- Include ALL types of professional experience: corporate roles, military/national service, consulting, entrepreneurship, non-profit work, board positions, advisory roles, academic positions, etc.
-- If LinkedIn shows 5 past roles, careerHistory should have at least 5 entries. Do not skip or collapse roles.
-- Pay special attention to substantial past experiences (e.g. "7 years at Deloitte" in consulting is highly relevant for networking).
-- Recent experience (last 5-7 years) gets more weight, but older roles still MUST be captured.
-- For each careerHistory entry, the "highlight" should note why it matters: expertise gained, industry knowledge, leadership experience, or potential connection points.
+PHASE 2b — FOLLOW EVERY THREAD (CRITICAL — do NOT skip this):
 
-WHAT TO LOOK FOR:
-- "X years at [Company]" patterns on LinkedIn, About pages, bios
-- Previous titles and promotions showing career progression
-- Career transitions between industries or functions (e.g. consulting → tech → startup)
-- Military service, national service, or government roles (common in Israel, South Korea, Singapore, etc.)
-- Internships or early career roles ONLY if they lasted 1+ years or are at notable organizations
-- Board memberships, advisory roles, or side ventures
+For EACH thread you discovered, run a DEDICATED follow-up search to get full detail.
+This is the difference between a shallow profile and a rich one.
+
+Example: if your broad search found "former professional pilot" mentioned in a bio:
+- Search "[Name] pilot airline" → find the airline, role, dates
+- Search "[Name] aviation" → find licenses, aircraft types, flight hours
+- Search "[Name] glider" or "[Name] flying" → find related activities
+
+Example: if you found "marathon runner":
+- Search "[Name] marathon results" → find specific races, times, cities
+- Search "[Name] running" → find clubs, Strava, ultra events
+
+DO THIS FOR EVERY THREAD. Do not stop at the first mention. Chase it down.
+Each thread should yield enough detail for a careerHistory entry (if professional)
+or a rich interest entry (if personal/hobby).
+
+PHASE 2c — STRUCTURE EVERYTHING YOU FOUND:
+
+CAREER HISTORY RULES (ABSOLUTE):
+- ANY mention of a past profession or role — even a one-liner like "former pilot" — MUST
+  become a careerHistory entry. If details are incomplete, use "Unknown" for missing fields.
+  Example: {{"role": "Professional Pilot", "company": "Unknown", "period": "Unknown", "highlight": "Mentioned as former professional pilot prior to current career"}}
+- The careerHistory array MUST be ordered from most recent to oldest.
+- Include the current role as the FIRST entry (with period ending in "present").
+- Include ALL types: corporate, military, consulting, entrepreneurship, non-profit, board positions, aviation, sports careers, academic positions, government, etc.
+- If LinkedIn shows 5 past roles, careerHistory should have at least 5 entries.
+- For each entry, the "highlight" should note why it matters for networking.
+
+WHAT COUNTS AS A CAREER ENTRY:
+- Any paid professional role (even if brief or unconventional)
+- Military or national service
+- Professional sports or competition careers (e.g. professional racing driver, professional pilot)
+- Board memberships, advisory roles, side ventures
+- Significant volunteer leadership roles
+
+IDENTITY ROLES RULE:
+- identity.roles MUST include every distinct profession found — past AND present.
+  If someone was a pilot, is now an investor, and races cars: ["Investor", "Former Professional Pilot", "Racing Driver", "EMBA Student"]
+  Do NOT curate or limit to 3. Include them all.
 
 - Apply the multilingual research strategy above — don't limit yourself to English sources only.
 - Only use publicly available information.
@@ -8259,16 +8285,17 @@ IDENTITY CONFIDENCE RULES (STRICT):
         deep_rules = ""
         if depth == 'deep':
             deep_rules = f"""
-PHASE 3 — PERSONAL & SOCIAL MEDIA (today is {today_str}, only after Phase 1 identity is confirmed):
-- You now know this person's full identity. Use it to search precisely:
-  Search "[FullName] [Company] Instagram", "[FullName] [City] marathon", "[FullName] blog" etc.
-- Apply the MULTILINGUAL RESEARCH STRATEGY from Phase 2 — look for content in both English AND the user's native language
+PHASE 3 — PERSONAL & SOCIAL DEEP DIVE (today is {today_str}, only after Phase 1 identity is confirmed):
+- You now know this person's full identity AND you've already discovered their key threads from Phase 2.
+- For each personal/hobby thread discovered, run DEDICATED follow-up searches:
+  Found "glider pilot"? → Search "[Name] gliding results", "[Name] weglide", "[Name] soaring"
+  Found "marathon runner"? → Search "[Name] marathon [City]", "[Name] running results"
+  Found "art collector"? → Search "[Name] art collection", "[Name] gallery"
+- Check Instagram, Facebook, TikTok, X/Twitter, personal blogs, Medium, Substack, YouTube
+- Apply the MULTILINGUAL RESEARCH STRATEGY — look for content in both English AND the user's native language
 - The 10% of information in native languages is often the most authentic and revealing
 - Hebrew/Israeli users often have rich personal content in Hebrew on Facebook, Instagram, and local Israeli platforms
-- Check Instagram, Facebook, TikTok, X/Twitter, personal blogs, Medium, Substack, YouTube, AND native language equivalents
-- Look for hobbies, interests, sports, family mentions, personal projects, creative work in ANY language
 - Native language personal content frequently reveals more authentic interests, cultural context, family life, local social circles, and unfiltered opinions that don't appear in English sources
-- Look for public posts, articles, videos, or statements they have made.
 - Note the DATE of every finding. Content from the last 6 months is highly relevant. >2 years old may be outdated.
 - Look for PATTERNS that connect their personal and professional worlds.
   A marathon runner who works in health-tech. A parent who founded an ed-tech startup.
