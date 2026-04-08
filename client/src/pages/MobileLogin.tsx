@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { triggerDashboardServerPull } from '../utils/serverPull'
 import {
+  isClipboardInviteConsumed,
   markClipboardInviteConsumed,
   parseInviteTokenFromClipboard,
 } from '../utils/clipboardInvite'
 import { extractInviteToken } from '../utils/internalLinkHandler'
 
 const PENDING_INVITE_KEY = 'cpoint_pending_invite'
+const INVITE_MODAL_DECLINED_KEY = 'cpoint_invite_modal_declined_token'
 
 export default function MobileLogin() {
   const navigate = useNavigate()
@@ -26,7 +28,11 @@ export default function MobileLogin() {
   const [authCheckDone, setAuthCheckDone] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [showComingSoonGoogle, setShowComingSoonGoogle] = useState(false)
-  const [pasteInviteBusy, setPasteInviteBusy] = useState(false)
+  const [clipboardInviteModal, setClipboardInviteModal] = useState<{
+    token: string
+    communityName: string
+  } | null>(null)
+  const clipboardInviteProbeRef = useRef(false)
   // PWA install state (removed install UI)
 
   // Check invitation token
@@ -61,6 +67,46 @@ export default function MobileLogin() {
       })
       .catch(err => console.error('Error verifying invitation:', err))
   }, [inviteToken])
+
+  useEffect(() => {
+    if (inviteToken) setClipboardInviteModal(null)
+  }, [inviteToken])
+
+  // Native: detect invite in clipboard (install-then-open flow) and offer simple Yes/No modal
+  useEffect(() => {
+    if (Capacitor.getPlatform() === 'web') return
+    if (inviteToken) return
+    if (step === 'password') return
+    if (!authCheckDone) return
+    if (clipboardInviteProbeRef.current) return
+    clipboardInviteProbeRef.current = true
+
+    ;(async () => {
+      try {
+        const text = await navigator.clipboard.readText()
+        const raw = text.trim()
+        let token = parseInviteTokenFromClipboard(raw)
+        if (!token && (raw.startsWith('http') || raw.startsWith('cpoint://'))) {
+          token = extractInviteToken(raw)
+        }
+        if (!token) return
+        if (isClipboardInviteConsumed(token)) return
+        try {
+          if (sessionStorage.getItem(INVITE_MODAL_DECLINED_KEY) === token) return
+        } catch {}
+
+        const r = await fetch(`/api/invitation/verify?token=${encodeURIComponent(token)}`, {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        })
+        const j = await r.json()
+        if (!j?.success || !j.community_name) return
+        setClipboardInviteModal({ token, communityName: j.community_name })
+      } catch {
+        // Silent read often fails on iOS; user can still open the invite link
+      }
+    })()
+  }, [authCheckDone, inviteToken, step])
 
   // If already authenticated, auto-join community if invited
   useEffect(() => {
@@ -454,40 +500,6 @@ export default function MobileLogin() {
           <button onClick={() => { setShowForgot(true); setResetSent(false) }} className="text-teal-300 text-sm">Forgot Password?</button>
         </div>
 
-        {Capacitor.getPlatform() !== 'web' && step !== 'password' && !inviteToken && (
-          <div className="text-center mt-2">
-            <button
-              type="button"
-              disabled={pasteInviteBusy}
-              onClick={async () => {
-                setPasteInviteBusy(true)
-                setError(null)
-                try {
-                  const text = await navigator.clipboard.readText()
-                  const raw = text.trim()
-                  let token = parseInviteTokenFromClipboard(raw)
-                  if (!token && (raw.startsWith('http') || raw.startsWith('cpoint://'))) {
-                    token = extractInviteToken(raw)
-                  }
-                  if (!token) {
-                    setError('Clipboard does not contain a C.Point invite. Copy it from your invite message or open the invite link in Safari first.')
-                    return
-                  }
-                  markClipboardInviteConsumed(token)
-                  navigate(`/login?invite=${encodeURIComponent(token)}`, { replace: true })
-                } catch {
-                  setError('Could not read the clipboard. Paste your invite link in Safari, or open the invite page and tap Open in App.')
-                } finally {
-                  setPasteInviteBusy(false)
-                }
-              }}
-              className="text-teal-300/90 text-xs underline-offset-2 hover:underline disabled:opacity-50"
-            >
-              {pasteInviteBusy ? 'Reading…' : 'Use invite from clipboard'}
-            </button>
-          </div>
-        )}
-
         {step !== 'password' && (
           <>
             <div className="flex items-center gap-3 my-4 text-white/40 text-[12px]">
@@ -572,6 +584,48 @@ export default function MobileLogin() {
 
         {/* Install app UI removed */}
       </div>
+
+      {clipboardInviteModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-5">
+          <div
+            className="w-full max-w-sm bg-[#1a1a1a] border border-[#333] rounded-2xl p-6 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invite-modal-title"
+          >
+            <p id="invite-modal-title" className="text-white text-base leading-relaxed">
+              You&apos;re invited to <span className="text-[#4db6ac] font-semibold">{clipboardInviteModal.communityName}</span>.
+            </p>
+            <p className="text-white/90 text-base mt-4">Sign in with this invite?</p>
+            <div className="flex gap-3 mt-6">
+              <button
+                type="button"
+                className="flex-1 rounded-lg border border-white/15 bg-white/5 py-3 text-sm font-medium text-white active:opacity-90"
+                onClick={() => {
+                  try {
+                    sessionStorage.setItem(INVITE_MODAL_DECLINED_KEY, clipboardInviteModal.token)
+                  } catch {}
+                  setClipboardInviteModal(null)
+                }}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-lg bg-teal-400 text-black py-3 text-sm font-semibold active:opacity-90"
+                onClick={() => {
+                  const t = clipboardInviteModal.token
+                  markClipboardInviteConsumed(t)
+                  setClipboardInviteModal(null)
+                  navigate(`/login?invite=${encodeURIComponent(t)}`, { replace: true })
+                }}
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForgot && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
