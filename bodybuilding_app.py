@@ -14964,8 +14964,10 @@ def _networking_build_members_text(
     When the community is large (> NETWORKING_ENRICHMENT_CAP), uses embedding
     search to select the most relevant subset.  Always enriches only the
     selected subset with full AI context via batch_get_steve_contexts.
+    Includes recommendation frequency so Grok can balance load.
     """
     from backend.services.embedding_service import search_similar_profiles, profile_index
+    from backend.services.firestore_reads import batch_get_steve_user_profiles
 
     _ensure_embedding_index()
 
@@ -14975,6 +14977,11 @@ def _networking_build_members_text(
         enriched_usernames = set(top_usernames)
 
     ctx_map = batch_get_steve_contexts(list(enriched_usernames), viewer_username=viewer_username)
+
+    profiles_raw = batch_get_steve_user_profiles(list(enriched_usernames))
+    rec_counts = {}
+    for uname, prof in profiles_raw.items():
+        rec_counts[uname] = prof.get('recommendationCount30d', 0) or 0
 
     member_row_map = {}
     for r in member_rows:
@@ -14988,6 +14995,9 @@ def _networking_build_members_text(
         if not r:
             continue
         line = f"- {uname} | {_v(r,1)} | City: {_v(r,3) or '?'} | Country: {_v(r,4) or '?'} | Industry: {_v(r,5) or '?'} | Role: {_v(r,6) or '?'} | Company: {_v(r,7) or '?'}"
+        count = rec_counts.get(uname, 0)
+        if count > 0:
+            line += f" | Recommended {count}x recently"
         subcoms = user_subcommunities.get(uname, [])
         if subcoms:
             line += f" | Groups: {', '.join(subcoms)}"
@@ -15102,9 +15112,16 @@ HOW TO MATCH:
 4. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
 5. Never recommend someone with zero connection to the ask. If someone shares an interest in AI but the user asked about Lisbon, that person is not relevant.
 
+LOAD BALANCING — VERY IMPORTANT:
+- Some members are tagged "Recommended Nx recently". This means Steve has already recommended them N times in the past 30 days. High-frequency members risk being overloaded with connection requests.
+- If a frequently-recommended member is the ONLY person who can help (uniquely qualified — no one else has similar expertise for this specific request), recommend them anyway. Unique value justifies the load.
+- If there are other members with comparable skills or relevance, prefer those less-recommended alternatives. Spread the load across the community.
+- NEVER mention recommendation counts, load balancing, or frequency to the user. This is internal logic only.
+
 HOW TO RESPOND:
 - For each recommendation, give the person's @username and a brief, natural rationale explaining WHY they're relevant to the request.
 - If someone is a strong match, say so confidently. If someone is a potential match based on background clues (e.g., a Portuguese name when looking for Lisbon connections), explain the reasoning naturally — don't label it as "inference" or use technical language.
+- When you recommend someone who is less obvious (e.g., you chose them over a more well-known member to distribute load), give a slightly richer rationale so the user understands their value. For example, mention a specific experience, shared interest, or recent activity that makes them a great fit.
 - Quality over quantity. Recommend 1-5 people. If only 1 person is relevant, recommend just that 1.
 - If nobody has any connection to the request, say so briefly and offer to help with a different angle.
 
@@ -15112,7 +15129,7 @@ RULES:
 - Only reference members from the provided list.
 - Always use @username format.
 - Speak naturally and conversationally — like a helpful friend, not a search engine.
-- NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "City: Lisbon", "AI insight", "profile data", "structured data", or "no members list X as their location". Just speak naturally about what you know.
+- NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "City: Lisbon", "AI insight", "profile data", "structured data", "recommendation count", or "no members list X as their location". Just speak naturally about what you know.
 - C-POINT COMMUNITY PRIVACY: Only mention someone's membership in an on-platform (C-Point) community if both they and the requester share that community. The roster "Groups:" field lists sub-communities within THIS session's community tree only; do not name or infer other C-Point communities the requester does not share. External / off-platform affiliations may be mentioned when helpful and clearly grounded in the provided context.
 - NEVER say "I won't recommend" or explain what you're choosing not to do. Focus on what you CAN offer.
 - This is a multi-turn conversation. Pay close attention to what was discussed previously. If the user asks a follow-up (e.g., "suggest a message to send him", "tell me more about her"), refer back to the person or topic from the prior exchange. Do NOT start a new unrelated recommendation unless the user explicitly asks for something different.
@@ -15133,6 +15150,8 @@ RULES:
         )
         ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
         if not ai_response: ai_response = "I couldn't find matching members. Try refining your request."
+        recommended = _extract_recommended_usernames(ai_response, member_names)
+        _record_recommendations_background(recommended, username, community_id, context=message)
         ai_response = inject_member_mentions(ai_response, member_names)
         return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
     except Exception as e:
@@ -15242,15 +15261,22 @@ HOW TO MATCH:
 3. Use everything you know about each member — their background, company, role, location, interests, what they've posted, and any deeper context provided. The richer profile data is your best source of truth.
 4. Every recommendation must have a clear rationale — why would these two people benefit from connecting?
 
+LOAD BALANCING — VERY IMPORTANT:
+- Some members are tagged "Recommended Nx recently". This means Steve has already recommended them N times in the past 30 days. High-frequency members risk being overloaded with connection requests.
+- If a frequently-recommended member is the ONLY person who can help (uniquely qualified — no one else has similar expertise for this specific request), recommend them anyway. Unique value justifies the load.
+- If there are other members with comparable skills or relevance, prefer those less-recommended alternatives. Spread the load across the community.
+- NEVER mention recommendation counts, load balancing, or frequency to the user. This is internal logic only.
+
 HOW TO RESPOND:
 - For each recommendation, give the person's @username and a brief, natural rationale.
+- When you recommend someone who is less obvious (e.g., you chose them over a more well-known member to distribute load), give a slightly richer rationale so the user understands their value — mention a specific experience, project, or shared interest.
 - Quality over quantity. Recommend 3-5 of the strongest matches.
 - Speak naturally and conversationally — like a helpful friend, not a search engine.
 
 RULES:
 - Only reference members from the provided list.
 - Always use @username format.
-- NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "AI insight", "profile data", "structured data", or similar. Just speak naturally about what you know.
+- NEVER reference internal data, field names, system terminology, or analysis methods. Don't say things like "AI insight", "profile data", "structured data", "recommendation count", or similar. Just speak naturally about what you know.
 - C-POINT COMMUNITY PRIVACY: Only mention someone's membership in an on-platform (C-Point) community if both they and the requester share that community. The roster "Groups:" field lists sub-communities within THIS session's community tree only; do not name or infer other C-Point communities the requester does not share. External / off-platform affiliations may be mentioned when helpful and clearly grounded in the provided context.
 - Be concise and friendly."""},
                 {"role": "user", "content": f"My profile:\n{enriched_user_profile}\n\nCommunity members:\n{members_text}\n\nPlease suggest my best networking matches."}
@@ -15259,6 +15285,8 @@ RULES:
         )
         ai_response = (response.output_text or '').strip() if hasattr(response, 'output_text') else ''
         if not ai_response: ai_response = "I couldn't generate matches. Please try again."
+        recommended = _extract_recommended_usernames(ai_response, member_names)
+        _record_recommendations_background(recommended, username, community_id, context='auto_match')
         ai_response = inject_member_mentions(ai_response, member_names)
         return jsonify({'success': True, 'response': format_steve_response_links(ai_response)})
     except Exception as e:
@@ -24471,6 +24499,34 @@ You CAN be helpful, but wrapped in so much verbal abuse they'll question asking 
 Keep it short, keep it BRUTAL, and make them regret tagging you. 💀🔥'''
     }
 }
+
+def _extract_recommended_usernames(text: str, member_names: list) -> list:
+    """Extract the list of @usernames that Steve actually recommended in his response."""
+    import re
+    if not text or not member_names:
+        return []
+    valid = {u.lower(): u for u, _d in member_names}
+    found = set()
+    for m in re.finditer(r'@(\w+)', text):
+        uname = m.group(1)
+        if uname.lower() in valid:
+            found.add(valid[uname.lower()])
+    return list(found)
+
+
+def _record_recommendations_background(recommended: list, requested_by: str, community_id, context: str = ''):
+    """Fire-and-forget: record recommendation events to Firestore."""
+    if not recommended:
+        return
+    import threading
+    def _bg():
+        try:
+            from backend.services.firestore_writes import record_steve_recommendations
+            record_steve_recommendations(recommended, requested_by, community_id, context)
+        except Exception as e:
+            logger.debug(f"Background recommendation recording failed: {e}")
+    threading.Thread(target=_bg, daemon=True).start()
+
 
 def inject_member_mentions(text: str, member_names: list) -> str:
     """Replace **username** or **display_name** bold markers with @username mentions.

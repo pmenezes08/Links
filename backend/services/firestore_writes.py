@@ -8,7 +8,7 @@ still intact and a warning is logged. The app never breaks.
 
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -382,6 +382,47 @@ def write_steve_user_profile(
         _invalidate_and_reembed(username)
     except Exception as e:
         logger.warning(f"Firestore steve profile write failed (non-fatal): {e}")
+
+
+def record_steve_recommendations(
+    recommended_usernames: list,
+    requested_by: str,
+    community_id,
+    context: str = '',
+):
+    """Append recommendation events to each recommended user's steve_user_profiles.
+
+    Stores a rolling list of recent recommendations capped at 50 entries.
+    Each entry: {by, communityId, context (first 120 chars), date}.
+    Also maintains a fast-read counter ``recommendationCount30d``.
+    """
+    if not USE_FIRESTORE_WRITES or not recommended_usernames:
+        return
+    try:
+        fs = _get_client()
+        now = datetime.utcnow()
+        cutoff_30d = now - timedelta(days=30)
+        for uname in recommended_usernames:
+            doc_ref = fs.collection('steve_user_profiles').document(uname)
+            doc = doc_ref.get()
+            existing = []
+            if doc.exists:
+                existing = (doc.to_dict() or {}).get('recentRecommendations', [])
+            fresh = [r for r in existing if r.get('date') and r['date'] > cutoff_30d]
+            fresh.append({
+                'by': requested_by,
+                'communityId': community_id,
+                'context': (context or '')[:120],
+                'date': now,
+            })
+            fresh = fresh[-50:]
+            doc_ref.set({
+                'recentRecommendations': fresh,
+                'recommendationCount30d': len(fresh),
+            }, merge=True)
+        logger.debug(f"Recorded {len(recommended_usernames)} recommendation(s) by {requested_by}")
+    except Exception as e:
+        logger.warning(f"record_steve_recommendations failed (non-fatal): {e}")
 
 
 def _invalidate_and_reembed(username: str):
