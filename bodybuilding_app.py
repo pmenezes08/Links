@@ -8268,9 +8268,22 @@ WHAT COUNTS AS A CAREER ENTRY:
 - Significant volunteer leadership roles
 
 IDENTITY ROLES RULE:
-- identity.roles MUST include every distinct profession found — past AND present.
-  If someone was a pilot, is now an investor, and races cars: ["Investor", "Former Professional Pilot", "Racing Driver", "EMBA Student"]
+- identity.roles MUST include every distinct profession, hobby, or life role found — past AND present.
+  If someone was a pilot, is now an investor, races cars, and does competitive gliding:
+  ["Investor", "Former Professional Pilot", "Racing Driver", "Competitive Glider Pilot", "EMBA Student"]
   Do NOT curate or limit to 3. Include them all.
+
+INTERESTS STRUCTURING RULE (EQUALLY IMPORTANT AS CAREER HISTORY):
+- ANY discovered hobby, sport, personal activity, or life interest MUST get an interests entry.
+- The "source" field MUST contain the SPECIFIC DETAIL from your follow-up search — not a vague attribution.
+  GOOD: "Gliding": {"score": 0.9, "source": "Active competitive glider on weglide.org. 630km flight from Serres La Bâtie at 104km/h. 2025 European championship participant.", "type": "personal"}
+  BAD:  "Gliding": {"score": 0.8, "source": "mentioned in social media", "type": "personal"}
+  GOOD: "Marathon running": {"score": 0.85, "source": "Completed Berlin Marathon 2024 in 3:42, NYC Marathon 2023. Active Strava profile with 2000+ km/year.", "type": "personal"}
+  BAD:  "Marathon running": {"score": 0.7, "source": "mentioned in bio", "type": "personal"}
+- The source field is WHERE THE VALUE IS. It powers downstream matching — "I want to meet someone
+  who runs marathons" should match against "Berlin Marathon 2024 in 3:42", not "mentioned in bio".
+- This applies to everything: book clubs, climbing, photography, wine, cooking, volunteering,
+  parenting groups, religious activities, music — if you found it, chase the thread and capture the detail.
 
 - Apply the multilingual research strategy above — don't limit yourself to English sources only.
 - Only use publicly available information.
