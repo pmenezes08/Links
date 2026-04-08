@@ -8276,10 +8276,10 @@ IDENTITY ROLES RULE:
 INTERESTS STRUCTURING RULE (EQUALLY IMPORTANT AS CAREER HISTORY):
 - ANY discovered hobby, sport, personal activity, or life interest MUST get an interests entry.
 - The "source" field MUST contain the SPECIFIC DETAIL from your follow-up search — not a vague attribution.
-  GOOD: "Gliding": {"score": 0.9, "source": "Active competitive glider on weglide.org. 630km flight from Serres La Bâtie at 104km/h. 2025 European championship participant.", "type": "personal"}
-  BAD:  "Gliding": {"score": 0.8, "source": "mentioned in social media", "type": "personal"}
-  GOOD: "Marathon running": {"score": 0.85, "source": "Completed Berlin Marathon 2024 in 3:42, NYC Marathon 2023. Active Strava profile with 2000+ km/year.", "type": "personal"}
-  BAD:  "Marathon running": {"score": 0.7, "source": "mentioned in bio", "type": "personal"}
+  GOOD: "Gliding": {{"score": 0.9, "source": "Active competitive glider on weglide.org. 630km flight from Serres La Bâtie at 104km/h. 2025 European championship participant.", "type": "personal"}}
+  BAD:  "Gliding": {{"score": 0.8, "source": "mentioned in social media", "type": "personal"}}
+  GOOD: "Marathon running": {{"score": 0.85, "source": "Completed Berlin Marathon 2024 in 3:42, NYC Marathon 2023. Active Strava profile with 2000+ km/year.", "type": "personal"}}
+  BAD:  "Marathon running": {{"score": 0.7, "source": "mentioned in bio", "type": "personal"}}
 - The source field is WHERE THE VALUE IS. It powers downstream matching — "I want to meet someone
   who runs marathons" should match against "Berlin Marathon 2024 in 3:42", not "mentioned in bio".
 - This applies to everything: book clubs, climbing, photography, wine, cooking, volunteering,
