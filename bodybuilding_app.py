@@ -7930,34 +7930,11 @@ def _collapse_career_history_near_duplicates(entries: list) -> list:
 
 
 def _merge_career_history_lists(new_hist: list, old_hist: list) -> list:
-    """Merge careerHistory: light key dedup, prefer non-guessed tenure, collapse same-employer near-dupes."""
-    new_order_keys = []
-    new_by_key = {}
-    for e in new_hist or []:
-        if not isinstance(e, dict):
-            continue
-        k = _normalize_career_history_key(e.get('company', ''), e.get('role', ''))
-        if k not in new_by_key:
-            new_by_key[k] = e
-            new_order_keys.append(k)
-        else:
-            a, b = new_by_key[k], e
-            if _career_preference_score(b) > _career_preference_score(a):
-                new_by_key[k] = b
-            elif _career_preference_score(a) == _career_preference_score(b):
-                if _career_entry_has_guessed_tenure(a) and not _career_entry_has_guessed_tenure(b):
-                    new_by_key[k] = b
-    merged_keys = set(new_order_keys)
-    result = [new_by_key[k] for k in new_order_keys if k in new_by_key]
-    for e in old_hist or []:
-        if not isinstance(e, dict):
-            continue
-        k = _normalize_career_history_key(e.get('company', ''), e.get('role', ''))
-        if k in merged_keys:
-            continue
-        merged_keys.add(k)
-        result.append(e)
-    return _collapse_career_history_near_duplicates(result)
+    """Latest careerHistory wins when non-empty; fall back to old only if new is empty."""
+    new_valid = [e for e in (new_hist or []) if isinstance(e, dict)]
+    if new_valid:
+        return new_valid
+    return [e for e in (old_hist or []) if isinstance(e, dict)]
 
 
 def _merge_analyses(existing: dict, new: dict) -> dict:
