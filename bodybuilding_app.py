@@ -24474,7 +24474,11 @@ Keep it short, keep it BRUTAL, and make them regret tagging you. 💀🔥'''
 }
 
 def inject_member_mentions(text: str, member_names: list) -> str:
-    """Replace **username** or **display_name** bold markers with @username mentions."""
+    """Replace **username** or **display_name** bold markers with @username mentions.
+
+    Handles patterns Grok commonly produces:
+        **@jh1987**  |  **Jonas**  |  **@jh1987 (Jonas)**  |  **Jonas (jh1987)**
+    """
     import re
     if not text or not member_names:
         return text
@@ -24484,12 +24488,20 @@ def inject_member_mentions(text: str, member_names: list) -> str:
         if dname and dname.lower() != uname.lower():
             name_to_username[dname.lower()] = uname
     def _replace_bold(match):
-        name = match.group(1).strip()
-        if name.startswith('@'):
-            name = name[1:]
+        raw = match.group(1).strip()
+        name = raw.lstrip('@')
         lower = name.lower()
         if lower in name_to_username:
             return f"@{name_to_username[lower]}"
+        # Handle "@username (DisplayName)" or "DisplayName (username)"
+        paren_match = re.match(r'^(.+?)\s*\(([^)]+)\)$', name)
+        if paren_match:
+            part1 = paren_match.group(1).strip().lstrip('@')
+            part2 = paren_match.group(2).strip().lstrip('@')
+            if part1.lower() in name_to_username:
+                return f"@{name_to_username[part1.lower()]}"
+            if part2.lower() in name_to_username:
+                return f"@{name_to_username[part2.lower()]}"
         return match.group(0)
     return re.sub(r'\*\*([^*]+)\*\*', _replace_bold, text)
 
@@ -37801,6 +37813,83 @@ def admin_embeddings_status():
             'faiss_ready': profile_index.is_ready,
         })
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+STALE_PROFILE_DAYS = int(os.environ.get('STALE_PROFILE_DAYS', '30'))
+STALE_PROFILE_BATCH = int(os.environ.get('STALE_PROFILE_BATCH', '5'))
+
+
+@app.route('/api/admin/steve_profiles/refresh_stale', methods=['POST'])
+@login_required
+def admin_steve_profiles_refresh_stale():
+    """Re-analyze the N most stale Steve profiles in the background.
+
+    Intended to be called daily by Cloud Scheduler or from the admin dashboard.
+    Configurable via env: STALE_PROFILE_DAYS (default 30), STALE_PROFILE_BATCH (default 5).
+    """
+    username = session.get('username')
+    if not is_app_admin(username):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+
+    data = request.get_json(silent=True) or {}
+    max_age_days = int(data.get('max_age_days', STALE_PROFILE_DAYS))
+    batch_size = min(int(data.get('batch_size', STALE_PROFILE_BATCH)), 20)
+
+    try:
+        from backend.services.firestore_reads import _get_client as _get_fs_client
+        from datetime import timedelta
+        fs = _get_fs_client()
+        cutoff = datetime.utcnow() - timedelta(days=max_age_days)
+
+        stale = []
+        for doc in fs.collection('steve_user_profiles').stream():
+            d = doc.to_dict()
+            last = d.get('lastUpdated')
+            if last is None:
+                stale.append((doc.id, None))
+                continue
+            if isinstance(last, str):
+                try:
+                    last = datetime.fromisoformat(last.replace('Z', '+00:00').replace('+00:00', ''))
+                except Exception:
+                    stale.append((doc.id, None))
+                    continue
+            if last < cutoff:
+                stale.append((doc.id, last))
+
+        stale.sort(key=lambda x: x[1] or datetime.min)
+        to_refresh = [u for u, _ in stale[:batch_size]]
+
+        if not to_refresh:
+            return jsonify({'success': True, 'message': f'No profiles older than {max_age_days} days', 'count': 0})
+
+        import threading
+        def _run_refresh(usernames):
+            ok = 0
+            for u in usernames:
+                try:
+                    success, _, _ = _execute_steve_profile_analysis(u, depth='standard', reset=False)
+                    if success:
+                        ok += 1
+                        try:
+                            invalidate_steve_context_cache(u)
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logger.warning(f"Stale refresh failed for {u}: {e}")
+            logger.info(f"Stale profile refresh complete: {ok}/{len(usernames)} succeeded")
+
+        t = threading.Thread(target=_run_refresh, args=(to_refresh,), daemon=True)
+        t.start()
+        return jsonify({
+            'success': True,
+            'message': f'Refreshing {len(to_refresh)} stale profiles (>{max_age_days} days old)',
+            'count': len(to_refresh),
+            'usernames': to_refresh,
+        })
+    except Exception as e:
+        logger.error(f"Stale refresh error: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

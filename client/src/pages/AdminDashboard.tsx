@@ -2083,6 +2083,52 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              {/* Infrastructure operations */}
+              <div className="mb-4 p-4 bg-white/[0.03] border border-white/10 rounded-xl space-y-3">
+                <div className="text-xs font-semibold text-white/50 uppercase tracking-wide">Infrastructure</div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        const r = await fetch('/api/admin/embeddings/backfill', { method: 'POST', credentials: 'include' })
+                        const d = await r.json()
+                        alert(d.message || JSON.stringify(d))
+                      } catch { alert('Request failed') }
+                    }}
+                    className="px-3 py-1.5 bg-purple-500/20 border border-purple-500/30 hover:bg-purple-500/30 rounded-lg text-xs flex items-center gap-1.5 text-purple-300"
+                  >
+                    <i className="fa-solid fa-vector-square" />
+                    Backfill Embeddings
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const r = await fetch('/api/admin/embeddings/status', { credentials: 'include' })
+                        const d = await r.json()
+                        alert(`Profiles: ${d.total_profiles}\nWith embedding: ${d.with_embedding}\nMissing: ${d.missing_embedding}\nFAISS index: ${d.faiss_index_size} vectors (ready: ${d.faiss_ready})`)
+                      } catch { alert('Request failed') }
+                    }}
+                    className="px-3 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-xs flex items-center gap-1.5 text-white/60"
+                  >
+                    <i className="fa-solid fa-chart-bar" />
+                    Embedding Status
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const r = await fetch('/api/admin/steve_profiles/refresh_stale', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ max_age_days: 30, batch_size: 5 }) })
+                        const d = await r.json()
+                        alert(d.message || JSON.stringify(d))
+                      } catch { alert('Request failed') }
+                    }}
+                    className="px-3 py-1.5 bg-amber-500/20 border border-amber-500/30 hover:bg-amber-500/30 rounded-lg text-xs flex items-center gap-1.5 text-amber-300"
+                  >
+                    <i className="fa-solid fa-clock-rotate-left" />
+                    Refresh Stale (&gt;30d)
+                  </button>
+                </div>
+              </div>
+
               {batchRunning && (
                 <div className="mb-4">
                   <div className="flex items-center justify-between text-xs text-white/60 mb-1">
