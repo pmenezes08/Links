@@ -2105,7 +2105,7 @@ export default function AdminDashboard() {
                       try {
                         const r = await fetch('/api/admin/embeddings/status', { credentials: 'include' })
                         const d = await r.json()
-                        alert(`Profiles: ${d.total_profiles}\nWith embedding: ${d.with_embedding}\nMissing: ${d.missing_embedding}\nFAISS index: ${d.faiss_index_size} vectors (ready: ${d.faiss_ready})`)
+                        alert(`Profiles: ${d.total_profiles}\nChunked embeddings: ${d.with_chunked_embeddings}\nLegacy (single-vector): ${d.with_legacy_embedding}\nMissing any: ${d.missing_any_embedding}\nChunks: prof=${d.chunk_coverage?.professional ?? '?'} pers=${d.chunk_coverage?.personality ?? '?'} exp=${d.chunk_coverage?.experiences ?? '?'} soc=${d.chunk_coverage?.social ?? '?'}\nFAISS: ${d.faiss_index_vectors} vectors / ${d.faiss_index_users} users (ready: ${d.faiss_ready})`)
                       } catch { alert('Request failed') }
                     }}
                     className="px-3 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-xs flex items-center gap-1.5 text-white/60"

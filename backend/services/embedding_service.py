@@ -463,10 +463,11 @@ def compute_and_store_embeddings(username: str, chunk_types: List[str] = None) -
             return False
 
         fs = _get_fs_write_client()
-        update_payload = {f'embeddings.{ct}': vec for ct, vec in new_embeddings.items()}
-        fs.collection('steve_user_profiles').document(username).set(
-            update_payload, merge=True
-        )
+        doc_ref = fs.collection('steve_user_profiles').document(username)
+        try:
+            doc_ref.update({f'embeddings.{ct}': vec for ct, vec in new_embeddings.items()})
+        except Exception:
+            doc_ref.set({'embeddings': new_embeddings}, merge=True)
 
         existing = {}
         doc = fs.collection('steve_user_profiles').document(username).get()
