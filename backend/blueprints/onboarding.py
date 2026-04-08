@@ -908,47 +908,23 @@ def onboarding_complete():
             except Exception as merge_err:
                 logger.warning(f"onboardingIdentity sync on complete failed for {username}: {merge_err}")
 
-            # Trigger background analysis if no existing profile in steve_user_profiles
+            # Trigger full Steve analysis in background (web_search, embedding, etc.)
             existing = db.collection("steve_user_profiles").document(username).get()
             if not existing.exists or not (existing.to_dict() or {}).get("analysis", {}).get("summary"):
-                def _bg_analyze():
+                def _bg_analyze(uname):
                     try:
-                        from bodybuilding_app import (
-                            _build_profile_text_for_grok,
-                            _analyze_profile_with_grok,
-                            _fetch_onboarding_identity_context,
-                            _fetch_user_communities,
-                            _get_steve_profiling_write_payloads,
-                        )
-                        from backend.services.firestore_writes import write_steve_user_profile
-                        with get_db_connection() as conn:
-                            c = conn.cursor()
-                            ph = get_sql_placeholder()
-                            c.execute(f"""
-                                SELECT u.*, p.display_name, p.bio, p.location
-                                FROM users u LEFT JOIN user_profiles p ON u.username = p.username
-                                WHERE u.username = {ph}
-                            """, (username,))
-                            row = c.fetchone()
-                        if row:
-                            communities = _fetch_user_communities(username)
-                            onboarding_context = _fetch_onboarding_identity_context(username)
-                            text = _build_profile_text_for_grok(
-                                row,
-                                communities=communities,
-                                onboarding_context=onboarding_context,
-                            )
-                            analysis = _analyze_profile_with_grok(username, text, depth='standard')
-                            if analysis:
-                                write_steve_user_profile(
-                                    username,
-                                    analysis=analysis,
-                                    **_get_steve_profiling_write_payloads(username),
-                                )
+                        from bodybuilding_app import _execute_steve_profile_analysis, invalidate_steve_context_cache
+                        ok, _payload, _err = _execute_steve_profile_analysis(uname, depth='standard', reset=False)
+                        if ok:
+                            try:
+                                invalidate_steve_context_cache(uname)
+                            except Exception:
+                                pass
+                        logger.info(f"Background onboarding analysis {'succeeded' if ok else 'failed'} for {uname}")
                     except Exception as bg_err:
-                        logger.error(f"Background onboarding analysis error for {username}: {bg_err}")
+                        logger.error(f"Background onboarding analysis error for {uname}: {bg_err}")
 
-                threading.Thread(target=_bg_analyze, daemon=True).start()
+                threading.Thread(target=_bg_analyze, args=(username,), daemon=True).start()
 
         try:
             invalidate_user_cache(username)
