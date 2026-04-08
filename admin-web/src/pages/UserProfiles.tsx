@@ -36,6 +36,50 @@ interface Profile {
   lastUpdated?: string
 }
 
+/** Merge `_userEdits` from Firestore so admin sees the same wording as the member after they save suggestions. */
+function mergeSteveAnalysisForDisplay(a: Analysis) {
+  const ue = (a as Analysis & { _userEdits?: Record<string, unknown> })._userEdits || {}
+  const summary =
+    typeof ue.summary === 'string' && ue.summary.trim() ? ue.summary : a.summary
+  const networkingValue =
+    typeof ue.networkingValue === 'string' && (ue.networkingValue as string).trim()
+      ? (ue.networkingValue as string)
+      : a.networkingValue
+
+  let interests: string | Analysis['interests'] | undefined
+  let interestsIsPlainString = false
+  if (ue.interests !== undefined && ue.interests !== null) {
+    if (typeof ue.interests === 'string') {
+      interests = ue.interests
+      interestsIsPlainString = true
+    } else if (typeof ue.interests === 'object' && !Array.isArray(ue.interests)) {
+      interests = ue.interests as Analysis['interests']
+    }
+  } else {
+    interests = a.interests
+  }
+
+  const identity =
+    ue.identity !== undefined && ue.identity !== null
+      ? (ue.identity as Analysis['identity'])
+      : a.identity
+  const professional =
+    ue.professional !== undefined ? ue.professional : a.professional
+  const personal = ue.personal !== undefined ? ue.personal : a.personal
+
+  return {
+    summary,
+    networkingValue,
+    identity,
+    professional,
+    personal,
+    interests,
+    interestsIsPlainString,
+    traits: a.traits,
+    observations: a.observations,
+  }
+}
+
 export default function UserProfiles() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
@@ -134,6 +178,7 @@ export default function UserProfiles() {
 
   const profile = profiles.find(p => p.username === selected)
   const a = profile?.analysis || {}
+  const m = mergeSteveAnalysisForDisplay(a as Analysis)
   const hasAnalysis = !!a.summary
   const isAnalyzing = analyzing === selected
 
@@ -289,24 +334,24 @@ export default function UserProfiles() {
 
               {!isAnalyzing && hasAnalysis && (
                 <div className="space-y-4">
-                  {a.summary && (
+                  {m.summary && (
                     <div className="text-sm text-white/70 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
-                      {a.summary}
+                      {m.summary}
                     </div>
                   )}
 
-                  {a.identity && (a.identity.bridgeInsight || a.identity.roles?.length) && (
+                  {m.identity && (m.identity.bridgeInsight || m.identity.roles?.length) && (
                     <div>
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2"><i className="fa-solid fa-fingerprint mr-1" /> Identity</div>
                       <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-2">
-                        {a.identity.roles && a.identity.roles.length > 0 && (
+                        {m.identity.roles && m.identity.roles.length > 0 && (
                           <div className="flex flex-wrap gap-1.5">
-                            {a.identity.roles.map((r, i) => (
+                            {m.identity.roles.map((r, i) => (
                               <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20">{r}</span>
                             ))}
                           </div>
                         )}
-                        {a.identity.bridgeInsight && <div className="text-xs text-accent/80 italic">{a.identity.bridgeInsight}</div>}
+                        {m.identity.bridgeInsight && <div className="text-xs text-accent/80 italic">{m.identity.bridgeInsight}</div>}
                       </div>
                     </div>
                   )}
@@ -314,54 +359,87 @@ export default function UserProfiles() {
                   <div className="grid md:grid-cols-2 gap-3">
                     <div>
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2"><i className="fa-solid fa-briefcase mr-1" /> Professional</div>
-                      {a.professional ? (
+                      {m.professional ? (
                         <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1.5">
-                          {a.professional.company?.description && (
-                            <div>
-                              <div className="text-sm text-white font-medium">{a.professional.company.name}</div>
-                              <div className="text-xs text-white/60">{a.professional.company.description}</div>
-                            </div>
+                          {typeof m.professional === 'string' ? (
+                            <div className="text-xs text-white/70 whitespace-pre-wrap">{m.professional}</div>
+                          ) : (
+                            <>
+                              {(() => {
+                                const prof = m.professional as NonNullable<Analysis['professional']>
+                                return (
+                                  <>
+                                    {prof.company?.description && (
+                                      <div>
+                                        <div className="text-sm text-white font-medium">{prof.company.name}</div>
+                                        <div className="text-xs text-white/60">{prof.company.description}</div>
+                                      </div>
+                                    )}
+                                    {prof.role?.title && (
+                                      <div className="text-xs text-white/60">{prof.role.title}{prof.role.implication ? ` — ${prof.role.implication}` : ''}</div>
+                                    )}
+                                    {prof.education && <div className="text-xs text-white/50"><i className="fa-solid fa-graduation-cap mr-1" />{prof.education}</div>}
+                                    {prof.webFindings && <div className="text-xs text-white/45 italic">{prof.webFindings}</div>}
+                                  </>
+                                )
+                              })()}
+                            </>
                           )}
-                          {a.professional.role?.title && (
-                            <div className="text-xs text-white/60">{a.professional.role.title}{a.professional.role.implication ? ` — ${a.professional.role.implication}` : ''}</div>
-                          )}
-                          {a.professional.education && <div className="text-xs text-white/50"><i className="fa-solid fa-graduation-cap mr-1" />{a.professional.education}</div>}
-                          {a.professional.webFindings && <div className="text-xs text-white/45 italic">{a.professional.webFindings}</div>}
                         </div>
                       ) : <div className="text-xs text-muted text-center py-3 border border-dashed border-white/10 rounded-lg">No data</div>}
                     </div>
                     <div>
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2"><i className="fa-solid fa-user mr-1" /> Personal</div>
-                      {a.personal ? (
+                      {m.personal ? (
                         <div className="bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 space-y-1.5">
-                          {a.personal.lifestyle && <div className="text-xs text-white/60">{a.personal.lifestyle}</div>}
-                          {a.personal.interests && a.personal.interests.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {a.personal.interests.map((item, i) => (
-                                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/10 text-pink-300/80 border border-pink-500/20">{item}</span>
-                              ))}
-                            </div>
+                          {typeof m.personal === 'string' ? (
+                            <div className="text-xs text-white/70 whitespace-pre-wrap">{m.personal}</div>
+                          ) : (
+                            <>
+                              {(() => {
+                                const pers = m.personal as NonNullable<Analysis['personal']>
+                                return (
+                                  <>
+                                    {pers.lifestyle && <div className="text-xs text-white/60">{pers.lifestyle}</div>}
+                                    {pers.interests && pers.interests.length > 0 && (
+                                      <div className="flex flex-wrap gap-1">
+                                        {pers.interests.map((item: string, i: number) => (
+                                          <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-pink-500/10 text-pink-300/80 border border-pink-500/20">{item}</span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {pers.webFindings && <div className="text-xs text-white/45 italic">{pers.webFindings}</div>}
+                                  </>
+                                )
+                              })()}
+                            </>
                           )}
-                          {a.personal.webFindings && <div className="text-xs text-white/45 italic">{a.personal.webFindings}</div>}
                         </div>
                       ) : <div className="text-xs text-muted text-center py-3 border border-dashed border-white/10 rounded-lg">Run Deep analysis</div>}
                     </div>
                   </div>
 
-                  {a.networkingValue && (
+                  {m.networkingValue && (
                     <div>
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Networking Value</div>
                       <div className="text-xs text-white/60 leading-relaxed bg-accent/5 rounded-lg px-3.5 py-2.5 border border-accent/15">
-                        <i className="fa-solid fa-handshake text-accent/50 mr-1.5" />{a.networkingValue}
+                        <i className="fa-solid fa-handshake text-accent/50 mr-1.5" />{m.networkingValue}
                       </div>
                     </div>
                   )}
 
-                  {a.interests && Object.keys(a.interests).length > 0 && (
+                  {m.interestsIsPlainString && typeof m.interests === 'string' && m.interests.trim() ? (
+                    <div>
+                      <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Interests</div>
+                      <div className="text-sm text-white/70 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5 whitespace-pre-wrap">
+                        {m.interests}
+                      </div>
+                    </div>
+                  ) : m.interests && typeof m.interests === 'object' && Object.keys(m.interests).length > 0 ? (
                     <div>
                       <div className="text-[10px] text-muted uppercase tracking-wider mb-2">Interests</div>
                       <div className="flex flex-wrap gap-1.5">
-                        {Object.entries(a.interests)
+                        {Object.entries(m.interests)
                           .sort(([, x], [, y]) => (y?.score ?? 0) - (x?.score ?? 0))
                           .map(([topic, meta]) => (
                             <span key={topic} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md bg-white/5 border border-white/10">
@@ -371,7 +449,7 @@ export default function UserProfiles() {
                           ))}
                       </div>
                     </div>
-                  )}
+                  ) : null}
 
                   {a.traits && a.traits.length > 0 && (
                     <div>

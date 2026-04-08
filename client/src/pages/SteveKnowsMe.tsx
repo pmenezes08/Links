@@ -61,8 +61,26 @@ function sectionEditSeed(key: string, val: unknown): string {
   return ''
 }
 
+function getUserEdits(analysis: Record<string, unknown>): Record<string, unknown> {
+  const u = analysis._userEdits
+  if (u && typeof u === 'object' && !Array.isArray(u)) return u as Record<string, unknown>
+  return {}
+}
+
+/** Prefer Firestore `_userEdits` over base analysis so saved suggestions show after reload. */
+function getMergedSectionValue(key: string, analysis: Record<string, unknown>): unknown {
+  const ue = getUserEdits(analysis)
+  if (Object.prototype.hasOwnProperty.call(ue, key)) {
+    const v = ue[key]
+    if (v === null || v === undefined) return analysis[key]
+    if (typeof v === 'string' && v.trim() === '') return analysis[key]
+    return v
+  }
+  return analysis[key]
+}
+
 function visibleSectionKeys(analysis: Record<string, unknown>): string[] {
-  return SECTION_ORDER.filter(k => sectionHasContent(k, analysis[k]))
+  return SECTION_ORDER.filter(k => sectionHasContent(k, getMergedSectionValue(k, analysis)))
 }
 
 export default function SteveKnowsMe() {
@@ -231,7 +249,7 @@ export default function SteveKnowsMe() {
 
   function openEdit(key: string) {
     setEditKey(key)
-    setEditText(sectionEditSeed(key, analysis[key]))
+    setEditText(sectionEditSeed(key, getMergedSectionValue(key, analysis)))
   }
 
   const reviewStatus = (analysis._userReview as { status?: string } | undefined)?.status
@@ -402,7 +420,7 @@ export default function SteveKnowsMe() {
                     ) : null}
                   </div>
                   <div className="bg-white/[0.03] rounded-lg px-3.5 py-3 border border-white/5">
-                    {renderSectionBody(key, analysis[key])}
+                    {renderSectionBody(key, getMergedSectionValue(key, analysis))}
                   </div>
                 </div>
               ))
