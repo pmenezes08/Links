@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 
 interface KBNode {
   id: string
@@ -39,7 +39,7 @@ const DIMENSION_COLORS: Record<string, string> = {
   UniqueFingerprint: '#f97316',
 }
 
-function renderValue(val: unknown, depth = 0): JSX.Element | string {
+function renderValue(val: unknown, depth = 0): React.ReactNode {
   if (val === null || val === undefined) return '—'
   if (typeof val === 'string') return val
   if (typeof val === 'number' || typeof val === 'boolean') return String(val)
