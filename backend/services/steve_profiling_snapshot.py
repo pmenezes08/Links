@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple
 from urllib.parse import urlparse
 
@@ -72,6 +72,7 @@ def build_steve_profiling_firestore_payloads(
     replies: List[Dict[str, Any]] = []
     starred_posts: List[Dict[str, Any]] = []
     shared_items: List[Dict[str, Any]] = []
+    cutoff_dt = datetime.utcnow() - timedelta(days=365)
 
     try:
         with get_db_connection() as conn:
@@ -87,10 +88,11 @@ def build_steve_profiling_firestore_payloads(
                 WHERE p.username = {ph}
                   AND p.content IS NOT NULL
                   AND TRIM(p.content) != ''
+                  AND p.timestamp >= {ph}
                 ORDER BY p.timestamp DESC
                 LIMIT {int(post_limit)}
                 """,
-                (username,),
+                (username, cutoff_dt),
             )
             raw_posts = c.fetchall()
 
@@ -150,10 +152,11 @@ def build_steve_profiling_firestore_payloads(
                 WHERE r.username = {ph}
                   AND r.content IS NOT NULL
                   AND TRIM(r.content) != ''
+                  AND r.timestamp >= {ph}
                 ORDER BY r.timestamp DESC
                 LIMIT {int(reply_limit)}
                 """,
-                (username,),
+                (username, cutoff_dt),
             )
             raw_replies = c.fetchall()
 
@@ -181,10 +184,11 @@ def build_steve_profiling_firestore_payloads(
                     LEFT JOIN posts p ON kp.post_id = p.id
                     LEFT JOIN communities c ON kp.community_id = c.id
                     WHERE kp.username = {ph}
+                      AND kp.created_at >= {ph}
                     ORDER BY kp.created_at DESC
                     LIMIT {int(starred_limit)}
                     """,
-                    (username,),
+                    (username, cutoff_dt),
                 )
                 raw_starred = c.fetchall()
                 for row in raw_starred or []:

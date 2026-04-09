@@ -23,3 +23,5 @@ itsdangerous>=2.0.0
 markupsafe>=2.1.0
 pypdf>=3.0.0
 google-auth
+trafilatura>=1.6.0
+youtube-transcript-api>=1.0.0

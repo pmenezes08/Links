@@ -721,7 +721,9 @@ def onboarding_enrich_profile():
             _analyze_profile_with_grok,
             _fetch_onboarding_identity_context,
             _fetch_user_communities,
+            _fetch_user_recent_activity,
         )
+        from backend.services.steve_content_enrichment import enrich_shared_activity_for_profile
 
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -743,11 +745,26 @@ def onboarding_enrich_profile():
 
         communities = _fetch_user_communities(username)
         onboarding_context = _fetch_onboarding_identity_context(username)
+        activity = _fetch_user_recent_activity(username)
         profile_text = _build_profile_text_for_grok(
             row,
             communities=communities,
+            activity=activity,
             onboarding_context=onboarding_context,
         )
+        try:
+            enrich_block, ingest_errors = enrich_shared_activity_for_profile(activity, "standard")
+            if enrich_block:
+                profile_text = profile_text + "\n\n" + enrich_block
+            if ingest_errors:
+                profile_text += (
+                    "\n\n--- CONTENT INGESTION FAILURES (factual; do not invent content for these URLs) ---\n"
+                )
+                for row_e in ingest_errors:
+                    profile_text += f"- {row_e.get('url', '')}: {row_e.get('error', '')}\n"
+        except Exception as enrich_err:
+            logger.warning("Onboarding enrichment content ingest skipped: %s", enrich_err)
+
         analysis = _analyze_profile_with_grok(username, profile_text, depth='standard')
 
         if not analysis:

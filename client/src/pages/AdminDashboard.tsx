@@ -255,6 +255,8 @@ export default function AdminDashboard() {
       traits?: string[]
       observations?: string
       networkingValue?: string | null
+      /** Content ingestion / access issues (e.g. failed article fetch, no transcript) */
+      notes?: string
       conversationStarters?: string[]
       _feedback?: Record<string, any>
       _userReview?: { status: 'pending' | 'confirmed' | 'edited' | 'disputed'; at?: string; notes?: string }
@@ -2420,6 +2422,19 @@ export default function AdminDashboard() {
                                 {summary && (
                                   <div className="text-sm text-white/70 leading-relaxed bg-white/[0.03] rounded-lg px-3.5 py-2.5 border border-white/5">
                                     {summary}
+                                  </div>
+                                )}
+
+                                {/* Content ingestion notes (e.g. failed article/video fetch) */}
+                                {a.notes && String(a.notes).trim() && (
+                                  <div>
+                                    <div className="text-[10px] text-amber-400/80 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                                      <i className="fa-solid fa-triangle-exclamation" />
+                                      Notes (content access)
+                                    </div>
+                                    <div className="text-xs text-amber-200/70 leading-relaxed bg-amber-500/5 rounded-lg px-3.5 py-2.5 border border-amber-500/15 whitespace-pre-wrap">
+                                      {a.notes}
+                                    </div>
                                   </div>
                                 )}
 

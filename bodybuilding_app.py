@@ -7290,6 +7290,22 @@ def _execute_steve_profile_analysis(target_username: str, depth: str = 'standard
             activity=activity,
             onboarding_context=onboarding_context,
         )
+        if depth in ('standard', 'deep') and activity:
+            try:
+                from backend.services.steve_content_enrichment import enrich_shared_activity_for_profile
+
+                enrich_block, ingest_errors = enrich_shared_activity_for_profile(activity, depth)
+                if enrich_block:
+                    profile_text = profile_text + "\n\n" + enrich_block
+                if ingest_errors:
+                    profile_text += (
+                        "\n\n--- CONTENT INGESTION FAILURES (factual; do not invent content for these URLs) ---\n"
+                    )
+                    for row in ingest_errors:
+                        profile_text += f"- {row.get('url', '')}: {row.get('error', '')}\n"
+            except Exception as enrich_err:
+                logger.warning("Steve content enrichment skipped for %s: %s", target_username, enrich_err)
+
         if not profile_text.strip():
             return False, 'No profile data to analyze', 400
 
@@ -7755,7 +7771,11 @@ STEVE_ADMIN_FEEDBACKABLE_SECTIONS = frozenset({
 def _migrate_analysis_to_v3(analysis: dict) -> dict:
     """Migrate a legacy (v1/v2) analysis dict to the canonical v3 schema.
     Idempotent: if already v3, returns as-is."""
-    if not analysis or analysis.get('_schemaVersion') == STEVE_PROFILE_SCHEMA_VERSION:
+    if not analysis:
+        return analysis
+    if analysis.get('_schemaVersion') == STEVE_PROFILE_SCHEMA_VERSION:
+        if 'notes' not in analysis:
+            analysis['notes'] = ''
         return analysis
 
     v3 = {}
@@ -7821,6 +7841,7 @@ def _migrate_analysis_to_v3(analysis: dict) -> dict:
     v3['traits'] = analysis.get('traits') or []
     v3['observations'] = analysis.get('observations') or ''
     v3['networkingValue'] = analysis.get('networkingValue') or ''
+    v3['notes'] = analysis.get('notes') or ''
     v3['conversationStarters'] = analysis.get('conversationStarters') or []
 
     for meta_key in ('_feedback', '_userReview', '_acceptedSections', '_userEdits'):
@@ -7952,6 +7973,9 @@ def _merge_analyses(existing: dict, new: dict) -> dict:
         if new.get(key):
             merged[key] = new[key]
 
+    if 'notes' in new:
+        merged['notes'] = new['notes']
+
     if new.get('identity'):
         merged['identity'] = new['identity']
 
@@ -8065,9 +8089,12 @@ def _get_steve_profiling_write_payloads(username: str) -> dict:
 
 
 def _fetch_user_recent_activity(username: str, post_limit: int = 15, reply_limit: int = 10) -> dict:
-    """Fetch a user's recent posts and replies for profile analysis."""
+    """Fetch a user's recent posts and replies for profile analysis.
+    Only includes posts from the last 12 months for link-sharing / enrichment alignment."""
     import re as _re
+    from datetime import datetime, timedelta
     URL_PATTERN = _re.compile(r'https?://[^\s<>"\')\]]+')
+    cutoff_dt = datetime.utcnow() - timedelta(days=365)
     try:
         with get_db_connection() as conn:
             c = conn.cursor()
@@ -8078,9 +8105,10 @@ def _fetch_user_recent_activity(username: str, post_limit: int = 15, reply_limit
                 FROM posts p
                 LEFT JOIN communities c ON p.community_id = c.id
                 WHERE p.username = {ph} AND p.content IS NOT NULL AND TRIM(p.content) != ''
+                  AND p.timestamp >= {ph}
                 ORDER BY p.timestamp DESC
                 LIMIT {int(post_limit)}
-            """, (username,))
+            """, (username, cutoff_dt))
             raw_posts = c.fetchall()
 
             c.execute(f"""
@@ -8090,9 +8118,10 @@ def _fetch_user_recent_activity(username: str, post_limit: int = 15, reply_limit
                 LEFT JOIN posts p ON r.post_id = p.id
                 LEFT JOIN communities c ON r.community_id = c.id
                 WHERE r.username = {ph} AND r.content IS NOT NULL AND TRIM(r.content) != ''
+                  AND r.timestamp >= {ph}
                 ORDER BY r.timestamp DESC
                 LIMIT {int(reply_limit)}
-            """, (username,))
+            """, (username, cutoff_dt))
             raw_replies = c.fetchall()
 
         shared = []
@@ -8277,8 +8306,12 @@ COMMUNITY PRIVACY (CRITICAL):
 - You MAY use community names in your internal reasoning and web searches — just keep them out of the output.
 
 PLATFORM ACTIVITY (if provided):
+- ENRICHED SHARED LINKS (if provided): Pre-fetched article text, YouTube transcripts, or audio transcriptions
+  from URLs the user shared in the last 12 months. Treat this as PRIMARY evidence for what the linked content says.
+  If CONTENT INGESTION FAILURES are listed, summarize them in "notes" and do not invent facts for those URLs.
 - SHARED CONTENT (posts with links): These URLs reveal the user's information diet and professional focus.
-  USE YOUR WEB SEARCH to visit/analyze each URL. Understand what the content is about and what sharing
+  When ENRICHED SHARED LINKS already includes text for a URL, prefer that over generic web search for that URL.
+  Otherwise USE YOUR WEB SEARCH to visit/analyze each URL. Understand what the content is about and what sharing
   it says about the user's interests and expertise. The user's comment alongside the link adds context.
 - OWN THOUGHTS (text-only posts): These reveal the user's voice — opinions, reflections, experiences, humor.
   Pay special attention to recurring themes.
@@ -8475,6 +8508,7 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
   "traits": ["trait1", "trait2", "trait3"],
   "observations": "2-3 sentences of deeper insight — what makes this person tick",
   "networkingValue": "1-2 sentences: what unique value they bring and what connections would benefit them",
+  "notes": "If CONTENT INGESTION FAILURES appeared in the input, briefly list what could not be loaded or analyzed (e.g. paywall, transcript unavailable). Empty string if none.",
 {starters_schema}
   "dataQuality": "rich|moderate|sparse",
   "analysisDepth": "{depth}"
@@ -8547,7 +8581,7 @@ Set any field to null rather than guessing with no basis."""
             raw = raw.split('\n', 1)[-1].rsplit('```', 1)[0].strip()
         analysis = _json.loads(raw)
 
-        for key in ('summary', 'observations', 'dataQuality', 'networkingValue'):
+        for key in ('summary', 'observations', 'dataQuality', 'networkingValue', 'notes'):
             if key not in analysis:
                 analysis[key] = ''
         if not isinstance(analysis.get('interests'), dict):
